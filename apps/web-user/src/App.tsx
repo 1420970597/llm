@@ -1,38 +1,207 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, BrainCircuit, DatabaseZap, GitBranch, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowRight, BrainCircuit, DatabaseZap, GitBranch, Save, ShieldCheck, Sparkles } from 'lucide-react'
+import { Dataset, DatasetGraph, Domain, Provider, StorageProfile, Strategy, userApi } from './lib/api'
 
-const pillars = [
-  {
-    icon: BrainCircuit,
-    title: 'Domain expansion engine',
-    description: 'Turn a single seed keyword into a governed domain graph with tiered coverage and review checkpoints.',
-  },
-  {
-    icon: DatabaseZap,
-    title: 'Async data pipeline',
-    description: 'Generate questions, reasoning traces, answers, and reward datasets through recoverable stages.',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Enterprise controls',
-    description: 'Keep prompt versions, storage routes, quotas, and audit trails under admin control.',
-  },
-]
+function GraphPreview({ rootKeyword, domains }: { rootKeyword: string; domains: Domain[] }) {
+  const visible = domains.slice(0, 16)
+  const width = 620
+  const height = 420
+  const centerX = width / 2
+  const centerY = height / 2
+  const radius = 138
 
-const milestones = [
-  'Estimate dataset scale and cost before generation.',
-  'Refine the domain graph with AI and human-in-the-loop edits.',
-  'Launch asynchronous generation for questions, reasoning, and reward data.',
-  'Export stable dataset artifacts from object storage-backed snapshots.',
-]
+  const positioned = visible.map((domain, index) => {
+    const angle = (Math.PI * 2 * index) / Math.max(visible.length, 1)
+    return {
+      ...domain,
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius,
+    }
+  })
+
+  return (
+    <div className="graph-surface">
+      <svg viewBox={`0 0 ${width} ${height}`} className="graph-svg" role="img" aria-label="domain graph preview">
+        {positioned.map((node) => (
+          <line key={`line-${node.id}`} x1={centerX} y1={centerY} x2={node.x} y2={node.y} stroke="rgba(163, 204, 255, 0.28)" strokeWidth="1.5" />
+        ))}
+        <circle cx={centerX} cy={centerY} r="48" fill="rgba(148, 189, 255, 0.16)" stroke="rgba(190, 214, 255, 0.55)" />
+        <text x={centerX} y={centerY} textAnchor="middle" dominantBaseline="middle" className="graph-root-text">{rootKeyword}</text>
+        {positioned.map((node) => (
+          <g key={node.id}>
+            <circle cx={node.x} cy={node.y} r="30" fill="rgba(12, 22, 40, 0.88)" stroke="rgba(148, 189, 255, 0.55)" />
+            <text x={node.x} y={node.y} textAnchor="middle" dominantBaseline="middle" className="graph-node-text">{node.name.slice(0, 10)}</text>
+          </g>
+        ))}
+      </svg>
+      {domains.length > visible.length ? <p className="graph-caption">Showing 16 of {domains.length} generated domains in the preview graph.</p> : null}
+    </div>
+  )
+}
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false)
+  const [strategies, setStrategies] = useState<Strategy[]>([])
+  const [providers, setProviders] = useState<Provider[]>([])
+  const [storageProfiles, setStorageProfiles] = useState<StorageProfile[]>([])
+  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [graph, setGraph] = useState<DatasetGraph | null>(null)
+  const [message, setMessage] = useState<string>('')
+  const [estimate, setEstimate] = useState<Dataset['estimate'] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [formState, setFormState] = useState({
+    name: '',
+    rootKeyword: '军事',
+    targetSize: 12000,
+    strategyId: 0,
+    providerId: 0,
+    storageProfileId: 0,
+  })
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const loadBootstrap = async () => {
+    const [strategyData, providerData, storageData, datasetData] = await Promise.all([
+      userApi.listStrategies(),
+      userApi.listProviders(),
+      userApi.listStorageProfiles(),
+      userApi.listDatasets(),
+    ])
+    setStrategies(strategyData)
+    setProviders(providerData)
+    setStorageProfiles(storageData)
+    setDatasets(datasetData)
+    setFormState((current) => ({
+      ...current,
+      strategyId: current.strategyId || strategyData[0]?.id || 0,
+      providerId: current.providerId || providerData[0]?.id || 0,
+      storageProfileId: current.storageProfileId || storageData[0]?.id || 0,
+    }))
+  }
+
+  useEffect(() => {
+    if (!authenticated) {
+      return
+    }
+    void loadBootstrap().catch((error: Error) => setMessage(error.message))
+  }, [authenticated])
+
+  const plannerCards = useMemo(() => {
+    if (!estimate) {
+      return []
+    }
+    return [
+      { label: 'Domains', value: estimate.domainCount },
+      { label: 'Questions / domain', value: estimate.questionsPerDomain },
+      { label: 'Estimated questions', value: estimate.estimatedQuestions },
+      { label: 'Estimated samples', value: estimate.estimatedSamples },
+    ]
+  }, [estimate])
+
+  const submitLogin = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setAuthenticated(true)
+    setMessage('Workspace unlocked. Configure planning inputs and generate a domain graph.')
+  }
+
+  const estimatePlan = async () => {
+    setLoading(true)
+    try {
+      const nextEstimate = await userApi.estimatePlan({
+        rootKeyword: formState.rootKeyword,
+        targetSize: Number(formState.targetSize),
+        strategyId: Number(formState.strategyId),
+      })
+      setEstimate(nextEstimate)
+      setMessage('Dataset scale estimate refreshed.')
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const createDataset = async () => {
+    if (!estimate) {
+      setMessage('Please estimate the dataset plan first.')
+      return
+    }
+    setLoading(true)
+    try {
+      const created = await userApi.createDataset({
+        name: formState.name || `${formState.rootKeyword} dataset`,
+        rootKeyword: formState.rootKeyword,
+        targetSize: Number(formState.targetSize),
+        strategyId: Number(formState.strategyId),
+        providerId: Number(formState.providerId),
+        storageProfileId: Number(formState.storageProfileId),
+        status: 'draft',
+        estimate,
+      })
+      const nextGraph = await userApi.getDataset(created.id)
+      setGraph(nextGraph)
+      setDatasets(await userApi.listDatasets())
+      setMessage('Dataset created. You can now generate its domain graph.')
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const generateDomains = async () => {
+    if (!graph) {
+      setMessage('Create a dataset before generating domains.')
+      return
+    }
+    setLoading(true)
+    try {
+      const nextGraph = await userApi.generateDomains(graph.dataset.id)
+      setGraph(nextGraph)
+      setMessage(`Generated ${nextGraph.domains.length} domains for review.`)
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const renameDomain = (domainId: number, name: string) => {
+    setGraph((current) => current ? {
+      ...current,
+      domains: current.domains.map((domain) => domain.id === domainId ? { ...domain, name } : domain),
+    } : current)
+  }
+
+  const saveGraph = async () => {
+    if (!graph) {
+      return
+    }
+    setLoading(true)
+    try {
+      await userApi.updateGraph(graph.dataset.id, graph.domains)
+      setMessage('Graph edits saved.')
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const confirmDomains = async () => {
+    if (!graph) {
+      return
+    }
+    setLoading(true)
+    try {
+      await userApi.confirmDomains(graph.dataset.id)
+      const refreshed = await userApi.getDataset(graph.dataset.id)
+      setGraph(refreshed)
+      setMessage('Domains confirmed. The dataset is ready for question generation.')
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -43,47 +212,35 @@ export default function App() {
           <span>LLM Data Factory</span>
         </div>
         <nav>
-          <a href="#workflow">Workflow</a>
-          <a href="#governance">Governance</a>
+          <a href="#planner">Planner</a>
+          <a href="#graph">Graph</a>
           <a href="http://localhost:3211">Admin</a>
         </nav>
       </header>
 
       <main>
         <section className="hero-grid">
-          <motion.div
-            className="hero-card hero-primary"
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
-          >
+          <motion.div className="hero-card hero-primary" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: 'easeOut' }}>
             <p className="eyebrow">Enterprise data generation control plane</p>
-            <h1>Build long-chain reasoning datasets with governed scale and premium operator workflows.</h1>
-            <p className="hero-copy">
-              Plan dataset size, expand domains, review graph structure, and stage large asynchronous generation jobs
-              with storage-aware, audit-ready foundations.
-            </p>
+            <h1>Plan dataset scope, generate a governed domain graph, and prepare the pipeline for large-scale reasoning data.</h1>
+            <p className="hero-copy">The user workspace now estimates sample volume, creates datasets, generates domain graphs, and supports human-in-the-loop graph confirmation before question fan-out.</p>
             <div className="hero-actions">
-              <button className="primary-action">
-                Start planning
+              <button className="primary-action" onClick={() => void estimatePlan()} disabled={loading}>
+                Estimate plan
                 <ArrowRight size={16} />
               </button>
-              <button className="secondary-action">View system blueprint</button>
+              <button className="secondary-action" onClick={() => void createDataset()} disabled={loading}>Create dataset</button>
             </div>
+            {message ? <p className="status-banner">{message}</p> : null}
           </motion.div>
 
-          <motion.aside
-            className="hero-card hero-metrics"
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.7, delay: 0.1, ease: 'easeOut' }}
-          >
+          <motion.aside className="hero-card hero-metrics" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.7, delay: 0.1, ease: 'easeOut' }}>
             {!authenticated ? (
-              <form className="login-card" onSubmit={handleSubmit}>
+              <form className="login-card" onSubmit={submitLogin}>
                 <div>
                   <span className="eyebrow">Portal access</span>
-                  <h2>Sign in to plan and launch dataset generation.</h2>
-                  <p>Phase 1 ships a focused login shell so later identity providers can plug in without rewiring the UI.</p>
+                  <h2>Sign in to create and review dataset plans.</h2>
+                  <p>Phase 3 unlocks a working planner connected to the live API and admin-configured generation strategies.</p>
                 </div>
                 <label>
                   Workspace email
@@ -99,20 +256,48 @@ export default function App() {
                 </button>
               </form>
             ) : (
-              <>
-                <div className="metric-card">
-                  <span>Target orchestration</span>
-                  <strong>Domain graph → QA → reasoning → reward</strong>
+              <div className="planner-panel" id="planner">
+                <div className="planner-grid">
+                  <label>
+                    Dataset name
+                    <input value={formState.name} onChange={(event) => setFormState({ ...formState, name: event.target.value })} placeholder="Military reasoning factory" />
+                  </label>
+                  <label>
+                    Root keyword
+                    <input value={formState.rootKeyword} onChange={(event) => setFormState({ ...formState, rootKeyword: event.target.value })} />
+                  </label>
+                  <label>
+                    Target size
+                    <input type="number" value={formState.targetSize} onChange={(event) => setFormState({ ...formState, targetSize: Number(event.target.value) })} />
+                  </label>
+                  <label>
+                    Strategy
+                    <select value={formState.strategyId} onChange={(event) => setFormState({ ...formState, strategyId: Number(event.target.value) })}>
+                      {strategies.map((strategy) => <option key={strategy.id} value={strategy.id}>{strategy.name}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    Provider
+                    <select value={formState.providerId} onChange={(event) => setFormState({ ...formState, providerId: Number(event.target.value) })}>
+                      {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    Storage profile
+                    <select value={formState.storageProfileId} onChange={(event) => setFormState({ ...formState, storageProfileId: Number(event.target.value) })}>
+                      {storageProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+                    </select>
+                  </label>
                 </div>
-                <div className="metric-card">
-                  <span>Storage baseline</span>
-                  <strong>S3 / PostgreSQL / Redis / MinIO</strong>
+                <div className="planner-cards">
+                  {plannerCards.map((item) => (
+                    <div className="metric-card" key={item.label}>
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                    </div>
+                  ))}
                 </div>
-                <div className="metric-card accent">
-                  <span>Visual baseline</span>
-                  <strong>Apple-style glass, depth, motion, premium icons</strong>
-                </div>
-              </>
+              </div>
             )}
           </motion.aside>
         </section>
@@ -123,17 +308,13 @@ export default function App() {
             <h2>Phase-aligned product shell for future generation tasks</h2>
           </div>
           <div className="pillar-grid">
-            {pillars.map(({ icon: Icon, title, description }, index) => (
-              <motion.article
-                key={title}
-                className="glass-card"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.45, delay: 0.12 * index }}
-              >
-                <div className="icon-chip">
-                  <Icon size={18} strokeWidth={1.9} />
-                </div>
+            {[
+              { icon: BrainCircuit, title: 'Plan estimate', description: 'Translate target sample size into domain and question quotas before any expensive generation step.' },
+              { icon: DatabaseZap, title: 'Dataset creation', description: 'Persist the dataset plan with selected strategy, provider, and storage profile.' },
+              { icon: ShieldCheck, title: 'Graph review', description: 'Generate draft domains, refine names, and confirm the graph before downstream question generation.' },
+            ].map(({ icon: Icon, title, description }, index) => (
+              <motion.article key={title} className="glass-card" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.12 * index }}>
+                <div className="icon-chip"><Icon size={18} strokeWidth={1.9} /></div>
                 <h3>{title}</h3>
                 <p>{description}</p>
               </motion.article>
@@ -141,43 +322,63 @@ export default function App() {
           </div>
         </section>
 
-        <section className="section-block split-layout" id="governance">
+        <section className="section-block split-layout" id="graph">
           <div className="glass-card timeline-card">
             <div className="section-heading compact">
-              <span className="eyebrow">Generation path</span>
-              <h2>Guided from planning to export</h2>
+              <span className="eyebrow">Domain graph review</span>
+              <h2>Inspect generated domains before fan-out</h2>
             </div>
-            <div className="timeline-list">
-              {milestones.map((item, index) => (
-                <div key={item} className="timeline-row">
-                  <span className="timeline-index">0{index + 1}</span>
-                  <p>{item}</p>
+            {graph ? (
+              <>
+                <GraphPreview rootKeyword={graph.dataset.rootKeyword} domains={graph.domains} />
+                <div className="graph-actions">
+                  <button className="secondary-action" onClick={() => void generateDomains()} disabled={loading}>Generate or refresh domains</button>
+                  <button className="secondary-action" onClick={() => void saveGraph()} disabled={loading}><Save size={15} /> Save edits</button>
+                  <button className="primary-action" onClick={() => void confirmDomains()} disabled={loading}>Confirm domains</button>
                 </div>
-              ))}
-            </div>
+              </>
+            ) : (
+              <p className="hero-copy">Create a dataset to unlock graph generation and review.</p>
+            )}
           </div>
 
           <div className="glass-card graph-preview">
             <div className="section-heading compact">
-              <span className="eyebrow">Domain graph preview</span>
-              <h2>Structured branching before dataset fan-out</h2>
+              <span className="eyebrow">Domain list editor</span>
+              <h2>Human-in-the-loop naming adjustments</h2>
             </div>
-            <div className="graph-constellation">
-              <div className="graph-node root-node">
-                <GitBranch size={16} strokeWidth={1.8} />
-                <span>Root keyword</span>
+            {graph ? (
+              <div className="domain-list">
+                {graph.domains.slice(0, 20).map((domain) => (
+                  <label key={domain.id} className="domain-item">
+                    <span>{domain.source}</span>
+                    <input value={domain.name} onChange={(event) => renameDomain(domain.id, event.target.value)} />
+                  </label>
+                ))}
+                {graph.domains.length > 20 ? <p className="graph-caption">Only the first 20 domains are editable in this Phase 3 UI slice; all {graph.domains.length} domains stay persisted.</p> : null}
               </div>
-              <div className="graph-lane">
-                <div className="graph-node">Maritime operations</div>
-                <div className="graph-node">Aerospace tactics</div>
-                <div className="graph-node">Logistics systems</div>
-              </div>
-              <div className="graph-lane muted">
-                <div className="graph-node small">Scenario branch</div>
-                <div className="graph-node small">Capability branch</div>
-                <div className="graph-node small">Countermeasure branch</div>
-              </div>
-            </div>
+            ) : (
+              <p className="hero-copy">No dataset graph loaded yet.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="section-block">
+          <div className="section-heading compact">
+            <span className="eyebrow">Recent datasets</span>
+            <h2>Created planning runs</h2>
+          </div>
+          <div className="dataset-grid">
+            {datasets.map((dataset) => (
+              <button key={dataset.id} className="glass-card dataset-card" onClick={async () => setGraph(await userApi.getDataset(dataset.id))}>
+                <div>
+                  <span className="eyebrow">{dataset.status}</span>
+                  <h3>{dataset.name}</h3>
+                </div>
+                <p>{dataset.rootKeyword} · {dataset.estimate.estimatedSamples} estimated samples</p>
+                <div className="dataset-meta"><GitBranch size={15} /> Dataset #{dataset.id}</div>
+              </button>
+            ))}
           </div>
         </section>
       </main>

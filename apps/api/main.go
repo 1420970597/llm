@@ -6,6 +6,7 @@ import (
   "log"
   "net/http"
   "strconv"
+  "strings"
   "time"
 
   appcrypto "github.com/1420970597/llm/internal/crypto"
@@ -17,8 +18,9 @@ import (
 )
 
 type application struct {
-  cfg   config.APIConfig
-  store *store.AdminStore
+  cfg      config.APIConfig
+  store    *store.AdminStore
+  datasets *store.DatasetStore
 }
 
 func main() {
@@ -41,8 +43,9 @@ func main() {
   }
 
   app := &application{
-    cfg:   cfg,
-    store: store.NewAdminStore(pool, box),
+    cfg:      cfg,
+    store:    store.NewAdminStore(pool, box),
+    datasets: store.NewDatasetStore(pool, box),
   }
 
   mux := http.NewServeMux()
@@ -63,6 +66,11 @@ func main() {
   mux.HandleFunc("POST /api/v1/admin/prompts", app.upsertPrompt)
   mux.HandleFunc("PUT /api/v1/admin/prompts", app.upsertPrompt)
   mux.HandleFunc("GET /api/v1/admin/audit-logs", app.listAuditLogs)
+  mux.HandleFunc("POST /api/v1/datasets/plans/estimate", app.estimatePlan)
+  mux.HandleFunc("GET /api/v1/datasets", app.listDatasets)
+  mux.HandleFunc("POST /api/v1/datasets", app.createDataset)
+  mux.HandleFunc("GET /api/v1/datasets/", app.getDataset)
+  mux.HandleFunc("POST /api/v1/datasets/", app.routeDatasetActions)
 
   server := &http.Server{
     Addr:              ":" + cfg.Port,
@@ -231,4 +239,17 @@ func (app *application) writeJSON(w http.ResponseWriter, status int, payload any
   w.Header().Set("Content-Type", "application/json")
   w.WriteHeader(status)
   _ = json.NewEncoder(w).Encode(payload)
+}
+
+func (app *application) routeDatasetActions(w http.ResponseWriter, r *http.Request) {
+  switch {
+  case strings.HasSuffix(r.URL.Path, "/domains/generate"):
+    app.generateDomains(w, r)
+  case strings.HasSuffix(r.URL.Path, "/domains/graph"):
+    app.updateGraph(w, r)
+  case strings.HasSuffix(r.URL.Path, "/domains/confirm"):
+    app.confirmDomains(w, r)
+  default:
+    http.NotFound(w, r)
+  }
 }
