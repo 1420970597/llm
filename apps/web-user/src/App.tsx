@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight, BrainCircuit, DatabaseZap, GitBranch, Save, ShieldCheck, Sparkles } from 'lucide-react'
-import { Dataset, DatasetGraph, Domain, Provider, Question, ReasoningRecord, StorageProfile, Strategy, userApi } from './lib/api'
+import { Dataset, DatasetGraph, Domain, Provider, Question, ReasoningRecord, RewardRecord, StorageProfile, Strategy, userApi } from './lib/api'
 
 function GraphPreview({ rootKeyword, domains }: { rootKeyword: string; domains: Domain[] }) {
   const visible = domains.slice(0, 16)
@@ -49,6 +49,7 @@ export default function App() {
   const [graph, setGraph] = useState<DatasetGraph | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
   const [reasoning, setReasoning] = useState<ReasoningRecord[]>([])
+  const [rewards, setRewards] = useState<RewardRecord[]>([])
   const [message, setMessage] = useState<string>('')
   const [estimate, setEstimate] = useState<Dataset['estimate'] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -143,6 +144,7 @@ export default function App() {
       setGraph(nextGraph)
       setQuestions([])
       setReasoning([])
+      setRewards([])
       setDatasets(await userApi.listDatasets())
       setMessage('Dataset created. You can now generate its domain graph.')
     } catch (error) {
@@ -261,6 +263,36 @@ export default function App() {
     try {
       setReasoning(await userApi.listReasoning(graph.dataset.id))
       setMessage('Reasoning preview refreshed.')
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const generateRewards = async () => {
+    if (!graph) {
+      return
+    }
+    setLoading(true)
+    try {
+      await userApi.generateRewards(graph.dataset.id)
+      setMessage('Reward generation job queued. Refresh reward records shortly to inspect scores.')
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const refreshRewards = async () => {
+    if (!graph) {
+      return
+    }
+    setLoading(true)
+    try {
+      setRewards(await userApi.listRewards(graph.dataset.id))
+      setMessage('Reward preview refreshed.')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -434,7 +466,7 @@ export default function App() {
           </div>
           <div className="dataset-grid">
             {datasets.map((dataset) => (
-              <button key={dataset.id} className="glass-card dataset-card" onClick={async () => { setGraph(await userApi.getDataset(dataset.id)); setQuestions(await userApi.listQuestions(dataset.id)); setReasoning(await userApi.listReasoning(dataset.id)); }}>
+              <button key={dataset.id} className="glass-card dataset-card" onClick={async () => { setGraph(await userApi.getDataset(dataset.id)); setQuestions(await userApi.listQuestions(dataset.id)); setReasoning(await userApi.listReasoning(dataset.id)); setRewards(await userApi.listRewards(dataset.id)); }}>
                 <div>
                   <span className="eyebrow">{dataset.status}</span>
                   <h3>{dataset.name}</h3>
@@ -502,6 +534,36 @@ export default function App() {
                 </div>
               ))}
               {reasoning.length === 0 ? <p className="hero-copy">No reasoning records generated yet.</p> : null}
+            </div>
+          </div>
+        </section>
+
+        <section className="section-block split-layout">
+          <div className="glass-card timeline-card">
+            <div className="section-heading compact">
+              <span className="eyebrow">Reward dataset generation</span>
+              <h2>Produce reinforcement-style evaluation artifacts</h2>
+            </div>
+            <div className="graph-actions">
+              <button className="primary-action" onClick={() => void generateRewards()} disabled={loading || !graph || reasoning.length === 0}>Queue reward generation</button>
+              <button className="secondary-action" onClick={() => void refreshRewards()} disabled={loading || !graph}>Refresh rewards</button>
+            </div>
+            <p className="hero-copy">Phase 6 creates score-and-rationale reward records and stores the detailed payloads in object storage for downstream preference and RL workflows.</p>
+          </div>
+
+          <div className="glass-card graph-preview">
+            <div className="section-heading compact">
+              <span className="eyebrow">Reward preview</span>
+              <h2>Generated reward records</h2>
+            </div>
+            <div className="domain-list">
+              {rewards.slice(0, 10).map((record) => (
+                <div key={record.id} className="question-item">
+                  <span>{record.objectKey}</span>
+                  <p>Score: {record.score.toFixed(2)} · {record.questionText}</p>
+                </div>
+              ))}
+              {rewards.length === 0 ? <p className="hero-copy">No reward records generated yet.</p> : null}
             </div>
           </div>
         </section>

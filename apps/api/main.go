@@ -19,12 +19,13 @@ import (
 )
 
 type application struct {
-  cfg      config.APIConfig
-  store    *store.AdminStore
-  datasets *store.DatasetStore
-  pipeline *store.PipelineStore
+  cfg       config.APIConfig
+  store     *store.AdminStore
+  datasets  *store.DatasetStore
+  pipeline  *store.PipelineStore
   reasoning *store.ReasoningStore
-  redis    *redis.Client
+  rewards   *store.RewardStore
+  redis     *redis.Client
 }
 
 func main() {
@@ -47,12 +48,13 @@ func main() {
   }
 
   app := &application{
-    cfg:      cfg,
-    store:    store.NewAdminStore(pool, box),
-    datasets: store.NewDatasetStore(pool, box),
-    pipeline: store.NewPipelineStore(pool),
+    cfg:       cfg,
+    store:     store.NewAdminStore(pool, box),
+    datasets:  store.NewDatasetStore(pool, box),
+    pipeline:  store.NewPipelineStore(pool),
     reasoning: store.NewReasoningStore(pool),
-    redis: redis.NewClient(&redis.Options{
+    rewards:   store.NewRewardStore(pool),
+    redis:     redis.NewClient(&redis.Options{
       Addr: cfg.RedisHost + ":" + cfg.RedisPort,
     }),
   }
@@ -262,6 +264,8 @@ func (app *application) routeDatasetActions(w http.ResponseWriter, r *http.Reque
     app.enqueueQuestionGeneration(w, r)
   case strings.HasSuffix(r.URL.Path, "/reasoning/generate"):
     app.enqueueReasoningGeneration(w, r)
+  case strings.HasSuffix(r.URL.Path, "/rewards/generate"):
+    app.enqueueRewardGeneration(w, r)
   default:
     http.NotFound(w, r)
   }
@@ -273,6 +277,8 @@ func (app *application) routeDatasetGet(w http.ResponseWriter, r *http.Request) 
     app.listQuestions(w, r)
   case strings.HasSuffix(r.URL.Path, "/reasoning"):
     app.listReasoning(w, r)
+  case strings.HasSuffix(r.URL.Path, "/rewards"):
+    app.listRewards(w, r)
   default:
     app.getDataset(w, r)
   }
