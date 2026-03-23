@@ -15,12 +15,15 @@ import (
   "github.com/1420970597/llm/internal/model"
   "github.com/1420970597/llm/internal/store"
   "github.com/jackc/pgx/v5/pgxpool"
+  "github.com/redis/go-redis/v9"
 )
 
 type application struct {
   cfg      config.APIConfig
   store    *store.AdminStore
   datasets *store.DatasetStore
+  pipeline *store.PipelineStore
+  redis    *redis.Client
 }
 
 func main() {
@@ -46,6 +49,10 @@ func main() {
     cfg:      cfg,
     store:    store.NewAdminStore(pool, box),
     datasets: store.NewDatasetStore(pool, box),
+    pipeline: store.NewPipelineStore(pool),
+    redis: redis.NewClient(&redis.Options{
+      Addr: cfg.RedisHost + ":" + cfg.RedisPort,
+    }),
   }
 
   mux := http.NewServeMux()
@@ -69,7 +76,7 @@ func main() {
   mux.HandleFunc("POST /api/v1/datasets/plans/estimate", app.estimatePlan)
   mux.HandleFunc("GET /api/v1/datasets", app.listDatasets)
   mux.HandleFunc("POST /api/v1/datasets", app.createDataset)
-  mux.HandleFunc("GET /api/v1/datasets/", app.getDataset)
+  mux.HandleFunc("GET /api/v1/datasets/", app.routeDatasetGet)
   mux.HandleFunc("POST /api/v1/datasets/", app.routeDatasetActions)
 
   server := &http.Server{
@@ -249,7 +256,18 @@ func (app *application) routeDatasetActions(w http.ResponseWriter, r *http.Reque
     app.updateGraph(w, r)
   case strings.HasSuffix(r.URL.Path, "/domains/confirm"):
     app.confirmDomains(w, r)
+  case strings.HasSuffix(r.URL.Path, "/questions/generate"):
+    app.enqueueQuestionGeneration(w, r)
   default:
     http.NotFound(w, r)
+  }
+}
+
+func (app *application) routeDatasetGet(w http.ResponseWriter, r *http.Request) {
+  switch {
+  case strings.HasSuffix(r.URL.Path, "/questions"):
+    app.listQuestions(w, r)
+  default:
+    app.getDataset(w, r)
   }
 }

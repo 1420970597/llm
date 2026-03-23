@@ -70,6 +70,18 @@ export type DatasetGraph = {
   edges: DomainEdge[]
 }
 
+export type Question = {
+  id: number
+  datasetId: number
+  domainId: number
+  domainName: string
+  content: string
+  canonicalHash: string
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
@@ -93,6 +105,8 @@ export const userApi = {
   generateDomains: (id: number) => request<DatasetGraph>(`/api/v1/datasets/${id}/domains/generate`, { method: 'POST' }),
   updateGraph: (id: number, domains: Domain[]) => request<{ updated: number }>(`/api/v1/datasets/${id}/domains/graph`, { method: 'POST', body: JSON.stringify({ domains }) }),
   confirmDomains: (id: number) => request<{ status: string }>(`/api/v1/datasets/${id}/domains/confirm`, { method: 'POST' }),
+  generateQuestions: (id: number) => request<{ queued: boolean; datasetId: number }>(`/api/v1/datasets/${id}/questions/generate`, { method: 'POST' }),
+  listQuestions: (id: number) => request<Question[]>(`/api/v1/datasets/${id}/questions`),
   listStrategies: () => request<Strategy[]>('/api/v1/admin/generation-strategies'),
   listProviders: () => request<Provider[]>('/api/v1/admin/providers'),
   listStorageProfiles: () => request<StorageProfile[]>('/api/v1/admin/storage-profiles'),

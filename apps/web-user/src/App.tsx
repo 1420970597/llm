@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight, BrainCircuit, DatabaseZap, GitBranch, Save, ShieldCheck, Sparkles } from 'lucide-react'
-import { Dataset, DatasetGraph, Domain, Provider, StorageProfile, Strategy, userApi } from './lib/api'
+import { Dataset, DatasetGraph, Domain, Provider, Question, StorageProfile, Strategy, userApi } from './lib/api'
 
 function GraphPreview({ rootKeyword, domains }: { rootKeyword: string; domains: Domain[] }) {
   const visible = domains.slice(0, 16)
@@ -47,6 +47,7 @@ export default function App() {
   const [storageProfiles, setStorageProfiles] = useState<StorageProfile[]>([])
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [graph, setGraph] = useState<DatasetGraph | null>(null)
+  const [questions, setQuestions] = useState<Question[]>([])
   const [message, setMessage] = useState<string>('')
   const [estimate, setEstimate] = useState<Dataset['estimate'] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -139,6 +140,7 @@ export default function App() {
       })
       const nextGraph = await userApi.getDataset(created.id)
       setGraph(nextGraph)
+      setQuestions([])
       setDatasets(await userApi.listDatasets())
       setMessage('Dataset created. You can now generate its domain graph.')
     } catch (error) {
@@ -197,6 +199,36 @@ export default function App() {
       const refreshed = await userApi.getDataset(graph.dataset.id)
       setGraph(refreshed)
       setMessage('Domains confirmed. The dataset is ready for question generation.')
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const generateQuestions = async () => {
+    if (!graph) {
+      return
+    }
+    setLoading(true)
+    try {
+      await userApi.generateQuestions(graph.dataset.id)
+      setMessage('Question generation job queued. Refresh questions in a moment to see the results.')
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const refreshQuestions = async () => {
+    if (!graph) {
+      return
+    }
+    setLoading(true)
+    try {
+      setQuestions(await userApi.listQuestions(graph.dataset.id))
+      setMessage('Question preview refreshed.')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -370,7 +402,7 @@ export default function App() {
           </div>
           <div className="dataset-grid">
             {datasets.map((dataset) => (
-              <button key={dataset.id} className="glass-card dataset-card" onClick={async () => setGraph(await userApi.getDataset(dataset.id))}>
+              <button key={dataset.id} className="glass-card dataset-card" onClick={async () => { setGraph(await userApi.getDataset(dataset.id)); setQuestions(await userApi.listQuestions(dataset.id)); }}>
                 <div>
                   <span className="eyebrow">{dataset.status}</span>
                   <h3>{dataset.name}</h3>
@@ -379,6 +411,36 @@ export default function App() {
                 <div className="dataset-meta"><GitBranch size={15} /> Dataset #{dataset.id}</div>
               </button>
             ))}
+          </div>
+        </section>
+
+        <section className="section-block split-layout">
+          <div className="glass-card timeline-card">
+            <div className="section-heading compact">
+              <span className="eyebrow">Question generation</span>
+              <h2>Asynchronous fan-out from confirmed domains</h2>
+            </div>
+            <div className="graph-actions">
+              <button className="primary-action" onClick={() => void generateQuestions()} disabled={loading || !graph}>Queue question generation</button>
+              <button className="secondary-action" onClick={() => void refreshQuestions()} disabled={loading || !graph}>Refresh questions</button>
+            </div>
+            <p className="hero-copy">Phase 4 pushes question generation into the Redis-backed worker so the user flow stays responsive.</p>
+          </div>
+
+          <div className="glass-card graph-preview">
+            <div className="section-heading compact">
+              <span className="eyebrow">Question preview</span>
+              <h2>Generated dataset questions</h2>
+            </div>
+            <div className="domain-list">
+              {questions.slice(0, 12).map((question) => (
+                <div key={question.id} className="question-item">
+                  <span>{question.domainName}</span>
+                  <p>{question.content}</p>
+                </div>
+              ))}
+              {questions.length === 0 ? <p className="hero-copy">No generated questions yet.</p> : null}
+            </div>
           </div>
         </section>
       </main>

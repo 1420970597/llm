@@ -448,6 +448,24 @@ nav a:hover {
   align-items: center;
 }
 
+.question-item {
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.question-item span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--accent-strong);
+  font-size: 0.86rem;
+}
+
+.question-item p {
+  margin: 0;
+}
+
 .dataset-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;

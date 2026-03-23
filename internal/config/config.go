@@ -20,14 +20,22 @@ type APIConfig struct {
   EncryptionKey     string
   AllowedOrigin     string
   MigrationPath     string
+  QueueName         string
 }
 
 type WorkerConfig struct {
-  Environment string
-  Port        string
-  RedisHost   string
-  RedisPort   string
-  QueueName   string
+  Environment      string
+  Port             string
+  PostgresDSN      string
+  PostgresHost     string
+  PostgresPort     string
+  PostgresDatabase string
+  PostgresUser     string
+  PostgresPassword string
+  RedisHost        string
+  RedisPort        string
+  QueueName        string
+  EncryptionKey    string
 }
 
 func LoadAPIConfig() APIConfig {
@@ -52,16 +60,30 @@ func LoadAPIConfig() APIConfig {
     EncryptionKey:    getenv("APP_ENCRYPTION_KEY", "phase1-dev-only-32-byte-secret!!!"),
     AllowedOrigin:    getenv("APP_ALLOWED_ORIGIN", "*"),
     MigrationPath:    getenv("MIGRATION_PATH", "sql/migrations"),
+    QueueName:        getenv("WORKER_QUEUE_NAME", "dataset-generation"),
   }
 }
 
 func LoadWorkerConfig() WorkerConfig {
+  host := getenv("POSTGRES_HOST", "postgres")
+  port := getenv("POSTGRES_PORT", "5432")
+  db := getenv("POSTGRES_DB", "llm_factory")
+  user := getenv("POSTGRES_USER", "llm_factory")
+  password := getenv("POSTGRES_PASSWORD", "llm_factory_dev")
+
   return WorkerConfig{
-    Environment: getenv("APP_ENV", "development"),
-    Port:        getenv("WORKER_PORT", "8081"),
-    RedisHost:   getenv("REDIS_HOST", "redis"),
-    RedisPort:   getenv("REDIS_PORT", "6379"),
-    QueueName:   getenv("WORKER_QUEUE_NAME", "dataset-generation"),
+    Environment:      getenv("APP_ENV", "development"),
+    Port:             getenv("WORKER_PORT", "8081"),
+    PostgresDSN:      getenv("POSTGRES_DSN", fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", user, password, host, port, db)),
+    PostgresHost:     host,
+    PostgresPort:     port,
+    PostgresDatabase: db,
+    PostgresUser:     user,
+    PostgresPassword: password,
+    RedisHost:        getenv("REDIS_HOST", "redis"),
+    RedisPort:        getenv("REDIS_PORT", "6379"),
+    QueueName:        getenv("WORKER_QUEUE_NAME", "dataset-generation"),
+    EncryptionKey:    getenv("APP_ENCRYPTION_KEY", "phase1-dev-only-32-byte-secret!!!"),
   }
 }
 
