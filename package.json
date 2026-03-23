@@ -1,0 +1,19 @@
+{
+  "name": "llm-data-factory",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web-user",
+    "apps/web-admin"
+  ],
+  "scripts": {
+    "build": "npm run build -w apps/web-user && npm run build -w apps/web-admin",
+    "dev:web-user": "npm run dev -w apps/web-user",
+    "dev:web-admin": "npm run dev -w apps/web-admin",
+    "compose:config": "docker compose -f deployments/compose/docker-compose.yml config",
+    "compose:up": "docker compose -f deployments/compose/docker-compose.yml up -d --build",
+    "compose:down": "docker compose -f deployments/compose/docker-compose.yml down",
+    "compose:logs": "docker compose -f deployments/compose/docker-compose.yml logs -f",
+    "docker:prune-build-cache": "docker builder prune -af"
+  }
+}

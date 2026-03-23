@@ -1,0 +1,7 @@
+.git
+.omx
+node_modules
+**/node_modules
+**/dist
+.gitignore
+npm-debug.log

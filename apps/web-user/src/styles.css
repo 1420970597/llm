@@ -1,0 +1,351 @@
+:root {
+  color-scheme: dark;
+  --bg: #07111f;
+  --panel: rgba(14, 25, 45, 0.7);
+  --panel-border: rgba(255, 255, 255, 0.11);
+  --text: #f5f7fb;
+  --muted: rgba(235, 241, 255, 0.72);
+  --accent: #83b8ff;
+  --accent-strong: #a4ccff;
+  --shadow: 0 20px 60px rgba(4, 12, 24, 0.42);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(65, 122, 255, 0.24), transparent 32%),
+    radial-gradient(circle at top right, rgba(92, 184, 255, 0.12), transparent 28%),
+    linear-gradient(180deg, #0b1324 0%, #07111f 100%);
+  color: var(--text);
+}
+
+button,
+a {
+  font: inherit;
+}
+
+.page-shell {
+  padding: 28px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  margin-bottom: 28px;
+  backdrop-filter: blur(18px);
+  background: rgba(9, 17, 31, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+nav {
+  display: inline-flex;
+  gap: 18px;
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+nav a:hover {
+  color: var(--text);
+}
+
+.hero-grid,
+.split-layout,
+.pillar-grid {
+  display: grid;
+  gap: 22px;
+}
+
+.hero-grid {
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.9fr);
+}
+
+.section-block {
+  margin-top: 24px;
+}
+
+.hero-card,
+.glass-card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(28px);
+}
+
+.hero-primary {
+  padding: 42px;
+}
+
+.hero-primary h1,
+.section-heading h2 {
+  margin: 0;
+  font-size: clamp(2.4rem, 4vw, 4.3rem);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+.hero-copy,
+.glass-card p,
+.timeline-row p {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.eyebrow {
+  margin: 0 0 14px;
+  font-size: 0.84rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: rgba(191, 214, 255, 0.82);
+}
+
+.hero-actions {
+  display: flex;
+  gap: 14px;
+  margin-top: 28px;
+}
+
+.primary-action,
+.secondary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 14px 20px;
+  cursor: pointer;
+  transition: transform 180ms ease, opacity 180ms ease, border-color 180ms ease;
+}
+
+.primary-action {
+  background: linear-gradient(135deg, #d5e5ff 0%, #8eb8ff 100%);
+  color: #08121f;
+}
+
+.secondary-action {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.primary-action:hover,
+.secondary-action:hover {
+  transform: translateY(-1px);
+}
+
+
+.login-card {
+  display: grid;
+  gap: 14px;
+}
+
+.login-card h2 {
+  margin: 0;
+  font-size: 1.85rem;
+  letter-spacing: -0.04em;
+}
+
+.login-card label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.login-card input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 14px 16px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.login-card input:focus {
+  outline: none;
+  border-color: rgba(164, 204, 255, 0.7);
+  box-shadow: 0 0 0 4px rgba(131, 184, 255, 0.14);
+}
+
+.full-width {
+  justify-content: center;
+  width: 100%;
+}
+
+.hero-metrics {
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+.metric-card {
+  padding: 22px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.metric-card span {
+  display: block;
+  font-size: 0.86rem;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.metric-card strong {
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+
+.metric-card.accent {
+  background: linear-gradient(180deg, rgba(134, 180, 255, 0.16), rgba(255, 255, 255, 0.04));
+}
+
+.section-heading {
+  margin-bottom: 18px;
+}
+
+.section-heading.compact h2 {
+  font-size: 1.9rem;
+}
+
+.pillar-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.glass-card {
+  padding: 28px;
+}
+
+.icon-chip {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: var(--accent-strong);
+  background: rgba(131, 184, 255, 0.14);
+  margin-bottom: 14px;
+}
+
+.split-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.timeline-list {
+  display: grid;
+  gap: 14px;
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  padding: 14px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.timeline-row:first-child {
+  border-top: 0;
+}
+
+.timeline-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--accent-strong);
+}
+
+.graph-constellation {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.graph-lane {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.graph-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.graph-node.small {
+  padding: 10px 14px;
+  color: var(--muted);
+}
+
+.root-node {
+  width: fit-content;
+  background: linear-gradient(180deg, rgba(133, 186, 255, 0.22), rgba(255, 255, 255, 0.06));
+}
+
+.graph-lane.muted {
+  opacity: 0.78;
+}
+
+@media (max-width: 1120px) {
+  .hero-grid,
+  .split-layout,
+  .pillar-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-shell {
+    padding: 18px;
+  }
+
+  .topbar,
+  .hero-primary,
+  .glass-card {
+    padding: 22px;
+  }
+
+  .topbar {
+    flex-direction: column;
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+  }
+}

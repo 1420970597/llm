@@ -1,0 +1,27 @@
+CREATE TABLE IF NOT EXISTS users (
+  id BIGSERIAL PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  hashed_password TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'user',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS datasets (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  root_keyword TEXT NOT NULL,
+  target_size BIGINT NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'draft',
+  created_by BIGINT REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS dataset_runs (
+  id BIGSERIAL PRIMARY KEY,
+  dataset_id BIGINT NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+  phase TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  started_at TIMESTAMPTZ,
+  finished_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
