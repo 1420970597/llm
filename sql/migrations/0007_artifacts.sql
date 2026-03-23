@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS artifacts (
+  id BIGSERIAL PRIMARY KEY,
+  dataset_id BIGINT NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+  artifact_type TEXT NOT NULL,
+  object_key TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

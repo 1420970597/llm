@@ -58,10 +58,14 @@ func (s *ObjectStore) PutJSON(ctx context.Context, key string, payload any) (str
   if err != nil {
     return "", err
   }
+  return s.PutBytes(ctx, key, body, "application/json")
+}
+
+func (s *ObjectStore) PutBytes(ctx context.Context, key string, payload []byte, contentType string) (string, error) {
   if err := s.EnsureBucket(ctx); err != nil {
     return "", err
   }
-  _, err = s.client.PutObject(ctx, s.bucket, key, bytes.NewReader(body), int64(len(body)), minio.PutObjectOptions{ContentType: "application/json"})
+  _, err := s.client.PutObject(ctx, s.bucket, key, bytes.NewReader(payload), int64(len(payload)), minio.PutObjectOptions{ContentType: contentType})
   if err != nil {
     return "", err
   }

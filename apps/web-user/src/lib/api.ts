@@ -106,6 +106,24 @@ export type RewardRecord = {
   updatedAt: string
 }
 
+export type Artifact = {
+  id: number
+  datasetId: number
+  artifactType: string
+  objectKey: string
+  contentType: string
+  createdAt: string
+}
+
+export type RuntimeStatus = {
+  datasetCount: number
+  questionCount: number
+  reasoningCount: number
+  rewardCount: number
+  artifactCount: number
+  queueDepth: number
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
@@ -135,6 +153,9 @@ export const userApi = {
   listReasoning: (id: number) => request<ReasoningRecord[]>(`/api/v1/datasets/${id}/reasoning`),
   generateRewards: (id: number) => request<{ queued: boolean; datasetId: number }>(`/api/v1/datasets/${id}/rewards/generate`, { method: 'POST' }),
   listRewards: (id: number) => request<RewardRecord[]>(`/api/v1/datasets/${id}/rewards`),
+  generateExport: (id: number) => request<{ queued: boolean; datasetId: number }>(`/api/v1/datasets/${id}/export`, { method: 'POST' }),
+  listArtifacts: (id: number) => request<Artifact[]>(`/api/v1/datasets/${id}/export`),
+  runtimeStatus: () => request<RuntimeStatus>('/api/v1/platform/runtime'),
   listStrategies: () => request<Strategy[]>('/api/v1/admin/generation-strategies'),
   listProviders: () => request<Provider[]>('/api/v1/admin/providers'),
   listStorageProfiles: () => request<StorageProfile[]>('/api/v1/admin/storage-profiles'),

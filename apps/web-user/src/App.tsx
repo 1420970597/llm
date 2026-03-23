@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight, BrainCircuit, DatabaseZap, GitBranch, Save, ShieldCheck, Sparkles } from 'lucide-react'
-import { Dataset, DatasetGraph, Domain, Provider, Question, ReasoningRecord, RewardRecord, StorageProfile, Strategy, userApi } from './lib/api'
+import { Artifact, Dataset, DatasetGraph, Domain, Provider, Question, ReasoningRecord, RewardRecord, RuntimeStatus, StorageProfile, Strategy, userApi } from './lib/api'
 
 function GraphPreview({ rootKeyword, domains }: { rootKeyword: string; domains: Domain[] }) {
   const visible = domains.slice(0, 16)
@@ -50,6 +50,8 @@ export default function App() {
   const [questions, setQuestions] = useState<Question[]>([])
   const [reasoning, setReasoning] = useState<ReasoningRecord[]>([])
   const [rewards, setRewards] = useState<RewardRecord[]>([])
+  const [artifacts, setArtifacts] = useState<Artifact[]>([])
+  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null)
   const [message, setMessage] = useState<string>('')
   const [estimate, setEstimate] = useState<Dataset['estimate'] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -73,6 +75,7 @@ export default function App() {
     setProviders(providerData)
     setStorageProfiles(storageData)
     setDatasets(datasetData)
+    setRuntime(await userApi.runtimeStatus())
     setFormState((current) => ({
       ...current,
       strategyId: current.strategyId || strategyData[0]?.id || 0,
@@ -145,7 +148,9 @@ export default function App() {
       setQuestions([])
       setReasoning([])
       setRewards([])
+      setArtifacts([])
       setDatasets(await userApi.listDatasets())
+      setRuntime(await userApi.runtimeStatus())
       setMessage('Dataset created. You can now generate its domain graph.')
     } catch (error) {
       setMessage((error as Error).message)
@@ -232,6 +237,7 @@ export default function App() {
     setLoading(true)
     try {
       setQuestions(await userApi.listQuestions(graph.dataset.id))
+      setRuntime(await userApi.runtimeStatus())
       setMessage('Question preview refreshed.')
     } catch (error) {
       setMessage((error as Error).message)
@@ -262,6 +268,7 @@ export default function App() {
     setLoading(true)
     try {
       setReasoning(await userApi.listReasoning(graph.dataset.id))
+      setRuntime(await userApi.runtimeStatus())
       setMessage('Reasoning preview refreshed.')
     } catch (error) {
       setMessage((error as Error).message)
@@ -292,7 +299,39 @@ export default function App() {
     setLoading(true)
     try {
       setRewards(await userApi.listRewards(graph.dataset.id))
+      setRuntime(await userApi.runtimeStatus())
       setMessage('Reward preview refreshed.')
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const generateExport = async () => {
+    if (!graph) {
+      return
+    }
+    setLoading(true)
+    try {
+      await userApi.generateExport(graph.dataset.id)
+      setMessage('Export job queued. Refresh artifacts shortly to inspect the packaged dataset file.')
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const refreshArtifacts = async () => {
+    if (!graph) {
+      return
+    }
+    setLoading(true)
+    try {
+      setArtifacts(await userApi.listArtifacts(graph.dataset.id))
+      setRuntime(await userApi.runtimeStatus())
+      setMessage('Artifact preview refreshed.')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -466,7 +505,7 @@ export default function App() {
           </div>
           <div className="dataset-grid">
             {datasets.map((dataset) => (
-              <button key={dataset.id} className="glass-card dataset-card" onClick={async () => { setGraph(await userApi.getDataset(dataset.id)); setQuestions(await userApi.listQuestions(dataset.id)); setReasoning(await userApi.listReasoning(dataset.id)); setRewards(await userApi.listRewards(dataset.id)); }}>
+              <button key={dataset.id} className="glass-card dataset-card" onClick={async () => { setGraph(await userApi.getDataset(dataset.id)); setQuestions(await userApi.listQuestions(dataset.id)); setReasoning(await userApi.listReasoning(dataset.id)); setRewards(await userApi.listRewards(dataset.id)); setArtifacts(await userApi.listArtifacts(dataset.id)); setRuntime(await userApi.runtimeStatus()); }}>
                 <div>
                   <span className="eyebrow">{dataset.status}</span>
                   <h3>{dataset.name}</h3>
@@ -564,6 +603,43 @@ export default function App() {
                 </div>
               ))}
               {rewards.length === 0 ? <p className="hero-copy">No reward records generated yet.</p> : null}
+            </div>
+          </div>
+        </section>
+
+        <section className="section-block split-layout">
+          <div className="glass-card timeline-card">
+            <div className="section-heading compact">
+              <span className="eyebrow">Export and runtime</span>
+              <h2>Package dataset artifacts and inspect pipeline health</h2>
+            </div>
+            <div className="graph-actions">
+              <button className="primary-action" onClick={() => void generateExport()} disabled={loading || !graph || rewards.length === 0}>Queue export</button>
+              <button className="secondary-action" onClick={() => void refreshArtifacts()} disabled={loading || !graph}>Refresh artifacts</button>
+            </div>
+            {runtime ? (
+              <div className="planner-cards">
+                <div className="metric-card"><span>Datasets</span><strong>{runtime.datasetCount}</strong></div>
+                <div className="metric-card"><span>Queue depth</span><strong>{runtime.queueDepth}</strong></div>
+                <div className="metric-card"><span>Artifacts</span><strong>{runtime.artifactCount}</strong></div>
+                <div className="metric-card"><span>Rewards</span><strong>{runtime.rewardCount}</strong></div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="glass-card graph-preview">
+            <div className="section-heading compact">
+              <span className="eyebrow">Artifact preview</span>
+              <h2>Packaged dataset outputs</h2>
+            </div>
+            <div className="domain-list">
+              {artifacts.map((artifact) => (
+                <div key={artifact.id} className="question-item">
+                  <span>{artifact.artifactType}</span>
+                  <p>{artifact.objectKey}</p>
+                </div>
+              ))}
+              {artifacts.length === 0 ? <p className="hero-copy">No export artifacts generated yet.</p> : null}
             </div>
           </div>
         </section>

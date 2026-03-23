@@ -25,6 +25,7 @@ type application struct {
   pipeline  *store.PipelineStore
   reasoning *store.ReasoningStore
   rewards   *store.RewardStore
+  artifacts *store.ArtifactStore
   redis     *redis.Client
 }
 
@@ -47,6 +48,10 @@ func main() {
     log.Fatalf("secret box init failed: %v", err)
   }
 
+  redisClient := redis.NewClient(&redis.Options{
+    Addr: cfg.RedisHost + ":" + cfg.RedisPort,
+  })
+
   app := &application{
     cfg:       cfg,
     store:     store.NewAdminStore(pool, box),
@@ -54,15 +59,15 @@ func main() {
     pipeline:  store.NewPipelineStore(pool),
     reasoning: store.NewReasoningStore(pool),
     rewards:   store.NewRewardStore(pool),
-    redis:     redis.NewClient(&redis.Options{
-      Addr: cfg.RedisHost + ":" + cfg.RedisPort,
-    }),
+    artifacts: store.NewArtifactStore(pool, redisClient, cfg.QueueName),
+    redis:     redisClient,
   }
 
   mux := http.NewServeMux()
   mux.HandleFunc("GET /healthz", app.health)
   mux.HandleFunc("GET /readyz", app.ready)
   mux.HandleFunc("GET /api/v1/platform/overview", app.overview)
+  mux.HandleFunc("GET /api/v1/platform/runtime", app.runtimeStatus)
   mux.HandleFunc("GET /api/v1/admin/dashboard", app.dashboard)
   mux.HandleFunc("GET /api/v1/admin/providers", app.listProviders)
   mux.HandleFunc("POST /api/v1/admin/providers", app.upsertProvider)
@@ -266,6 +271,8 @@ func (app *application) routeDatasetActions(w http.ResponseWriter, r *http.Reque
     app.enqueueReasoningGeneration(w, r)
   case strings.HasSuffix(r.URL.Path, "/rewards/generate"):
     app.enqueueRewardGeneration(w, r)
+  case strings.HasSuffix(r.URL.Path, "/export"):
+    app.enqueueExport(w, r)
   default:
     http.NotFound(w, r)
   }
@@ -279,6 +286,8 @@ func (app *application) routeDatasetGet(w http.ResponseWriter, r *http.Request) 
     app.listReasoning(w, r)
   case strings.HasSuffix(r.URL.Path, "/rewards"):
     app.listRewards(w, r)
+  case strings.HasSuffix(r.URL.Path, "/export"):
+    app.listArtifacts(w, r)
   default:
     app.getDataset(w, r)
   }

@@ -44,8 +44,9 @@ func main() {
   reasoningStore := store.NewReasoningStore(pool)
   rewardStore := store.NewRewardStore(pool)
   redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisHost + ":" + cfg.RedisPort})
+  artifactStore := store.NewArtifactStore(pool, redisClient, cfg.QueueName)
 
-  go consumeJobs(ctx, cfg.QueueName, redisClient, datasets, pipeline, reasoningStore, rewardStore)
+  go consumeJobs(ctx, cfg.QueueName, redisClient, datasets, pipeline, reasoningStore, rewardStore, artifactStore)
 
   mux := http.NewServeMux()
   mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -65,7 +66,7 @@ func main() {
   }
 }
 
-func consumeJobs(ctx context.Context, queue string, redisClient *redis.Client, datasets *store.DatasetStore, pipeline *store.PipelineStore, reasoningStore *store.ReasoningStore, rewardStore *store.RewardStore) {
+func consumeJobs(ctx context.Context, queue string, redisClient *redis.Client, datasets *store.DatasetStore, pipeline *store.PipelineStore, reasoningStore *store.ReasoningStore, rewardStore *store.RewardStore, artifactStore *store.ArtifactStore) {
   for {
     result, err := redisClient.BRPop(ctx, 5*time.Second, queue).Result()
     if err != nil {
@@ -98,6 +99,10 @@ func consumeJobs(ctx context.Context, queue string, redisClient *redis.Client, d
     case "rewards.generate":
       if err := handleRewardGeneration(ctx, job.DatasetID, datasets, pipeline, rewardStore); err != nil {
         log.Printf("reward generation failed dataset=%d err=%v", job.DatasetID, err)
+      }
+    case "export.generate":
+      if err := handleExportGeneration(ctx, job.DatasetID, datasets, pipeline, reasoningStore, rewardStore, artifactStore); err != nil {
+        log.Printf("export generation failed dataset=%d err=%v", job.DatasetID, err)
       }
     default:
       log.Printf("worker ignored job type=%s", job.Type)
@@ -253,6 +258,81 @@ func handleRewardGeneration(ctx context.Context, datasetID int64, datasets *stor
   }
   log.Printf("reward records generated dataset=%d count=%d", datasetID, len(records))
   return nil
+}
+
+func handleExportGeneration(ctx context.Context, datasetID int64, datasets *store.DatasetStore, pipeline *store.PipelineStore, reasoningStore *store.ReasoningStore, rewardStore *store.RewardStore, artifactStore *store.ArtifactStore) error {
+  dataset, err := datasets.GetDataset(ctx, datasetID)
+  if err != nil {
+    return err
+  }
+  questions, err := pipeline.ListQuestions(ctx, datasetID)
+  if err != nil {
+    return err
+  }
+  reasoningRecords, err := reasoningStore.List(ctx, datasetID)
+  if err != nil {
+    return err
+  }
+  rewardRecords, err := rewardStore.List(ctx, datasetID)
+  if err != nil {
+    return err
+  }
+  endpoint, region, bucket, accessKeyID, secretKey, usePathStyle, err := datasets.ResolveStorageProfile(ctx, dataset.StorageProfileID)
+  if err != nil {
+    return err
+  }
+  objectStore, err := storage.New(storage.Profile{
+    Endpoint:     endpoint,
+    Region:       region,
+    Bucket:       bucket,
+    AccessKeyID:  accessKeyID,
+    SecretKey:    secretKey,
+    UsePathStyle: usePathStyle,
+  })
+  if err != nil {
+    return err
+  }
+
+  reasoningByQuestion := map[int64]model.ReasoningRecord{}
+  for _, record := range reasoningRecords {
+    reasoningByQuestion[record.QuestionID] = record
+  }
+  rewardByQuestion := map[int64]model.RewardRecord{}
+  for _, record := range rewardRecords {
+    rewardByQuestion[record.QuestionID] = record
+  }
+
+  lines := make([]byte, 0, len(questions)*256)
+  for _, question := range questions {
+    reasoning := reasoningByQuestion[question.ID]
+    reward := rewardByQuestion[question.ID]
+    payload := map[string]any{
+      "dataset_id":       datasetID,
+      "question_id":      question.ID,
+      "question":         question.Content,
+      "domain_name":      question.DomainName,
+      "answer_summary":   reasoning.AnswerSummary,
+      "reasoning_object": reasoning.ObjectKey,
+      "reward_score":     reward.Score,
+      "reward_object":    reward.ObjectKey,
+    }
+    body, _ := json.Marshal(payload)
+    lines = append(lines, body...)
+    lines = append(lines, '\n')
+  }
+
+  key := filepath.ToSlash(fmt.Sprintf("datasets/%d/exports/dataset.jsonl", datasetID))
+  uri, err := objectStore.PutBytes(ctx, key, lines, "application/jsonl")
+  if err != nil {
+    return err
+  }
+  _, err = artifactStore.Insert(ctx, model.Artifact{
+    DatasetID:    datasetID,
+    ArtifactType: "jsonl-export",
+    ObjectKey:    uri,
+    ContentType:  "application/jsonl",
+  })
+  return err
 }
 
 var _ = model.Question{}
