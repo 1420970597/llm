@@ -235,6 +235,23 @@ func (s *DatasetStore) ResolveProvider(ctx context.Context, providerID int64) (s
   return baseURL, modelName, providerType, key, nil
 }
 
+func (s *DatasetStore) ResolveStorageProfile(ctx context.Context, storageProfileID int64) (endpoint, region, bucket, accessKeyID, secretKey string, usePathStyle bool, err error) {
+  var encryptedSecret string
+  err = s.db.QueryRow(ctx, `
+    SELECT endpoint, region, bucket, access_key_id, COALESCE(encrypted_secret_key, ''), use_path_style
+    FROM storage_profiles
+    WHERE id = $1`, storageProfileID,
+  ).Scan(&endpoint, &region, &bucket, &accessKeyID, &encryptedSecret, &usePathStyle)
+  if err != nil {
+    return "", "", "", "", "", false, err
+  }
+  secretKey, err = s.box.Decrypt(encryptedSecret)
+  if err != nil {
+    return "", "", "", "", "", false, err
+  }
+  return endpoint, region, bucket, accessKeyID, secretKey, usePathStyle, nil
+}
+
 func min(a, b int) int {
   if a < b {
     return a

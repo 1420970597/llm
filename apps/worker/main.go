@@ -3,14 +3,17 @@ package main
 import (
   "context"
   "encoding/json"
+  "fmt"
   "log"
   "net/http"
+  "path/filepath"
   "time"
 
   appcrypto "github.com/1420970597/llm/internal/crypto"
   "github.com/1420970597/llm/internal/config"
   "github.com/1420970597/llm/internal/llm"
   "github.com/1420970597/llm/internal/model"
+  "github.com/1420970597/llm/internal/storage"
   "github.com/1420970597/llm/internal/store"
   "github.com/jackc/pgx/v5/pgxpool"
   "github.com/redis/go-redis/v9"
@@ -38,9 +41,10 @@ func main() {
 
   datasets := store.NewDatasetStore(pool, box)
   pipeline := store.NewPipelineStore(pool)
+  reasoningStore := store.NewReasoningStore(pool)
   redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisHost + ":" + cfg.RedisPort})
 
-  go consumeJobs(ctx, cfg.QueueName, redisClient, datasets, pipeline)
+  go consumeJobs(ctx, cfg.QueueName, redisClient, datasets, pipeline, reasoningStore)
 
   mux := http.NewServeMux()
   mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -60,7 +64,7 @@ func main() {
   }
 }
 
-func consumeJobs(ctx context.Context, queue string, redisClient *redis.Client, datasets *store.DatasetStore, pipeline *store.PipelineStore) {
+func consumeJobs(ctx context.Context, queue string, redisClient *redis.Client, datasets *store.DatasetStore, pipeline *store.PipelineStore, reasoningStore *store.ReasoningStore) {
   for {
     result, err := redisClient.BRPop(ctx, 5*time.Second, queue).Result()
     if err != nil {
@@ -85,6 +89,10 @@ func consumeJobs(ctx context.Context, queue string, redisClient *redis.Client, d
     case "questions.generate":
       if err := handleQuestionGeneration(ctx, job.DatasetID, datasets, pipeline); err != nil {
         log.Printf("question generation failed dataset=%d err=%v", job.DatasetID, err)
+      }
+    case "reasoning.generate":
+      if err := handleReasoningGeneration(ctx, job.DatasetID, datasets, pipeline, reasoningStore); err != nil {
+        log.Printf("reasoning generation failed dataset=%d err=%v", job.DatasetID, err)
       }
     default:
       log.Printf("worker ignored job type=%s", job.Type)
@@ -123,6 +131,64 @@ func handleQuestionGeneration(ctx context.Context, datasetID int64, datasets *st
     return err
   }
   log.Printf("questions generated dataset=%d count=%d", datasetID, len(questions))
+  return nil
+}
+
+func handleReasoningGeneration(ctx context.Context, datasetID int64, datasets *store.DatasetStore, pipeline *store.PipelineStore, reasoningStore *store.ReasoningStore) error {
+  dataset, err := datasets.GetDataset(ctx, datasetID)
+  if err != nil {
+    return err
+  }
+  questions, err := pipeline.ListQuestions(ctx, datasetID)
+  if err != nil {
+    return err
+  }
+  if len(questions) == 0 {
+    return nil
+  }
+
+  baseURL, modelName, providerType, apiKey, err := datasets.ResolveProvider(ctx, dataset.ProviderID)
+  if err != nil {
+    return err
+  }
+  endpoint, region, bucket, accessKeyID, secretKey, usePathStyle, err := datasets.ResolveStorageProfile(ctx, dataset.StorageProfileID)
+  if err != nil {
+    return err
+  }
+  objectStore, err := storage.New(storage.Profile{
+    Endpoint:     endpoint,
+    Region:       region,
+    Bucket:       bucket,
+    AccessKeyID:  accessKeyID,
+    SecretKey:    secretKey,
+    UsePathStyle: usePathStyle,
+  })
+  if err != nil {
+    return err
+  }
+
+  records, payloads, err := llm.GenerateReasoning(ctx, llm.ProviderConfig{
+    BaseURL:      baseURL,
+    Model:        modelName,
+    ProviderType: providerType,
+    APIKey:       apiKey,
+  }, dataset, questions)
+  if err != nil {
+    return err
+  }
+
+  for index := range records {
+    key := filepath.ToSlash(fmt.Sprintf("datasets/%d/reasoning/question-%d.json", datasetID, records[index].QuestionID))
+    uri, err := objectStore.PutJSON(ctx, key, payloads[records[index].QuestionID])
+    if err != nil {
+      return err
+    }
+    records[index].ObjectKey = uri
+  }
+  if err := reasoningStore.Insert(ctx, datasetID, records); err != nil {
+    return err
+  }
+  log.Printf("reasoning generated dataset=%d count=%d", datasetID, len(records))
   return nil
 }
 

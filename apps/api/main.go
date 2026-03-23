@@ -23,6 +23,7 @@ type application struct {
   store    *store.AdminStore
   datasets *store.DatasetStore
   pipeline *store.PipelineStore
+  reasoning *store.ReasoningStore
   redis    *redis.Client
 }
 
@@ -50,6 +51,7 @@ func main() {
     store:    store.NewAdminStore(pool, box),
     datasets: store.NewDatasetStore(pool, box),
     pipeline: store.NewPipelineStore(pool),
+    reasoning: store.NewReasoningStore(pool),
     redis: redis.NewClient(&redis.Options{
       Addr: cfg.RedisHost + ":" + cfg.RedisPort,
     }),
@@ -258,6 +260,8 @@ func (app *application) routeDatasetActions(w http.ResponseWriter, r *http.Reque
     app.confirmDomains(w, r)
   case strings.HasSuffix(r.URL.Path, "/questions/generate"):
     app.enqueueQuestionGeneration(w, r)
+  case strings.HasSuffix(r.URL.Path, "/reasoning/generate"):
+    app.enqueueReasoningGeneration(w, r)
   default:
     http.NotFound(w, r)
   }
@@ -267,6 +271,8 @@ func (app *application) routeDatasetGet(w http.ResponseWriter, r *http.Request) 
   switch {
   case strings.HasSuffix(r.URL.Path, "/questions"):
     app.listQuestions(w, r)
+  case strings.HasSuffix(r.URL.Path, "/reasoning"):
+    app.listReasoning(w, r)
   default:
     app.getDataset(w, r)
   }

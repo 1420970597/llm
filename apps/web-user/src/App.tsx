@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight, BrainCircuit, DatabaseZap, GitBranch, Save, ShieldCheck, Sparkles } from 'lucide-react'
-import { Dataset, DatasetGraph, Domain, Provider, Question, StorageProfile, Strategy, userApi } from './lib/api'
+import { Dataset, DatasetGraph, Domain, Provider, Question, ReasoningRecord, StorageProfile, Strategy, userApi } from './lib/api'
 
 function GraphPreview({ rootKeyword, domains }: { rootKeyword: string; domains: Domain[] }) {
   const visible = domains.slice(0, 16)
@@ -48,6 +48,7 @@ export default function App() {
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [graph, setGraph] = useState<DatasetGraph | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
+  const [reasoning, setReasoning] = useState<ReasoningRecord[]>([])
   const [message, setMessage] = useState<string>('')
   const [estimate, setEstimate] = useState<Dataset['estimate'] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -141,6 +142,7 @@ export default function App() {
       const nextGraph = await userApi.getDataset(created.id)
       setGraph(nextGraph)
       setQuestions([])
+      setReasoning([])
       setDatasets(await userApi.listDatasets())
       setMessage('Dataset created. You can now generate its domain graph.')
     } catch (error) {
@@ -229,6 +231,36 @@ export default function App() {
     try {
       setQuestions(await userApi.listQuestions(graph.dataset.id))
       setMessage('Question preview refreshed.')
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const generateReasoning = async () => {
+    if (!graph) {
+      return
+    }
+    setLoading(true)
+    try {
+      await userApi.generateReasoning(graph.dataset.id)
+      setMessage('Reasoning generation job queued. Refresh reasoning shortly to inspect long-form outputs.')
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const refreshReasoning = async () => {
+    if (!graph) {
+      return
+    }
+    setLoading(true)
+    try {
+      setReasoning(await userApi.listReasoning(graph.dataset.id))
+      setMessage('Reasoning preview refreshed.')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -402,7 +434,7 @@ export default function App() {
           </div>
           <div className="dataset-grid">
             {datasets.map((dataset) => (
-              <button key={dataset.id} className="glass-card dataset-card" onClick={async () => { setGraph(await userApi.getDataset(dataset.id)); setQuestions(await userApi.listQuestions(dataset.id)); }}>
+              <button key={dataset.id} className="glass-card dataset-card" onClick={async () => { setGraph(await userApi.getDataset(dataset.id)); setQuestions(await userApi.listQuestions(dataset.id)); setReasoning(await userApi.listReasoning(dataset.id)); }}>
                 <div>
                   <span className="eyebrow">{dataset.status}</span>
                   <h3>{dataset.name}</h3>
@@ -440,6 +472,36 @@ export default function App() {
                 </div>
               ))}
               {questions.length === 0 ? <p className="hero-copy">No generated questions yet.</p> : null}
+            </div>
+          </div>
+        </section>
+
+        <section className="section-block split-layout">
+          <div className="glass-card timeline-card">
+            <div className="section-heading compact">
+              <span className="eyebrow">Reasoning generation</span>
+              <h2>Persist long-form answers into object storage</h2>
+            </div>
+            <div className="graph-actions">
+              <button className="primary-action" onClick={() => void generateReasoning()} disabled={loading || !graph || questions.length === 0}>Queue reasoning generation</button>
+              <button className="secondary-action" onClick={() => void refreshReasoning()} disabled={loading || !graph}>Refresh reasoning</button>
+            </div>
+            <p className="hero-copy">Phase 5 generates answer summaries plus long-form reasoning payloads and stores them as JSON artifacts in MinIO/S3-compatible storage.</p>
+          </div>
+
+          <div className="glass-card graph-preview">
+            <div className="section-heading compact">
+              <span className="eyebrow">Reasoning preview</span>
+              <h2>Stored answer summaries</h2>
+            </div>
+            <div className="domain-list">
+              {reasoning.slice(0, 10).map((record) => (
+                <div key={record.id} className="question-item">
+                  <span>{record.objectKey}</span>
+                  <p>{record.answerSummary}</p>
+                </div>
+              ))}
+              {reasoning.length === 0 ? <p className="hero-copy">No reasoning records generated yet.</p> : null}
             </div>
           </div>
         </section>

@@ -82,6 +82,18 @@ export type Question = {
   updatedAt: string
 }
 
+export type ReasoningRecord = {
+  id: number
+  datasetId: number
+  questionId: number
+  questionText: string
+  answerSummary: string
+  objectKey: string
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
@@ -107,6 +119,8 @@ export const userApi = {
   confirmDomains: (id: number) => request<{ status: string }>(`/api/v1/datasets/${id}/domains/confirm`, { method: 'POST' }),
   generateQuestions: (id: number) => request<{ queued: boolean; datasetId: number }>(`/api/v1/datasets/${id}/questions/generate`, { method: 'POST' }),
   listQuestions: (id: number) => request<Question[]>(`/api/v1/datasets/${id}/questions`),
+  generateReasoning: (id: number) => request<{ queued: boolean; datasetId: number }>(`/api/v1/datasets/${id}/reasoning/generate`, { method: 'POST' }),
+  listReasoning: (id: number) => request<ReasoningRecord[]>(`/api/v1/datasets/${id}/reasoning`),
   listStrategies: () => request<Strategy[]>('/api/v1/admin/generation-strategies'),
   listProviders: () => request<Provider[]>('/api/v1/admin/providers'),
   listStorageProfiles: () => request<StorageProfile[]>('/api/v1/admin/storage-profiles'),
