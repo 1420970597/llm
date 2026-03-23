@@ -1,6 +1,7 @@
 FROM golang:1.24-alpine AS builder
 WORKDIR /src
 COPY go.mod ./
+COPY go.sum ./
 COPY apps ./apps
 COPY internal ./internal
 RUN go build -o /out/worker ./apps/worker

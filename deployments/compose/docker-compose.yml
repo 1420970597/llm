@@ -25,9 +25,16 @@ services:
       dockerfile: deployments/docker/api.Dockerfile
     environment:
       APP_ENV: development
+      APP_ALLOWED_ORIGIN: "*"
+      APP_ENCRYPTION_KEY: phase1-dev-only-32-byte-secret!!!
       API_PORT: 8080
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: llm_factory
+      POSTGRES_USER: llm_factory
+      POSTGRES_PASSWORD: llm_factory_dev
       REDIS_HOST: redis
+      REDIS_PORT: 6379
       S3_ENDPOINT: http://minio:9000
     ports:
       - "38080:8080"

@@ -93,6 +93,30 @@ body {
   font-size: 1.6rem;
 }
 
+.tab-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.sub-panel.ant-card {
+  margin-top: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.inline-controls {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.inline-controls .ant-form-item {
+  min-width: 160px;
+}
+
+.switch-row .ant-form-item {
+  min-width: auto;
+}
+
 .glass-panel .ant-card-body {
   padding: 26px;
 }
@@ -114,6 +138,10 @@ body {
 .ant-btn-primary {
   border-radius: 999px;
   box-shadow: none;
+}
+
+.ant-segmented {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .ant-table,

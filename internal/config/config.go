@@ -1,13 +1,25 @@
 package config
 
-import "os"
+import (
+  "fmt"
+  "os"
+)
 
 type APIConfig struct {
-  Environment  string
-  Port         string
-  PostgresHost string
-  RedisHost    string
-  S3Endpoint   string
+  Environment       string
+  Port              string
+  PostgresDSN       string
+  PostgresHost      string
+  PostgresPort      string
+  PostgresDatabase  string
+  PostgresUser      string
+  PostgresPassword  string
+  RedisHost         string
+  RedisPort         string
+  S3Endpoint        string
+  EncryptionKey     string
+  AllowedOrigin     string
+  MigrationPath     string
 }
 
 type WorkerConfig struct {
@@ -19,12 +31,27 @@ type WorkerConfig struct {
 }
 
 func LoadAPIConfig() APIConfig {
+  host := getenv("POSTGRES_HOST", "postgres")
+  port := getenv("POSTGRES_PORT", "5432")
+  db := getenv("POSTGRES_DB", "llm_factory")
+  user := getenv("POSTGRES_USER", "llm_factory")
+  password := getenv("POSTGRES_PASSWORD", "llm_factory_dev")
+
   return APIConfig{
-    Environment:  getenv("APP_ENV", "development"),
-    Port:         getenv("API_PORT", "8080"),
-    PostgresHost: getenv("POSTGRES_HOST", "postgres"),
-    RedisHost:    getenv("REDIS_HOST", "redis"),
-    S3Endpoint:   getenv("S3_ENDPOINT", "http://minio:9000"),
+    Environment:      getenv("APP_ENV", "development"),
+    Port:             getenv("API_PORT", "8080"),
+    PostgresDSN:      getenv("POSTGRES_DSN", fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", user, password, host, port, db)),
+    PostgresHost:     host,
+    PostgresPort:     port,
+    PostgresDatabase: db,
+    PostgresUser:     user,
+    PostgresPassword: password,
+    RedisHost:        getenv("REDIS_HOST", "redis"),
+    RedisPort:        getenv("REDIS_PORT", "6379"),
+    S3Endpoint:       getenv("S3_ENDPOINT", "http://minio:9000"),
+    EncryptionKey:    getenv("APP_ENCRYPTION_KEY", "phase1-dev-only-32-byte-secret!!!"),
+    AllowedOrigin:    getenv("APP_ALLOWED_ORIGIN", "*"),
+    MigrationPath:    getenv("MIGRATION_PATH", "sql/migrations"),
   }
 }
 
