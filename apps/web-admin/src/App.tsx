@@ -20,6 +20,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
+  Activity,
   ArrowUpRight,
   Boxes,
   Database,
@@ -27,6 +28,10 @@ import {
   Layers3,
   LockKeyhole,
   Logs,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ScrollText,
+  Server,
   ShieldCheck,
   ShieldEllipsis,
   Sparkles,
@@ -90,11 +95,13 @@ const auditColumns: ColumnsType<AuditRecord> = [
 ]
 
 const adminSections = [
-  { key: 'providers', label: '模型提供方', caption: '管理网关、模型与加密密钥', icon: Database },
-  { key: 'storage', label: '存储配置', caption: '维护对象存储与默认写入路由', icon: FolderCog },
-  { key: 'strategies', label: '生成策略', caption: '控制吞吐、成本与规划方式', icon: Workflow },
-  { key: 'prompts', label: '提示词模板', caption: '治理系统提示词与版本节奏', icon: Sparkles },
+  { key: 'providers', label: '模型提供方', caption: '管理网关、模型与加密密钥', icon: Database, group: '资源接入' },
+  { key: 'storage', label: '存储配置', caption: '维护对象存储与默认写入路由', icon: FolderCog, group: '资源接入' },
+  { key: 'strategies', label: '生成策略', caption: '控制吞吐、成本与规划方式', icon: Workflow, group: '生成治理' },
+  { key: 'prompts', label: '提示词模板', caption: '治理系统提示词与版本节奏', icon: Sparkles, group: '生成治理' },
 ] as const
+
+type AdminSection = (typeof adminSections)[number]
 
 function useAdminData(authenticated: boolean) {
   const [dashboard, setDashboard] = useState<DashboardRecord | null>(null)
@@ -137,7 +144,8 @@ function useAdminData(authenticated: boolean) {
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false)
-  const [activeSection, setActiveSection] = useState<(typeof adminSections)[number]['key']>('providers')
+  const [activeSection, setActiveSection] = useState<AdminSection['key']>('providers')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [providerForm] = Form.useForm<ProviderRecord>()
   const [storageForm] = Form.useForm<StorageProfileRecord>()
   const [strategyForm] = Form.useForm<StrategyRecord>()
@@ -156,9 +164,33 @@ export default function App() {
 
   const activeSectionMeta = adminSections.find((item) => item.key === activeSection) ?? adminSections[0]
   const recentAuditLogs = data.auditLogs.slice(0, 4)
+  const groupedSections = adminSections.reduce<Record<string, AdminSection[]>>((acc, section) => {
+    acc[section.group] = [...(acc[section.group] ?? []), section]
+    return acc
+  }, {})
   const pipelineConfidence = data.dashboard
     ? Math.min(100, 32 + data.dashboard.activeProviderCount * 14 + data.dashboard.promptCount * 6 + data.dashboard.strategyCount * 8)
     : 18
+  const commandStats = [
+    {
+      label: '活动路由',
+      value: `${data.dashboard?.activeProviderCount ?? 0}`,
+      detail: '在线模型提供方',
+      icon: Server,
+    },
+    {
+      label: '审计记录',
+      value: `${data.dashboard?.auditLogCount ?? 0}`,
+      detail: '最近治理变更',
+      icon: ScrollText,
+    },
+    {
+      label: '运行信号',
+      value: `${pipelineConfidence}%`,
+      detail: '当前交付信心',
+      icon: Activity,
+    },
+  ]
 
   const tabItems = [
     {
@@ -405,8 +437,8 @@ export default function App() {
           </div>
         </div>
       ) : (
-        <div className="admin-workspace">
-          <aside className="admin-sidebar">
+        <div className={`admin-workspace${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+          <aside className={`admin-sidebar${sidebarCollapsed ? ' collapsed' : ''}`}>
             <div className="sidebar-intro">
               <span className="eyebrow">导航目录</span>
               <h2>后台工作区</h2>
@@ -414,26 +446,40 @@ export default function App() {
             </div>
 
             <div className="sidebar-nav">
-              {adminSections.map((section) => {
-                const SectionIcon = section.icon
-                const isActive = section.key === activeSection
-                return (
-                  <button
-                    key={section.key}
-                    type="button"
-                    className={`sidebar-nav-item${isActive ? ' active' : ''}`}
-                    onClick={() => setActiveSection(section.key)}
-                  >
-                    <span className="sidebar-icon"><SectionIcon size={18} strokeWidth={1.8} /></span>
-                    <span className="sidebar-copy">
-                      <strong>{section.label}</strong>
-                      <span>{section.caption}</span>
-                    </span>
-                    <ArrowUpRight size={16} strokeWidth={1.8} className="sidebar-arrow" />
-                  </button>
-                )
-              })}
+              {Object.entries(groupedSections).map(([group, sections]) => (
+                <div key={group} className="sidebar-group">
+                  <span className="sidebar-group-label">{group}</span>
+                  {sections.map((section) => {
+                    const SectionIcon = section.icon
+                    const isActive = section.key === activeSection
+                    return (
+                      <button
+                        key={section.key}
+                        type="button"
+                        className={`sidebar-nav-item${isActive ? ' active' : ''}`}
+                        onClick={() => setActiveSection(section.key)}
+                      >
+                        <span className="sidebar-icon"><SectionIcon size={18} strokeWidth={1.8} /></span>
+                        <span className="sidebar-copy">
+                          <strong>{section.label}</strong>
+                          <span>{section.caption}</span>
+                        </span>
+                        <ArrowUpRight size={16} strokeWidth={1.8} className="sidebar-arrow" />
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
             </div>
+
+            <button
+              type="button"
+              className="sidebar-collapse-button"
+              onClick={() => setSidebarCollapsed((current) => !current)}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={16} strokeWidth={1.8} /> : <PanelLeftClose size={16} strokeWidth={1.8} />}
+              <span>{sidebarCollapsed ? '展开导航' : '折叠导航'}</span>
+            </button>
 
             <Card className="sub-panel compact-panel sidebar-panel">
               <div className="card-header compact-header">
@@ -481,6 +527,19 @@ export default function App() {
               </div>
             </motion.section>
 
+            <section className="command-strip">
+              {commandStats.map((item) => (
+                <Card key={item.label} className="glass-panel command-card">
+                  <div className="command-card-header">
+                    <span>{item.label}</span>
+                    <item.icon size={16} strokeWidth={1.8} />
+                  </div>
+                  <strong>{item.value}</strong>
+                  <p>{item.detail}</p>
+                </Card>
+              ))}
+            </section>
+
             <div className="metric-grid">
               {metricCards.map((item, index) => (
                 <motion.div key={item.title} initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 * index }}>
@@ -499,10 +558,14 @@ export default function App() {
                   <div>
                     <span className="eyebrow">配置与治理中心</span>
                     <h2>围绕侧边栏导航组织核心编辑动作</h2>
+                    <p className="workspace-support">参考控制台的信息架构，把主要读写动作集中在同一块深色操作画布中。</p>
                   </div>
-                  <Tag bordered={false} color="geekblue">{activeSectionMeta.label}</Tag>
+                  <div className="workspace-badges">
+                    <Tag bordered={false} color="geekblue">{activeSectionMeta.label}</Tag>
+                    <Tag bordered={false} color="processing">{activeSectionMeta.group}</Tag>
+                  </div>
                 </div>
-                <Tabs className="control-tabs" activeKey={activeSection} onChange={(value) => setActiveSection(value as (typeof adminSections)[number]['key'])} items={tabItems} />
+                <Tabs className="control-tabs" activeKey={activeSection} onChange={(value) => setActiveSection(value as AdminSection['key'])} items={tabItems} />
               </Card>
 
               <div className="insight-column">
