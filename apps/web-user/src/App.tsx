@@ -105,25 +105,93 @@ export default function App() {
     ? `${window.location.protocol}//${window.location.hostname}:3211`
     : '/'
 
-  const loadBootstrap = async () => {
-    const [strategyData, providerData, storageData, datasetData, runtimeData] = await Promise.all([
-      userApi.listStrategies(),
-      userApi.listProviders(),
-      userApi.listStorageProfiles(),
-      userApi.listDatasets(),
-      userApi.runtimeStatus(),
-    ])
-    setStrategies(strategyData)
-    setProviders(providerData)
-    setStorageProfiles(storageData)
-    setDatasets(datasetData)
-    setRuntime(runtimeData)
-    setFormState((current) => ({
-      ...current,
-      strategyId: current.strategyId || strategyData[0]?.id || 0,
-      providerId: current.providerId || providerData[0]?.id || 0,
-      storageProfileId: current.storageProfileId || storageData[0]?.id || 0,
-    }))
+  const activeDataset = graph?.dataset ?? null
+
+  const loadBootstrap = async (nextMessage?: string) => {
+    setLoading(true)
+    try {
+      const [strategyData, providerData, storageData, datasetData, runtimeData] = await Promise.all([
+        userApi.listStrategies(),
+        userApi.listProviders(),
+        userApi.listStorageProfiles(),
+        userApi.listDatasets(),
+        userApi.runtimeStatus(),
+      ])
+
+      setStrategies(strategyData)
+      setProviders(providerData)
+      setStorageProfiles(storageData)
+      setDatasets(datasetData)
+      setRuntime(runtimeData)
+      setFormState((current) => ({
+        ...current,
+        strategyId: current.strategyId || strategyData[0]?.id || 0,
+        providerId: current.providerId || providerData[0]?.id || 0,
+        storageProfileId: current.storageProfileId || storageData[0]?.id || 0,
+      }))
+
+      const preferredDatasetId = datasetData.some((dataset) => dataset.id === graph?.dataset.id)
+        ? graph?.dataset.id
+        : datasetData[0]?.id
+
+      if (preferredDatasetId) {
+        const [nextGraph, nextQuestions, nextReasoning, nextRewards, nextArtifacts] = await Promise.all([
+          userApi.getDataset(preferredDatasetId),
+          userApi.listQuestions(preferredDatasetId),
+          userApi.listReasoning(preferredDatasetId),
+          userApi.listRewards(preferredDatasetId),
+          userApi.listArtifacts(preferredDatasetId),
+        ])
+        setGraph(nextGraph)
+        setQuestions(nextQuestions)
+        setReasoning(nextReasoning)
+        setRewards(nextRewards)
+        setArtifacts(nextArtifacts)
+      } else {
+        setGraph(null)
+        setQuestions([])
+        setReasoning([])
+        setRewards([])
+        setArtifacts([])
+      }
+
+      if (nextMessage) {
+        setMessage(preferredDatasetId ? `${nextMessage} 已同步最近的数据集。` : nextMessage)
+      }
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadDatasetWorkspace = async (datasetId: number, nextMessage?: string) => {
+    setLoading(true)
+    try {
+      const [nextGraph, nextQuestions, nextReasoning, nextRewards, nextArtifacts, nextRuntime, nextDatasets] = await Promise.all([
+        userApi.getDataset(datasetId),
+        userApi.listQuestions(datasetId),
+        userApi.listReasoning(datasetId),
+        userApi.listRewards(datasetId),
+        userApi.listArtifacts(datasetId),
+        userApi.runtimeStatus(),
+        userApi.listDatasets(),
+      ])
+      setGraph(nextGraph)
+      setQuestions(nextQuestions)
+      setReasoning(nextReasoning)
+      setRewards(nextRewards)
+      setArtifacts(nextArtifacts)
+      setRuntime(nextRuntime)
+      setDatasets(nextDatasets)
+      if (nextMessage) {
+        setMessage(nextMessage)
+      }
+    } catch (error) {
+      setMessage((error as Error).message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
