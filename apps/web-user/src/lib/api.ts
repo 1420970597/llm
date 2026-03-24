@@ -39,10 +39,28 @@ export type Provider = {
   baseUrl: string
   model: string
   providerType: string
+  reasoningEffort: string
   maxConcurrency: number
   timeoutSeconds: number
   isActive: boolean
   apiKeyMasked?: string
+}
+
+export type ProviderModelInfo = {
+  id: string
+}
+
+export type ProviderModelsResponse = {
+  models: ProviderModelInfo[]
+}
+
+export type ProviderConnectivityResult = {
+  ok: boolean
+  statusCode: number
+  latencyMs: number
+  message: string
+  modelFound: boolean
+  availableModels?: string[]
 }
 
 export type StorageProfile = {
@@ -194,6 +212,8 @@ export const consoleApi = {
   dashboard: () => unwrap(client.get<DashboardRecord>('/v1/admin/dashboard')),
   listProviders: () => unwrap(client.get<Provider[]>('/v1/admin/providers')),
   saveProvider: (payload: Partial<Provider> & { apiKey?: string }) => unwrap(client.request<Provider>({ url: '/v1/admin/providers', method: payload.id ? 'PUT' : 'POST', data: payload })),
+  fetchProviderModels: (payload: Partial<Provider> & { apiKey?: string }) => unwrap(client.post<ProviderModelsResponse>('/v1/admin/providers/models', payload)),
+  testProviderConnectivity: (payload: Partial<Provider> & { apiKey?: string }) => unwrap(client.post<ProviderConnectivityResult>('/v1/admin/providers/test', payload)),
   listStorageProfiles: () => unwrap(client.get<StorageProfile[]>('/v1/admin/storage-profiles')),
   saveStorageProfile: (payload: Partial<StorageProfile> & { secretAccessKey?: string }) => unwrap(client.request<StorageProfile>({ url: '/v1/admin/storage-profiles', method: payload.id ? 'PUT' : 'POST', data: payload })),
   listStrategies: () => unwrap(client.get<Strategy[]>('/v1/admin/generation-strategies')),

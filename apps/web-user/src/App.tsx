@@ -54,6 +54,8 @@ import {
   type Domain,
   type PromptRecord,
   type Provider,
+  type ProviderConnectivityResult,
+  type ProviderModelInfo,
   type Question,
   type ReasoningRecord,
   type RewardRecord,
@@ -329,11 +331,16 @@ export default function App() {
     baseUrl: '',
     model: '',
     providerType: 'openai-compatible',
+    reasoningEffort: '',
     maxConcurrency: 4,
     timeoutSeconds: 120,
     isActive: true,
     apiKey: '',
   })
+  const [providerModels, setProviderModels] = useState<ProviderModelInfo[]>([])
+  const [providerModelsLoading, setProviderModelsLoading] = useState(false)
+  const [providerTestLoading, setProviderTestLoading] = useState(false)
+  const [providerTestResult, setProviderTestResult] = useState<ProviderConnectivityResult | null>(null)
   const [storageDraft, setStorageDraft] = useState<StorageDraft>({
     name: '',
     provider: 'minio',
@@ -671,12 +678,47 @@ export default function App() {
     try {
       await consoleApi.saveProvider(providerDraft)
       Toast.success('模型提供方已保存')
-      setProviderDraft({ name: '', baseUrl: '', model: '', providerType: 'openai-compatible', maxConcurrency: 4, timeoutSeconds: 120, isActive: true, apiKey: '' })
+      setProviderDraft({ name: '', baseUrl: '', model: '', providerType: 'openai-compatible', reasoningEffort: '', maxConcurrency: 4, timeoutSeconds: 120, isActive: true, apiKey: '' })
+      setProviderModels([])
+      setProviderTestResult(null)
       await loadBootstrap()
     } catch (error) {
       Toast.error((error as Error).message)
     } finally {
       setBusy(false)
+    }
+  }
+
+  const fetchProviderModels = async () => {
+    setProviderModelsLoading(true)
+    try {
+      const response = await consoleApi.fetchProviderModels(providerDraft)
+      setProviderModels(response.models)
+      if (!providerDraft.model && response.models[0]?.id) {
+        setProviderDraft((current) => ({ ...current, model: response.models[0]?.id }))
+      }
+      Toast.success(`已获取 ${response.models.length} 个模型`)
+    } catch (error) {
+      Toast.error((error as Error).message)
+    } finally {
+      setProviderModelsLoading(false)
+    }
+  }
+
+  const testProviderConnectivity = async () => {
+    setProviderTestLoading(true)
+    try {
+      const result = await consoleApi.testProviderConnectivity(providerDraft)
+      setProviderTestResult(result)
+      if (result.availableModels?.length) {
+        setProviderModels(result.availableModels.map((id) => ({ id })))
+      }
+      Toast[result.ok ? 'success' : 'warning'](result.message)
+    } catch (error) {
+      setProviderTestResult(null)
+      Toast.error((error as Error).message)
+    } finally {
+      setProviderTestLoading(false)
     }
   }
 
@@ -728,6 +770,7 @@ export default function App() {
       { title: '基础 URL', dataIndex: 'baseUrl' },
       { title: '模型', dataIndex: 'model' },
       { title: '类型', dataIndex: 'providerType', render: (value: string) => <Tag color="blue">{value}</Tag> },
+      { title: '推理强度', dataIndex: 'reasoningEffort', render: (value: string) => value ? <Tag color="purple">{value}</Tag> : '默认' },
       { title: '状态', dataIndex: 'isActive', render: (value: boolean) => <Tag color={value ? 'green' : 'grey'}>{value ? '启用' : '停用'}</Tag> },
     ],
     [],
@@ -1049,7 +1092,7 @@ export default function App() {
 
   const renderProviders = () => (
     <div className="console-page-shell">
-      <PageHeader badge="管理员治理 / 模型提供方" title="维护模型网关、路由与并发参数" description="管理员登录后在同一前端直接维护系统配置；不再需要独立后台。" actions={<Button theme="solid" type="primary" icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('系统配置已刷新')}>刷新配置</Button>} />
+      <PageHeader badge="管理员治理 / 模型提供方" title="维护模型网关、路由、推理强度与连通性" description="管理员可以直接拉取模型列表、测试连通性，并为推理类模型配置 reasoning effort。" actions={<Button theme="solid" type="primary" icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('系统配置已刷新')}>刷新配置</Button>} />
       <div className="page-layout-grid console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">模型提供方台账</Title>
@@ -1066,8 +1109,48 @@ export default function App() {
               <InputNumber value={providerDraft.maxConcurrency ?? 4} onChange={(value) => setProviderDraft((current) => ({ ...current, maxConcurrency: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="最大并发数" />
               <InputNumber value={providerDraft.timeoutSeconds ?? 120} onChange={(value) => setProviderDraft((current) => ({ ...current, timeoutSeconds: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="超时秒数" />
             </div>
+            <Select
+              value={providerDraft.reasoningEffort ?? ''}
+              placeholder="推理强度（可选）"
+              optionList={[
+                { value: '', label: '默认' },
+                { value: 'low', label: '低' },
+                { value: 'medium', label: '中' },
+                { value: 'high', label: '高' },
+              ]}
+              onChange={(value) => setProviderDraft((current) => ({ ...current, reasoningEffort: String(value ?? '') }))}
+              style={{ width: '100%' }}
+            />
             <Input value={providerDraft.apiKey ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, apiKey: value }))} placeholder="API Key（可留空）" />
-            <Button theme="solid" type="primary" loading={busy} onClick={() => void saveProvider()}>保存提供方</Button>
+            <Space wrap>
+              <Button loading={providerModelsLoading} onClick={() => void fetchProviderModels()}>获取模型列表</Button>
+              <Button loading={providerTestLoading} onClick={() => void testProviderConnectivity()}>模型连通性测试</Button>
+              <Button theme="solid" type="primary" loading={busy} onClick={() => void saveProvider()}>保存提供方</Button>
+            </Space>
+
+            {providerModels.length > 0 ? (
+              <div className="console-stack">
+                <Text className="console-caption">可用模型列表</Text>
+                <div className="flex flex-wrap gap-2">
+                  {providerModels.map((item) => (
+                    <Tag
+                      key={item.id}
+                      color={providerDraft.model === item.id ? 'green' : 'grey'}
+                      onClick={() => setProviderDraft((current) => ({ ...current, model: item.id }))}
+                    >
+                      {item.id}
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {providerTestResult ? (
+              <Banner
+                type={providerTestResult.ok ? 'success' : 'warning'}
+                description={`${providerTestResult.message} · HTTP ${providerTestResult.statusCode || 0} · ${providerTestResult.latencyMs}ms${providerTestResult.modelFound ? ' · 已匹配当前模型' : ''}`}
+              />
+            ) : null}
           </div>
         </Card>
       </div>
