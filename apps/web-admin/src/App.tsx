@@ -4,46 +4,46 @@ import {
   App as AntApp,
   Button,
   Card,
-  Col,
   Form,
   Input,
   InputNumber,
   List,
   Progress,
-  Row,
   Segmented,
   Space,
   Switch,
   Table,
-  Tabs,
   Tag,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
   Activity,
-  ArrowUpRight,
   Boxes,
   Database,
+  FileText,
   FolderCog,
-  Layers3,
+  LayoutDashboard,
   LockKeyhole,
   Logs,
+  Menu,
   PanelLeftClose,
   PanelLeftOpen,
-  ScrollText,
-  Server,
+  RefreshCw,
+  Rocket,
+  ServerCog,
   ShieldCheck,
-  ShieldEllipsis,
   Sparkles,
   Workflow,
+  X,
+  type LucideIcon,
 } from 'lucide-react'
 import {
-  AuditRecord,
-  DashboardRecord,
-  PromptRecord,
-  ProviderRecord,
-  StorageProfileRecord,
-  StrategyRecord,
+  type AuditRecord,
+  type DashboardRecord,
+  type PromptRecord,
+  type ProviderRecord,
+  type StorageProfileRecord,
+  type StrategyRecord,
   adminApi,
 } from './lib/api'
 
@@ -53,6 +53,27 @@ const planningModeOptions = [
   { label: '优先深度', value: 'deep-first' },
   { label: '成本优先', value: 'cost-saving' },
 ]
+
+type AdminPageKey = 'dashboard' | 'providers' | 'storage' | 'strategies' | 'prompts' | 'audit'
+
+type AdminPageDefinition = {
+  key: AdminPageKey
+  label: string
+  caption: string
+  icon: LucideIcon
+  group: string
+}
+
+const pageDefinitions: AdminPageDefinition[] = [
+  { key: 'dashboard', label: '总览', caption: '查看治理全景与关键运行信号', icon: LayoutDashboard, group: '控制台' },
+  { key: 'providers', label: '模型提供方', caption: '维护模型网关、路由与并发参数', icon: Database, group: '资源接入' },
+  { key: 'storage', label: '存储配置', caption: '维护 S3 / MinIO / OSS 存储目标', icon: FolderCog, group: '资源接入' },
+  { key: 'strategies', label: '生成策略', caption: '定义领域规模、问题量与奖励变体', icon: Workflow, group: '生成治理' },
+  { key: 'prompts', label: '提示词模板', caption: '治理各阶段系统提示词与版本', icon: Sparkles, group: '生成治理' },
+  { key: 'audit', label: '审计日志', caption: '追踪配置变更与治理事件', icon: Logs, group: '审计中心' },
+]
+
+const pageKeys = new Set(pageDefinitions.map((item) => item.key))
 
 const providerColumns: ColumnsType<ProviderRecord> = [
   { title: '名称', dataIndex: 'name', key: 'name' },
@@ -94,14 +115,51 @@ const auditColumns: ColumnsType<AuditRecord> = [
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt' },
 ]
 
-const adminSections = [
-  { key: 'providers', label: '模型提供方', caption: '管理网关、模型与加密密钥', icon: Database, group: '资源接入' },
-  { key: 'storage', label: '存储配置', caption: '维护对象存储与默认写入路由', icon: FolderCog, group: '资源接入' },
-  { key: 'strategies', label: '生成策略', caption: '控制吞吐、成本与规划方式', icon: Workflow, group: '生成治理' },
-  { key: 'prompts', label: '提示词模板', caption: '治理系统提示词与版本节奏', icon: Sparkles, group: '生成治理' },
-] as const
+function readPageFromHash(): AdminPageKey {
+  if (typeof window === 'undefined') return 'dashboard'
+  const raw = window.location.hash.replace('#', '')
+  return pageKeys.has(raw as AdminPageKey) ? (raw as AdminPageKey) : 'dashboard'
+}
 
-type AdminSection = (typeof adminSections)[number]
+function SectionHeader({ eyebrow, title, description }: { eyebrow: string; title: string; description?: string }) {
+  return (
+    <div className="section-header">
+      <span className="eyebrow">{eyebrow}</span>
+      <h2>{title}</h2>
+      {description ? <p>{description}</p> : null}
+    </div>
+  )
+}
+
+function PageHeader({ eyebrow, title, description, actions }: { eyebrow: string; title: string; description: string; actions?: React.ReactNode }) {
+  return (
+    <div className="page-header">
+      <div>
+        <span className="eyebrow">{eyebrow}</span>
+        <h1>{title}</h1>
+        <p>{description}</p>
+      </div>
+      {actions ? <div className="page-header-actions">{actions}</div> : null}
+    </div>
+  )
+}
+
+function StatCard({ icon: Icon, label, value, helper }: { icon: LucideIcon; label: string; value: string | number; helper: string }) {
+  return (
+    <article className="stat-card">
+      <div className="stat-card-head">
+        <span>{label}</span>
+        <div className="stat-card-icon"><Icon size={16} strokeWidth={1.9} /></div>
+      </div>
+      <strong>{value}</strong>
+      <p>{helper}</p>
+    </article>
+  )
+}
+
+function SpinnerIcon({ spinning }: { spinning: boolean }) {
+  return <RefreshCw size={16} strokeWidth={1.9} className={spinning ? 'is-spinning' : undefined} />
+}
 
 function useAdminData(authenticated: boolean) {
   const [dashboard, setDashboard] = useState<DashboardRecord | null>(null)
@@ -144,8 +202,9 @@ function useAdminData(authenticated: boolean) {
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false)
-  const [activeSection, setActiveSection] = useState<AdminSection['key']>('providers')
+  const [activePage, setActivePage] = useState<AdminPageKey>(readPageFromHash())
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [providerForm] = Form.useForm<ProviderRecord>()
   const [storageForm] = Form.useForm<StorageProfileRecord>()
   const [strategyForm] = Form.useForm<StrategyRecord>()
@@ -153,484 +212,559 @@ export default function App() {
   const { message } = AntApp.useApp()
   const data = useAdminData(authenticated)
 
-  const metricCards = useMemo(() => {
-    if (!data.dashboard) return []
+  const userHref = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.hostname}:3210`
+    : '/'
+
+  const setPage = (page: AdminPageKey) => {
+    setActivePage(page)
+    setMobileNavOpen(false)
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', `#${page}`)
+    }
+  }
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setActivePage(readPageFromHash())
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
+
+  useEffect(() => {
+    if (!authenticated) return
+    if (!pageKeys.has(activePage)) {
+      setPage('dashboard')
+    }
+  }, [authenticated, activePage])
+
+  const groupedPages = pageDefinitions.reduce<Record<string, AdminPageDefinition[]>>((acc, page) => {
+    acc[page.group] = [...(acc[page.group] ?? []), page]
+    return acc
+  }, {})
+  const currentPageDefinition = pageDefinitions.find((item) => item.key === activePage) ?? pageDefinitions[0]
+  const topNavItems = pageDefinitions.filter((item) => ['dashboard', 'providers', 'strategies', 'audit'].includes(item.key))
+
+  const statCards = useMemo(() => {
     return [
-      { title: '模型提供方', value: `${data.dashboard.providerCount}`, detail: `${data.dashboard.activeProviderCount} 条活动模型路由` },
-      { title: '存储配置', value: `${data.dashboard.storageProfileCount}`, detail: 'S3 / MinIO / OSS 兼容目标地址' },
-      { title: '提示词模板', value: `${data.dashboard.promptCount}`, detail: `${data.dashboard.strategyCount} 个受治理生成策略` },
+      { icon: Database, label: '模型提供方', value: `${data.dashboard?.providerCount ?? 0}`, helper: `${data.dashboard?.activeProviderCount ?? 0} 条活动模型路由` },
+      { icon: FolderCog, label: '存储配置', value: `${data.dashboard?.storageProfileCount ?? 0}`, helper: 'S3 / MinIO / OSS 兼容目标地址' },
+      { icon: Workflow, label: '生成策略', value: `${data.dashboard?.strategyCount ?? 0}`, helper: '控制领域规模与问题产出方式' },
+      { icon: Sparkles, label: '提示词模板', value: `${data.dashboard?.promptCount ?? 0}`, helper: '管理各阶段系统提示词版本' },
     ]
   }, [data.dashboard])
 
-  const activeSectionMeta = adminSections.find((item) => item.key === activeSection) ?? adminSections[0]
-  const recentAuditLogs = data.auditLogs.slice(0, 4)
-  const groupedSections = adminSections.reduce<Record<string, AdminSection[]>>((acc, section) => {
-    acc[section.group] = [...(acc[section.group] ?? []), section]
-    return acc
-  }, {})
-  const pipelineConfidence = data.dashboard
+  const deliveryConfidence = data.dashboard
     ? Math.min(100, 32 + data.dashboard.activeProviderCount * 14 + data.dashboard.promptCount * 6 + data.dashboard.strategyCount * 8)
     : 18
-  const commandStats = [
-    {
-      label: '活动路由',
-      value: `${data.dashboard?.activeProviderCount ?? 0}`,
-      detail: '在线模型提供方',
-      icon: Server,
-    },
-    {
-      label: '审计记录',
-      value: `${data.dashboard?.auditLogCount ?? 0}`,
-      detail: '最近治理变更',
-      icon: ScrollText,
-    },
-    {
-      label: '运行信号',
-      value: `${pipelineConfidence}%`,
-      detail: '当前交付信心',
-      icon: Activity,
-    },
-  ]
 
-  const tabItems = [
-    {
-      key: 'providers',
-      label: '模型提供方',
-      children: (
-        <div className="tab-grid">
-          <div className="table-shell">
-            <Table columns={providerColumns} dataSource={data.providers} pagination={false} rowKey="id" loading={data.loading} />
-          </div>
-          <Card className="sub-panel">
-            <Form
-              form={providerForm}
-              layout="vertical"
-              initialValues={{ providerType: 'openai-compatible', maxConcurrency: 4, timeoutSeconds: 120, isActive: true }}
-              onFinish={async (values) => {
-                await adminApi.saveProvider(values)
-                providerForm.resetFields()
-                await data.reload()
-                message.success('模型提供方已保存')
-              }}
-            >
-              <Form.Item name="name" label="提供方名称" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="baseUrl" label="基础 URL" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="model" label="模型" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="providerType" label="类型" rules={[{ required: true }]}><Input /></Form.Item>
-              <Space size={12} className="inline-controls">
-                <Form.Item name="maxConcurrency" label="最大并发数"><InputNumber min={1} /></Form.Item>
-                <Form.Item name="timeoutSeconds" label="超时秒数"><InputNumber min={1} /></Form.Item>
-              </Space>
-              <Form.Item name="apiKey" label="API 密钥"><Input.Password /></Form.Item>
-              <Form.Item name="isActive" label="启用" valuePropName="checked"><Switch /></Form.Item>
-              <Button type="primary" htmlType="submit">保存提供方</Button>
-            </Form>
-          </Card>
-        </div>
-      ),
-    },
-    {
-      key: 'storage',
-      label: '存储配置',
-      children: (
-        <div className="tab-grid">
-          <div className="table-shell">
-            <Table columns={storageColumns} dataSource={data.storageProfiles} pagination={false} rowKey="id" loading={data.loading} />
-          </div>
-          <Card className="sub-panel">
-            <Form
-              form={storageForm}
-              layout="vertical"
-              initialValues={{ provider: 'minio', usePathStyle: true, isDefault: true }}
-              onFinish={async (values) => {
-                await adminApi.saveStorageProfile(values)
-                storageForm.resetFields()
-                await data.reload()
-                message.success('存储配置已保存')
-              }}
-            >
-              <Form.Item name="name" label="配置名称" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="provider" label="提供方" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="endpoint" label="端点" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="region" label="地域"><Input /></Form.Item>
-              <Form.Item name="bucket" label="存储桶" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="accessKeyId" label="访问密钥 ID" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="secretAccessKey" label="访问密钥 Secret"><Input.Password /></Form.Item>
-              <Space size={12} className="inline-controls switch-row">
-                <Form.Item name="usePathStyle" label="使用 Path Style" valuePropName="checked"><Switch /></Form.Item>
-                <Form.Item name="isDefault" label="默认" valuePropName="checked"><Switch /></Form.Item>
-              </Space>
-              <Button type="primary" htmlType="submit">保存存储配置</Button>
-            </Form>
-          </Card>
-        </div>
-      ),
-    },
-    {
-      key: 'strategies',
-      label: '生成策略',
-      children: (
-        <div className="tab-grid">
-          <div className="table-shell">
-            <Table columns={strategyColumns} dataSource={data.strategies} pagination={false} rowKey="id" loading={data.loading} />
-          </div>
-          <Card className="sub-panel">
-            <Form
-              form={strategyForm}
-              layout="vertical"
-              initialValues={{ planningMode: 'balanced', domainCount: 1000, questionsPerDomain: 10, answerVariants: 1, rewardVariants: 1, isDefault: true }}
-              onFinish={async (values) => {
-                await adminApi.saveStrategy(values)
-                strategyForm.resetFields()
-                await data.reload()
-                message.success('生成策略已保存')
-              }}
-            >
-              <Form.Item name="name" label="策略名称" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="description" label="说明"><Input.TextArea rows={3} /></Form.Item>
-              <Form.Item name="planningMode" label="规划模式">
-                <Segmented options={planningModeOptions} />
-              </Form.Item>
-              <Space size={12} wrap className="inline-controls">
-                <Form.Item name="domainCount" label="领域数"><InputNumber min={1} /></Form.Item>
-                <Form.Item name="questionsPerDomain" label="每领域问题数"><InputNumber min={1} /></Form.Item>
-                <Form.Item name="answerVariants" label="答案变体数"><InputNumber min={1} /></Form.Item>
-                <Form.Item name="rewardVariants" label="奖励变体数"><InputNumber min={1} /></Form.Item>
-              </Space>
-              <Form.Item name="isDefault" label="默认" valuePropName="checked"><Switch /></Form.Item>
-              <Button type="primary" htmlType="submit">保存策略</Button>
-            </Form>
-          </Card>
-        </div>
-      ),
-    },
-    {
-      key: 'prompts',
-      label: '提示词模板',
-      children: (
-        <div className="tab-grid">
-          <div className="table-shell">
-            <Table columns={promptColumns} dataSource={data.prompts} pagination={false} rowKey="id" loading={data.loading} />
-          </div>
-          <Card className="sub-panel">
-            <Form
-              form={promptForm}
-              layout="vertical"
-              initialValues={{ stage: 'domain-generation', version: 'v1', isActive: true }}
-              onFinish={async (values) => {
-                await adminApi.savePrompt(values)
-                promptForm.resetFields()
-                await data.reload()
-                message.success('提示词模板已保存')
-              }}
-            >
-              <Form.Item name="name" label="提示词名称" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="stage" label="阶段" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="version" label="版本" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item name="systemPrompt" label="系统提示词" rules={[{ required: true }]}><Input.TextArea rows={4} /></Form.Item>
-              <Form.Item name="userPrompt" label="用户提示词" rules={[{ required: true }]}><Input.TextArea rows={4} /></Form.Item>
-              <Form.Item name="isActive" label="启用" valuePropName="checked"><Switch /></Form.Item>
-              <Button type="primary" htmlType="submit">保存提示词</Button>
-            </Form>
-          </Card>
-        </div>
-      ),
-    },
-  ]
+  const renderDashboardPage = () => (
+    <>
+      <PageHeader
+        eyebrow="治理总览"
+        title="统一治理模型、存储、策略、提示词与审计"
+        description="按 /root/new-api 的后台结构重做为头部导航、侧栏导航与分页工作区；不再把所有管理动作塞进单一长页。"
+        actions={(
+          <>
+            <button type="button" className="shell-button secondary" onClick={() => setPage('providers')}>
+              <Database size={16} strokeWidth={1.9} /> 进入资源配置
+            </button>
+            <button type="button" className="shell-button primary" onClick={() => void data.reload()} disabled={data.loading}>
+              <SpinnerIcon spinning={data.loading} /> 刷新后台
+            </button>
+          </>
+        )}
+      />
 
-  return (
-    <div className="admin-shell">
-      <motion.header className="admin-topbar" initial={{ opacity: 0, y: -18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
-        <div className="topbar-brand">
-          <div className="brand-mark">
-            <ShieldCheck size={18} strokeWidth={1.8} />
-          </div>
-          <div>
-            <span className="eyebrow">治理后台</span>
-            <strong>LLM Data Factory Console</strong>
-          </div>
-        </div>
-        <div className="topbar-actions">
-          <Tag bordered={false} color={authenticated ? 'processing' : 'default'}>{authenticated ? '已连接管理工作台' : '等待管理员登录'}</Tag>
-          {authenticated ? (
-            <Button type="default" onClick={() => void data.reload()} loading={data.loading}>刷新数据</Button>
-          ) : null}
-        </div>
-      </motion.header>
+      <div className="stat-grid four-up">
+        {statCards.map((card) => <StatCard key={card.label} {...card} />)}
+      </div>
 
-      {!authenticated ? (
-        <div className="login-layout">
-          <motion.section className="admin-hero" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <div className="hero-copy">
-              <span className="eyebrow">管理控制台</span>
-              <h1>统一治理提示词、模型提供方、存储路由与异步数据集吞吐。</h1>
-              <p>当前管理台已经可以持久化真实配置数据、加密密钥、生成策略和审计记录。</p>
-            </div>
-            <div className="hero-badges">
-              <Tag color="processing">配置治理</Tag>
-              <Tag color="success">密钥加密</Tag>
-              <Tag color="purple">异步审计</Tag>
-            </div>
-          </motion.section>
-
-          <div className="login-grid">
-            <Card className="glass-panel login-panel">
-              <div className="card-header compact-header">
-                <div>
-                  <span className="eyebrow">安全入口</span>
-                  <h2>登录后解锁管理工作台。</h2>
-                </div>
-                <LockKeyhole size={18} strokeWidth={1.8} />
+      <div className="page-layout-grid align-start">
+        <Card className="admin-panel hero-panel">
+          <SectionHeader eyebrow="治理工作台" title="把配置治理拆成可切换的独立页面" description="参考 new-api 的后台框架，把资源接入、生成治理、审计中心分别做成明确页面。" />
+          <div className="summary-list">
+            {[
+              '模型提供方与存储配置采用左右双栏：左读右写。',
+              '策略与提示词以版本化方式统一管理。',
+              '审计页专门查看治理事件，不再与编辑表单混排。',
+            ].map((item) => (
+              <div key={item} className="summary-row">
+                <ShieldCheck size={16} strokeWidth={1.9} />
+                <span>{item}</span>
               </div>
-              <Form layout="vertical" onFinish={() => setAuthenticated(true)}>
-                <Row gutter={[18, 0]}>
-                  <Col xs={24} md={12}>
-                    <Form.Item name="email" label="管理员邮箱" rules={[{ required: true, message: '请输入管理员邮箱。' }]}>
-                      <Input size="large" placeholder="admin@company.com" />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <Form.Item name="password" label="访问密钥" rules={[{ required: true, message: '请输入访问密钥。' }]}>
-                      <Input.Password size="large" placeholder="请输入安全访问密钥" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Button type="primary" htmlType="submit" size="large">进入管理工作台</Button>
+            ))}
+          </div>
+          <div className="quick-page-grid">
+            {pageDefinitions.filter((page) => page.key !== 'dashboard').map((page) => (
+              <button key={page.key} type="button" className="quick-page-card" onClick={() => setPage(page.key)}>
+                <div className="quick-page-icon"><page.icon size={18} strokeWidth={1.9} /></div>
+                <div>
+                  <strong>{page.label}</strong>
+                  <span>{page.caption}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="admin-panel side-panel">
+          <SectionHeader eyebrow="交付信心" title="当前治理覆盖度" description="根据活动提供方、策略与提示词数量估算当前平台治理完备度。" />
+          <Progress percent={deliveryConfidence} strokeColor={{ '0%': '#60a5fa', '100%': '#2563eb' }} />
+          <div className="summary-list compact-list">
+            <div className="summary-row"><span>活动模型路由</span><strong>{data.dashboard?.activeProviderCount ?? 0}</strong></div>
+            <div className="summary-row"><span>提示词模板</span><strong>{data.dashboard?.promptCount ?? 0}</strong></div>
+            <div className="summary-row"><span>审计记录</span><strong>{data.dashboard?.auditLogCount ?? 0}</strong></div>
+          </div>
+        </Card>
+      </div>
+
+      <div className="page-layout-grid align-start">
+        <Card className="admin-panel wide-panel">
+          <SectionHeader eyebrow="最近治理事件" title="审计快照" description="总览页保留最近事件速览，完整日志则单独进入审计页。" />
+          <Table columns={auditColumns} dataSource={data.auditLogs} pagination={{ pageSize: 5 }} rowKey="id" loading={data.loading} />
+        </Card>
+
+        <div className="stack-column">
+          <Card className="admin-panel side-panel">
+            <SectionHeader eyebrow="能力清单" title="当前后台能力" />
+            <List
+              dataSource={[
+                { icon: Database, label: '维护 OpenAI 协议与第三方模型网关' },
+                { icon: FolderCog, label: '管理对象存储端点与默认写入目标' },
+                { icon: Sparkles, label: '治理领域 / 问题 / 推理 / 奖励四阶段提示词' },
+              ]}
+              renderItem={(item) => (
+                <List.Item className="plain-list-item">
+                  <item.icon size={18} strokeWidth={1.9} />
+                  <span>{item.label}</span>
+                </List.Item>
+              )}
+            />
+          </Card>
+
+          <Card className="admin-panel side-panel">
+            <SectionHeader eyebrow="运行建议" title="推荐操作顺序" />
+            <div className="summary-list compact-list">
+              {['先维护提供方与存储，再创建策略。', '提示词模板更新后建议立刻查看审计日志。', '交付前至少确保一个提供方处于活动状态。'].map((item) => (
+                <div key={item} className="summary-row">
+                  <Rocket size={16} strokeWidth={1.9} />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </>
+  )
+
+  const renderProvidersPage = () => (
+    <>
+      <PageHeader
+        eyebrow="模型提供方"
+        title="维护模型网关、路由与并发参数"
+        description="用户侧调用的数据集生成接口会依赖这里配置的模型提供方与 OpenAI 兼容参数。"
+        actions={(
+          <button type="button" className="shell-button primary" onClick={() => void data.reload()} disabled={data.loading}>
+            <SpinnerIcon spinning={data.loading} /> 刷新提供方列表
+          </button>
+        )}
+      />
+
+      <div className="page-layout-grid align-start">
+        <Card className="admin-panel wide-panel">
+          <SectionHeader eyebrow="当前列表" title="模型提供方台账" description="支持官方 OpenAI、代理网关与第三方兼容接口。" />
+          <Table columns={providerColumns} dataSource={data.providers} pagination={false} rowKey="id" loading={data.loading} />
+        </Card>
+
+        <Card className="admin-panel side-panel">
+          <SectionHeader eyebrow="新增 / 更新" title="保存模型提供方" />
+          <Form
+            form={providerForm}
+            layout="vertical"
+            initialValues={{ providerType: 'openai-compatible', maxConcurrency: 4, timeoutSeconds: 120, isActive: true }}
+            onFinish={async (values) => {
+              await adminApi.saveProvider(values)
+              providerForm.resetFields()
+              await data.reload()
+              message.success('模型提供方已保存')
+            }}
+            className="editor-form"
+          >
+            <Form.Item name="name" label="提供方名称" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="baseUrl" label="基础 URL" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="model" label="模型" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="providerType" label="类型" rules={[{ required: true }]}><Input /></Form.Item>
+            <Space size={12} className="inline-controls" wrap>
+              <Form.Item name="maxConcurrency" label="最大并发数"><InputNumber min={1} /></Form.Item>
+              <Form.Item name="timeoutSeconds" label="超时秒数"><InputNumber min={1} /></Form.Item>
+            </Space>
+            <Form.Item name="apiKey" label="API 密钥"><Input.Password /></Form.Item>
+            <Form.Item name="isActive" label="启用" valuePropName="checked"><Switch /></Form.Item>
+            <Button type="primary" htmlType="submit" size="large" block>保存提供方</Button>
+          </Form>
+        </Card>
+      </div>
+    </>
+  )
+
+  const renderStoragePage = () => (
+    <>
+      <PageHeader
+        eyebrow="存储配置"
+        title="维护 S3 / MinIO / OSS 存储目标"
+        description="长思维链、奖励数据与导出工件都依赖这里定义的对象存储端点与桶配置。"
+        actions={(
+          <button type="button" className="shell-button primary" onClick={() => void data.reload()} disabled={data.loading}>
+            <SpinnerIcon spinning={data.loading} /> 刷新存储配置
+          </button>
+        )}
+      />
+
+      <div className="page-layout-grid align-start">
+        <Card className="admin-panel wide-panel">
+          <SectionHeader eyebrow="当前列表" title="对象存储台账" description="统一维护端点、地域、桶、路径风格与默认写入配置。" />
+          <Table columns={storageColumns} dataSource={data.storageProfiles} pagination={false} rowKey="id" loading={data.loading} />
+        </Card>
+
+        <Card className="admin-panel side-panel">
+          <SectionHeader eyebrow="新增 / 更新" title="保存存储配置" />
+          <Form
+            form={storageForm}
+            layout="vertical"
+            initialValues={{ provider: 'minio', usePathStyle: true, isDefault: true }}
+            onFinish={async (values) => {
+              await adminApi.saveStorageProfile(values)
+              storageForm.resetFields()
+              await data.reload()
+              message.success('存储配置已保存')
+            }}
+            className="editor-form"
+          >
+            <Form.Item name="name" label="配置名称" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="provider" label="提供方" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="endpoint" label="端点" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="region" label="地域"><Input /></Form.Item>
+            <Form.Item name="bucket" label="存储桶" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="accessKeyId" label="访问密钥 ID" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="secretAccessKey" label="访问密钥 Secret"><Input.Password /></Form.Item>
+            <Space size={12} className="inline-controls" wrap>
+              <Form.Item name="usePathStyle" label="使用 Path Style" valuePropName="checked"><Switch /></Form.Item>
+              <Form.Item name="isDefault" label="默认" valuePropName="checked"><Switch /></Form.Item>
+            </Space>
+            <Button type="primary" htmlType="submit" size="large" block>保存存储配置</Button>
+          </Form>
+        </Card>
+      </div>
+    </>
+  )
+
+  const renderStrategiesPage = () => (
+    <>
+      <PageHeader
+        eyebrow="生成策略"
+        title="定义领域规模、问题量与奖励变体"
+        description="用户侧输入目标数据集规模后，会在这里定义的策略约束内推导领域数量和各阶段体量。"
+        actions={(
+          <button type="button" className="shell-button primary" onClick={() => void data.reload()} disabled={data.loading}>
+            <SpinnerIcon spinning={data.loading} /> 刷新策略
+          </button>
+        )}
+      />
+
+      <div className="page-layout-grid align-start">
+        <Card className="admin-panel wide-panel">
+          <SectionHeader eyebrow="当前列表" title="生成策略台账" description="管理领域数量、每领域问题数、答案变体与奖励变体。" />
+          <Table columns={strategyColumns} dataSource={data.strategies} pagination={false} rowKey="id" loading={data.loading} />
+        </Card>
+
+        <Card className="admin-panel side-panel">
+          <SectionHeader eyebrow="新增 / 更新" title="保存生成策略" />
+          <Form
+            form={strategyForm}
+            layout="vertical"
+            initialValues={{ planningMode: 'balanced', domainCount: 1000, questionsPerDomain: 10, answerVariants: 1, rewardVariants: 1, isDefault: true }}
+            onFinish={async (values) => {
+              await adminApi.saveStrategy(values)
+              strategyForm.resetFields()
+              await data.reload()
+              message.success('生成策略已保存')
+            }}
+            className="editor-form"
+          >
+            <Form.Item name="name" label="策略名称" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="description" label="说明"><Input.TextArea rows={3} /></Form.Item>
+            <Form.Item name="planningMode" label="规划模式"><Segmented options={planningModeOptions} block /></Form.Item>
+            <Space size={12} className="inline-controls" wrap>
+              <Form.Item name="domainCount" label="领域数"><InputNumber min={1} /></Form.Item>
+              <Form.Item name="questionsPerDomain" label="每领域问题数"><InputNumber min={1} /></Form.Item>
+              <Form.Item name="answerVariants" label="答案变体数"><InputNumber min={1} /></Form.Item>
+              <Form.Item name="rewardVariants" label="奖励变体数"><InputNumber min={1} /></Form.Item>
+            </Space>
+            <Form.Item name="isDefault" label="默认" valuePropName="checked"><Switch /></Form.Item>
+            <Button type="primary" htmlType="submit" size="large" block>保存策略</Button>
+          </Form>
+        </Card>
+      </div>
+    </>
+  )
+
+  const renderPromptsPage = () => (
+    <>
+      <PageHeader
+        eyebrow="提示词模板"
+        title="治理各阶段系统提示词与版本"
+        description="领域生成、问题生成、长链推理和奖励评估都依赖这里维护的系统提示词与用户提示词模板。"
+        actions={(
+          <button type="button" className="shell-button primary" onClick={() => void data.reload()} disabled={data.loading}>
+            <SpinnerIcon spinning={data.loading} /> 刷新提示词
+          </button>
+        )}
+      />
+
+      <div className="page-layout-grid align-start">
+        <Card className="admin-panel wide-panel">
+          <SectionHeader eyebrow="当前列表" title="提示词模板台账" description="统一维护阶段、版本、系统提示词与用户提示词。" />
+          <Table columns={promptColumns} dataSource={data.prompts} pagination={false} rowKey="id" loading={data.loading} />
+        </Card>
+
+        <Card className="admin-panel side-panel">
+          <SectionHeader eyebrow="新增 / 更新" title="保存提示词模板" />
+          <Form
+            form={promptForm}
+            layout="vertical"
+            initialValues={{ stage: 'domain-generation', version: 'v1', isActive: true }}
+            onFinish={async (values) => {
+              await adminApi.savePrompt(values)
+              promptForm.resetFields()
+              await data.reload()
+              message.success('提示词模板已保存')
+            }}
+            className="editor-form"
+          >
+            <Form.Item name="name" label="提示词名称" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="stage" label="阶段" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="version" label="版本" rules={[{ required: true }]}><Input /></Form.Item>
+            <Form.Item name="systemPrompt" label="系统提示词" rules={[{ required: true }]}><Input.TextArea rows={4} /></Form.Item>
+            <Form.Item name="userPrompt" label="用户提示词" rules={[{ required: true }]}><Input.TextArea rows={4} /></Form.Item>
+            <Form.Item name="isActive" label="启用" valuePropName="checked"><Switch /></Form.Item>
+            <Button type="primary" htmlType="submit" size="large" block>保存提示词</Button>
+          </Form>
+        </Card>
+      </div>
+    </>
+  )
+
+  const renderAuditPage = () => (
+    <>
+      <PageHeader
+        eyebrow="审计中心"
+        title="追踪配置变更与治理事件"
+        description="审计页独立出来，专门用于回看谁在什么时候修改了哪一类治理配置。"
+        actions={(
+          <button type="button" className="shell-button primary" onClick={() => void data.reload()} disabled={data.loading}>
+            <SpinnerIcon spinning={data.loading} /> 刷新审计日志
+          </button>
+        )}
+      />
+
+      <div className="page-layout-grid align-start">
+        <Card className="admin-panel wide-panel">
+          <SectionHeader eyebrow="完整日志" title="治理事件列表" description="建议在模型、存储、策略和提示词发生变更后立刻回到这里复核。" />
+          <Table columns={auditColumns} dataSource={data.auditLogs} pagination={{ pageSize: 10 }} rowKey="id" loading={data.loading} />
+        </Card>
+
+        <div className="stack-column">
+          <Card className="admin-panel side-panel">
+            <SectionHeader eyebrow="审计摘要" title="最近统计" />
+            <div className="summary-list compact-list">
+              <div className="summary-row"><span>审计记录</span><strong>{data.dashboard?.auditLogCount ?? 0}</strong></div>
+              <div className="summary-row"><span>提示词模板</span><strong>{data.dashboard?.promptCount ?? 0}</strong></div>
+              <div className="summary-row"><span>生成策略</span><strong>{data.dashboard?.strategyCount ?? 0}</strong></div>
+            </div>
+          </Card>
+
+          <Card className="admin-panel side-panel">
+            <SectionHeader eyebrow="治理原则" title="建议保留的审计习惯" />
+            <List
+              dataSource={[
+                '更新提供方密钥后立刻检查审计日志。',
+                '更换默认存储路由后建议执行导出链路回归。',
+                '新增提示词模板版本后建议记录切换原因。',
+              ]}
+              renderItem={(item) => <List.Item className="plain-list-item">{item}</List.Item>}
+            />
+          </Card>
+        </div>
+      </div>
+    </>
+  )
+
+  const renderCurrentPage = () => {
+    switch (activePage) {
+      case 'providers':
+        return renderProvidersPage()
+      case 'storage':
+        return renderStoragePage()
+      case 'strategies':
+        return renderStrategiesPage()
+      case 'prompts':
+        return renderPromptsPage()
+      case 'audit':
+        return renderAuditPage()
+      case 'dashboard':
+      default:
+        return renderDashboardPage()
+    }
+  }
+
+  if (!authenticated) {
+    return (
+      <div className="admin-landing-shell">
+        <header className="admin-landing-header">
+          <div className="admin-brand-lockup">
+            <div className="admin-brand-badge"><ShieldCheck size={18} strokeWidth={1.9} /></div>
+            <div>
+              <strong>LLM Data Factory Console</strong>
+              <p>面向运营与平台管理员的治理后台</p>
+            </div>
+          </div>
+          <a className="shell-button secondary link-button" href={userHref}>用户工作台</a>
+        </header>
+
+        <main className="admin-landing-main">
+          <section className="admin-landing-hero">
+            <div className="hero-copy">
+              <span className="eyebrow">治理后台</span>
+              <h1>统一维护模型、存储、策略、提示词与审计。</h1>
+              <p>后台页面结构完全按 /root/new-api 的控制台方式重做为头部导航、侧栏导航与分页工作区，专门服务企业级数据工厂的资源治理与变更审计。</p>
+              <div className="hero-tags">
+                <Tag color="processing">模型路由治理</Tag>
+                <Tag color="green">对象存储治理</Tag>
+                <Tag color="purple">提示词版本治理</Tag>
+              </div>
+            </div>
+
+            <Card className="admin-panel login-panel">
+              <SectionHeader eyebrow="安全入口" title="登录后台工作台" description="登录后进入重构后的分页管理控制台。" />
+              <Form layout="vertical" onFinish={() => { setAuthenticated(true); setPage('dashboard') }} className="editor-form">
+                <Form.Item name="email" label="管理员邮箱" rules={[{ required: true, message: '请输入管理员邮箱。' }]}>
+                  <Input size="large" placeholder="admin@company.com" />
+                </Form.Item>
+                <Form.Item name="password" label="访问密钥" rules={[{ required: true, message: '请输入访问密钥。' }]}>
+                  <Input.Password size="large" placeholder="请输入安全访问密钥" />
+                </Form.Item>
+                <Button type="primary" htmlType="submit" size="large" block>进入管理工作台</Button>
               </Form>
             </Card>
+          </section>
 
-            <div className="login-side-grid">
-              <Card className="glass-panel compact-panel">
-                <div className="card-header compact-header">
-                  <div>
-                    <span className="eyebrow">治理视角</span>
-                    <h2>进入后即可查看</h2>
-                  </div>
-                  <Boxes size={18} strokeWidth={1.8} />
-                </div>
-                <List
-                  dataSource={[
-                    { icon: Database, label: '模型提供方与路由状态总览' },
-                    { icon: FolderCog, label: '对象存储默认写入策略' },
-                    { icon: Workflow, label: '生成策略与提示词版本治理' },
-                  ]}
-                  renderItem={(item) => (
-                    <List.Item className="list-item">
-                      <item.icon size={18} strokeWidth={1.8} />
-                      <span>{item.label}</span>
-                    </List.Item>
-                  )}
-                />
+          <section className="admin-landing-grid">
+            {[
+              { icon: Database, title: '模型提供方', description: '维护兼容 OpenAI 协议与第三方模型路由。' },
+              { icon: FolderCog, title: '对象存储', description: '统一管理 S3 / MinIO / OSS 存储落点。' },
+              { icon: Workflow, title: '生成策略', description: '定义领域数、问题数和样本扩增方式。' },
+              { icon: FileText, title: '审计日志', description: '记录关键治理动作，支持后台复核。' },
+            ].map((item) => (
+              <Card key={item.title} className="admin-panel feature-panel">
+                <div className="feature-icon"><item.icon size={18} strokeWidth={1.9} /></div>
+                <h2>{item.title}</h2>
+                <p>{item.description}</p>
               </Card>
-              <Card className="glass-panel compact-panel">
-                <div className="card-header compact-header">
-                  <div>
-                    <span className="eyebrow">安全与审计</span>
-                    <h2>上线前治理能力</h2>
-                  </div>
-                  <ShieldEllipsis size={18} strokeWidth={1.8} />
-                </div>
-                <Progress percent={38} strokeColor={{ '0%': '#7dd3fc', '100%': '#60a5fa' }} />
-                <p className="support-copy">完成登录后可查看真实配置、写入状态与最近审计轨迹。</p>
-              </Card>
+            ))}
+          </section>
+        </main>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`admin-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${mobileNavOpen ? 'mobile-nav-open' : ''}`}>
+      <header className="admin-header">
+        <div className="admin-header-inner">
+          <div className="header-leading">
+            <button type="button" className="icon-button mobile-only" onClick={() => setMobileNavOpen((current) => !current)}>
+              {mobileNavOpen ? <X size={18} strokeWidth={1.9} /> : <Menu size={18} strokeWidth={1.9} />}
+            </button>
+            <div className="admin-brand-lockup">
+              <div className="admin-brand-badge"><ShieldCheck size={18} strokeWidth={1.9} /></div>
+              <div>
+                <strong>LLM Data Factory Console</strong>
+                <p>{currentPageDefinition.label} / {currentPageDefinition.caption}</p>
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        <div className={`admin-workspace${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
-          <aside className={`admin-sidebar${sidebarCollapsed ? ' collapsed' : ''}`}>
-            <div className="sidebar-intro">
-              <span className="eyebrow">导航目录</span>
-              <h2>后台工作区</h2>
-              <p>沿用参考后台的侧边栏节奏，把高频治理动作收拢到单侧导航。</p>
-            </div>
 
-            <div className="sidebar-nav">
-              {Object.entries(groupedSections).map(([group, sections]) => (
-                <div key={group} className="sidebar-group">
-                  <span className="sidebar-group-label">{group}</span>
-                  {sections.map((section) => {
-                    const SectionIcon = section.icon
-                    const isActive = section.key === activeSection
-                    return (
-                      <button
-                        key={section.key}
-                        type="button"
-                        className={`sidebar-nav-item${isActive ? ' active' : ''}`}
-                        onClick={() => setActiveSection(section.key)}
-                      >
-                        <span className="sidebar-icon"><SectionIcon size={18} strokeWidth={1.8} /></span>
-                        <span className="sidebar-copy">
-                          <strong>{section.label}</strong>
-                          <span>{section.caption}</span>
-                        </span>
-                        <ArrowUpRight size={16} strokeWidth={1.8} className="sidebar-arrow" />
-                      </button>
-                    )
-                  })}
-                </div>
-              ))}
-            </div>
+          <nav className="admin-topnav desktop-only">
+            {topNavItems.map((item) => (
+              <button key={item.key} type="button" className={`admin-topnav-item ${activePage === item.key ? 'active' : ''}`} onClick={() => setPage(item.key)}>
+                <item.icon size={15} strokeWidth={1.9} />
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </nav>
 
-            <button
-              type="button"
-              className="sidebar-collapse-button"
-              onClick={() => setSidebarCollapsed((current) => !current)}
-            >
-              {sidebarCollapsed ? <PanelLeftOpen size={16} strokeWidth={1.8} /> : <PanelLeftClose size={16} strokeWidth={1.8} />}
-              <span>{sidebarCollapsed ? '展开导航' : '折叠导航'}</span>
+          <div className="header-actions">
+            <button type="button" className="icon-button desktop-only" onClick={() => setSidebarCollapsed((current) => !current)}>
+              {sidebarCollapsed ? <PanelLeftOpen size={18} strokeWidth={1.9} /> : <PanelLeftClose size={18} strokeWidth={1.9} />}
             </button>
-
-            <Card className="sub-panel compact-panel sidebar-panel">
-              <div className="card-header compact-header">
-                <div>
-                  <span className="eyebrow">最近审计</span>
-                  <h2>变更快照</h2>
-                </div>
-                <Logs size={18} strokeWidth={1.8} />
-              </div>
-              <div className="sidebar-feed">
-                {recentAuditLogs.length > 0 ? recentAuditLogs.map((item) => (
-                  <div key={item.id} className="feed-item">
-                    <strong>{item.action}</strong>
-                    <span>{item.actor} · {item.resourceType}</span>
-                    <p>{item.detail}</p>
-                  </div>
-                )) : <p className="empty-copy">暂无审计数据，登录后将自动展示最近治理事件。</p>}
-              </div>
-            </Card>
-
-            <Card className="sub-panel compact-panel sidebar-panel">
-              <div className="card-header compact-header">
-                <div>
-                  <span className="eyebrow">阶段完成度</span>
-                  <h2>交付信心</h2>
-                </div>
-                <Workflow size={18} strokeWidth={1.8} />
-              </div>
-              <Progress percent={pipelineConfidence} strokeColor={{ '0%': '#38bdf8', '100%': '#818cf8' }} />
-              <p className="support-copy">根据已激活提供方、提示词模板和治理策略数量动态估算。</p>
-            </Card>
-          </aside>
-
-          <main className="admin-main">
-            <motion.section className="admin-hero" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
-              <div className="hero-copy">
-                <span className="eyebrow">当前焦点</span>
-                <h1>{activeSectionMeta.label}</h1>
-                <p>{activeSectionMeta.caption}。保持既有 API 行为不变，同时把治理入口重构为更接近参考后台的工作区布局。</p>
-              </div>
-              <div className="hero-badges">
-                <Tag color="processing">统一导航</Tag>
-                <Tag color="cyan">玻璃态工作区</Tag>
-                <Tag color="purple">高密度治理面板</Tag>
-              </div>
-            </motion.section>
-
-            <section className="command-strip">
-              {commandStats.map((item) => (
-                <Card key={item.label} className="glass-panel command-card">
-                  <div className="command-card-header">
-                    <span>{item.label}</span>
-                    <item.icon size={16} strokeWidth={1.8} />
-                  </div>
-                  <strong>{item.value}</strong>
-                  <p>{item.detail}</p>
-                </Card>
-              ))}
-            </section>
-
-            <div className="metric-grid">
-              {metricCards.map((item, index) => (
-                <motion.div key={item.title} initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 * index }}>
-                  <Card className="glass-panel metric-panel">
-                    <span className="metric-title">{item.title}</span>
-                    <strong>{item.value}</strong>
-                    <p>{item.detail}</p>
-                  </Card>
-                </motion.div>
-              ))}
-            </div>
-
-            <div className="content-grid">
-              <Card className="glass-panel workspace-panel">
-                <div className="card-header workspace-header">
-                  <div>
-                    <span className="eyebrow">配置与治理中心</span>
-                    <h2>围绕侧边栏导航组织核心编辑动作</h2>
-                    <p className="workspace-support">参考控制台的信息架构，把主要读写动作集中在同一块深色操作画布中。</p>
-                  </div>
-                  <div className="workspace-badges">
-                    <Tag bordered={false} color="geekblue">{activeSectionMeta.label}</Tag>
-                    <Tag bordered={false} color="processing">{activeSectionMeta.group}</Tag>
-                  </div>
-                </div>
-                <Tabs className="control-tabs" activeKey={activeSection} onChange={(value) => setActiveSection(value as AdminSection['key'])} items={tabItems} />
-              </Card>
-
-              <div className="insight-column">
-                <Card className="glass-panel compact-panel">
-                  <div className="card-header compact-header">
-                    <div>
-                      <span className="eyebrow">能力清单</span>
-                      <h2>当前管理侧能力</h2>
-                    </div>
-                    <Layers3 size={18} strokeWidth={1.8} />
-                  </div>
-                  <List
-                    dataSource={[
-                      { icon: FolderCog, label: '模型提供方与存储配置的增删改查' },
-                      { icon: Database, label: '在 PostgreSQL 中持久化加密密钥' },
-                      { icon: ShieldEllipsis, label: '具备审计能力的管理信息架构' },
-                    ]}
-                    renderItem={(item) => (
-                      <List.Item className="list-item">
-                        <item.icon size={18} strokeWidth={1.8} />
-                        <span>{item.label}</span>
-                      </List.Item>
-                    )}
-                  />
-                </Card>
-
-                <Card className="glass-panel compact-panel">
-                  <div className="card-header compact-header">
-                    <div>
-                      <span className="eyebrow">治理摘要</span>
-                      <h2>平台信号</h2>
-                    </div>
-                    <Sparkles size={18} strokeWidth={1.8} />
-                  </div>
-                  <div className="status-pills">
-                    <div className="status-pill">
-                      <span>活动提供方</span>
-                      <strong>{data.dashboard?.activeProviderCount ?? 0}</strong>
-                    </div>
-                    <div className="status-pill">
-                      <span>审计记录</span>
-                      <strong>{data.dashboard?.auditLogCount ?? 0}</strong>
-                    </div>
-                    <div className="status-pill">
-                      <span>策略模板</span>
-                      <strong>{data.dashboard?.strategyCount ?? 0}</strong>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="glass-panel compact-panel">
-                  <div className="card-header compact-header">
-                    <div>
-                      <span className="eyebrow">审计轨迹</span>
-                      <h2>最近治理事件</h2>
-                    </div>
-                    <Logs size={18} strokeWidth={1.8} />
-                  </div>
-                  <Table columns={auditColumns} dataSource={data.auditLogs} pagination={{ pageSize: 5 }} rowKey="id" loading={data.loading} size="small" />
-                </Card>
-              </div>
-            </div>
-          </main>
+            <button type="button" className="icon-button" onClick={() => void data.reload()} disabled={data.loading}>
+              <SpinnerIcon spinning={data.loading} />
+            </button>
+            <a className="shell-button secondary link-button" href={userHref}>用户工作台</a>
+          </div>
         </div>
-      )}
+      </header>
+
+      <aside className="admin-sidebar">
+        <div className="admin-sidebar-content">
+          <Card className="admin-panel sidebar-panel">
+            <SectionHeader eyebrow="工作区导航" title="后台控制台" description="按照参考项目的结构，把治理动作拆成清晰的分页工作区。" />
+          </Card>
+
+          {Object.entries(groupedPages).map(([group, pages]) => (
+            <div key={group} className="sidebar-group">
+              <span className="sidebar-group-label">{group}</span>
+              <div className="sidebar-nav-list">
+                {pages.map((page) => (
+                  <button key={page.key} type="button" className={`sidebar-nav-item ${activePage === page.key ? 'active' : ''}`} onClick={() => setPage(page.key)}>
+                    <div className="sidebar-nav-icon"><page.icon size={18} strokeWidth={1.9} /></div>
+                    <div className="sidebar-nav-copy">
+                      <strong>{page.label}</strong>
+                      <span>{page.caption}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <Card className="admin-panel sidebar-panel">
+            <SectionHeader eyebrow="平台摘要" title="关键计数" />
+            <div className="summary-list compact-list">
+              <div className="summary-row"><span>活动路由</span><strong>{data.dashboard?.activeProviderCount ?? 0}</strong></div>
+              <div className="summary-row"><span>存储配置</span><strong>{data.dashboard?.storageProfileCount ?? 0}</strong></div>
+              <div className="summary-row"><span>提示词模板</span><strong>{data.dashboard?.promptCount ?? 0}</strong></div>
+            </div>
+          </Card>
+        </div>
+      </aside>
+
+      <button type="button" className="sidebar-backdrop" onClick={() => setMobileNavOpen(false)} aria-label="关闭侧栏" />
+
+      <main className="admin-main">
+        <motion.div
+          key={activePage}
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.22 }}
+          className="admin-page"
+        >
+          {renderCurrentPage()}
+        </motion.div>
+      </main>
     </div>
   )
 }
