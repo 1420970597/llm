@@ -138,6 +138,26 @@ rg -n "localhost|127\.0\.0\.1" apps/web-user apps/web-admin -g '!**/dist/**'
 
 如果命令无输出，说明前端源码没有写死本地回环地址。
 
+补充说明：
+- `deployments/compose/docker-compose.yml` 中的 `127.0.0.1` 仅用于 **容器内部健康检查**
+- 这些健康检查不会暴露给浏览器，也不会让公网访问的页面去请求宿主机或用户本机的 loopback 地址
+
+### 5.3 同源代理自检
+
+可以直接通过前端入口验证同源 `/api` 代理是否正常：
+
+```bash
+curl http://127.0.0.1:3210/api/v1/platform/runtime
+curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
+curl http://127.0.0.1:3211/api/v1/admin/dashboard
+curl http://127.0.0.1:3211/api/v1/admin/providers
+```
+
+如果以上命令返回 JSON，说明：
+- 浏览器侧请求走的是前端站点同源 `/api`
+- `web-user` / `web-admin` 的 nginx 反向代理已经生效
+- 前端不会因为写死 `localhost:38080` 而触发浏览器私网访问问题
+
 ---
 
 ## 6. 主要业务流程
@@ -244,7 +264,7 @@ rg -n "localhost|127\.0\.0\.1" apps/web-user apps/web-admin -g '!**/dist/**'
 可用以下命令测试：
 
 ```bash
-curl http://127.0.0.1:3210/api/v1/platform/overview
+curl http://127.0.0.1:3210/api/v1/platform/runtime
 curl http://127.0.0.1:3211/api/v1/admin/dashboard
 ```
 
@@ -301,4 +321,3 @@ npm run build
 docker compose -f deployments/compose/docker-compose.yml config
 docker run --rm -v /root/llm:/workspace -w /workspace --entrypoint /bin/sh golang:1.24 -lc 'export PATH=/usr/local/go/bin:$PATH && go test ./...'
 ```
-
