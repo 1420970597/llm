@@ -1,7 +1,44 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, BrainCircuit, DatabaseZap, GitBranch, Save, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowRight, BrainCircuit, DatabaseZap, GitBranch, HardDriveDownload, LayoutDashboard, Save, ShieldCheck, Sparkles } from 'lucide-react'
 import { Artifact, Dataset, DatasetGraph, Domain, Provider, Question, ReasoningRecord, RewardRecord, RuntimeStatus, StorageProfile, Strategy, userApi } from './lib/api'
+
+function statusLabel(status: string) {
+  switch (status) {
+    case 'draft':
+      return '草稿'
+    case 'domains_confirmed':
+      return '领域已确认'
+    case 'questions_generated':
+      return '问题已生成'
+    case 'reasoning_generated':
+      return '推理已生成'
+    case 'rewards_generated':
+      return '奖励数据已生成'
+    default:
+      return status
+  }
+}
+
+function sourceLabel(source: string) {
+  switch (source) {
+    case 'ai':
+      return '模型生成'
+    case 'mock':
+      return '模拟数据'
+    default:
+      return source
+  }
+}
+
+function artifactTypeLabel(type: string) {
+  switch (type) {
+    case 'jsonl-export':
+      return 'JSONL 导出包'
+    default:
+      return type
+  }
+}
 
 function GraphPreview({ rootKeyword, domains }: { rootKeyword: string; domains: Domain[] }) {
   const visible = domains.slice(0, 16)
@@ -22,20 +59,20 @@ function GraphPreview({ rootKeyword, domains }: { rootKeyword: string; domains: 
 
   return (
     <div className="graph-surface">
-      <svg viewBox={`0 0 ${width} ${height}`} className="graph-svg" role="img" aria-label="domain graph preview">
+      <svg viewBox={`0 0 ${width} ${height}`} className="graph-svg" role="img" aria-label="领域图谱预览">
         {positioned.map((node) => (
-          <line key={`line-${node.id}`} x1={centerX} y1={centerY} x2={node.x} y2={node.y} stroke="rgba(163, 204, 255, 0.28)" strokeWidth="1.5" />
+          <line key={`line-${node.id}`} x1={centerX} y1={centerY} x2={node.x} y2={node.y} stroke="rgba(80, 129, 255, 0.18)" strokeWidth="1.4" />
         ))}
-        <circle cx={centerX} cy={centerY} r="48" fill="rgba(148, 189, 255, 0.16)" stroke="rgba(190, 214, 255, 0.55)" />
+        <circle cx={centerX} cy={centerY} r="48" fill="rgba(79, 109, 245, 0.12)" stroke="rgba(79, 109, 245, 0.45)" />
         <text x={centerX} y={centerY} textAnchor="middle" dominantBaseline="middle" className="graph-root-text">{rootKeyword}</text>
         {positioned.map((node) => (
           <g key={node.id}>
-            <circle cx={node.x} cy={node.y} r="30" fill="rgba(12, 22, 40, 0.88)" stroke="rgba(148, 189, 255, 0.55)" />
-            <text x={node.x} y={node.y} textAnchor="middle" dominantBaseline="middle" className="graph-node-text">{node.name.slice(0, 10)}</text>
+            <circle cx={node.x} cy={node.y} r="30" fill="#ffffff" stroke="rgba(79, 109, 245, 0.26)" />
+            <text x={node.x} y={node.y} textAnchor="middle" dominantBaseline="middle" className="graph-node-text">{node.name.slice(0, 8)}</text>
           </g>
         ))}
       </svg>
-      {domains.length > visible.length ? <p className="graph-caption">Showing 16 of {domains.length} generated domains in the preview graph.</p> : null}
+      {domains.length > visible.length ? <p className="graph-caption">当前图谱仅展示前 16 个领域节点，实际已生成 {domains.length} 个领域。</p> : null}
     </div>
   )
 }
@@ -64,18 +101,23 @@ export default function App() {
     storageProfileId: 0,
   })
 
+  const adminHref = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.hostname}:3211`
+    : '/'
+
   const loadBootstrap = async () => {
-    const [strategyData, providerData, storageData, datasetData] = await Promise.all([
+    const [strategyData, providerData, storageData, datasetData, runtimeData] = await Promise.all([
       userApi.listStrategies(),
       userApi.listProviders(),
       userApi.listStorageProfiles(),
       userApi.listDatasets(),
+      userApi.runtimeStatus(),
     ])
     setStrategies(strategyData)
     setProviders(providerData)
     setStorageProfiles(storageData)
     setDatasets(datasetData)
-    setRuntime(await userApi.runtimeStatus())
+    setRuntime(runtimeData)
     setFormState((current) => ({
       ...current,
       strategyId: current.strategyId || strategyData[0]?.id || 0,
@@ -85,28 +127,24 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!authenticated) {
-      return
-    }
+    if (!authenticated) return
     void loadBootstrap().catch((error: Error) => setMessage(error.message))
   }, [authenticated])
 
   const plannerCards = useMemo(() => {
-    if (!estimate) {
-      return []
-    }
+    if (!estimate) return []
     return [
-      { label: 'Domains', value: estimate.domainCount },
-      { label: 'Questions / domain', value: estimate.questionsPerDomain },
-      { label: 'Estimated questions', value: estimate.estimatedQuestions },
-      { label: 'Estimated samples', value: estimate.estimatedSamples },
+      { label: '领域数', value: estimate.domainCount },
+      { label: '每领域问题数', value: estimate.questionsPerDomain },
+      { label: '预计问题数', value: estimate.estimatedQuestions },
+      { label: '预计样本数', value: estimate.estimatedSamples },
     ]
   }, [estimate])
 
   const submitLogin = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setAuthenticated(true)
-    setMessage('Workspace unlocked. Configure planning inputs and generate a domain graph.')
+    setMessage('工作台已解锁，请先完成计划配置并生成领域图谱。')
   }
 
   const estimatePlan = async () => {
@@ -118,7 +156,7 @@ export default function App() {
         strategyId: Number(formState.strategyId),
       })
       setEstimate(nextEstimate)
-      setMessage('Dataset scale estimate refreshed.')
+      setMessage('数据集规模估算已刷新。')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -128,13 +166,13 @@ export default function App() {
 
   const createDataset = async () => {
     if (!estimate) {
-      setMessage('Please estimate the dataset plan first.')
+      setMessage('请先完成数据集计划估算。')
       return
     }
     setLoading(true)
     try {
       const created = await userApi.createDataset({
-        name: formState.name || `${formState.rootKeyword} dataset`,
+        name: formState.name || `${formState.rootKeyword} 数据集`,
         rootKeyword: formState.rootKeyword,
         targetSize: Number(formState.targetSize),
         strategyId: Number(formState.strategyId),
@@ -151,7 +189,7 @@ export default function App() {
       setArtifacts([])
       setDatasets(await userApi.listDatasets())
       setRuntime(await userApi.runtimeStatus())
-      setMessage('Dataset created. You can now generate its domain graph.')
+      setMessage('数据集已创建，现在可以生成领域图谱。')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -161,14 +199,14 @@ export default function App() {
 
   const generateDomains = async () => {
     if (!graph) {
-      setMessage('Create a dataset before generating domains.')
+      setMessage('请先创建数据集，再生成领域。')
       return
     }
     setLoading(true)
     try {
       const nextGraph = await userApi.generateDomains(graph.dataset.id)
       setGraph(nextGraph)
-      setMessage(`Generated ${nextGraph.domains.length} domains for review.`)
+      setMessage(`已生成 ${nextGraph.domains.length} 个领域，等待审核。`)
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -184,13 +222,11 @@ export default function App() {
   }
 
   const saveGraph = async () => {
-    if (!graph) {
-      return
-    }
+    if (!graph) return
     setLoading(true)
     try {
       await userApi.updateGraph(graph.dataset.id, graph.domains)
-      setMessage('Graph edits saved.')
+      setMessage('图谱编辑已保存。')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -199,15 +235,13 @@ export default function App() {
   }
 
   const confirmDomains = async () => {
-    if (!graph) {
-      return
-    }
+    if (!graph) return
     setLoading(true)
     try {
       await userApi.confirmDomains(graph.dataset.id)
       const refreshed = await userApi.getDataset(graph.dataset.id)
       setGraph(refreshed)
-      setMessage('Domains confirmed. The dataset is ready for question generation.')
+      setMessage('领域已确认，数据集已可进入问题生成阶段。')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -216,13 +250,11 @@ export default function App() {
   }
 
   const generateQuestions = async () => {
-    if (!graph) {
-      return
-    }
+    if (!graph) return
     setLoading(true)
     try {
       await userApi.generateQuestions(graph.dataset.id)
-      setMessage('Question generation job queued. Refresh questions in a moment to see the results.')
+      setMessage('问题生成任务已入队，请稍后刷新查看结果。')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -231,14 +263,12 @@ export default function App() {
   }
 
   const refreshQuestions = async () => {
-    if (!graph) {
-      return
-    }
+    if (!graph) return
     setLoading(true)
     try {
       setQuestions(await userApi.listQuestions(graph.dataset.id))
       setRuntime(await userApi.runtimeStatus())
-      setMessage('Question preview refreshed.')
+      setMessage('问题预览已刷新。')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -247,13 +277,11 @@ export default function App() {
   }
 
   const generateReasoning = async () => {
-    if (!graph) {
-      return
-    }
+    if (!graph) return
     setLoading(true)
     try {
       await userApi.generateReasoning(graph.dataset.id)
-      setMessage('Reasoning generation job queued. Refresh reasoning shortly to inspect long-form outputs.')
+      setMessage('推理生成任务已入队，请稍后刷新查看长文本结果。')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -262,14 +290,12 @@ export default function App() {
   }
 
   const refreshReasoning = async () => {
-    if (!graph) {
-      return
-    }
+    if (!graph) return
     setLoading(true)
     try {
       setReasoning(await userApi.listReasoning(graph.dataset.id))
       setRuntime(await userApi.runtimeStatus())
-      setMessage('Reasoning preview refreshed.')
+      setMessage('推理预览已刷新。')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -278,13 +304,11 @@ export default function App() {
   }
 
   const generateRewards = async () => {
-    if (!graph) {
-      return
-    }
+    if (!graph) return
     setLoading(true)
     try {
       await userApi.generateRewards(graph.dataset.id)
-      setMessage('Reward generation job queued. Refresh reward records shortly to inspect scores.')
+      setMessage('奖励数据生成任务已入队，请稍后刷新查看评分结果。')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -293,14 +317,12 @@ export default function App() {
   }
 
   const refreshRewards = async () => {
-    if (!graph) {
-      return
-    }
+    if (!graph) return
     setLoading(true)
     try {
       setRewards(await userApi.listRewards(graph.dataset.id))
       setRuntime(await userApi.runtimeStatus())
-      setMessage('Reward preview refreshed.')
+      setMessage('奖励预览已刷新。')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -309,13 +331,11 @@ export default function App() {
   }
 
   const generateExport = async () => {
-    if (!graph) {
-      return
-    }
+    if (!graph) return
     setLoading(true)
     try {
       await userApi.generateExport(graph.dataset.id)
-      setMessage('Export job queued. Refresh artifacts shortly to inspect the packaged dataset file.')
+      setMessage('导出任务已入队，请稍后刷新查看打包后的数据集文件。')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -324,14 +344,12 @@ export default function App() {
   }
 
   const refreshArtifacts = async () => {
-    if (!graph) {
-      return
-    }
+    if (!graph) return
     setLoading(true)
     try {
       setArtifacts(await userApi.listArtifacts(graph.dataset.id))
       setRuntime(await userApi.runtimeStatus())
-      setMessage('Artifact preview refreshed.')
+      setMessage('导出工件预览已刷新。')
     } catch (error) {
       setMessage((error as Error).message)
     } finally {
@@ -340,85 +358,94 @@ export default function App() {
   }
 
   return (
-    <div className="page-shell">
-      <header className="topbar">
-        <div className="brand-mark">
-          <Sparkles size={18} strokeWidth={1.8} />
-          <span>LLM Data Factory</span>
+    <div className="workspace-shell">
+      <aside className="sidebar-frame">
+        <div className="sidebar-brand">
+          <div className="brand-badge"><Sparkles size={18} strokeWidth={1.8} /></div>
+          <div>
+            <strong>LLM 数据工厂</strong>
+            <p>企业级训练数据工作台</p>
+          </div>
         </div>
-        <nav>
-          <a href="#planner">Planner</a>
-          <a href="#graph">Graph</a>
-          <a href="http://localhost:3211">Admin</a>
-        </nav>
-      </header>
 
-      <main>
-        <section className="hero-grid">
-          <motion.div className="hero-card hero-primary" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: 'easeOut' }}>
-            <p className="eyebrow">Enterprise data generation control plane</p>
-            <h1>Plan dataset scope, generate a governed domain graph, and prepare the pipeline for large-scale reasoning data.</h1>
-            <p className="hero-copy">The user workspace now estimates sample volume, creates datasets, generates domain graphs, and supports human-in-the-loop graph confirmation before question fan-out.</p>
-            <div className="hero-actions">
-              <button className="primary-action" onClick={() => void estimatePlan()} disabled={loading}>
-                Estimate plan
-                <ArrowRight size={16} />
-              </button>
-              <button className="secondary-action" onClick={() => void createDataset()} disabled={loading}>Create dataset</button>
+        <nav className="sidebar-navlist">
+          <a href="#planner"><LayoutDashboard size={16} /> 工作台总览</a>
+          <a href="#graph"><GitBranch size={16} /> 领域图谱</a>
+          <a href="#pipeline"><BrainCircuit size={16} /> 生成流水线</a>
+          <a href="#exports"><HardDriveDownload size={16} /> 导出与工件</a>
+        </nav>
+
+        <div className="sidebar-summary">
+          <span className="sidebar-label">运行概况</span>
+          <div className="sidebar-metric"><span>数据集</span><strong>{runtime?.datasetCount ?? 0}</strong></div>
+          <div className="sidebar-metric"><span>队列深度</span><strong>{runtime?.queueDepth ?? 0}</strong></div>
+          <div className="sidebar-metric"><span>工件数</span><strong>{runtime?.artifactCount ?? 0}</strong></div>
+        </div>
+
+        <a className="admin-jump" href={adminHref}>进入管理后台</a>
+      </aside>
+
+      <main className="workspace-content">
+        <section className="headline-card">
+          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
+            <p className="eyebrow">企业级数据生成控制台</p>
+            <h1>规划数据集规模，生成可治理的领域图谱，并驱动问题、推理、奖励与导出流水线。</h1>
+            <p className="headline-copy">界面风格已调整为更接近参考项目的控制台布局：左侧导航、右侧工作区、更密集的信息卡片与更强的后台工具感。</p>
+            <div className="headline-actions">
+              <button className="primary-action" onClick={() => void estimatePlan()} disabled={loading}>估算计划 <ArrowRight size={16} /></button>
+              <button className="secondary-action" onClick={() => void createDataset()} disabled={loading}>创建数据集</button>
             </div>
             {message ? <p className="status-banner">{message}</p> : null}
           </motion.div>
+        </section>
 
-          <motion.aside className="hero-card hero-metrics" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.7, delay: 0.1, ease: 'easeOut' }}>
+        <section className="content-grid" id="planner">
+          <div className="content-card planner-card">
+            <div className="section-heading compact">
+              <span className="eyebrow">计划配置</span>
+              <h2>配置任务入口</h2>
+            </div>
             {!authenticated ? (
               <form className="login-card" onSubmit={submitLogin}>
-                <div>
-                  <span className="eyebrow">Portal access</span>
-                  <h2>Sign in to create and review dataset plans.</h2>
-                  <p>Phase 3 unlocks a working planner connected to the live API and admin-configured generation strategies.</p>
-                </div>
                 <label>
-                  Workspace email
+                  工作台邮箱
                   <input type="email" placeholder="operator@company.com" required />
                 </label>
                 <label>
-                  Access key
-                  <input type="password" placeholder="Enter your secure key" required />
+                  访问密钥
+                  <input type="password" placeholder="请输入安全访问密钥" required />
                 </label>
-                <button type="submit" className="primary-action full-width">
-                  Enter workspace
-                  <ArrowRight size={16} />
-                </button>
+                <button type="submit" className="primary-action full-width">进入工作台 <ArrowRight size={16} /></button>
               </form>
             ) : (
-              <div className="planner-panel" id="planner">
+              <div className="planner-panel">
                 <div className="planner-grid">
                   <label>
-                    Dataset name
-                    <input value={formState.name} onChange={(event) => setFormState({ ...formState, name: event.target.value })} placeholder="Military reasoning factory" />
+                    数据集名称
+                    <input value={formState.name} onChange={(event) => setFormState({ ...formState, name: event.target.value })} placeholder="军事推理数据工厂" />
                   </label>
                   <label>
-                    Root keyword
+                    根关键词
                     <input value={formState.rootKeyword} onChange={(event) => setFormState({ ...formState, rootKeyword: event.target.value })} />
                   </label>
                   <label>
-                    Target size
+                    目标规模
                     <input type="number" value={formState.targetSize} onChange={(event) => setFormState({ ...formState, targetSize: Number(event.target.value) })} />
                   </label>
                   <label>
-                    Strategy
+                    策略
                     <select value={formState.strategyId} onChange={(event) => setFormState({ ...formState, strategyId: Number(event.target.value) })}>
                       {strategies.map((strategy) => <option key={strategy.id} value={strategy.id}>{strategy.name}</option>)}
                     </select>
                   </label>
                   <label>
-                    Provider
+                    模型提供方
                     <select value={formState.providerId} onChange={(event) => setFormState({ ...formState, providerId: Number(event.target.value) })}>
                       {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
                     </select>
                   </label>
                   <label>
-                    Storage profile
+                    存储配置
                     <select value={formState.storageProfileId} onChange={(event) => setFormState({ ...formState, storageProfileId: Number(event.target.value) })}>
                       {storageProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
                     </select>
@@ -434,212 +461,157 @@ export default function App() {
                 </div>
               </div>
             )}
-          </motion.aside>
-        </section>
-
-        <section className="section-block" id="workflow">
-          <div className="section-heading">
-            <span className="eyebrow">Workflow structure</span>
-            <h2>Phase-aligned product shell for future generation tasks</h2>
           </div>
-          <div className="pillar-grid">
-            {[
-              { icon: BrainCircuit, title: 'Plan estimate', description: 'Translate target sample size into domain and question quotas before any expensive generation step.' },
-              { icon: DatabaseZap, title: 'Dataset creation', description: 'Persist the dataset plan with selected strategy, provider, and storage profile.' },
-              { icon: ShieldCheck, title: 'Graph review', description: 'Generate draft domains, refine names, and confirm the graph before downstream question generation.' },
-            ].map(({ icon: Icon, title, description }, index) => (
-              <motion.article key={title} className="glass-card" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.12 * index }}>
-                <div className="icon-chip"><Icon size={18} strokeWidth={1.9} /></div>
-                <h3>{title}</h3>
-                <p>{description}</p>
-              </motion.article>
-            ))}
-          </div>
-        </section>
 
-        <section className="section-block split-layout" id="graph">
-          <div className="glass-card timeline-card">
+          <div className="content-card highlight-card">
             <div className="section-heading compact">
-              <span className="eyebrow">Domain graph review</span>
-              <h2>Inspect generated domains before fan-out</h2>
+              <span className="eyebrow">流程概览</span>
+              <h2>分阶段闭环</h2>
+            </div>
+            <div className="pillar-grid two-col">
+              {[
+                { icon: BrainCircuit, title: '计划估算', description: '先按目标样本规模反推领域和问题配额。' },
+                { icon: DatabaseZap, title: '数据集创建', description: '固化策略、模型与存储配置。' },
+                { icon: ShieldCheck, title: '图谱审核', description: '先生领域，再人工修订并确认。' },
+                { icon: HardDriveDownload, title: '工件导出', description: '将最终数据集打包为 JSONL 工件。' },
+              ].map(({ icon: Icon, title, description }) => (
+                <article key={title} className="feature-tile">
+                  <div className="icon-chip"><Icon size={18} strokeWidth={1.9} /></div>
+                  <h3>{title}</h3>
+                  <p>{description}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="content-grid" id="graph">
+          <div className="content-card span-two">
+            <div className="section-heading compact">
+              <span className="eyebrow">领域图谱</span>
+              <h2>图谱生成与审核</h2>
             </div>
             {graph ? (
               <>
                 <GraphPreview rootKeyword={graph.dataset.rootKeyword} domains={graph.domains} />
                 <div className="graph-actions">
-                  <button className="secondary-action" onClick={() => void generateDomains()} disabled={loading}>Generate or refresh domains</button>
-                  <button className="secondary-action" onClick={() => void saveGraph()} disabled={loading}><Save size={15} /> Save edits</button>
-                  <button className="primary-action" onClick={() => void confirmDomains()} disabled={loading}>Confirm domains</button>
+                  <button className="secondary-action" onClick={() => void generateDomains()} disabled={loading}>生成或刷新领域</button>
+                  <button className="secondary-action" onClick={() => void saveGraph()} disabled={loading}><Save size={15} /> 保存编辑</button>
+                  <button className="primary-action" onClick={() => void confirmDomains()} disabled={loading}>确认领域</button>
                 </div>
               </>
             ) : (
-              <p className="hero-copy">Create a dataset to unlock graph generation and review.</p>
+              <p className="hero-copy">请先创建数据集，再启用领域图谱生成和审核。</p>
             )}
           </div>
-
-          <div className="glass-card graph-preview">
+          <div className="content-card">
             <div className="section-heading compact">
-              <span className="eyebrow">Domain list editor</span>
-              <h2>Human-in-the-loop naming adjustments</h2>
+              <span className="eyebrow">领域列表</span>
+              <h2>人工调整命名</h2>
             </div>
             {graph ? (
-              <div className="domain-list">
+              <div className="domain-list compact-list">
                 {graph.domains.slice(0, 20).map((domain) => (
                   <label key={domain.id} className="domain-item">
-                    <span>{domain.source}</span>
+                    <span>{sourceLabel(domain.source)}</span>
                     <input value={domain.name} onChange={(event) => renameDomain(domain.id, event.target.value)} />
                   </label>
                 ))}
-                {graph.domains.length > 20 ? <p className="graph-caption">Only the first 20 domains are editable in this Phase 3 UI slice; all {graph.domains.length} domains stay persisted.</p> : null}
+                {graph.domains.length > 20 ? <p className="graph-caption">当前界面仅支持编辑前 20 个领域；全部 {graph.domains.length} 个领域仍会完整持久化保存。</p> : null}
               </div>
             ) : (
-              <p className="hero-copy">No dataset graph loaded yet.</p>
+              <p className="hero-copy">尚未加载任何数据集图谱。</p>
             )}
           </div>
         </section>
 
-        <section className="section-block">
+        <section className="content-card dataset-strip">
           <div className="section-heading compact">
-            <span className="eyebrow">Recent datasets</span>
-            <h2>Created planning runs</h2>
+            <span className="eyebrow">最近的数据集</span>
+            <h2>快速切换任务</h2>
           </div>
           <div className="dataset-grid">
             {datasets.map((dataset) => (
-              <button key={dataset.id} className="glass-card dataset-card" onClick={async () => { setGraph(await userApi.getDataset(dataset.id)); setQuestions(await userApi.listQuestions(dataset.id)); setReasoning(await userApi.listReasoning(dataset.id)); setRewards(await userApi.listRewards(dataset.id)); setArtifacts(await userApi.listArtifacts(dataset.id)); setRuntime(await userApi.runtimeStatus()); }}>
+              <button key={dataset.id} className="dataset-card" onClick={async () => { setGraph(await userApi.getDataset(dataset.id)); setQuestions(await userApi.listQuestions(dataset.id)); setReasoning(await userApi.listReasoning(dataset.id)); setRewards(await userApi.listRewards(dataset.id)); setArtifacts(await userApi.listArtifacts(dataset.id)); setRuntime(await userApi.runtimeStatus()) }}>
                 <div>
-                  <span className="eyebrow">{dataset.status}</span>
+                  <span className="eyebrow">{statusLabel(dataset.status)}</span>
                   <h3>{dataset.name}</h3>
                 </div>
-                <p>{dataset.rootKeyword} · {dataset.estimate.estimatedSamples} estimated samples</p>
-                <div className="dataset-meta"><GitBranch size={15} /> Dataset #{dataset.id}</div>
+                <p>{dataset.rootKeyword} · {dataset.estimate.estimatedSamples} 个预计样本</p>
+                <div className="dataset-meta"><GitBranch size={15} /> 数据集 #{dataset.id}</div>
               </button>
             ))}
           </div>
         </section>
 
-        <section className="section-block split-layout">
-          <div className="glass-card timeline-card">
-            <div className="section-heading compact">
-              <span className="eyebrow">Question generation</span>
-              <h2>Asynchronous fan-out from confirmed domains</h2>
-            </div>
+        <section className="content-grid" id="pipeline">
+          <div className="content-card">
+            <div className="section-heading compact"><span className="eyebrow">问题生成</span><h2>问题流水线</h2></div>
             <div className="graph-actions">
-              <button className="primary-action" onClick={() => void generateQuestions()} disabled={loading || !graph}>Queue question generation</button>
-              <button className="secondary-action" onClick={() => void refreshQuestions()} disabled={loading || !graph}>Refresh questions</button>
-            </div>
-            <p className="hero-copy">Phase 4 pushes question generation into the Redis-backed worker so the user flow stays responsive.</p>
-          </div>
-
-          <div className="glass-card graph-preview">
-            <div className="section-heading compact">
-              <span className="eyebrow">Question preview</span>
-              <h2>Generated dataset questions</h2>
+              <button className="primary-action" onClick={() => void generateQuestions()} disabled={loading || !graph}>加入问题生成队列</button>
+              <button className="secondary-action" onClick={() => void refreshQuestions()} disabled={loading || !graph}>刷新问题</button>
             </div>
             <div className="domain-list">
-              {questions.slice(0, 12).map((question) => (
-                <div key={question.id} className="question-item">
-                  <span>{question.domainName}</span>
-                  <p>{question.content}</p>
-                </div>
+              {questions.slice(0, 8).map((question) => (
+                <div key={question.id} className="question-item"><span>{question.domainName}</span><p>{question.content}</p></div>
               ))}
-              {questions.length === 0 ? <p className="hero-copy">No generated questions yet.</p> : null}
+              {questions.length === 0 ? <p className="hero-copy">尚未生成问题。</p> : null}
+            </div>
+          </div>
+
+          <div className="content-card">
+            <div className="section-heading compact"><span className="eyebrow">推理生成</span><h2>推理与答案</h2></div>
+            <div className="graph-actions">
+              <button className="primary-action" onClick={() => void generateReasoning()} disabled={loading || !graph || questions.length === 0}>加入推理生成队列</button>
+              <button className="secondary-action" onClick={() => void refreshReasoning()} disabled={loading || !graph}>刷新推理</button>
+            </div>
+            <div className="domain-list">
+              {reasoning.slice(0, 8).map((record) => (
+                <div key={record.id} className="question-item"><span>{record.objectKey}</span><p>{record.answerSummary}</p></div>
+              ))}
+              {reasoning.length === 0 ? <p className="hero-copy">尚未生成推理记录。</p> : null}
+            </div>
+          </div>
+
+          <div className="content-card">
+            <div className="section-heading compact"><span className="eyebrow">奖励数据</span><h2>评估与奖励</h2></div>
+            <div className="graph-actions">
+              <button className="primary-action" onClick={() => void generateRewards()} disabled={loading || !graph || reasoning.length === 0}>加入奖励生成队列</button>
+              <button className="secondary-action" onClick={() => void refreshRewards()} disabled={loading || !graph}>刷新奖励数据</button>
+            </div>
+            <div className="domain-list">
+              {rewards.slice(0, 8).map((record) => (
+                <div key={record.id} className="question-item"><span>{record.objectKey}</span><p>评分：{record.score.toFixed(2)} · {record.questionText}</p></div>
+              ))}
+              {rewards.length === 0 ? <p className="hero-copy">尚未生成奖励记录。</p> : null}
             </div>
           </div>
         </section>
 
-        <section className="section-block split-layout">
-          <div className="glass-card timeline-card">
-            <div className="section-heading compact">
-              <span className="eyebrow">Reasoning generation</span>
-              <h2>Persist long-form answers into object storage</h2>
-            </div>
+        <section className="content-grid" id="exports">
+          <div className="content-card">
+            <div className="section-heading compact"><span className="eyebrow">导出与运行态</span><h2>工件打包</h2></div>
             <div className="graph-actions">
-              <button className="primary-action" onClick={() => void generateReasoning()} disabled={loading || !graph || questions.length === 0}>Queue reasoning generation</button>
-              <button className="secondary-action" onClick={() => void refreshReasoning()} disabled={loading || !graph}>Refresh reasoning</button>
-            </div>
-            <p className="hero-copy">Phase 5 generates answer summaries plus long-form reasoning payloads and stores them as JSON artifacts in MinIO/S3-compatible storage.</p>
-          </div>
-
-          <div className="glass-card graph-preview">
-            <div className="section-heading compact">
-              <span className="eyebrow">Reasoning preview</span>
-              <h2>Stored answer summaries</h2>
-            </div>
-            <div className="domain-list">
-              {reasoning.slice(0, 10).map((record) => (
-                <div key={record.id} className="question-item">
-                  <span>{record.objectKey}</span>
-                  <p>{record.answerSummary}</p>
-                </div>
-              ))}
-              {reasoning.length === 0 ? <p className="hero-copy">No reasoning records generated yet.</p> : null}
-            </div>
-          </div>
-        </section>
-
-        <section className="section-block split-layout">
-          <div className="glass-card timeline-card">
-            <div className="section-heading compact">
-              <span className="eyebrow">Reward dataset generation</span>
-              <h2>Produce reinforcement-style evaluation artifacts</h2>
-            </div>
-            <div className="graph-actions">
-              <button className="primary-action" onClick={() => void generateRewards()} disabled={loading || !graph || reasoning.length === 0}>Queue reward generation</button>
-              <button className="secondary-action" onClick={() => void refreshRewards()} disabled={loading || !graph}>Refresh rewards</button>
-            </div>
-            <p className="hero-copy">Phase 6 creates score-and-rationale reward records and stores the detailed payloads in object storage for downstream preference and RL workflows.</p>
-          </div>
-
-          <div className="glass-card graph-preview">
-            <div className="section-heading compact">
-              <span className="eyebrow">Reward preview</span>
-              <h2>Generated reward records</h2>
-            </div>
-            <div className="domain-list">
-              {rewards.slice(0, 10).map((record) => (
-                <div key={record.id} className="question-item">
-                  <span>{record.objectKey}</span>
-                  <p>Score: {record.score.toFixed(2)} · {record.questionText}</p>
-                </div>
-              ))}
-              {rewards.length === 0 ? <p className="hero-copy">No reward records generated yet.</p> : null}
-            </div>
-          </div>
-        </section>
-
-        <section className="section-block split-layout">
-          <div className="glass-card timeline-card">
-            <div className="section-heading compact">
-              <span className="eyebrow">Export and runtime</span>
-              <h2>Package dataset artifacts and inspect pipeline health</h2>
-            </div>
-            <div className="graph-actions">
-              <button className="primary-action" onClick={() => void generateExport()} disabled={loading || !graph || rewards.length === 0}>Queue export</button>
-              <button className="secondary-action" onClick={() => void refreshArtifacts()} disabled={loading || !graph}>Refresh artifacts</button>
+              <button className="primary-action" onClick={() => void generateExport()} disabled={loading || !graph || rewards.length === 0}>加入导出队列</button>
+              <button className="secondary-action" onClick={() => void refreshArtifacts()} disabled={loading || !graph}>刷新工件</button>
             </div>
             {runtime ? (
               <div className="planner-cards">
-                <div className="metric-card"><span>Datasets</span><strong>{runtime.datasetCount}</strong></div>
-                <div className="metric-card"><span>Queue depth</span><strong>{runtime.queueDepth}</strong></div>
-                <div className="metric-card"><span>Artifacts</span><strong>{runtime.artifactCount}</strong></div>
-                <div className="metric-card"><span>Rewards</span><strong>{runtime.rewardCount}</strong></div>
+                <div className="metric-card"><span>数据集</span><strong>{runtime.datasetCount}</strong></div>
+                <div className="metric-card"><span>队列深度</span><strong>{runtime.queueDepth}</strong></div>
+                <div className="metric-card"><span>工件数</span><strong>{runtime.artifactCount}</strong></div>
+                <div className="metric-card"><span>奖励记录</span><strong>{runtime.rewardCount}</strong></div>
               </div>
             ) : null}
           </div>
 
-          <div className="glass-card graph-preview">
-            <div className="section-heading compact">
-              <span className="eyebrow">Artifact preview</span>
-              <h2>Packaged dataset outputs</h2>
-            </div>
+          <div className="content-card">
+            <div className="section-heading compact"><span className="eyebrow">工件预览</span><h2>已打包数据集产物</h2></div>
             <div className="domain-list">
               {artifacts.map((artifact) => (
-                <div key={artifact.id} className="question-item">
-                  <span>{artifact.artifactType}</span>
-                  <p>{artifact.objectKey}</p>
-                </div>
+                <div key={artifact.id} className="question-item"><span>{artifactTypeLabel(artifact.artifactType)}</span><p>{artifact.objectKey}</p></div>
               ))}
-              {artifacts.length === 0 ? <p className="hero-copy">No export artifacts generated yet.</p> : null}
+              {artifacts.length === 0 ? <p className="hero-copy">尚未生成导出工件。</p> : null}
             </div>
           </div>
         </section>

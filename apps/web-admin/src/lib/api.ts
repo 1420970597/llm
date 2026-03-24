@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:38080'
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
 export type ProviderRecord = {
   id?: number
@@ -86,14 +86,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const adminApi = {
-  dashboard: () => request<DashboardRecord>('/api/v1/admin/dashboard'),
-  listProviders: () => request<ProviderRecord[]>('/api/v1/admin/providers'),
-  saveProvider: (payload: ProviderRecord) => request<ProviderRecord>('/api/v1/admin/providers', { method: payload.id ? 'PUT' : 'POST', body: JSON.stringify(payload) }),
-  listStorageProfiles: () => request<StorageProfileRecord[]>('/api/v1/admin/storage-profiles'),
-  saveStorageProfile: (payload: StorageProfileRecord) => request<StorageProfileRecord>('/api/v1/admin/storage-profiles', { method: payload.id ? 'PUT' : 'POST', body: JSON.stringify(payload) }),
-  listStrategies: () => request<StrategyRecord[]>('/api/v1/admin/generation-strategies'),
-  saveStrategy: (payload: StrategyRecord) => request<StrategyRecord>('/api/v1/admin/generation-strategies', { method: payload.id ? 'PUT' : 'POST', body: JSON.stringify(payload) }),
-  listPrompts: () => request<PromptRecord[]>('/api/v1/admin/prompts'),
-  savePrompt: (payload: PromptRecord) => request<PromptRecord>('/api/v1/admin/prompts', { method: payload.id ? 'PUT' : 'POST', body: JSON.stringify(payload) }),
-  listAuditLogs: () => request<AuditRecord[]>('/api/v1/admin/audit-logs'),
+  dashboard: () => request<DashboardRecord>('/v1/admin/dashboard'),
+  listProviders: () => request<ProviderRecord[]>('/v1/admin/providers'),
+  saveProvider: (payload: ProviderRecord) => request<ProviderRecord>('/v1/admin/providers', { method: payload.id ? 'PUT' : 'POST', body: JSON.stringify(payload) }),
+  listStorageProfiles: () => request<StorageProfileRecord[]>('/v1/admin/storage-profiles'),
+  saveStorageProfile: (payload: StorageProfileRecord) => request<StorageProfileRecord>('/v1/admin/storage-profiles', { method: payload.id ? 'PUT' : 'POST', body: JSON.stringify(payload) }),
+  listStrategies: () => request<StrategyRecord[]>('/v1/admin/generation-strategies'),
+  saveStrategy: (payload: StrategyRecord) => request<StrategyRecord>('/v1/admin/generation-strategies', { method: payload.id ? 'PUT' : 'POST', body: JSON.stringify(payload) }),
+  listPrompts: () => request<PromptRecord[]>('/v1/admin/prompts'),
+  savePrompt: (payload: PromptRecord) => request<PromptRecord>('/v1/admin/prompts', { method: payload.id ? 'PUT' : 'POST', body: JSON.stringify(payload) }),
+  listAuditLogs: () => request<AuditRecord[]>('/v1/admin/audit-logs'),
 }
