@@ -231,8 +231,8 @@ function EmptyCard({ title, description }: { title: string; description: string 
 }
 
 function LoginPage({ onSubmit, loading }: { onSubmit: (email: string, password: string) => Promise<void>; loading: boolean }) {
-  const [email, setEmail] = useState('admin@company.com')
-  const [password, setPassword] = useState('admin123456')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
 
   return (
     <div className="console-login-shell flex items-center justify-center px-4 py-10">
@@ -281,8 +281,7 @@ function LoginPage({ onSubmit, loading }: { onSubmit: (email: string, password: 
             </Button>
           </div>
           <div className="mt-6 console-summary-grid">
-            <div className="console-summary-row"><span>管理员账号</span><Text strong>admin@company.com / admin123456</Text></div>
-            <div className="console-summary-row"><span>普通用户账号</span><Text strong>user@company.com / user123456</Text></div>
+            <div className="console-summary-row"><span>登录说明</span><Text strong>请使用已分配账号登录</Text></div>
           </div>
         </Card>
       </div>
@@ -318,8 +317,8 @@ export default function App() {
 
   const [plannerForm, setPlannerForm] = useState({
     name: '',
-    rootKeyword: '军事',
-    targetSize: 12000,
+    rootKeyword: '',
+    targetSize: 0,
     strategyId: 0,
     providerId: 0,
     storageProfileId: 0,

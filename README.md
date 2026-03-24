@@ -15,7 +15,7 @@
 
 项目当前已经完成以下能力：
 
-### 用户端
+### 统一控制台中的用户能力
 - 数据集计划估算
 - 数据集创建
 - 领域图谱生成与确认
@@ -25,7 +25,7 @@
 - 导出任务触发与工件预览
 - 运行态统计查看
 
-### 管理端
+### 统一控制台中的管理员能力
 - 模型提供方管理
 - 存储配置管理
 - 生成策略管理
@@ -105,13 +105,11 @@ docker compose -f deployments/compose/docker-compose.yml up -d --build
 ### 4.2 访问地址
 
 - 统一控制台：`http://<你的服务器IP>:3210`
-- 兼容入口（同一控制台构建）：`http://<你的服务器IP>:3211`
-- API 健康检查：`http://<你的服务器IP>:38080/healthz`
-- Worker 健康检查：`http://<你的服务器IP>:38081/healthz`
-- MinIO API：`http://<你的服务器IP>:19000`
-- MinIO Console：`http://<你的服务器IP>:19001`
 
-本项目默认外部端口已避开常见冲突端口，不需要停止现有服务。
+当前 `docker-compose.yml` 已移除冗余对外端口映射：
+- 不再暴露重复的 `3211` 前端入口
+- 不再对宿主机暴露 API / Worker / PostgreSQL / Redis / MinIO 端口
+- 浏览器与用户仅需访问统一控制台 `3210`
 
 ### 4.3 默认登录账号
 
@@ -131,7 +129,7 @@ docker compose -f deployments/compose/docker-compose.yml up -d --build
 前端已改为**同源 API 调用**模式：
 
 - 前端代码默认请求 `/api/...`
-- `web-user` 与 `web-admin` 容器中的 nginx 会把 `/api/` 反向代理到 Go API 容器
+- `web-user` 容器中的 nginx 会把 `/api/` 反向代理到 Go API 容器
 
 因此：
 - 浏览器不会直接请求 `http://localhost:38080`
@@ -160,13 +158,11 @@ rg -n "localhost|127\.0\.0\.1" apps/web-user -g '!**/dist/**'
 ```bash
 curl http://127.0.0.1:3210/api/v1/platform/runtime
 curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
-curl http://127.0.0.1:3211/api/v1/admin/dashboard
-curl http://127.0.0.1:3211/api/v1/admin/providers
 ```
 
 如果以上命令返回 JSON，说明：
 - 浏览器侧请求走的是前端站点同源 `/api`
-- `web-user` / `web-admin` 的 nginx 反向代理已经生效
+- `web-user` 的 nginx 反向代理已经生效
 - 前端不会因为写死 `localhost:38080` 而触发浏览器私网访问问题
 
 ---
@@ -234,32 +230,36 @@ curl http://127.0.0.1:3211/api/v1/admin/providers
 - Worker 镜像构建
 - 前端镜像构建
 - PostgreSQL + Redis + MinIO + API + Worker 端到端 smoke test
-- 通过 `http://127.0.0.1:3210/api/...` 与 `http://127.0.0.1:3211/api/...` 的同源代理验证
+- 通过 `http://127.0.0.1:3210/api/...` 的同源代理验证
 - 登录鉴权：`/api/v1/auth/login`、`/api/v1/auth/me`、`/api/v1/auth/logout`
 - 统一控制台烟雾脚本：`python3 scripts/frontend_same_origin_smoke.py http://127.0.0.1:3210`
 
 已验证的完整链路包括：
-- 管理端配置模型提供方
-- 管理端配置存储配置
-- 管理端配置生成策略
-- 管理端配置 Prompt
-- 用户端计划估算
-- 用户端创建数据集
-- 用户端生成领域
-- 用户端确认领域
-- 用户端生成问题
-- 用户端生成推理
-- 用户端生成奖励数据
-- 用户端导出 JSONL 数据集工件
+- 管理员角色配置模型提供方
+- 管理员角色配置存储配置
+- 管理员角色配置生成策略
+- 管理员角色配置 Prompt
+- 用户角色计划估算
+- 用户角色创建数据集
+- 用户角色生成领域
+- 用户角色确认领域
+- 用户角色生成问题
+- 用户角色生成推理
+- 用户角色生成奖励数据
+- 用户角色导出 JSONL 数据集工件
 
 最近一次同源烟雾验证结果：
 - 管理员登录成功：`admin@company.com`
 - 普通用户登录成功：`user@company.com`
 - 普通用户访问 `/api/v1/admin/dashboard` 被正确拒绝（403）
 - 普通用户仍可读取只读策略列表供计划编排使用
-- 通过管理端同源 `/api` 创建 mock 模型提供方、MinIO 存储配置、生成策略、Prompt 模板
-- 通过用户端同源 `/api` 完成估算、建库、领域生成、领域确认、问题生成、推理生成、奖励生成、导出
+- 通过统一控制台同源 `/api` 完成管理员配置与用户数据链路
 - 验证结果：`domainCount=10`、`questionCount=20`、`reasoningCount=20`、`rewardCount=20`、`artifactCount=1`、`runtimeQueueDepth=0`
+
+当前数据库状态：
+- 已清空验收阶段残留的 mock / smoke 业务数据
+- 当前不再预置模型提供方、存储配置、生成策略、Prompt 模板、数据集、问题、推理、奖励、导出工件
+- 登录账号保留，用于进入统一控制台
 
 ---
 
@@ -302,6 +302,7 @@ curl http://127.0.0.1:3211/api/v1/admin/providers
 - 普通用户：只显示数据集生产链路导航
 - 管理员：显示全部用户功能，并额外显示系统治理导航
 - 两种角色共用同一个前端应用与同一套页面骨架
+- 默认不再预置任何模拟业务数据，管理员登录后自行配置系统
 
 ### 9.4 布局特征
 - 固定顶部导航
@@ -321,14 +322,13 @@ curl http://127.0.0.1:3211/api/v1/admin/providers
 ### 10.1 为什么用户端页面打不开 API？
 请确认：
 - `compose-api-1` 已启动
-- `web-user` / `web-admin` 已重建到最新版本
+- `web-user` 已重建到最新版本
 - nginx 配置中的 `/api/` 反代已生效
 
 可用以下命令测试：
 
 ```bash
 curl http://127.0.0.1:3210/api/v1/platform/runtime
-curl http://127.0.0.1:3211/api/v1/admin/dashboard
 ```
 
 ### 10.2 如果磁盘空间不足怎么办？
@@ -371,6 +371,24 @@ docker compose -f deployments/compose/docker-compose.yml down -v
 ---
 
 ## 13. 维护说明
+
+### 13.1 清理验收 / mock 数据
+
+如果后续联调或验收再次生成了临时假数据，可执行：
+
+```bash
+./scripts/clear_demo_data.sh
+```
+
+该脚本会清空：
+- 模型提供方
+- 存储配置
+- 生成策略
+- Prompt 模板
+- 审计日志
+- 数据集及其领域 / 问题 / 推理 / 奖励 / 工件
+
+但会保留登录账号。
 
 如果你要继续迭代本项目，建议优先遵循以下顺序：
 1. 先修改数据模型与迁移

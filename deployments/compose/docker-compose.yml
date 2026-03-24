@@ -9,16 +9,6 @@ services:
       api:
         condition: service_started
 
-  web-admin:
-    build:
-      context: ../..
-      dockerfile: deployments/docker/web-admin.Dockerfile
-    ports:
-      - "3211:80"
-    depends_on:
-      api:
-        condition: service_started
-
   api:
     build:
       context: ../..
@@ -37,8 +27,6 @@ services:
       REDIS_PORT: 6379
       S3_ENDPOINT: http://minio:9000
       WORKER_QUEUE_NAME: dataset-generation
-    ports:
-      - "38080:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,8 +56,6 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       WORKER_QUEUE_NAME: dataset-generation
-    ports:
-      - "38081:8081"
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,8 +73,6 @@ services:
       POSTGRES_DB: llm_factory
       POSTGRES_USER: llm_factory
       POSTGRES_PASSWORD: llm_factory_dev
-    ports:
-      - "15432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -99,8 +83,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "16379:6379"
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -114,9 +96,6 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "19000:9000"
-      - "19001:9001"
     volumes:
       - minio-data:/data
     healthcheck:
