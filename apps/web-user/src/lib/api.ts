@@ -1,4 +1,16 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api'
+import axios from 'axios'
+
+const client = axios.create({
+  baseURL: '/api',
+  withCredentials: true,
+  headers: { 'Content-Type': 'application/json' },
+})
+
+export type User = {
+  id: number
+  email: string
+  role: 'admin' | 'user' | string
+}
 
 export type Estimate = {
   domainCount: number
@@ -13,22 +25,66 @@ export type Strategy = {
   id: number
   name: string
   description: string
+  domainCount: number
+  questionsPerDomain: number
+  answerVariants: number
+  rewardVariants: number
   planningMode: string
+  isDefault?: boolean
 }
 
 export type Provider = {
   id: number
   name: string
+  baseUrl: string
   model: string
   providerType: string
+  maxConcurrency: number
+  timeoutSeconds: number
+  isActive: boolean
   apiKeyMasked?: string
 }
 
 export type StorageProfile = {
   id: number
   name: string
-  bucket: string
   provider: string
+  endpoint: string
+  region: string
+  bucket: string
+  accessKeyId: string
+  secretKeyMasked?: string
+  usePathStyle: boolean
+  isDefault: boolean
+}
+
+export type PromptRecord = {
+  id?: number
+  name: string
+  stage: string
+  version: string
+  systemPrompt: string
+  userPrompt: string
+  isActive: boolean
+}
+
+export type AuditRecord = {
+  id: number
+  actor: string
+  action: string
+  resourceType: string
+  resourceId: string
+  detail: string
+  createdAt: string
+}
+
+export type DashboardRecord = {
+  providerCount: number
+  activeProviderCount: number
+  storageProfileCount: number
+  strategyCount: number
+  promptCount: number
+  auditLogCount: number
 }
 
 export type Domain = {
@@ -124,39 +180,49 @@ export type RuntimeStatus = {
   queueDepth: number
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  })
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => ({ error: 'Request failed' }))) as { error?: string }
-    throw new Error(payload.error ?? `Request failed: ${response.status}`)
-  }
-  return response.json() as Promise<T>
+function unwrap<T>(promise: Promise<{ data: T }>): Promise<T> {
+  return promise.then((response) => response.data)
 }
 
-export const userApi = {
-  estimatePlan: (payload: { rootKeyword: string; targetSize: number; strategyId: number }) => request<Estimate>('/v1/datasets/plans/estimate', { method: 'POST', body: JSON.stringify(payload) }),
-  createDataset: (payload: Record<string, unknown>) => request<Dataset>('/v1/datasets', { method: 'POST', body: JSON.stringify(payload) }),
-  listDatasets: () => request<Dataset[]>('/v1/datasets'),
-  getDataset: (id: number) => request<DatasetGraph>(`/v1/datasets/${id}`),
-  generateDomains: (id: number) => request<DatasetGraph>(`/v1/datasets/${id}/domains/generate`, { method: 'POST' }),
-  updateGraph: (id: number, domains: Domain[]) => request<{ updated: number }>(`/v1/datasets/${id}/domains/graph`, { method: 'POST', body: JSON.stringify({ domains }) }),
-  confirmDomains: (id: number) => request<{ status: string }>(`/v1/datasets/${id}/domains/confirm`, { method: 'POST' }),
-  generateQuestions: (id: number) => request<{ queued: boolean; datasetId: number }>(`/v1/datasets/${id}/questions/generate`, { method: 'POST' }),
-  listQuestions: (id: number) => request<Question[]>(`/v1/datasets/${id}/questions`),
-  generateReasoning: (id: number) => request<{ queued: boolean; datasetId: number }>(`/v1/datasets/${id}/reasoning/generate`, { method: 'POST' }),
-  listReasoning: (id: number) => request<ReasoningRecord[]>(`/v1/datasets/${id}/reasoning`),
-  generateRewards: (id: number) => request<{ queued: boolean; datasetId: number }>(`/v1/datasets/${id}/rewards/generate`, { method: 'POST' }),
-  listRewards: (id: number) => request<RewardRecord[]>(`/v1/datasets/${id}/rewards`),
-  generateExport: (id: number) => request<{ queued: boolean; datasetId: number }>(`/v1/datasets/${id}/export`, { method: 'POST' }),
-  listArtifacts: (id: number) => request<Artifact[]>(`/v1/datasets/${id}/export`),
-  runtimeStatus: () => request<RuntimeStatus>('/v1/platform/runtime'),
-  listStrategies: () => request<Strategy[]>('/v1/admin/generation-strategies'),
-  listProviders: () => request<Provider[]>('/v1/admin/providers'),
-  listStorageProfiles: () => request<StorageProfile[]>('/v1/admin/storage-profiles'),
+export const authApi = {
+  login: (payload: { email: string; password: string }) => unwrap(client.post<{ user: User }>('/v1/auth/login', payload)),
+  me: () => unwrap(client.get<{ user: User }>('/v1/auth/me')),
+  logout: () => unwrap(client.post<{ ok: boolean }>('/v1/auth/logout')),
 }
+
+export const consoleApi = {
+  dashboard: () => unwrap(client.get<DashboardRecord>('/v1/admin/dashboard')),
+  listProviders: () => unwrap(client.get<Provider[]>('/v1/admin/providers')),
+  saveProvider: (payload: Partial<Provider> & { apiKey?: string }) => unwrap(client.request<Provider>({ url: '/v1/admin/providers', method: payload.id ? 'PUT' : 'POST', data: payload })),
+  listStorageProfiles: () => unwrap(client.get<StorageProfile[]>('/v1/admin/storage-profiles')),
+  saveStorageProfile: (payload: Partial<StorageProfile> & { secretAccessKey?: string }) => unwrap(client.request<StorageProfile>({ url: '/v1/admin/storage-profiles', method: payload.id ? 'PUT' : 'POST', data: payload })),
+  listStrategies: () => unwrap(client.get<Strategy[]>('/v1/admin/generation-strategies')),
+  saveStrategy: (payload: Partial<Strategy>) => unwrap(client.request<Strategy>({ url: '/v1/admin/generation-strategies', method: payload.id ? 'PUT' : 'POST', data: payload })),
+  listPrompts: () => unwrap(client.get<PromptRecord[]>('/v1/admin/prompts')),
+  savePrompt: (payload: PromptRecord) => unwrap(client.request<PromptRecord>({ url: '/v1/admin/prompts', method: payload.id ? 'PUT' : 'POST', data: payload })),
+  listAuditLogs: () => unwrap(client.get<AuditRecord[]>('/v1/admin/audit-logs')),
+  estimatePlan: (payload: { rootKeyword: string; targetSize: number; strategyId: number }) => unwrap(client.post<Estimate>('/v1/datasets/plans/estimate', payload)),
+  createDataset: (payload: Record<string, unknown>) => unwrap(client.post<Dataset>('/v1/datasets', payload)),
+  listDatasets: () => unwrap(client.get<Dataset[]>('/v1/datasets')),
+  getDataset: (id: number) => unwrap(client.get<DatasetGraph>(`/v1/datasets/${id}`)),
+  generateDomains: (id: number) => unwrap(client.post<DatasetGraph>(`/v1/datasets/${id}/domains/generate`)),
+  updateGraph: (id: number, domains: Domain[]) => unwrap(client.post<{ updated: number }>(`/v1/datasets/${id}/domains/graph`, { domains })),
+  confirmDomains: (id: number) => unwrap(client.post<{ status: string }>(`/v1/datasets/${id}/domains/confirm`)),
+  generateQuestions: (id: number) => unwrap(client.post<{ queued: boolean; datasetId: number }>(`/v1/datasets/${id}/questions/generate`)),
+  listQuestions: (id: number) => unwrap(client.get<Question[]>(`/v1/datasets/${id}/questions`)),
+  generateReasoning: (id: number) => unwrap(client.post<{ queued: boolean; datasetId: number }>(`/v1/datasets/${id}/reasoning/generate`)),
+  listReasoning: (id: number) => unwrap(client.get<ReasoningRecord[]>(`/v1/datasets/${id}/reasoning`)),
+  generateRewards: (id: number) => unwrap(client.post<{ queued: boolean; datasetId: number }>(`/v1/datasets/${id}/rewards/generate`)),
+  listRewards: (id: number) => unwrap(client.get<RewardRecord[]>(`/v1/datasets/${id}/rewards`)),
+  generateExport: (id: number) => unwrap(client.post<{ queued: boolean; datasetId: number }>(`/v1/datasets/${id}/export`)),
+  listArtifacts: (id: number) => unwrap(client.get<Artifact[]>(`/v1/datasets/${id}/export`)),
+  runtimeStatus: () => unwrap(client.get<RuntimeStatus>('/v1/platform/runtime')),
+}
+
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const message = error?.response?.data?.error ?? error?.message ?? '请求失败'
+    return Promise.reject(new Error(message))
+  },
+)

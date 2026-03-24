@@ -3,13 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "workspaces": [
-    "apps/web-user",
-    "apps/web-admin"
+    "apps/web-user"
   ],
   "scripts": {
-    "build": "npm run build -w apps/web-user && npm run build -w apps/web-admin",
-    "dev:web-user": "npm run dev -w apps/web-user",
-    "dev:web-admin": "npm run dev -w apps/web-admin",
+    "build": "npm run build -w apps/web-user",
+    "dev:web": "npm run dev -w apps/web-user",
     "compose:config": "docker compose -f deployments/compose/docker-compose.yml config",
     "compose:up": "docker compose -f deployments/compose/docker-compose.yml up -d --build",
     "compose:down": "docker compose -f deployments/compose/docker-compose.yml down",

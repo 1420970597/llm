@@ -2,7 +2,6 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package.json ./
 COPY apps/web-user/package.json ./apps/web-user/package.json
-COPY apps/web-admin/package.json ./apps/web-admin/package.json
 RUN npm install
 COPY apps/web-user ./apps/web-user
 RUN npm run build -w apps/web-user

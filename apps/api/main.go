@@ -20,6 +20,8 @@ import (
 
 type application struct {
   cfg       config.APIConfig
+  box       *appcrypto.SecretBox
+  auth      *store.AuthStore
   store     *store.AdminStore
   datasets  *store.DatasetStore
   pipeline  *store.PipelineStore
@@ -54,6 +56,8 @@ func main() {
 
   app := &application{
     cfg:       cfg,
+    box:       box,
+    auth:      store.NewAuthStore(pool),
     store:     store.NewAdminStore(pool, box),
     datasets:  store.NewDatasetStore(pool, box),
     pipeline:  store.NewPipelineStore(pool),
@@ -63,9 +67,19 @@ func main() {
     redis:     redisClient,
   }
 
+  if err := app.auth.EnsureBootstrapUser(ctx, cfg.DefaultAdminEmail, cfg.DefaultAdminPassword, "admin"); err != nil {
+    log.Fatalf("bootstrap admin user failed: %v", err)
+  }
+  if err := app.auth.EnsureBootstrapUser(ctx, cfg.DefaultUserEmail, cfg.DefaultUserPassword, "user"); err != nil {
+    log.Fatalf("bootstrap user failed: %v", err)
+  }
+
   mux := http.NewServeMux()
   mux.HandleFunc("GET /healthz", app.health)
   mux.HandleFunc("GET /readyz", app.ready)
+  mux.HandleFunc("POST /api/v1/auth/login", app.login)
+  mux.HandleFunc("GET /api/v1/auth/me", app.me)
+  mux.HandleFunc("POST /api/v1/auth/logout", app.logout)
   mux.HandleFunc("GET /api/v1/platform/overview", app.overview)
   mux.HandleFunc("GET /api/v1/platform/runtime", app.runtimeStatus)
   mux.HandleFunc("GET /api/v1/admin/dashboard", app.dashboard)
@@ -98,21 +112,6 @@ func main() {
   if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
     log.Fatalf("api server failed: %v", err)
   }
-}
-
-func (app *application) middleware(next http.Handler) http.Handler {
-  return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-    start := time.Now()
-    w.Header().Set("Access-Control-Allow-Origin", app.cfg.AllowedOrigin)
-    w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-    w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS")
-    if r.Method == http.MethodOptions {
-      w.WriteHeader(http.StatusNoContent)
-      return
-    }
-    next.ServeHTTP(w, r)
-    log.Printf("method=%s path=%s duration=%s", r.Method, r.URL.Path, time.Since(start))
-  })
 }
 
 func (app *application) health(w http.ResponseWriter, _ *http.Request) {

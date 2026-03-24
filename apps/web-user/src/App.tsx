@@ -1,45 +1,58 @@
-import type { FormEvent, ReactNode } from 'react'
-import { useEffect, useMemo, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Activity,
-  ArrowRight,
-  BellRing,
-  Blocks,
+  Avatar,
+  Banner,
+  Button,
+  Card,
+  Empty,
+  Input,
+  InputNumber,
+  Layout,
+  List,
+  Nav,
+  Progress,
+  Select,
+  Space,
+  Spin,
+  Table,
+  Tag,
+  Toast,
+  Typography,
+} from '@douyinfe/semi-ui'
+import {
+  Bell,
   BrainCircuit,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  DatabaseZap,
+  Database,
   FileOutput,
-  FolderGit2,
+  FolderCog,
   GitBranch,
   HardDriveDownload,
-  Layers3,
   LayoutDashboard,
-  Menu,
+  Layers3,
+  LogOut,
   Network,
-  PanelTop,
   RefreshCw,
-  Rocket,
-  Save,
   ServerCog,
+  Settings,
   ShieldCheck,
   Sparkles,
-  SquareKanban,
   Target,
-  Waypoints,
+  Users,
   Workflow,
-  X,
   type LucideIcon,
 } from 'lucide-react'
+import clsx from 'clsx'
 import {
+  authApi,
+  consoleApi,
   type Artifact,
+  type AuditRecord,
+  type DashboardRecord,
   type Dataset,
   type DatasetGraph,
   type Domain,
+  type PromptRecord,
   type Provider,
   type Question,
   type ReasoningRecord,
@@ -47,8 +60,40 @@ import {
   type RuntimeStatus,
   type StorageProfile,
   type Strategy,
-  userApi,
+  type User,
 } from './lib/api'
+
+const { Header, Sider, Content } = Layout
+const { Title, Text } = Typography
+
+type ProviderDraft = Partial<Provider> & { apiKey?: string }
+type StorageDraft = Partial<StorageProfile> & { secretAccessKey?: string }
+
+type NavPage = {
+  label: string
+  route: string
+  icon: LucideIcon
+  caption: string
+  adminOnly?: boolean
+}
+
+const userPages: NavPage[] = [
+  { label: '总览', route: '/console/overview', icon: LayoutDashboard, caption: '统一查看平台与数据集运行态' },
+  { label: '计划编排', route: '/console/planning', icon: Target, caption: '配置目标规模与生成策略' },
+  { label: '领域图谱', route: '/console/domains', icon: GitBranch, caption: '生成、修订并确认领域结构' },
+  { label: '问题生成', route: '/console/questions', icon: Layers3, caption: '按领域批量生成训练问题' },
+  { label: '推理生成', route: '/console/reasoning', icon: BrainCircuit, caption: '生成长思维链与答案' },
+  { label: '奖励数据', route: '/console/rewards', icon: ShieldCheck, caption: '生成强化学习奖励评估数据' },
+  { label: '导出交付', route: '/console/exports', icon: HardDriveDownload, caption: '打包工件并查看运行态收口' },
+]
+
+const adminPages: NavPage[] = [
+  { label: '模型提供方', route: '/console/admin/providers', icon: Database, caption: '维护模型网关、路由与并发参数', adminOnly: true },
+  { label: '存储配置', route: '/console/admin/storage', icon: FolderCog, caption: '维护 S3 / MinIO / OSS 存储目标', adminOnly: true },
+  { label: '生成策略', route: '/console/admin/strategies', icon: Workflow, caption: '定义领域规模、问题量与奖励变体', adminOnly: true },
+  { label: '提示词模板', route: '/console/admin/prompts', icon: Sparkles, caption: '治理各阶段系统提示词与版本', adminOnly: true },
+  { label: '审计日志', route: '/console/admin/audit', icon: Settings, caption: '追踪配置变更与治理事件', adminOnly: true },
+]
 
 function statusLabel(status: string) {
   switch (status) {
@@ -78,7 +123,7 @@ function sourceLabel(source: string) {
   }
 }
 
-function artifactTypeLabel(type: string) {
+function artifactLabel(type: string) {
   switch (type) {
     case 'jsonl-export':
       return 'JSONL 导出包'
@@ -87,48 +132,26 @@ function artifactTypeLabel(type: string) {
   }
 }
 
-function formatDateLabel(value?: string) {
+function formatTime(value?: string) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('zh-CN', {
-    month: 'numeric',
-    day: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   }).format(new Date(value))
 }
 
-type UserPageKey = 'dashboard' | 'planner' | 'domains' | 'questions' | 'reasoning' | 'rewards' | 'exports'
-
-type PageDefinition = {
-  key: UserPageKey
-  label: string
-  caption: string
-  icon: LucideIcon
-  group: string
-}
-
-const pageDefinitions: PageDefinition[] = [
-  { key: 'dashboard', label: '总览', caption: '查看整体运行态与最近任务', icon: LayoutDashboard, group: '工作台' },
-  { key: 'planner', label: '计划编排', caption: '配置规模、策略、模型与存储', icon: SquareKanban, group: '工作台' },
-  { key: 'domains', label: '领域图谱', caption: '生成并人工修订领域结构', icon: GitBranch, group: '生成链路' },
-  { key: 'questions', label: '问题生成', caption: '为已确认领域生成问题集', icon: Layers3, group: '生成链路' },
-  { key: 'reasoning', label: '推理生成', caption: '生成长思考过程与答案摘要', icon: BrainCircuit, group: '生成链路' },
-  { key: 'rewards', label: '奖励数据', caption: '生成强化学习奖励评估记录', icon: ShieldCheck, group: '生成链路' },
-  { key: 'exports', label: '导出交付', caption: '查看工件与运行态收口', icon: HardDriveDownload, group: '生成链路' },
-]
-
-const pageKeys = new Set(pageDefinitions.map((item) => item.key))
-
 function GraphPreview({ rootKeyword, domains }: { rootKeyword: string; domains: Domain[] }) {
-  const visible = domains.slice(0, 18)
-  const width = 820
+  const visible = domains.slice(0, 16)
+  const width = 880
   const height = 420
   const centerX = width / 2
   const centerY = height / 2
-  const radius = 158
+  const radius = 160
 
-  const positioned = visible.map((domain, index) => {
+  const nodes = visible.map((domain, index) => {
     const angle = (Math.PI * 2 * index) / Math.max(visible.length, 1)
     return {
       ...domain,
@@ -138,163 +161,162 @@ function GraphPreview({ rootKeyword, domains }: { rootKeyword: string; domains: 
   })
 
   return (
-    <div className="graph-surface">
-      <svg viewBox={`0 0 ${width} ${height}`} className="graph-svg" role="img" aria-label="领域图谱预览">
-        <defs>
-          <radialGradient id="graphGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(37, 99, 235, 0.24)" />
-            <stop offset="100%" stopColor="rgba(37, 99, 235, 0)" />
-          </radialGradient>
-        </defs>
-        <circle cx={centerX} cy={centerY} r="176" fill="url(#graphGlow)" />
-        {positioned.map((node) => (
-          <line
-            key={`line-${node.id}`}
-            x1={centerX}
-            y1={centerY}
-            x2={node.x}
-            y2={node.y}
-            stroke="rgba(59, 130, 246, 0.18)"
-            strokeWidth="1.2"
-          />
-        ))}
-        <circle cx={centerX} cy={centerY} r="64" fill="#ffffff" stroke="rgba(37, 99, 235, 0.4)" strokeWidth="2" />
-        <text x={centerX} y={centerY - 4} textAnchor="middle" dominantBaseline="middle" className="graph-root-text">
-          {rootKeyword}
-        </text>
-        <text x={centerX} y={centerY + 18} textAnchor="middle" dominantBaseline="middle" className="graph-root-subtext">
-          核心主题
-        </text>
-        {positioned.map((node) => (
-          <g key={node.id}>
-            <circle cx={node.x} cy={node.y} r="34" fill="#ffffff" stroke="rgba(59, 130, 246, 0.22)" strokeWidth="1.5" />
-            <text x={node.x} y={node.y - 4} textAnchor="middle" dominantBaseline="middle" className="graph-node-text">
-              {node.name.slice(0, 8)}
-            </text>
-            <text x={node.x} y={node.y + 14} textAnchor="middle" dominantBaseline="middle" className="graph-node-subtext">
-              {sourceLabel(node.source)}
-            </text>
-          </g>
-        ))}
-      </svg>
-      {domains.length > visible.length ? <p className="graph-caption">当前图谱仅展示前 {visible.length} 个节点，实际已生成 {domains.length} 个领域。</p> : null}
-    </div>
+    <svg viewBox={`0 0 ${width} ${height}`} className="console-graph">
+      <defs>
+        <radialGradient id="consoleGraphGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="rgba(59, 130, 246, 0.26)" />
+          <stop offset="100%" stopColor="rgba(59, 130, 246, 0)" />
+        </radialGradient>
+      </defs>
+      <circle cx={centerX} cy={centerY} r="180" fill="url(#consoleGraphGlow)" />
+      {nodes.map((node) => (
+        <line key={`line-${node.id}`} x1={centerX} y1={centerY} x2={node.x} y2={node.y} stroke="rgba(59,130,246,0.18)" strokeWidth="1.4" />
+      ))}
+      <circle cx={centerX} cy={centerY} r="64" fill="white" stroke="rgba(59,130,246,0.28)" strokeWidth="2" />
+      <text x={centerX} y={centerY - 4} textAnchor="middle" dominantBaseline="middle" fontSize="18">{rootKeyword}</text>
+      <text x={centerX} y={centerY + 18} textAnchor="middle" dominantBaseline="middle" fontSize="10" fill="var(--semi-color-text-2)">核心主题</text>
+      {nodes.map((node) => (
+        <g key={node.id}>
+          <circle cx={node.x} cy={node.y} r="32" fill="white" stroke="rgba(59,130,246,0.18)" strokeWidth="1.5" />
+          <text x={node.x} y={node.y - 2} textAnchor="middle" dominantBaseline="middle" fontSize="11">{node.name.slice(0, 8)}</text>
+          <text x={node.x} y={node.y + 14} textAnchor="middle" dominantBaseline="middle" fontSize="9" fill="var(--semi-color-text-2)">{sourceLabel(node.source)}</text>
+        </g>
+      ))}
+    </svg>
   )
 }
 
-function PageHeader({ eyebrow, title, description, actions }: { eyebrow: string; title: string; description: string; actions?: ReactNode }) {
-  return (
-    <div className="page-header">
-      <div>
-        <span className="eyebrow">{eyebrow}</span>
-        <h1>{title}</h1>
-        <p>{description}</p>
-      </div>
-      {actions ? <div className="page-header-actions">{actions}</div> : null}
-    </div>
-  )
-}
-
-function SectionHeader({ eyebrow, title, description }: { eyebrow: string; title: string; description?: string }) {
-  return (
-    <div className="section-header">
-      <span className="eyebrow">{eyebrow}</span>
-      <h2>{title}</h2>
-      {description ? <p>{description}</p> : null}
-    </div>
-  )
-}
-
-function EmptyState({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="empty-state">
-      <div className="empty-state-icon">
-        <Workflow size={18} strokeWidth={1.9} />
-      </div>
-      <strong>{title}</strong>
-      <p>{description}</p>
-    </div>
-  )
-}
-
-function MetricCard({ icon: Icon, label, value, helper }: { icon: LucideIcon; label: string; value: string | number; helper: string }) {
-  return (
-    <article className="metric-card">
-      <div className="metric-card-head">
-        <span>{label}</span>
-        <div className="metric-card-icon"><Icon size={16} strokeWidth={1.9} /></div>
-      </div>
-      <strong>{value}</strong>
-      <p>{helper}</p>
-    </article>
-  )
-}
-
-function WorkflowStage({ icon: Icon, title, description, summary, tone }: { icon: LucideIcon; title: string; description: string; summary: string; tone: 'done' | 'active' | 'pending' }) {
-  return (
-    <article className={`workflow-stage ${tone}`}>
-      <div className="workflow-stage-icon"><Icon size={18} strokeWidth={1.9} /></div>
-      <div>
-        <div className="workflow-stage-head">
-          <h3>{title}</h3>
-          <span>{tone === 'done' ? '已完成' : tone === 'active' ? '进行中' : '待执行'}</span>
-        </div>
-        <p>{description}</p>
-        <strong>{summary}</strong>
-      </div>
-    </article>
-  )
-}
-
-function ToneBadge({ tone = 'default', children }: { tone?: 'default' | 'accent' | 'success' | 'warning'; children: ReactNode }) {
-  return <span className={`tone-badge ${tone}`}>{children}</span>
-}
-
-function Panel({ className, children }: { className?: string; children: ReactNode }) {
-  return <section className={`panel ${className ?? ''}`.trim()}>{children}</section>
-}
-
-function SpinnerIcon({ spinning, icon: Icon }: { spinning: boolean; icon: LucideIcon }) {
-  return <Icon size={16} strokeWidth={1.9} className={spinning ? 'is-spinning' : undefined} />
-}
-
-function listPreview<T>({
-  items,
-  render,
-  emptyTitle,
-  emptyDescription,
+function PageHeader({
+  title,
+  description,
+  badge,
+  actions,
 }: {
-  items: T[]
-  render: (item: T) => ReactNode
-  emptyTitle: string
-  emptyDescription: string
+  title: string
+  description: string
+  badge?: string
+  actions?: React.ReactNode
 }) {
-  if (items.length === 0) {
-    return <EmptyState title={emptyTitle} description={emptyDescription} />
-  }
+  return (
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="console-route-banner">
+        {badge ? <span className="console-chip">{badge}</span> : null}
+        <Title heading={2} className="!mb-0 console-page-title">{title}</Title>
+        <Text className="console-page-subtitle">{description}</Text>
+      </div>
+      {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
+    </div>
+  )
+}
 
-  return <div className="record-list">{items.map(render)}</div>
+function StatCard({ icon: Icon, label, value, helper }: { icon: LucideIcon; label: string; value: string | number; helper: string }) {
+  return (
+    <Card className="console-stat-card" bodyStyle={{ padding: 20 }}>
+      <div className="flex items-center justify-between gap-3">
+        <Text className="console-muted">{label}</Text>
+        <div className="stat-card-icon"><Icon size={16} strokeWidth={1.9} /></div>
+      </div>
+      <div className="mt-5 console-stat-value">{value}</div>
+      <Text className="mt-3 block console-caption">{helper}</Text>
+    </Card>
+  )
+}
+
+function EmptyCard({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="console-empty">
+      <Empty title={title} description={description} />
+    </div>
+  )
+}
+
+function LoginPage({ onSubmit, loading }: { onSubmit: (email: string, password: string) => Promise<void>; loading: boolean }) {
+  const [email, setEmail] = useState('admin@company.com')
+  const [password, setPassword] = useState('admin123456')
+
+  return (
+    <div className="console-login-shell flex items-center justify-center px-4 py-10">
+      <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[1.15fr,0.85fr]">
+        <Card className="console-panel" bodyStyle={{ padding: 28 }}>
+          <span className="console-chip">与 new-api 对齐的统一控制台</span>
+          <Title heading={1} className="!mb-0 mt-4">一个前端同时承载用户与管理员能力。</Title>
+          <Text className="mt-4 block console-page-subtitle">
+            最新参考代码已同步到 /root/new-api 的 {`2026-03-23 15:04:06 +08:00`} 提交。
+            现在的控制台将用户任务链路和管理员配置治理合并到同一应用，通过登录角色区分可见功能。
+          </Text>
+          <div className="console-card-grid-3 mt-6">
+            {[
+              { icon: LayoutDashboard, title: '统一工作台', text: '总览、计划、图谱、问题、推理、奖励、导出在同一控制台切换。' },
+              { icon: ShieldCheck, title: '角色鉴权', text: '普通用户只看生产链路，管理员额外拥有系统配置能力。' },
+              { icon: Database, title: '同源 API', text: '继续通过 /api 访问后端，避免浏览器 localhost 和跨域问题。' },
+            ].map((item) => (
+              <Card key={item.title} className="console-quick-card" bodyStyle={{ padding: 18 }}>
+                <div className="feature-icon"><item.icon size={18} strokeWidth={1.9} /></div>
+                <Title heading={5} className="!mb-0 mt-4">{item.title}</Title>
+                <Text className="mt-2 block console-caption">{item.text}</Text>
+              </Card>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="console-login-card" bodyStyle={{ padding: 28 }}>
+          <div className="flex items-center gap-3">
+            <div className="feature-icon"><Users size={18} strokeWidth={1.9} /></div>
+            <div>
+              <Title heading={4} className="!mb-0">登录统一控制台</Title>
+              <Text className="console-caption">默认内置两个账号，便于首启验证。</Text>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-4">
+            <div>
+              <Text className="mb-2 block font-medium">邮箱</Text>
+              <Input value={email} onChange={setEmail} size="large" />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">密码</Text>
+              <Input value={password} onChange={setPassword} mode="password" size="large" />
+            </div>
+            <Button theme="solid" type="primary" size="large" loading={loading} onClick={() => void onSubmit(email, password)}>
+              登录
+            </Button>
+          </div>
+          <div className="mt-6 console-summary-grid">
+            <div className="console-summary-row"><span>管理员账号</span><Text strong>admin@company.com / admin123456</Text></div>
+            <div className="console-summary-row"><span>普通用户账号</span><Text strong>user@company.com / user123456</Text></div>
+          </div>
+        </Card>
+      </div>
+    </div>
+  )
 }
 
 export default function App() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [authenticated, setAuthenticated] = useState(false)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [sessionLoading, setSessionLoading] = useState(true)
+  const [authSubmitting, setAuthSubmitting] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [strategies, setStrategies] = useState<Strategy[]>([])
+  const [user, setUser] = useState<User | null>(null)
+
   const [providers, setProviders] = useState<Provider[]>([])
   const [storageProfiles, setStorageProfiles] = useState<StorageProfile[]>([])
+  const [strategies, setStrategies] = useState<Strategy[]>([])
   const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [dashboard, setDashboard] = useState<DashboardRecord | null>(null)
+  const [prompts, setPrompts] = useState<PromptRecord[]>([])
+  const [auditLogs, setAuditLogs] = useState<AuditRecord[]>([])
+  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null)
+  const [estimate, setEstimate] = useState<Dataset['estimate'] | null>(null)
+
+  const [activeDatasetId, setActiveDatasetId] = useState<number | null>(null)
   const [graph, setGraph] = useState<DatasetGraph | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
   const [reasoning, setReasoning] = useState<ReasoningRecord[]>([])
   const [rewards, setRewards] = useState<RewardRecord[]>([])
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
-  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null)
-  const [message, setMessage] = useState('')
-  const [estimate, setEstimate] = useState<Dataset['estimate'] | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [formState, setFormState] = useState({
+
+  const [plannerForm, setPlannerForm] = useState({
     name: '',
     rootKeyword: '军事',
     targetSize: 12000,
@@ -303,91 +325,120 @@ export default function App() {
     storageProfileId: 0,
   })
 
-  const pageParam = searchParams.get('page')
-  const currentPage: UserPageKey = pageKeys.has(pageParam as UserPageKey) ? (pageParam as UserPageKey) : 'dashboard'
+  const [providerDraft, setProviderDraft] = useState<ProviderDraft>({
+    name: '',
+    baseUrl: '',
+    model: '',
+    providerType: 'openai-compatible',
+    maxConcurrency: 4,
+    timeoutSeconds: 120,
+    isActive: true,
+    apiKey: '',
+  })
+  const [storageDraft, setStorageDraft] = useState<StorageDraft>({
+    name: '',
+    provider: 'minio',
+    endpoint: '',
+    region: 'us-east-1',
+    bucket: '',
+    accessKeyId: '',
+    secretAccessKey: '',
+    usePathStyle: true,
+    isDefault: true,
+  })
+  const [strategyDraft, setStrategyDraft] = useState<Partial<Strategy>>({
+    name: '',
+    description: '',
+    domainCount: 1000,
+    questionsPerDomain: 10,
+    answerVariants: 1,
+    rewardVariants: 1,
+    planningMode: 'balanced',
+    isDefault: true,
+  })
+  const [promptDraft, setPromptDraft] = useState<PromptRecord>({
+    name: '',
+    stage: 'domain-generation',
+    version: 'v1',
+    systemPrompt: '',
+    userPrompt: '',
+    isActive: true,
+  })
 
-  const adminHref = typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:3211`
-    : '/'
+  const isAdmin = user?.role === 'admin'
+  const activeDataset = useMemo(() => datasets.find((item) => item.id === activeDatasetId) ?? graph?.dataset ?? null, [datasets, activeDatasetId, graph?.dataset])
+  const visiblePages = useMemo(() => [...userPages, ...(isAdmin ? adminPages : [])], [isAdmin])
+  const activeNav = useMemo(
+    () => visiblePages.find((page) => location.pathname === page.route || location.pathname.startsWith(`${page.route}/`))?.route ?? '/console/overview',
+    [location.pathname, visiblePages],
+  )
 
-  const setPage = (page: UserPageKey) => {
-    const next = new URLSearchParams(searchParams)
-    next.set('page', page)
-    setSearchParams(next)
-    setMobileNavOpen(false)
-  }
+  useEffect(() => {
+    document.body.classList.toggle('sidebar-collapsed', sidebarCollapsed)
+    return () => document.body.classList.remove('sidebar-collapsed')
+  }, [sidebarCollapsed])
 
-  const activeDataset = graph?.dataset ?? null
+  const loadAdminData = useCallback(async () => {
+    if (!isAdmin) {
+      setDashboard(null)
+      setPrompts([])
+      setAuditLogs([])
+      return
+    }
+    const [dashboardData, promptData, auditData] = await Promise.all([
+      consoleApi.dashboard(),
+      consoleApi.listPrompts(),
+      consoleApi.listAuditLogs(),
+    ])
+    setDashboard(dashboardData)
+    setPrompts(promptData)
+    setAuditLogs(auditData)
+  }, [isAdmin])
 
-  const loadBootstrap = async (nextMessage?: string) => {
-    setLoading(true)
+  const loadBootstrap = useCallback(async (successMessage?: string) => {
+    setBusy(true)
     try {
-      const [strategyData, providerData, storageData, datasetData, runtimeData] = await Promise.all([
-        userApi.listStrategies(),
-        userApi.listProviders(),
-        userApi.listStorageProfiles(),
-        userApi.listDatasets(),
-        userApi.runtimeStatus(),
+      const [providerData, storageData, strategyData, datasetData, runtimeData] = await Promise.all([
+        consoleApi.listProviders(),
+        consoleApi.listStorageProfiles(),
+        consoleApi.listStrategies(),
+        consoleApi.listDatasets(),
+        consoleApi.runtimeStatus(),
       ])
-
-      setStrategies(strategyData)
       setProviders(providerData)
       setStorageProfiles(storageData)
+      setStrategies(strategyData)
       setDatasets(datasetData)
       setRuntime(runtimeData)
-      setFormState((current) => ({
+      setPlannerForm((current) => ({
         ...current,
         strategyId: current.strategyId || strategyData[0]?.id || 0,
         providerId: current.providerId || providerData[0]?.id || 0,
         storageProfileId: current.storageProfileId || storageData[0]?.id || 0,
       }))
-
-      const preferredDatasetId = datasetData.some((dataset) => dataset.id === graph?.dataset.id)
-        ? graph?.dataset.id
-        : datasetData[0]?.id
-
-      if (preferredDatasetId) {
-        const [nextGraph, nextQuestions, nextReasoning, nextRewards, nextArtifacts] = await Promise.all([
-          userApi.getDataset(preferredDatasetId),
-          userApi.listQuestions(preferredDatasetId),
-          userApi.listReasoning(preferredDatasetId),
-          userApi.listRewards(preferredDatasetId),
-          userApi.listArtifacts(preferredDatasetId),
-        ])
-        setGraph(nextGraph)
-        setQuestions(nextQuestions)
-        setReasoning(nextReasoning)
-        setRewards(nextRewards)
-        setArtifacts(nextArtifacts)
-      } else {
-        setGraph(null)
-        setQuestions([])
-        setReasoning([])
-        setRewards([])
-        setArtifacts([])
+      if (!activeDatasetId && datasetData[0]?.id) {
+        setActiveDatasetId(datasetData[0].id)
       }
-
-      if (nextMessage) {
-        setMessage(preferredDatasetId ? `${nextMessage} 已同步最近的数据集。` : nextMessage)
-      }
+      await loadAdminData()
+      if (successMessage) Toast.success(successMessage)
     } catch (error) {
-      setMessage((error as Error).message)
+      Toast.error((error as Error).message)
     } finally {
-      setLoading(false)
+      setBusy(false)
     }
-  }
+  }, [activeDatasetId, loadAdminData])
 
-  const loadDatasetWorkspace = async (datasetId: number, nextMessage?: string) => {
-    setLoading(true)
+  const loadDatasetWorkspace = useCallback(async (datasetId: number, successMessage?: string) => {
+    setBusy(true)
     try {
       const [nextGraph, nextQuestions, nextReasoning, nextRewards, nextArtifacts, nextRuntime, nextDatasets] = await Promise.all([
-        userApi.getDataset(datasetId),
-        userApi.listQuestions(datasetId),
-        userApi.listReasoning(datasetId),
-        userApi.listRewards(datasetId),
-        userApi.listArtifacts(datasetId),
-        userApi.runtimeStatus(),
-        userApi.listDatasets(),
+        consoleApi.getDataset(datasetId),
+        consoleApi.listQuestions(datasetId),
+        consoleApi.listReasoning(datasetId),
+        consoleApi.listRewards(datasetId),
+        consoleApi.listArtifacts(datasetId),
+        consoleApi.runtimeStatus(),
+        consoleApi.listDatasets(),
       ])
       setGraph(nextGraph)
       setQuestions(nextQuestions)
@@ -396,1088 +447,851 @@ export default function App() {
       setArtifacts(nextArtifacts)
       setRuntime(nextRuntime)
       setDatasets(nextDatasets)
-      if (nextMessage) {
-        setMessage(nextMessage)
-      }
+      setActiveDatasetId(datasetId)
+      if (successMessage) Toast.success(successMessage)
     } catch (error) {
-      setMessage((error as Error).message)
+      Toast.error((error as Error).message)
     } finally {
-      setLoading(false)
+      setBusy(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    void (async () => {
+      try {
+        const result = await authApi.me()
+        if (!active) return
+        setUser(result.user)
+      } catch {
+        if (!active) return
+        setUser(null)
+      } finally {
+        if (active) setSessionLoading(false)
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+    void loadBootstrap()
+  }, [user, loadBootstrap])
+
+  useEffect(() => {
+    if (!user || !activeDatasetId) return
+    void loadDatasetWorkspace(activeDatasetId)
+  }, [user, activeDatasetId, loadDatasetWorkspace])
+
+  useEffect(() => {
+    if (sessionLoading) return
+    if (!user && location.pathname !== '/login') {
+      navigate('/login', { replace: true })
+      return
+    }
+    if (user && location.pathname === '/login') {
+      navigate('/console/overview', { replace: true })
+      return
+    }
+    if (user && !isAdmin && location.pathname.startsWith('/console/admin/')) {
+      navigate('/console/overview', { replace: true })
+    }
+  }, [isAdmin, location.pathname, navigate, sessionLoading, user])
+
+  const handleLogin = async (email: string, password: string) => {
+    setAuthSubmitting(true)
+    try {
+      const result = await authApi.login({ email, password })
+      setUser(result.user)
+      Toast.success(`欢迎回来，${result.user.email}`)
+      navigate('/console/overview', { replace: true })
+    } catch (error) {
+      Toast.error((error as Error).message)
+    } finally {
+      setAuthSubmitting(false)
     }
   }
 
-  useEffect(() => {
-    if (!authenticated) return
-    void loadBootstrap('控制台基础数据已加载，可以开始编排任务。')
-  }, [authenticated])
-
-  useEffect(() => {
-    if (!authenticated) return
-    if (!pageParam || !pageKeys.has(pageParam as UserPageKey)) {
-      setPage('dashboard')
+  const handleLogout = async () => {
+    try {
+      await authApi.logout()
+    } finally {
+      setUser(null)
+      setGraph(null)
+      setQuestions([])
+      setReasoning([])
+      setRewards([])
+      setArtifacts([])
+      navigate('/login', { replace: true })
     }
-  }, [authenticated, pageParam])
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    }
-  }, [currentPage])
-
-  const plannerCards = useMemo(() => {
-    if (!estimate) return []
-    return [
-      { icon: Network, label: '领域数', value: estimate.domainCount, helper: '建议拆分出的一级领域数量' },
-      { icon: Layers3, label: '每领域问题数', value: estimate.questionsPerDomain, helper: '单个领域建议生成的问题数量' },
-      { icon: SquareKanban, label: '预计问题数', value: estimate.estimatedQuestions, helper: '进入问题队列的总问题体量' },
-      { icon: Sparkles, label: '预计样本数', value: estimate.estimatedSamples, helper: '最终产出的训练样本规模' },
-    ]
-  }, [estimate])
-
-  const runtimeCards = useMemo(() => ([
-    { icon: DatabaseZap, label: '数据集', value: runtime?.datasetCount ?? 0, helper: '当前在管任务总数' },
-    { icon: Layers3, label: '问题', value: runtime?.questionCount ?? 0, helper: '已进入存储的问题条目' },
-    { icon: BrainCircuit, label: '奖励记录', value: runtime?.rewardCount ?? 0, helper: '完成奖励评估的样本数量' },
-    { icon: Activity, label: '队列深度', value: runtime?.queueDepth ?? 0, helper: '后台异步任务待执行数' },
-  ]), [runtime])
-
-  const workflowStages = useMemo(() => ([
-    {
-      icon: Target,
-      title: '计划估算',
-      description: '先锁定目标样本规模，再反推领域数与问题配额。',
-      summary: estimate ? `预计 ${estimate.estimatedSamples} 个样本` : authenticated ? '等待运行估算' : '等待登录控制台',
-      tone: estimate ? 'done' : authenticated ? 'active' : 'pending',
-    },
-    {
-      icon: GitBranch,
-      title: '领域图谱',
-      description: '生成领域节点后先命名治理，再确认图谱。',
-      summary: graph ? `${graph.domains.length} 个领域节点` : '等待创建数据集',
-      tone: activeDataset?.status && activeDataset.status !== 'draft' ? 'done' : graph ? 'active' : 'pending',
-    },
-    {
-      icon: BrainCircuit,
-      title: '问题与推理',
-      description: '按领域生成问题，再异步补齐长思维链与答案。',
-      summary: reasoning.length > 0 ? `${reasoning.length} 条推理记录` : questions.length > 0 ? `${questions.length} 个问题待扩展` : '等待领域确认',
-      tone: reasoning.length > 0 ? 'done' : questions.length > 0 ? 'active' : 'pending',
-    },
-    {
-      icon: FileOutput,
-      title: '奖励与导出',
-      description: '完成奖励评估后导出 JSONL 工件并回收运行态信号。',
-      summary: artifacts.length > 0 ? `${artifacts.length} 个导出工件` : rewards.length > 0 ? `${rewards.length} 条奖励记录` : '等待推理完成',
-      tone: artifacts.length > 0 ? 'done' : rewards.length > 0 ? 'active' : 'pending',
-    },
-  ] satisfies Array<{ icon: LucideIcon; title: string; description: string; summary: string; tone: 'done' | 'active' | 'pending' }>), [activeDataset?.status, artifacts.length, authenticated, estimate, graph, questions.length, reasoning.length, rewards.length])
-
-  const selectedStrategy = strategies.find((strategy) => strategy.id === Number(formState.strategyId))
-  const selectedProvider = providers.find((provider) => provider.id === Number(formState.providerId))
-  const selectedStorage = storageProfiles.find((profile) => profile.id === Number(formState.storageProfileId))
-
-  const currentPageDefinition = pageDefinitions.find((item) => item.key === currentPage) ?? pageDefinitions[0]
-  const topNavItems = pageDefinitions.filter((item) => ['dashboard', 'planner', 'domains', 'exports'].includes(item.key))
-  const groupedPages = pageDefinitions.reduce<Record<string, PageDefinition[]>>((acc, page) => {
-    acc[page.group] = [...(acc[page.group] ?? []), page]
-    return acc
-  }, {})
-  const recentDatasets = datasets.slice(0, 4)
-  const quickFacts = [
-    `主题：${formState.rootKeyword}`,
-    `策略：${selectedStrategy?.name ?? '待同步'}`,
-    `模型：${selectedProvider?.model ?? '待同步'}`,
-    `存储：${selectedStorage?.name ?? '待同步'}`,
-  ]
-
-  const submitLogin = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setAuthenticated(true)
-    setPage('dashboard')
-    setMessage('控制台已解锁，请先进入“计划编排”页面估算规模。')
   }
 
   const estimatePlan = async () => {
-    setLoading(true)
+    setBusy(true)
     try {
-      const nextEstimate = await userApi.estimatePlan({
-        rootKeyword: formState.rootKeyword,
-        targetSize: Number(formState.targetSize),
-        strategyId: Number(formState.strategyId),
+      const data = await consoleApi.estimatePlan({
+        rootKeyword: plannerForm.rootKeyword,
+        targetSize: Number(plannerForm.targetSize),
+        strategyId: Number(plannerForm.strategyId),
       })
-      setEstimate(nextEstimate)
-      setMessage('规模估算已刷新，可以继续创建数据集。')
+      setEstimate(data)
+      Toast.success('计划估算已刷新')
     } catch (error) {
-      setMessage((error as Error).message)
+      Toast.error((error as Error).message)
     } finally {
-      setLoading(false)
+      setBusy(false)
     }
   }
 
   const createDataset = async () => {
     if (!estimate) {
-      setMessage('请先完成计划估算，再创建数据集。')
+      Toast.warning('请先完成计划估算')
       return
     }
-    setLoading(true)
+    setBusy(true)
     try {
-      const created = await userApi.createDataset({
-        name: formState.name || `${formState.rootKeyword} 数据集`,
-        rootKeyword: formState.rootKeyword,
-        targetSize: Number(formState.targetSize),
-        strategyId: Number(formState.strategyId),
-        providerId: Number(formState.providerId),
-        storageProfileId: Number(formState.storageProfileId),
+      const created = await consoleApi.createDataset({
+        name: plannerForm.name || `${plannerForm.rootKeyword} 数据集`,
+        rootKeyword: plannerForm.rootKeyword,
+        targetSize: Number(plannerForm.targetSize),
+        strategyId: Number(plannerForm.strategyId),
+        providerId: Number(plannerForm.providerId),
+        storageProfileId: Number(plannerForm.storageProfileId),
         status: 'draft',
         estimate,
       })
-      await loadDatasetWorkspace(created.id, '数据集已创建，接下来可以生成并治理领域图谱。')
-      setPage('domains')
+      setActiveDatasetId(created.id)
+      navigate('/console/domains')
+      Toast.success('数据集已创建')
+      await loadBootstrap()
     } catch (error) {
-      setMessage((error as Error).message)
-      setLoading(false)
+      Toast.error((error as Error).message)
+    } finally {
+      setBusy(false)
     }
   }
 
   const generateDomains = async () => {
-    if (!graph) {
-      setMessage('请先创建或选中一个数据集，再生成领域。')
-      return
-    }
-    setLoading(true)
+    if (!activeDatasetId) return Toast.warning('请先选择数据集')
+    setBusy(true)
     try {
-      const nextGraph = await userApi.generateDomains(graph.dataset.id)
+      const nextGraph = await consoleApi.generateDomains(activeDatasetId)
       setGraph(nextGraph)
-      setMessage(`已生成 ${nextGraph.domains.length} 个领域，建议先进行命名审核。`)
+      Toast.success(`已生成 ${nextGraph.domains.length} 个领域`)
     } catch (error) {
-      setMessage((error as Error).message)
+      Toast.error((error as Error).message)
     } finally {
-      setLoading(false)
+      setBusy(false)
     }
-  }
-
-  const renameDomain = (domainId: number, name: string) => {
-    setGraph((current) => current ? {
-      ...current,
-      domains: current.domains.map((domain) => domain.id === domainId ? { ...domain, name } : domain),
-    } : current)
   }
 
   const saveGraph = async () => {
     if (!graph) return
-    setLoading(true)
+    setBusy(true)
     try {
-      await userApi.updateGraph(graph.dataset.id, graph.domains)
-      setMessage('图谱命名修改已保存。')
+      await consoleApi.updateGraph(graph.dataset.id, graph.domains)
+      Toast.success('图谱命名修改已保存')
     } catch (error) {
-      setMessage((error as Error).message)
+      Toast.error((error as Error).message)
     } finally {
-      setLoading(false)
+      setBusy(false)
     }
   }
 
   const confirmDomains = async () => {
     if (!graph) return
-    setLoading(true)
+    setBusy(true)
     try {
-      await userApi.confirmDomains(graph.dataset.id)
-      await loadDatasetWorkspace(graph.dataset.id, '领域已确认，数据集已进入问题生成阶段。')
-      setPage('questions')
+      await consoleApi.confirmDomains(graph.dataset.id)
+      Toast.success('领域已确认')
+      navigate('/console/questions')
+      await loadDatasetWorkspace(graph.dataset.id)
     } catch (error) {
-      setMessage((error as Error).message)
-      setLoading(false)
+      Toast.error((error as Error).message)
+    } finally {
+      setBusy(false)
     }
   }
 
   const generateQuestions = async () => {
-    if (!graph) return
-    setLoading(true)
+    if (!activeDatasetId) return
+    setBusy(true)
     try {
-      await userApi.generateQuestions(graph.dataset.id)
-      setMessage('问题生成任务已入队，可以稍后刷新查看结果。')
+      await consoleApi.generateQuestions(activeDatasetId)
+      Toast.success('问题生成任务已入队')
     } catch (error) {
-      setMessage((error as Error).message)
+      Toast.error((error as Error).message)
     } finally {
-      setLoading(false)
-    }
-  }
-
-  const refreshQuestions = async () => {
-    if (!graph) return
-    setLoading(true)
-    try {
-      const [nextQuestions, nextRuntime] = await Promise.all([
-        userApi.listQuestions(graph.dataset.id),
-        userApi.runtimeStatus(),
-      ])
-      setQuestions(nextQuestions)
-      setRuntime(nextRuntime)
-      setMessage('问题预览已刷新。')
-    } catch (error) {
-      setMessage((error as Error).message)
-    } finally {
-      setLoading(false)
+      setBusy(false)
     }
   }
 
   const generateReasoning = async () => {
-    if (!graph) return
-    setLoading(true)
+    if (!activeDatasetId) return
+    setBusy(true)
     try {
-      await userApi.generateReasoning(graph.dataset.id)
-      setMessage('推理生成任务已入队，请稍后刷新查看长文本结果。')
+      await consoleApi.generateReasoning(activeDatasetId)
+      Toast.success('推理生成任务已入队')
     } catch (error) {
-      setMessage((error as Error).message)
+      Toast.error((error as Error).message)
     } finally {
-      setLoading(false)
-    }
-  }
-
-  const refreshReasoning = async () => {
-    if (!graph) return
-    setLoading(true)
-    try {
-      const [nextReasoning, nextRuntime] = await Promise.all([
-        userApi.listReasoning(graph.dataset.id),
-        userApi.runtimeStatus(),
-      ])
-      setReasoning(nextReasoning)
-      setRuntime(nextRuntime)
-      setMessage('推理预览已刷新。')
-    } catch (error) {
-      setMessage((error as Error).message)
-    } finally {
-      setLoading(false)
+      setBusy(false)
     }
   }
 
   const generateRewards = async () => {
-    if (!graph) return
-    setLoading(true)
+    if (!activeDatasetId) return
+    setBusy(true)
     try {
-      await userApi.generateRewards(graph.dataset.id)
-      setMessage('奖励数据生成任务已入队，可以稍后刷新查看评分结果。')
+      await consoleApi.generateRewards(activeDatasetId)
+      Toast.success('奖励数据生成任务已入队')
     } catch (error) {
-      setMessage((error as Error).message)
+      Toast.error((error as Error).message)
     } finally {
-      setLoading(false)
-    }
-  }
-
-  const refreshRewards = async () => {
-    if (!graph) return
-    setLoading(true)
-    try {
-      const [nextRewards, nextRuntime] = await Promise.all([
-        userApi.listRewards(graph.dataset.id),
-        userApi.runtimeStatus(),
-      ])
-      setRewards(nextRewards)
-      setRuntime(nextRuntime)
-      setMessage('奖励数据预览已刷新。')
-    } catch (error) {
-      setMessage((error as Error).message)
-    } finally {
-      setLoading(false)
+      setBusy(false)
     }
   }
 
   const generateExport = async () => {
-    if (!graph) return
-    setLoading(true)
+    if (!activeDatasetId) return
+    setBusy(true)
     try {
-      await userApi.generateExport(graph.dataset.id)
-      setMessage('导出任务已入队，请稍后刷新查看打包结果。')
+      await consoleApi.generateExport(activeDatasetId)
+      Toast.success('导出任务已入队')
     } catch (error) {
-      setMessage((error as Error).message)
+      Toast.error((error as Error).message)
     } finally {
-      setLoading(false)
+      setBusy(false)
     }
   }
 
-  const refreshArtifacts = async () => {
-    if (!graph) return
-    setLoading(true)
+  const saveProvider = async () => {
+    setBusy(true)
     try {
-      const [nextArtifacts, nextRuntime] = await Promise.all([
-        userApi.listArtifacts(graph.dataset.id),
-        userApi.runtimeStatus(),
-      ])
-      setArtifacts(nextArtifacts)
-      setRuntime(nextRuntime)
-      setMessage('导出工件预览已刷新。')
+      await consoleApi.saveProvider(providerDraft)
+      Toast.success('模型提供方已保存')
+      setProviderDraft({ name: '', baseUrl: '', model: '', providerType: 'openai-compatible', maxConcurrency: 4, timeoutSeconds: 120, isActive: true, apiKey: '' })
+      await loadBootstrap()
     } catch (error) {
-      setMessage((error as Error).message)
+      Toast.error((error as Error).message)
     } finally {
-      setLoading(false)
+      setBusy(false)
     }
   }
 
-  const renderDashboardPage = () => (
-    <>
+  const saveStorage = async () => {
+    setBusy(true)
+    try {
+      await consoleApi.saveStorageProfile(storageDraft)
+      Toast.success('存储配置已保存')
+      setStorageDraft({ name: '', provider: 'minio', endpoint: '', region: 'us-east-1', bucket: '', accessKeyId: '', secretAccessKey: '', usePathStyle: true, isDefault: true })
+      await loadBootstrap()
+    } catch (error) {
+      Toast.error((error as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveStrategy = async () => {
+    setBusy(true)
+    try {
+      await consoleApi.saveStrategy(strategyDraft)
+      Toast.success('生成策略已保存')
+      setStrategyDraft({ name: '', description: '', domainCount: 1000, questionsPerDomain: 10, answerVariants: 1, rewardVariants: 1, planningMode: 'balanced', isDefault: true })
+      await loadBootstrap()
+    } catch (error) {
+      Toast.error((error as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const savePrompt = async () => {
+    setBusy(true)
+    try {
+      await consoleApi.savePrompt(promptDraft)
+      Toast.success('提示词模板已保存')
+      setPromptDraft({ name: '', stage: 'domain-generation', version: 'v1', systemPrompt: '', userPrompt: '', isActive: true })
+      await loadBootstrap()
+    } catch (error) {
+      Toast.error((error as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const providerColumns = useMemo(
+    () => [
+      { title: '名称', dataIndex: 'name' },
+      { title: '基础 URL', dataIndex: 'baseUrl' },
+      { title: '模型', dataIndex: 'model' },
+      { title: '类型', dataIndex: 'providerType', render: (value: string) => <Tag color="blue">{value}</Tag> },
+      { title: '状态', dataIndex: 'isActive', render: (value: boolean) => <Tag color={value ? 'green' : 'grey'}>{value ? '启用' : '停用'}</Tag> },
+    ],
+    [],
+  )
+  const storageColumns = useMemo(
+    () => [
+      { title: '名称', dataIndex: 'name' },
+      { title: '提供方', dataIndex: 'provider', render: (value: string) => <Tag color="cyan">{value}</Tag> },
+      { title: '端点', dataIndex: 'endpoint' },
+      { title: '存储桶', dataIndex: 'bucket' },
+      { title: '默认', dataIndex: 'isDefault', render: (value: boolean) => <Tag color={value ? 'green' : 'grey'}>{value ? '是' : '否'}</Tag> },
+    ],
+    [],
+  )
+  const strategyColumns = useMemo(
+    () => [
+      { title: '名称', dataIndex: 'name' },
+      { title: '模式', dataIndex: 'planningMode', render: (value: string) => <Tag color="purple">{value}</Tag> },
+      { title: '领域数', dataIndex: 'domainCount' },
+      { title: '每领域问题数', dataIndex: 'questionsPerDomain' },
+      { title: '答案变体', dataIndex: 'answerVariants' },
+      { title: '奖励变体', dataIndex: 'rewardVariants' },
+    ],
+    [],
+  )
+  const promptColumns = useMemo(
+    () => [
+      { title: '名称', dataIndex: 'name' },
+      { title: '阶段', dataIndex: 'stage', render: (value: string) => <Tag color="amber">{value}</Tag> },
+      { title: '版本', dataIndex: 'version' },
+      { title: '状态', dataIndex: 'isActive', render: (value: boolean) => <Tag color={value ? 'green' : 'grey'}>{value ? '启用' : '停用'}</Tag> },
+    ],
+    [],
+  )
+  const auditColumns = useMemo(
+    () => [
+      { title: '操作人', dataIndex: 'actor' },
+      { title: '操作', dataIndex: 'action' },
+      { title: '资源', dataIndex: 'resourceType' },
+      { title: '详情', dataIndex: 'detail' },
+      { title: '时间', dataIndex: 'createdAt' },
+    ],
+    [],
+  )
+
+  const overviewCards = [
+    { icon: Database, label: '数据集', value: runtime?.datasetCount ?? 0, helper: '当前平台管理中的数据集数量' },
+    { icon: Layers3, label: '问题', value: runtime?.questionCount ?? 0, helper: '已经入库的问题样本总数' },
+    { icon: BrainCircuit, label: '推理', value: runtime?.reasoningCount ?? 0, helper: '长思维链与答案记录总数' },
+    { icon: HardDriveDownload, label: '工件', value: runtime?.artifactCount ?? 0, helper: '已经打包完成的导出工件' },
+  ]
+
+  const planningCards = estimate
+    ? [
+        { icon: Network, label: '领域数', value: estimate.domainCount, helper: '建议生成的一级领域数量' },
+        { icon: Layers3, label: '每领域问题数', value: estimate.questionsPerDomain, helper: '单领域建议问题量' },
+        { icon: BrainCircuit, label: '预计问题总量', value: estimate.estimatedQuestions, helper: '将被送入问题队列的数量' },
+        { icon: FileOutput, label: '预计样本总量', value: estimate.estimatedSamples, helper: '最终训练样本总规模' },
+      ]
+    : []
+
+  const renderOverview = () => (
+    <div className="console-page-shell">
       <PageHeader
-        eyebrow="数据工厂总览"
-        title="统一观察计划、治理、生成与导出"
-        description="按 /root/new-api 的控制台结构重新拆分页面：顶部导航、左侧侧栏、右侧分页工作区，避免把全部操作堆在同一屏。"
-        actions={(
+        badge="统一控制台 / 总览"
+        title="一个界面同时覆盖用户链路与管理员治理"
+        description="当前前端已按 /root/new-api 的页面结构重构为固定头部、左侧导航、右侧分页工作区；管理员登录后自动拥有全部用户链路与系统配置能力。"
+        actions={
           <>
-            <button type="button" className="secondary-button" onClick={() => setPage('planner')}>
-              <SquareKanban size={16} strokeWidth={1.9} /> 进入计划编排
-            </button>
-            <button type="button" className="primary-button" onClick={() => void loadBootstrap('控制台基础数据已刷新。')} disabled={loading}>
-              <SpinnerIcon spinning={loading} icon={RefreshCw} /> 刷新总览
-            </button>
+            <Button theme="solid" type="primary" loading={busy} icon={<RefreshCw size={16} />} onClick={() => void loadBootstrap('控制台数据已刷新')}>
+              刷新数据
+            </Button>
+            <Button icon={<Target size={16} />} onClick={() => navigate('/console/planning')}>开始计划编排</Button>
           </>
-        )}
+        }
       />
 
-      <div className="page-grid page-grid-hero">
-        <Panel className="hero-panel hero-panel-wide">
-          <ToneBadge tone="accent">用户工作台</ToneBadge>
-          <h2>先看运行态，再推进动作，把数据集生产流程拆成清晰的独立页面。</h2>
-          <p>
-            参考 new-api 的头部、侧栏与工作区布局，把计划估算、领域治理、问题生成、推理生成、奖励生成与导出交付拆成独立入口，减少滚动和跨区跳转成本。
-          </p>
-          <div className="button-row">
-            <button type="button" className="primary-button" onClick={() => setPage('planner')}>
-              开始新任务 <ArrowRight size={16} strokeWidth={1.9} />
-            </button>
-            <button type="button" className="secondary-button" onClick={() => setPage(activeDataset ? 'domains' : 'planner')}>
-              {activeDataset ? '继续当前数据集' : '先完成计划估算'}
-            </button>
-          </div>
-          {message ? <div className="notice-banner"><BellRing size={16} strokeWidth={1.9} /> {message}</div> : null}
-          <div className="chip-row">
-            {quickFacts.map((fact) => (
-              <span key={fact} className="info-chip">{fact}</span>
-            ))}
-          </div>
-        </Panel>
+      <Banner type="info" icon={<Bell size={16} />} description={`当前登录角色：${isAdmin ? '管理员' : '普通用户'}。${isAdmin ? '你可以使用全部用户功能并配置系统。' : '你可以使用数据集生产链路。'}`} />
 
-        <Panel className="focus-panel">
-          <SectionHeader eyebrow="当前焦点" title={activeDataset?.name ?? '尚未选中数据集'} description={activeDataset ? `${activeDataset.rootKeyword} · ${statusLabel(activeDataset.status)}` : '先进入计划编排页创建首个数据集。'} />
-          {activeDataset ? (
-            <div className="focus-summary">
-              <div className="focus-row">
-                <span>预计样本</span>
-                <strong>{activeDataset.estimate.estimatedSamples}</strong>
-              </div>
-              <div className="focus-row">
-                <span>创建时间</span>
-                <strong>{formatDateLabel(activeDataset.createdAt)}</strong>
-              </div>
-              <div className="focus-row">
-                <span>更新时间</span>
-                <strong>{formatDateLabel(activeDataset.updatedAt)}</strong>
-              </div>
-              <div className="focus-row">
-                <span>当前状态</span>
-                <strong>{statusLabel(activeDataset.status)}</strong>
-              </div>
-            </div>
-          ) : (
-            <EmptyState title="还没有活动数据集" description="完成计划估算并创建数据集后，这里会显示当前任务上下文。" />
-          )}
-        </Panel>
+      <div className="console-card-grid-4">
+        {overviewCards.map((item) => <StatCard key={item.label} {...item} />)}
       </div>
 
-      <div className="metric-grid four-up">
-        {runtimeCards.map((card) => (
-          <MetricCard key={card.label} {...card} />
-        ))}
-      </div>
+      <div className="console-card-grid-2">
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">当前活动数据集</Title>
+          <Text className="mt-2 block console-caption">总览页会持续显示当前任务上下文，避免在新结构下迷失工作流位置。</Text>
+          <div className="mt-5 console-summary-grid">
+            <div className="console-summary-row"><span>数据集名称</span><Text strong>{activeDataset?.name ?? '尚未选择'}</Text></div>
+            <div className="console-summary-row"><span>根关键词</span><Text strong>{activeDataset?.rootKeyword ?? '—'}</Text></div>
+            <div className="console-summary-row"><span>状态</span><Text strong>{activeDataset ? statusLabel(activeDataset.status) : '—'}</Text></div>
+            <div className="console-summary-row"><span>预计样本</span><Text strong>{activeDataset?.estimate.estimatedSamples ?? '—'}</Text></div>
+          </div>
+        </Card>
 
-      <div className="page-grid page-grid-2-1">
-        <Panel>
-          <SectionHeader eyebrow="阶段进度" title="流程总览" description="每一个阶段都以独立页推进，但总览页会持续显示当前链路状态。" />
-          <div className="workflow-stage-list">
-            {workflowStages.map((stage) => (
-              <WorkflowStage key={stage.title} {...stage} />
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">快速入口</Title>
+          <Text className="mt-2 block console-caption">管理员与用户都从同一个前端进入；管理员额外看到系统治理导航。</Text>
+          <div className="console-card-grid-2 mt-5">
+            {[...userPages.slice(1, 4), ...(isAdmin ? adminPages.slice(0, 1) : [])].map((page) => (
+              <Card key={page.route} className="console-quick-card" bodyStyle={{ padding: 18 }}>
+                <div className="cursor-pointer" onClick={() => navigate(page.route)}>
+                  <div className="quick-page-icon"><page.icon size={18} strokeWidth={1.9} /></div>
+                  <Title heading={6} className="!mb-0 mt-4">{page.label}</Title>
+                  <Text className="mt-2 block console-caption">{page.caption}</Text>
+                </div>
+              </Card>
             ))}
           </div>
-        </Panel>
-
-        <Panel>
-          <SectionHeader eyebrow="操作纪律" title="执行检查表" description="建议按顺序推进，避免在前置结果未落库时提前触发后续阶段。" />
-          <div className="checklist-grid">
-            {[
-              '先估算规模，再创建数据集。',
-              '图谱确认前只做命名治理，不提前跑问题队列。',
-              '推理与奖励阶段都建议在上一阶段刷新成功后再继续。',
-              '导出前先检查队列深度与工件数量。',
-            ].map((item) => (
-              <div key={item} className="checklist-item">
-                <CheckCircle2 size={16} strokeWidth={1.9} />
-                <span>{item}</span>
-              </div>
-            ))}
-          </div>
-        </Panel>
+        </Card>
       </div>
 
-      <Panel>
-        <SectionHeader eyebrow="最近的数据集" title="任务切换" description="保留 new-api 式的工作台信息密度，在总览页直接切换最近任务。" />
+      <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+        <Title heading={4} className="!mb-0">最近的数据集</Title>
+        <Text className="mt-2 block console-caption">从统一控制台直接切换任务，不再在用户端与管理端之间跳转。</Text>
         {datasets.length > 0 ? (
-          <div className="dataset-grid">
-            {datasets.map((dataset) => {
-              const active = dataset.id === activeDataset?.id
-              return (
-                <button
-                  key={dataset.id}
-                  type="button"
-                  className={`dataset-card ${active ? 'active' : ''}`}
-                  onClick={() => void loadDatasetWorkspace(dataset.id, `已切换到数据集「${dataset.name}」。`)}
-                >
-                  <div className="dataset-card-top">
-                    <ToneBadge tone={active ? 'accent' : 'default'}>{statusLabel(dataset.status)}</ToneBadge>
-                    {active ? <span className="dataset-current-tag">当前任务</span> : null}
-                  </div>
-                  <h3>{dataset.name}</h3>
-                  <p>{dataset.rootKeyword} · 预计 {dataset.estimate.estimatedSamples} 个样本</p>
-                  <div className="dataset-card-meta">
-                    <span><FolderGit2 size={14} strokeWidth={1.9} /> 数据集 #{dataset.id}</span>
-                    <span>更新于 {formatDateLabel(dataset.updatedAt)}</span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        ) : (
-          <EmptyState title="还没有可切换的数据集" description="先进入计划编排页创建数据集，任务卡片会自动出现在这里。" />
-        )}
-      </Panel>
-    </>
-  )
-
-  const renderPlannerPage = () => (
-    <>
-      <PageHeader
-        eyebrow="计划编排"
-        title="配置数据集规模、策略、模型与存储"
-        description="把 new-api 风格的工作区结构映射到本项目：左侧填写配置，右侧查看就绪度与估算结果。"
-        actions={(
-          <>
-            <button type="button" className="secondary-button" onClick={() => void loadBootstrap('控制台基础数据已刷新。')} disabled={loading}>
-              <SpinnerIcon spinning={loading} icon={RefreshCw} /> 同步资源
-            </button>
-            <button type="button" className="primary-button" onClick={() => void estimatePlan()} disabled={loading}>
-              <Target size={16} strokeWidth={1.9} /> 更新估算
-            </button>
-          </>
-        )}
-      />
-
-      <div className="page-grid page-grid-2-1 align-start">
-        <Panel>
-          <SectionHeader eyebrow="任务入口" title="创建一个新的训练数据集" description="先确定根关键词与目标规模，再选择策略、模型提供方和对象存储。" />
-          <div className="form-grid two-columns">
-            <label>
-              <span>数据集名称</span>
-              <input value={formState.name} onChange={(event) => setFormState({ ...formState, name: event.target.value })} placeholder="军事长链思考训练集" />
-            </label>
-            <label>
-              <span>根关键词</span>
-              <input value={formState.rootKeyword} onChange={(event) => setFormState({ ...formState, rootKeyword: event.target.value })} placeholder="军事" />
-            </label>
-            <label>
-              <span>目标规模</span>
-              <input type="number" value={formState.targetSize} onChange={(event) => setFormState({ ...formState, targetSize: Number(event.target.value) })} />
-            </label>
-            <label>
-              <span>生成策略</span>
-              <select value={formState.strategyId} onChange={(event) => setFormState({ ...formState, strategyId: Number(event.target.value) })}>
-                {strategies.map((strategy) => <option key={strategy.id} value={strategy.id}>{strategy.name}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>模型提供方</span>
-              <select value={formState.providerId} onChange={(event) => setFormState({ ...formState, providerId: Number(event.target.value) })}>
-                {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>存储配置</span>
-              <select value={formState.storageProfileId} onChange={(event) => setFormState({ ...formState, storageProfileId: Number(event.target.value) })}>
-                {storageProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="button-row">
-            <button type="button" className="secondary-button" onClick={() => void estimatePlan()} disabled={loading}>
-              <Target size={16} strokeWidth={1.9} /> 先做估算
-            </button>
-            <button type="button" className="primary-button" onClick={() => void createDataset()} disabled={loading}>
-              <Rocket size={16} strokeWidth={1.9} /> 创建数据集
-            </button>
-          </div>
-        </Panel>
-
-        <div className="stack-column">
-          <Panel>
-            <SectionHeader eyebrow="资源就绪度" title="当前资源选择" description="在创建数据集前，先检查策略、模型与存储是否齐备。" />
-            <div className="readiness-list">
-              <div className="readiness-item">
-                <div className="readiness-icon"><SquareKanban size={18} strokeWidth={1.9} /></div>
-                <div>
-                  <strong>{selectedStrategy?.name ?? '尚未选择策略'}</strong>
-                  <p>{selectedStrategy?.description ?? '请先同步策略列表。'}</p>
+          <div className="console-card-grid-3 mt-5">
+            {datasets.map((dataset) => (
+              <Card key={dataset.id} className={clsx('console-quick-card', { 'border-[var(--semi-color-primary)]': dataset.id === activeDatasetId })} bodyStyle={{ padding: 18 }}>
+                <div className="cursor-pointer" onClick={() => void loadDatasetWorkspace(dataset.id, `已切换到数据集「${dataset.name}」`)}>
+                  <Space vertical align="start" spacing="medium" style={{ width: '100%' }}>
+                    <Tag color="blue">{statusLabel(dataset.status)}</Tag>
+                    <Title heading={6} className="!mb-0">{dataset.name}</Title>
+                    <Text className="console-caption">{dataset.rootKeyword} · 预计 {dataset.estimate.estimatedSamples} 个样本</Text>
+                    <Text className="console-caption">更新于 {formatTime(dataset.updatedAt)}</Text>
+                  </Space>
                 </div>
-              </div>
-              <div className="readiness-item">
-                <div className="readiness-icon"><ServerCog size={18} strokeWidth={1.9} /></div>
-                <div>
-                  <strong>{selectedProvider?.name ?? '尚未选择提供方'}</strong>
-                  <p>{selectedProvider ? `${selectedProvider.providerType} · ${selectedProvider.model}` : '请先同步模型提供方。'}</p>
-                </div>
-              </div>
-              <div className="readiness-item">
-                <div className="readiness-icon"><DatabaseZap size={18} strokeWidth={1.9} /></div>
-                <div>
-                  <strong>{selectedStorage?.name ?? '尚未选择存储'}</strong>
-                  <p>{selectedStorage ? `${selectedStorage.provider} · ${selectedStorage.bucket}` : '请先同步对象存储配置。'}</p>
-                </div>
-              </div>
-            </div>
-          </Panel>
-
-          <Panel>
-            <SectionHeader eyebrow="计划估算" title="估算结果" description="估算结果用于决定领域数量、问题规模与最终样本产出。" />
-            {plannerCards.length > 0 ? (
-              <div className="metric-grid two-up compact-grid">
-                {plannerCards.map((card) => <MetricCard key={card.label} {...card} />)}
-              </div>
-            ) : (
-              <EmptyState title="尚未生成估算结果" description="填写策略与目标规模后，先运行一次估算，再创建数据集。" />
-            )}
-          </Panel>
-        </div>
-      </div>
-    </>
-  )
-
-  const renderDomainsPage = () => (
-    <>
-      <PageHeader
-        eyebrow="领域图谱"
-        title="生成、审阅并确认领域结构"
-        description="图谱页对应参考项目的控制台内容页：主画布展示结构，侧边和下方承担治理动作与清单。"
-        actions={(
-          <>
-            <button type="button" className="secondary-button" onClick={() => void saveGraph()} disabled={loading || !graph}>
-              <Save size={16} strokeWidth={1.9} /> 保存图谱
-            </button>
-            <button type="button" className="primary-button" onClick={() => void generateDomains()} disabled={loading || !activeDataset}>
-              <SpinnerIcon spinning={loading} icon={GitBranch} /> 生成领域
-            </button>
-          </>
-        )}
-      />
-
-      <div className="page-grid page-grid-2-1 align-start">
-        <Panel>
-          <SectionHeader eyebrow="图谱主画布" title="领域结构预览" description="中央节点表示根关键词，外环节点表示已生成的一级领域。" />
-          {graph ? (
-            <>
-              <GraphPreview rootKeyword={graph.dataset.rootKeyword} domains={graph.domains} />
-              <div className="toolbar-row">
-                <ToneBadge tone="accent">{statusLabel(graph.dataset.status)}</ToneBadge>
-                <div className="button-row compact-row">
-                  <button type="button" className="secondary-button" onClick={() => void saveGraph()} disabled={loading}><Save size={16} strokeWidth={1.9} /> 保存编辑</button>
-                  <button type="button" className="primary-button" onClick={() => void confirmDomains()} disabled={loading}>确认领域</button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <EmptyState title="尚未加载领域图谱" description="先在计划编排页创建数据集，再回来生成领域结构。" />
-          )}
-        </Panel>
-
-        <Panel>
-          <SectionHeader eyebrow="图谱上下文" title={activeDataset?.name ?? '没有活动数据集'} description={activeDataset ? `${activeDataset.rootKeyword} · 预计 ${activeDataset.estimate.estimatedSamples} 个样本` : '请选择或创建一个数据集。'} />
-          {activeDataset ? (
-            <div className="focus-summary">
-              <div className="focus-row"><span>状态</span><strong>{statusLabel(activeDataset.status)}</strong></div>
-              <div className="focus-row"><span>领域数</span><strong>{graph?.domains.length ?? 0}</strong></div>
-              <div className="focus-row"><span>创建时间</span><strong>{formatDateLabel(activeDataset.createdAt)}</strong></div>
-              <div className="focus-row"><span>更新时间</span><strong>{formatDateLabel(activeDataset.updatedAt)}</strong></div>
-            </div>
-          ) : (
-            <EmptyState title="没有可治理的图谱" description="请先创建数据集并生成领域。" />
-          )}
-        </Panel>
-      </div>
-
-      <Panel>
-        <SectionHeader eyebrow="人工修订" title="领域命名润色" description="优先审核前 24 个领域，必要时先保存，再继续生成后续问题。" />
-        {graph ? (
-          <div className="domain-editor-grid">
-            {graph.domains.slice(0, 24).map((domain) => (
-              <label key={domain.id} className="domain-editor-item">
-                <span>{sourceLabel(domain.source)}</span>
-                <input value={domain.name} onChange={(event) => renameDomain(domain.id, event.target.value)} />
-              </label>
+              </Card>
             ))}
           </div>
         ) : (
-          <EmptyState title="还没有领域可以编辑" description="点击“生成领域”后，这里会出现可编辑的领域命名列表。" />
+          <EmptyCard title="暂无数据集" description="先进入计划编排页创建你的第一个数据集任务。" />
         )}
-        {graph && graph.domains.length > 24 ? <p className="panel-footnote">当前界面展示前 24 个领域；全部 {graph.domains.length} 个领域都会被完整持久化保存。</p> : null}
-      </Panel>
-    </>
+      </Card>
+    </div>
   )
 
-  const renderQuestionsPage = () => (
-    <>
+  const renderPlanning = () => (
+    <div className="console-page-shell">
       <PageHeader
-        eyebrow="问题生成"
-        title="按领域批量生成问题集合"
-        description="问题页拆成独立工作区，触发动作、列表预览和当前上下文不再混在一张超长页面中。"
-        actions={(
+        badge="用户链路 / 计划编排"
+        title="配置目标规模、策略、模型与存储"
+        description="普通用户和管理员在同一页完成数据集编排；管理员只是在左侧额外看到系统治理导航。"
+        actions={
           <>
-            <button type="button" className="secondary-button" onClick={() => void refreshQuestions()} disabled={loading || !graph}>
-              <SpinnerIcon spinning={loading} icon={RefreshCw} /> 刷新问题
-            </button>
-            <button type="button" className="primary-button" onClick={() => void generateQuestions()} disabled={loading || !graph}>
-              <Layers3 size={16} strokeWidth={1.9} /> 加入问题队列
-            </button>
+            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('系统配置与数据集已刷新')}>同步配置</Button>
+            <Button theme="solid" type="primary" icon={<Target size={16} />} loading={busy} onClick={() => void estimatePlan()}>更新估算</Button>
           </>
-        )}
+        }
       />
 
-      <div className="page-grid page-grid-2-1 align-start">
-        <Panel>
-          <SectionHeader eyebrow="问题预览" title="已生成问题" description="展示最新生成的问题记录，便于确认领域覆盖是否符合预期。" />
-          {listPreview<Question>({
-            items: questions.slice(0, 12),
-            emptyTitle: '尚未生成问题',
-            emptyDescription: '请先确认领域，再将问题生成任务加入后台队列。',
-            render: (question) => (
-              <article key={question.id} className="record-item">
-                <div className="record-item-top">
-                  <ToneBadge>{question.domainName}</ToneBadge>
-                  <span>{formatDateLabel(question.createdAt)}</span>
-                </div>
-                <p>{question.content}</p>
-                <small>{question.canonicalHash}</small>
-              </article>
-            ),
-          })}
-        </Panel>
-
-        <Panel>
-          <SectionHeader eyebrow="当前阶段" title="问题生成信号" description="问题数量、领域数量与平台队列深度会在这里集中显示。" />
-          <div className="focus-summary">
-            <div className="focus-row"><span>活动数据集</span><strong>{activeDataset?.name ?? '未选择'}</strong></div>
-            <div className="focus-row"><span>领域数量</span><strong>{graph?.domains.length ?? 0}</strong></div>
-            <div className="focus-row"><span>问题数量</span><strong>{questions.length}</strong></div>
-            <div className="focus-row"><span>队列深度</span><strong>{runtime?.queueDepth ?? 0}</strong></div>
-          </div>
-        </Panel>
-      </div>
-    </>
-  )
-
-  const renderReasoningPage = () => (
-    <>
-      <PageHeader
-        eyebrow="推理生成"
-        title="异步生成长思维链与答案摘要"
-        description="为已经入库的问题生成长推理与答案摘要，结果落对象存储并回写元数据。"
-        actions={(
-          <>
-            <button type="button" className="secondary-button" onClick={() => void refreshReasoning()} disabled={loading || !graph}>
-              <SpinnerIcon spinning={loading} icon={RefreshCw} /> 刷新推理
-            </button>
-            <button type="button" className="primary-button" onClick={() => void generateReasoning()} disabled={loading || !graph || questions.length === 0}>
-              <BrainCircuit size={16} strokeWidth={1.9} /> 加入推理队列
-            </button>
-          </>
-        )}
-      />
-
-      <div className="page-grid page-grid-2-1 align-start">
-        <Panel>
-          <SectionHeader eyebrow="推理记录" title="长思维链输出预览" description="展示对象存储键与答案摘要，便于快速确认生成任务是否正常落盘。" />
-          {listPreview<ReasoningRecord>({
-            items: reasoning.slice(0, 12),
-            emptyTitle: '尚未生成推理记录',
-            emptyDescription: '先生成问题，再把推理生成任务加入队列。',
-            render: (record) => (
-              <article key={record.id} className="record-item">
-                <div className="record-item-top">
-                  <ToneBadge tone="accent">{record.objectKey}</ToneBadge>
-                  <span>{formatDateLabel(record.createdAt)}</span>
-                </div>
-                <p>{record.answerSummary}</p>
-                <small>{record.questionText}</small>
-              </article>
-            ),
-          })}
-        </Panel>
-
-        <Panel>
-          <SectionHeader eyebrow="当前阶段" title="推理生成信号" description="问题记录足够后再触发推理生成，避免前置数据不足。" />
-          <div className="focus-summary">
-            <div className="focus-row"><span>问题数量</span><strong>{questions.length}</strong></div>
-            <div className="focus-row"><span>推理记录</span><strong>{reasoning.length}</strong></div>
-            <div className="focus-row"><span>工件数量</span><strong>{artifacts.length}</strong></div>
-            <div className="focus-row"><span>队列深度</span><strong>{runtime?.queueDepth ?? 0}</strong></div>
-          </div>
-        </Panel>
-      </div>
-    </>
-  )
-
-  const renderRewardsPage = () => (
-    <>
-      <PageHeader
-        eyebrow="奖励数据"
-        title="生成强化学习奖励评估记录"
-        description="奖励页紧跟推理页之后，便于在同一套工作流里完成质量打分与样本评估。"
-        actions={(
-          <>
-            <button type="button" className="secondary-button" onClick={() => void refreshRewards()} disabled={loading || !graph}>
-              <SpinnerIcon spinning={loading} icon={RefreshCw} /> 刷新奖励数据
-            </button>
-            <button type="button" className="primary-button" onClick={() => void generateRewards()} disabled={loading || !graph || reasoning.length === 0}>
-              <ShieldCheck size={16} strokeWidth={1.9} /> 加入奖励队列
-            </button>
-          </>
-        )}
-      />
-
-      <div className="page-grid page-grid-2-1 align-start">
-        <Panel>
-          <SectionHeader eyebrow="奖励记录" title="评分结果预览" description="展示对象键、问题文本与分数，便于对高分低分样本做抽检。" />
-          {listPreview<RewardRecord>({
-            items: rewards.slice(0, 12),
-            emptyTitle: '尚未生成奖励记录',
-            emptyDescription: '请先完成推理生成，再触发奖励评估。',
-            render: (record) => (
-              <article key={record.id} className="record-item">
-                <div className="record-item-top">
-                  <ToneBadge tone="success">评分 {record.score.toFixed(2)}</ToneBadge>
-                  <span>{formatDateLabel(record.createdAt)}</span>
-                </div>
-                <p>{record.questionText}</p>
-                <small>{record.objectKey}</small>
-              </article>
-            ),
-          })}
-        </Panel>
-
-        <Panel>
-          <SectionHeader eyebrow="当前阶段" title="奖励生成信号" description="奖励生成依赖已有的推理记录，并会进一步影响导出阶段。" />
-          <div className="focus-summary">
-            <div className="focus-row"><span>推理记录</span><strong>{reasoning.length}</strong></div>
-            <div className="focus-row"><span>奖励记录</span><strong>{rewards.length}</strong></div>
-            <div className="focus-row"><span>导出工件</span><strong>{artifacts.length}</strong></div>
-            <div className="focus-row"><span>队列深度</span><strong>{runtime?.queueDepth ?? 0}</strong></div>
-          </div>
-        </Panel>
-      </div>
-    </>
-  )
-
-  const renderExportsPage = () => (
-    <>
-      <PageHeader
-        eyebrow="导出交付"
-        title="查看 JSONL 工件与运行态收口"
-        description="最后一个工作页专门承载导出工件和平台运行态，避免与前序生成逻辑混杂。"
-        actions={(
-          <>
-            <button type="button" className="secondary-button" onClick={() => void refreshArtifacts()} disabled={loading || !graph}>
-              <SpinnerIcon spinning={loading} icon={RefreshCw} /> 刷新工件
-            </button>
-            <button type="button" className="primary-button" onClick={() => void generateExport()} disabled={loading || !graph || rewards.length === 0}>
-              <FileOutput size={16} strokeWidth={1.9} /> 加入导出队列
-            </button>
-          </>
-        )}
-      />
-
-      <div className="metric-grid four-up compact-grid">
-        {runtimeCards.map((card) => <MetricCard key={card.label} {...card} />)}
-      </div>
-
-      <div className="page-grid page-grid-2-1 align-start">
-        <Panel>
-          <SectionHeader eyebrow="导出工件" title="已生成产物" description="输出对象键与工件类型，便于交付前确认最终文件是否已经打包。" />
-          {listPreview<Artifact>({
-            items: artifacts,
-            emptyTitle: '尚未生成导出工件',
-            emptyDescription: '完成奖励生成后即可触发导出；产物会在这里集中展示。',
-            render: (artifact) => (
-              <article key={artifact.id} className="record-item">
-                <div className="record-item-top">
-                  <ToneBadge tone="accent">{artifactTypeLabel(artifact.artifactType)}</ToneBadge>
-                  <span>{formatDateLabel(artifact.createdAt)}</span>
-                </div>
-                <p>{artifact.objectKey}</p>
-                <small>{artifact.contentType}</small>
-              </article>
-            ),
-          })}
-        </Panel>
-
-        <Panel>
-          <SectionHeader eyebrow="交付检查" title="导出前后的收口动作" description="建议在导出页确认奖励记录、工件数量与当前队列状态后再结束任务。" />
-          <div className="checklist-grid">
-            {[
-              `奖励记录：${rewards.length}`,
-              `工件数量：${artifacts.length}`,
-              `队列深度：${runtime?.queueDepth ?? 0}`,
-              `活动数据集：${activeDataset?.name ?? '未选择'}`,
-            ].map((item) => (
-              <div key={item} className="checklist-item compact-check">
-                <Clock3 size={16} strokeWidth={1.9} />
-                <span>{item}</span>
-              </div>
-            ))}
-          </div>
-        </Panel>
-      </div>
-    </>
-  )
-
-  const renderCurrentPage = () => {
-    switch (currentPage) {
-      case 'planner':
-        return renderPlannerPage()
-      case 'domains':
-        return renderDomainsPage()
-      case 'questions':
-        return renderQuestionsPage()
-      case 'reasoning':
-        return renderReasoningPage()
-      case 'rewards':
-        return renderRewardsPage()
-      case 'exports':
-        return renderExportsPage()
-      case 'dashboard':
-      default:
-        return renderDashboardPage()
-    }
-  }
-
-  if (!authenticated) {
-    return (
-      <div className="landing-shell">
-        <header className="landing-header">
-          <div className="brand-lockup">
-            <div className="brand-badge"><Sparkles size={18} strokeWidth={1.9} /></div>
+      <div className="console-card-grid-2">
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">数据集创建表单</Title>
+          <Text className="mt-2 block console-caption">策略、模型提供方和存储配置来自管理员预置的系统配置。</Text>
+          <div className="console-card-grid-2 mt-5">
             <div>
-              <strong>LLM 数据工厂</strong>
-              <p>企业级长链思考训练数据控制台</p>
+              <Text className="mb-2 block font-medium">数据集名称</Text>
+              <Input value={plannerForm.name} onChange={(value) => setPlannerForm((current) => ({ ...current, name: value }))} placeholder="军事长链思考训练集" />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">根关键词</Text>
+              <Input value={plannerForm.rootKeyword} onChange={(value) => setPlannerForm((current) => ({ ...current, rootKeyword: value }))} />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">目标规模</Text>
+              <InputNumber value={plannerForm.targetSize} onChange={(value) => setPlannerForm((current) => ({ ...current, targetSize: Number(value ?? 0) }))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">生成策略</Text>
+              <Select value={plannerForm.strategyId} optionList={strategies.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => setPlannerForm((current) => ({ ...current, strategyId: Number(value) }))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">模型提供方</Text>
+              <Select value={plannerForm.providerId} optionList={providers.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => setPlannerForm((current) => ({ ...current, providerId: Number(value) }))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">存储配置</Text>
+              <Select value={plannerForm.storageProfileId} optionList={storageProfiles.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => setPlannerForm((current) => ({ ...current, storageProfileId: Number(value) }))} style={{ width: '100%' }} />
             </div>
           </div>
-          <nav className="landing-nav">
-            <a href="#capabilities">能力</a>
-            <a href="#workflow">流程</a>
-            <a href="#login-panel">进入控制台</a>
-          </nav>
-          <a className="secondary-button link-button" href={adminHref}>管理员后台</a>
-        </header>
+          <Space className="mt-6" spacing="medium">
+            <Button icon={<Target size={16} />} loading={busy} onClick={() => void estimatePlan()}>先做估算</Button>
+            <Button theme="solid" type="primary" icon={<FileOutput size={16} />} loading={busy} onClick={() => void createDataset()}>创建数据集</Button>
+          </Space>
+        </Card>
 
-        <main className="landing-main">
-          <section className="landing-hero-block">
-            <div className="landing-copy">
-              <ToneBadge tone="accent">LLM Data Factory</ToneBadge>
-              <h1>把关键词拆解成领域、问题、长思维链与奖励数据的企业级数据工厂。</h1>
-              <p>
-                用户输入目标数据集规模与领域关键词，系统自动估算领域数、异步生成问题与长思维链答案，再继续生成强化学习奖励数据，并把大文本与工件落在 S3 / MinIO / PostgreSQL / Redis 体系里。
-              </p>
-              <div className="button-row">
-                <a className="primary-button link-button" href="#login-panel">进入用户控制台</a>
-                <a className="secondary-button link-button" href={adminHref}>配置管理后台</a>
-              </div>
-              <div className="chip-row">
-                {['领域图谱治理', '异步问题生成', '长链推理落盘', '奖励评估', 'JSONL 导出交付'].map((item) => (
-                  <span key={item} className="info-chip">{item}</span>
-                ))}
-              </div>
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">估算结果</Title>
+          <Text className="mt-2 block console-caption">根据目标规模反推领域规模与问题量，作为后续生产链路的前置依据。</Text>
+          {planningCards.length > 0 ? (
+            <div className="console-card-grid-2 mt-5">
+              {planningCards.map((item) => <StatCard key={item.label} {...item} />)}
             </div>
+          ) : (
+            <EmptyCard title="尚未生成估算" description="填写参数后点击“更新估算”，再决定是否创建数据集。" />
+          )}
+        </Card>
+      </div>
+    </div>
+  )
 
-            <div className="landing-visual">
-              <Panel>
-                <SectionHeader eyebrow="作业流程" title="从计划到交付的七段式页面结构" description="参照 /root/new-api 的页面骨架重建为明确的多页控制台。" />
-                <div className="workflow-stage-list compact-workflow">
-                  {pageDefinitions.map((page, index) => (
-                    <WorkflowStage
-                      key={page.key}
-                      icon={page.icon}
-                      title={`${index + 1}. ${page.label}`}
-                      description={page.caption}
-                      summary={page.group}
-                      tone={index === 0 ? 'active' : 'pending'}
-                    />
-                  ))}
-                </div>
-              </Panel>
+  const renderDomains = () => (
+    <div className="console-page-shell">
+      <PageHeader
+        badge="用户链路 / 领域图谱"
+        title="生成、修订并确认领域结构"
+        description="这一页直接对齐 new-api 的控制台内容布局：中心画布展示结构、侧边展示上下文、下方承载治理编辑。"
+        actions={
+          <>
+            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '图谱数据已刷新')}>刷新图谱</Button>
+            <Button theme="solid" type="primary" icon={<GitBranch size={16} />} loading={busy} onClick={() => void generateDomains()}>生成领域</Button>
+          </>
+        }
+      />
+
+      <div className="console-card-grid-2">
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">领域图谱主画布</Title>
+          <Text className="mt-2 block console-caption">确认领域前建议先保存命名修订，再推进问题生成。</Text>
+          {graph ? (
+            <div className="mt-5 console-stack">
+              <GraphPreview rootKeyword={graph.dataset.rootKeyword} domains={graph.domains} />
+              <Space>
+                <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void saveGraph()}>保存编辑</Button>
+                <Button theme="solid" type="primary" loading={busy} onClick={() => void confirmDomains()}>确认领域</Button>
+              </Space>
             </div>
-          </section>
+          ) : (
+            <EmptyCard title="尚未加载领域图谱" description="先创建数据集，再点击“生成领域”。" />
+          )}
+        </Card>
 
-          <section className="landing-grid" id="capabilities">
-            {[
-              { icon: Target, title: '目标规模反推', description: '根据目标样本量自动估算领域数与每领域问题数。' },
-              { icon: GitBranch, title: '图谱治理', description: '生成领域图谱并支持人工命名修订与确认。' },
-              { icon: BrainCircuit, title: '长链推理', description: '异步生成问题对应的长思维链与答案摘要。' },
-              { icon: FileOutput, title: '奖励与导出', description: '生成奖励评估数据并打包 JSONL 工件用于训练。' },
-            ].map((item) => (
-              <Panel key={item.title} className="feature-panel" >
-                <div className="feature-icon"><item.icon size={18} strokeWidth={1.9} /></div>
-                <h2>{item.title}</h2>
-                <p>{item.description}</p>
-              </Panel>
+        <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">当前任务上下文</Title>
+          <Text className="mt-2 block console-caption">管理员和普通用户都在同一条生产链路里推进当前数据集。</Text>
+          <div className="mt-5 console-summary-grid">
+            <div className="console-summary-row"><span>数据集</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
+            <div className="console-summary-row"><span>根关键词</span><Text strong>{activeDataset?.rootKeyword ?? '—'}</Text></div>
+            <div className="console-summary-row"><span>当前状态</span><Text strong>{activeDataset ? statusLabel(activeDataset.status) : '—'}</Text></div>
+            <div className="console-summary-row"><span>领域数量</span><Text strong>{graph?.domains.length ?? 0}</Text></div>
+          </div>
+        </Card>
+      </div>
+
+      <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+        <Title heading={4} className="!mb-0">领域命名治理</Title>
+        <Text className="mt-2 block console-caption">当前界面展示前 24 个领域进行人工修订；管理员不再需要切到另一个前端才能回看系统配置。</Text>
+        {graph ? (
+          <div className="console-card-grid-2 mt-5">
+            {graph.domains.slice(0, 24).map((domain) => (
+              <div key={domain.id} className="console-domain-item">
+                <Text className="console-caption">{sourceLabel(domain.source)}</Text>
+                <Input value={domain.name} onChange={(value) => setGraph((current) => current ? { ...current, domains: current.domains.map((item) => item.id === domain.id ? { ...item, name: value } : item) } : current)} />
+              </div>
             ))}
-          </section>
+          </div>
+        ) : (
+          <EmptyCard title="暂无领域列表" description="生成领域后，这里会显示可编辑的领域列表。" />
+        )}
+      </Card>
+    </div>
+  )
 
-          <section className="landing-grid landing-grid-login" id="workflow">
-            <Panel>
-              <SectionHeader eyebrow="用户流程" title="用户侧工作流" description="用户侧完全围绕数据集生成生命周期展开。" />
-              <div className="checklist-grid">
-                {[
-                  '输入目标规模与根关键词',
-                  '估算领域数量与问题规模',
-                  '创建数据集并生成领域图谱',
-                  '确认领域后生成问题 / 推理 / 奖励 / 导出',
-                ].map((item) => (
-                  <div key={item} className="checklist-item">
-                    <CheckCircle2 size={16} strokeWidth={1.9} />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </Panel>
+  const renderRecordPage = ({
+    badge,
+    title,
+    description,
+    actionLabel,
+    onGenerate,
+    onRefresh,
+    records,
+    emptyTitle,
+    emptyDescription,
+    renderRecord,
+  }: {
+    badge: string
+    title: string
+    description: string
+    actionLabel: string
+    onGenerate: () => Promise<void>
+    onRefresh: () => Promise<void>
+    records: Array<Question | ReasoningRecord | RewardRecord | Artifact>
+    emptyTitle: string
+    emptyDescription: string
+    renderRecord: (record: any) => React.ReactNode
+  }) => (
+    <div className="console-page-shell">
+      <PageHeader
+        badge={badge}
+        title={title}
+        description={description}
+        actions={
+          <>
+            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void onRefresh()}>刷新结果</Button>
+            <Button theme="solid" type="primary" loading={busy} onClick={() => void onGenerate()}>{actionLabel}</Button>
+          </>
+        }
+      />
+      <div className="console-card-grid-2">
+        <Card className="console-record-card" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">结果预览</Title>
+          {records.length > 0 ? <div className="console-record-list mt-5">{records.map(renderRecord)}</div> : <EmptyCard title={emptyTitle} description={emptyDescription} />}
+        </Card>
+        <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">当前阶段信号</Title>
+          <div className="mt-5 console-summary-grid">
+            <div className="console-summary-row"><span>活动数据集</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
+            <div className="console-summary-row"><span>问题数量</span><Text strong>{questions.length}</Text></div>
+            <div className="console-summary-row"><span>推理数量</span><Text strong>{reasoning.length}</Text></div>
+            <div className="console-summary-row"><span>奖励数量</span><Text strong>{rewards.length}</Text></div>
+            <div className="console-summary-row"><span>工件数量</span><Text strong>{artifacts.length}</Text></div>
+            <div className="console-summary-row"><span>队列深度</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
+          </div>
+        </Card>
+      </div>
+    </div>
+  )
 
-            <Panel className="login-panel" >
-              <SectionHeader eyebrow="控制台入口" title="登录后进入分页工作区" description="用户端与管理端都采用顶部导航 + 左侧侧栏 + 右侧工作区的布局。" />
-              <form id="login-panel" className="login-form" onSubmit={submitLogin}>
-                <label>
-                  <span>运营邮箱</span>
-                  <input type="email" placeholder="operator@company.com" required />
-                </label>
-                <label>
-                  <span>访问密钥</span>
-                  <input type="password" placeholder="请输入控制台访问密钥" required />
-                </label>
-                <button type="submit" className="primary-button full-width">
-                  进入用户控制台 <ArrowRight size={16} strokeWidth={1.9} />
-                </button>
-              </form>
-            </Panel>
-          </section>
-        </main>
+  const renderProviders = () => (
+    <div className="console-page-shell">
+      <PageHeader badge="管理员治理 / 模型提供方" title="维护模型网关、路由与并发参数" description="管理员登录后在同一前端直接维护系统配置；不再需要独立后台。" actions={<Button theme="solid" type="primary" icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('系统配置已刷新')}>刷新配置</Button>} />
+      <div className="page-layout-grid console-card-grid-2">
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">模型提供方台账</Title>
+          <Table columns={providerColumns} dataSource={providers} pagination={false} />
+        </Card>
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">新增 / 更新提供方</Title>
+          <div className="console-stack mt-5">
+            <Input value={providerDraft.name ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, name: value }))} placeholder="提供方名称" />
+            <Input value={providerDraft.baseUrl ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, baseUrl: value }))} placeholder="基础 URL" />
+            <Input value={providerDraft.model ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, model: value }))} placeholder="模型名称" />
+            <Input value={providerDraft.providerType ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, providerType: value }))} placeholder="类型，例如 openai-compatible / mock" />
+            <div className="console-card-grid-2">
+              <InputNumber value={providerDraft.maxConcurrency ?? 4} onChange={(value) => setProviderDraft((current) => ({ ...current, maxConcurrency: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="最大并发数" />
+              <InputNumber value={providerDraft.timeoutSeconds ?? 120} onChange={(value) => setProviderDraft((current) => ({ ...current, timeoutSeconds: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="超时秒数" />
+            </div>
+            <Input value={providerDraft.apiKey ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, apiKey: value }))} placeholder="API Key（可留空）" />
+            <Button theme="solid" type="primary" loading={busy} onClick={() => void saveProvider()}>保存提供方</Button>
+          </div>
+        </Card>
+      </div>
+    </div>
+  )
+
+  const renderStorage = () => (
+    <div className="console-page-shell">
+      <PageHeader badge="管理员治理 / 存储配置" title="维护 S3 / MinIO / OSS 存储目标" description="长思维链、奖励数据和导出工件都从这里继承对象存储路由。" />
+      <div className="console-card-grid-2">
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">对象存储台账</Title>
+          <Table columns={storageColumns} dataSource={storageProfiles} pagination={false} />
+        </Card>
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">新增 / 更新存储配置</Title>
+          <div className="console-stack mt-5">
+            <Input value={storageDraft.name ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, name: value }))} placeholder="配置名称" />
+            <Input value={storageDraft.provider ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, provider: value }))} placeholder="提供方" />
+            <Input value={storageDraft.endpoint ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, endpoint: value }))} placeholder="端点" />
+            <div className="console-card-grid-2">
+              <Input value={storageDraft.region ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, region: value }))} placeholder="地域" />
+              <Input value={storageDraft.bucket ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, bucket: value }))} placeholder="存储桶" />
+            </div>
+            <Input value={storageDraft.accessKeyId ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, accessKeyId: value }))} placeholder="Access Key ID" />
+            <Input value={storageDraft.secretAccessKey ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, secretAccessKey: value }))} placeholder="Secret Access Key" />
+            <Button theme="solid" type="primary" loading={busy} onClick={() => void saveStorage()}>保存存储配置</Button>
+          </div>
+        </Card>
+      </div>
+    </div>
+  )
+
+  const renderStrategies = () => (
+    <div className="console-page-shell">
+      <PageHeader badge="管理员治理 / 生成策略" title="定义领域规模、问题量与奖励变体" description="普通用户在计划编排页消费这里预置的策略，管理员则在同一前端直接维护它们。" />
+      <div className="console-card-grid-2">
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">生成策略台账</Title>
+          <Table columns={strategyColumns} dataSource={strategies} pagination={false} />
+        </Card>
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">新增 / 更新策略</Title>
+          <div className="console-stack mt-5">
+            <Input value={strategyDraft.name ?? ''} onChange={(value) => setStrategyDraft((current) => ({ ...current, name: value }))} placeholder="策略名称" />
+            <Input value={strategyDraft.description ?? ''} onChange={(value) => setStrategyDraft((current) => ({ ...current, description: value }))} placeholder="策略说明" />
+            <div className="console-card-grid-2">
+              <InputNumber value={strategyDraft.domainCount ?? 1000} onChange={(value) => setStrategyDraft((current) => ({ ...current, domainCount: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="领域数" />
+              <InputNumber value={strategyDraft.questionsPerDomain ?? 10} onChange={(value) => setStrategyDraft((current) => ({ ...current, questionsPerDomain: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="每领域问题数" />
+            </div>
+            <div className="console-card-grid-2">
+              <InputNumber value={strategyDraft.answerVariants ?? 1} onChange={(value) => setStrategyDraft((current) => ({ ...current, answerVariants: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="答案变体数" />
+              <InputNumber value={strategyDraft.rewardVariants ?? 1} onChange={(value) => setStrategyDraft((current) => ({ ...current, rewardVariants: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="奖励变体数" />
+            </div>
+            <Select value={strategyDraft.planningMode ?? 'balanced'} optionList={[
+              { value: 'balanced', label: '平衡' },
+              { value: 'wide-first', label: '优先广度' },
+              { value: 'deep-first', label: '优先深度' },
+              { value: 'cost-saving', label: '成本优先' },
+            ]} onChange={(value) => setStrategyDraft((current) => ({ ...current, planningMode: String(value) }))} style={{ width: '100%' }} />
+            <Button theme="solid" type="primary" loading={busy} onClick={() => void saveStrategy()}>保存策略</Button>
+          </div>
+        </Card>
+      </div>
+    </div>
+  )
+
+  const renderPrompts = () => (
+    <div className="console-page-shell">
+      <PageHeader badge="管理员治理 / 提示词模板" title="治理各阶段系统提示词与版本" description="领域生成、问题生成、推理生成与奖励评估的 Prompt 模板统一从这里维护。" />
+      <div className="console-card-grid-2">
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">提示词模板台账</Title>
+          <Table columns={promptColumns} dataSource={prompts} pagination={false} />
+        </Card>
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">新增 / 更新 Prompt</Title>
+          <div className="console-stack mt-5">
+            <Input value={promptDraft.name} onChange={(value) => setPromptDraft((current) => ({ ...current, name: value }))} placeholder="提示词名称" />
+            <Input value={promptDraft.stage} onChange={(value) => setPromptDraft((current) => ({ ...current, stage: value }))} placeholder="阶段，例如 domain-generation" />
+            <Input value={promptDraft.version} onChange={(value) => setPromptDraft((current) => ({ ...current, version: value }))} placeholder="版本号" />
+            <Input value={promptDraft.systemPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, systemPrompt: value }))} placeholder="系统提示词" />
+            <Input value={promptDraft.userPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, userPrompt: value }))} placeholder="用户提示词" />
+            <Button theme="solid" type="primary" loading={busy} onClick={() => void savePrompt()}>保存 Prompt</Button>
+          </div>
+        </Card>
+      </div>
+    </div>
+  )
+
+  const renderAudit = () => (
+    <div className="console-page-shell">
+      <PageHeader badge="管理员治理 / 审计日志" title="追踪配置变更与治理事件" description="管理员在同一前端直接回看治理动作；不再切换到另一套后台。" />
+      <div className="console-card-grid-2">
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">审计事件列表</Title>
+          <Table columns={auditColumns} dataSource={auditLogs} pagination={{ pageSize: 8 }} />
+        </Card>
+        <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">治理摘要</Title>
+          <div className="mt-5 console-summary-grid">
+            <div className="console-summary-row"><span>活动模型路由</span><Text strong>{dashboard?.activeProviderCount ?? 0}</Text></div>
+            <div className="console-summary-row"><span>存储配置</span><Text strong>{dashboard?.storageProfileCount ?? 0}</Text></div>
+            <div className="console-summary-row"><span>策略数量</span><Text strong>{dashboard?.strategyCount ?? 0}</Text></div>
+            <div className="console-summary-row"><span>Prompt 数量</span><Text strong>{dashboard?.promptCount ?? 0}</Text></div>
+            <div className="console-summary-row"><span>审计记录</span><Text strong>{dashboard?.auditLogCount ?? 0}</Text></div>
+          </div>
+          <div className="mt-6">
+            <Text className="console-caption">建议在修改模型、存储、策略或 Prompt 后，立即回到本页复核审计结果。</Text>
+          </div>
+        </Card>
+      </div>
+    </div>
+  )
+
+  if (sessionLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spin size="large" tip="正在初始化统一控制台" />
       </div>
     )
   }
 
   return (
-    <div className={`console-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${mobileNavOpen ? 'mobile-nav-open' : ''}`}>
-      <header className="console-header">
-        <div className="console-header-inner">
-          <div className="header-leading">
-            <button type="button" className="icon-button mobile-only" onClick={() => setMobileNavOpen((current) => !current)}>
-              {mobileNavOpen ? <X size={18} strokeWidth={1.9} /> : <Menu size={18} strokeWidth={1.9} />}
-            </button>
-            <div className="brand-lockup">
-              <div className="brand-badge"><Sparkles size={18} strokeWidth={1.9} /></div>
-              <div>
-                <strong>LLM 数据工厂</strong>
-                <p>{currentPageDefinition.label} / {currentPageDefinition.caption}</p>
-              </div>
-            </div>
-          </div>
-
-          <nav className="header-nav desktop-only">
-            {topNavItems.map((item) => (
-              <button key={item.key} type="button" className={`header-nav-item ${currentPage === item.key ? 'active' : ''}`} onClick={() => setPage(item.key)}>
-                <item.icon size={15} strokeWidth={1.9} />
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
-
-          <div className="header-actions">
-            <button type="button" className="icon-button desktop-only" onClick={() => setSidebarCollapsed((current) => !current)}>
-              {sidebarCollapsed ? <ChevronRight size={18} strokeWidth={1.9} /> : <ChevronLeft size={18} strokeWidth={1.9} />}
-            </button>
-            <button type="button" className="icon-button" onClick={() => void loadBootstrap('控制台基础数据已刷新。')} disabled={loading}>
-              <SpinnerIcon spinning={loading} icon={RefreshCw} />
-            </button>
-            <a className="header-link" href={adminHref}>管理后台</a>
-          </div>
-        </div>
-      </header>
-
-      <aside className="console-sidebar">
-        <div className="sidebar-content">
-          <Panel className="sidebar-panel">
-            <SectionHeader eyebrow="工作区导航" title="用户控制台" description="保持和参考项目一致的头部 + 侧栏 + 工作区结构。" />
-          </Panel>
-
-          {Object.entries(groupedPages).map(([group, pages]) => (
-            <div key={group} className="sidebar-group">
-              <span className="sidebar-group-label">{group}</span>
-              <div className="sidebar-nav-list">
-                {pages.map((item) => (
-                  <button key={item.key} type="button" className={`sidebar-nav-item ${currentPage === item.key ? 'active' : ''}`} onClick={() => setPage(item.key)}>
-                    <div className="sidebar-nav-icon"><item.icon size={18} strokeWidth={1.9} /></div>
-                    <div className="sidebar-nav-copy">
-                      <strong>{item.label}</strong>
-                      <span>{item.caption}</span>
+    <Routes>
+      <Route path="/login" element={user ? <Navigate to="/console/overview" replace /> : <LoginPage onSubmit={handleLogin} loading={authSubmitting} />} />
+      <Route
+        path="/*"
+        element={
+          user ? (
+            <Layout className="app-layout">
+              <Header className="console-header-shell" style={{ padding: 0, position: 'fixed', inset: '0 0 auto 0', zIndex: 50 }}>
+                <div className="mx-auto flex h-16 items-center justify-between gap-4 px-4 lg:px-6">
+                  <div className="flex items-center gap-3">
+                    <Button icon={<LayoutDashboard size={16} />} theme="borderless" onClick={() => setSidebarCollapsed((current) => !current)} />
+                    <Avatar color="blue" size="small">L</Avatar>
+                    <div>
+                      <div className="font-semibold">LLM Data Factory Console</div>
+                      <div className="text-xs console-nav-caption">{visiblePages.find((page) => page.route === activeNav)?.caption ?? '统一控制台'}</div>
                     </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-
-          <Panel className="sidebar-panel">
-            <SectionHeader eyebrow="运行摘要" title="平台信号" />
-            <div className="focus-summary compact-summary">
-              <div className="focus-row"><span>数据集</span><strong>{runtime?.datasetCount ?? 0}</strong></div>
-              <div className="focus-row"><span>问题</span><strong>{runtime?.questionCount ?? 0}</strong></div>
-              <div className="focus-row"><span>奖励</span><strong>{runtime?.rewardCount ?? 0}</strong></div>
-              <div className="focus-row"><span>队列</span><strong>{runtime?.queueDepth ?? 0}</strong></div>
-            </div>
-          </Panel>
-
-          <Panel className="sidebar-panel">
-            <SectionHeader eyebrow="最近任务" title="快速切换" />
-            {recentDatasets.length > 0 ? (
-              <div className="sidebar-dataset-list">
-                {recentDatasets.map((dataset) => (
-                  <button key={dataset.id} type="button" className={`sidebar-dataset-item ${dataset.id === activeDataset?.id ? 'active' : ''}`} onClick={() => void loadDatasetWorkspace(dataset.id, `已切换到数据集「${dataset.name}」。`)}>
-                    <strong>{dataset.name}</strong>
-                    <span>{dataset.rootKeyword} · {statusLabel(dataset.status)}</span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="sidebar-empty">暂无数据集，先到“计划编排”页面创建一个任务。</p>
-            )}
-          </Panel>
-        </div>
-      </aside>
-
-      <button type="button" className="sidebar-backdrop" onClick={() => setMobileNavOpen(false)} aria-label="关闭侧栏" />
-
-      <main className="console-main">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentPage}
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.22 }}
-            className="console-page"
-          >
-            {renderCurrentPage()}
-          </motion.div>
-        </AnimatePresence>
-      </main>
-    </div>
+                  </div>
+                  <div className="console-header-actions flex items-center gap-3">
+                    <Tag color={isAdmin ? 'green' : 'blue'}>{isAdmin ? '管理员' : '普通用户'}</Tag>
+                    <Text>{user.email}</Text>
+                    <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('控制台数据已刷新')} />
+                    <Button icon={<LogOut size={16} />} onClick={() => void handleLogout()}>退出</Button>
+                  </div>
+                </div>
+              </Header>
+              <Layout style={{ paddingTop: 64 }}>
+                <Sider className="app-sider" style={{ position: 'fixed', top: 64, left: 0, border: 'none', width: 'var(--sidebar-current-width)', zIndex: 30 }}>
+                  <div className="console-nav-shell h-full px-3 py-4">
+                    <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
+                      <Text strong>统一导航</Text>
+                      <Text className="mt-2 block console-caption">管理员继承全部用户能力；普通用户只显示数据链路。</Text>
+                    </Card>
+                    <Nav
+                      bodyStyle={{ paddingBottom: 12 }}
+                      selectedKeys={[activeNav]}
+                      items={[
+                        {
+                          itemKey: 'user-group',
+                          text: '数据生产链路',
+                          items: userPages.map((page) => ({
+                            itemKey: page.route,
+                            text: page.label,
+                            icon: <page.icon size={16} />,
+                          })),
+                        },
+                        ...(isAdmin
+                          ? [
+                              {
+                                itemKey: 'admin-group',
+                                text: '系统治理',
+                                items: adminPages.map((page) => ({
+                                  itemKey: page.route,
+                                  text: page.label,
+                                  icon: <page.icon size={16} />,
+                                })),
+                              },
+                            ]
+                          : []),
+                      ]}
+                      onSelect={(data) => navigate(String(data.itemKey))}
+                      footer={
+                        <div className="px-3 pb-3">
+                          <Card className="console-sidebar-card" bodyStyle={{ padding: 14 }}>
+                            <div className="console-summary-grid">
+                              <div className="console-summary-row"><span>数据集</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
+                              <div className="console-summary-row"><span>队列深度</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
+                            </div>
+                          </Card>
+                        </div>
+                      }
+                    />
+                  </div>
+                </Sider>
+                <Layout style={{ marginLeft: 'var(--sidebar-current-width)' }}>
+                  <Content style={{ padding: 24 }}>
+                    <Routes>
+                      <Route path="/console/overview" element={renderOverview()} />
+                      <Route path="/console/planning" element={renderPlanning()} />
+                      <Route path="/console/domains" element={renderDomains()} />
+                      <Route path="/console/questions" element={renderRecordPage({ badge: '用户链路 / 问题生成', title: '按领域批量生成问题集合', description: '领域确认后，在同一控制台继续推进问题生成。', actionLabel: '加入问题生成队列', onGenerate: generateQuestions, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '问题结果已刷新') }, records: questions, emptyTitle: '尚未生成问题', emptyDescription: '请先确认领域，然后将问题生成任务加入队列。', renderRecord: (record: Question) => <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Tag color="blue">{record.domainName}</Tag><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.content}</Text></div> })} />
+                      <Route path="/console/reasoning" element={renderRecordPage({ badge: '用户链路 / 推理生成', title: '异步生成长思维链与答案摘要', description: '问题记录足够后，继续在本应用里推进推理生成。', actionLabel: '加入推理生成队列', onGenerate: generateReasoning, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '推理结果已刷新') }, records: reasoning, emptyTitle: '尚未生成推理', emptyDescription: '先完成问题生成，再加入推理队列。', renderRecord: (record: ReasoningRecord) => <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Tag color="cyan">{record.objectKey}</Tag><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.answerSummary}</Text><Text className="mt-2 block console-caption">{record.questionText}</Text></div> })} />
+                      <Route path="/console/rewards" element={renderRecordPage({ badge: '用户链路 / 奖励数据', title: '生成强化学习奖励评估记录', description: '管理员和普通用户共享同一奖励数据页，管理员额外能返回左侧治理区。', actionLabel: '加入奖励生成队列', onGenerate: generateRewards, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '奖励结果已刷新') }, records: rewards, emptyTitle: '尚未生成奖励记录', emptyDescription: '先完成推理生成，再触发奖励评估。', renderRecord: (record: RewardRecord) => <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Tag color="green">评分 {record.score.toFixed(2)}</Tag><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.questionText}</Text><Text className="mt-2 block console-caption">{record.objectKey}</Text></div> })} />
+                      <Route path="/console/exports" element={renderRecordPage({ badge: '用户链路 / 导出交付', title: '查看 JSONL 工件与运行态收口', description: '导出页作为生产链路收口动作，与管理员治理页面保持在同一应用中。', actionLabel: '加入导出队列', onGenerate: generateExport, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '导出结果已刷新') }, records: artifacts, emptyTitle: '尚未生成导出工件', emptyDescription: '完成奖励生成后，即可触发导出。', renderRecord: (record: Artifact) => <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Tag color="violet">{artifactLabel(record.artifactType)}</Tag><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.objectKey}</Text><Text className="mt-2 block console-caption">{record.contentType}</Text></div> })} />
+                      {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
+                      {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
+                      {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
+                      {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
+                      {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
+                      <Route path="*" element={<Navigate to="/console/overview" replace />} />
+                    </Routes>
+                  </Content>
+                </Layout>
+              </Layout>
+            </Layout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+    </Routes>
   )
 }

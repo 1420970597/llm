@@ -21,6 +21,10 @@ type APIConfig struct {
   AllowedOrigin     string
   MigrationPath     string
   QueueName         string
+  DefaultAdminEmail string
+  DefaultAdminPassword string
+  DefaultUserEmail  string
+  DefaultUserPassword string
 }
 
 type WorkerConfig struct {
@@ -61,6 +65,10 @@ func LoadAPIConfig() APIConfig {
     AllowedOrigin:    getenv("APP_ALLOWED_ORIGIN", "*"),
     MigrationPath:    getenv("MIGRATION_PATH", "sql/migrations"),
     QueueName:        getenv("WORKER_QUEUE_NAME", "dataset-generation"),
+    DefaultAdminEmail: getenv("APP_DEFAULT_ADMIN_EMAIL", "admin@company.com"),
+    DefaultAdminPassword: getenv("APP_DEFAULT_ADMIN_PASSWORD", "admin123456"),
+    DefaultUserEmail: getenv("APP_DEFAULT_USER_EMAIL", "user@company.com"),
+    DefaultUserPassword: getenv("APP_DEFAULT_USER_PASSWORD", "user123456"),
   }
 }
 

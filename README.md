@@ -7,7 +7,7 @@
 - 生成领域图谱并支持人工审核
 - 异步生成问题、长思维链/答案、奖励评估数据
 - 将大文本与最终导出工件落到 MinIO / S3 兼容对象存储
-- 通过管理员后台配置模型、存储、策略、Prompt 与审计信息
+- 通过统一控制台中的管理员功能配置模型、存储、策略、Prompt 与审计信息
 
 ---
 
@@ -49,8 +49,7 @@
 apps/
   api/          Go API 服务
   worker/       Go Worker 服务
-  web-user/     用户端 React 前端
-  web-admin/    管理端 React 前端
+  web-user/     统一控制台 React 前端（用户与管理员合并）
 internal/
   config/       配置加载
   crypto/       密钥加密
@@ -73,8 +72,11 @@ deployments/
 - React
 - TypeScript
 - Vite
-- Ant Design（管理端）
-- Framer Motion
+- Semi UI
+- Tailwind CSS
+- React Router
+- i18next
+- Axios
 - Lucide Icons
 
 ### 后端
@@ -102,14 +104,23 @@ docker compose -f deployments/compose/docker-compose.yml up -d --build
 
 ### 4.2 访问地址
 
-- 用户端：`http://<你的服务器IP>:3210`
-- 管理端：`http://<你的服务器IP>:3211`
+- 统一控制台：`http://<你的服务器IP>:3210`
+- 兼容入口（同一控制台构建）：`http://<你的服务器IP>:3211`
 - API 健康检查：`http://<你的服务器IP>:38080/healthz`
 - Worker 健康检查：`http://<你的服务器IP>:38081/healthz`
 - MinIO API：`http://<你的服务器IP>:19000`
 - MinIO Console：`http://<你的服务器IP>:19001`
 
 本项目默认外部端口已避开常见冲突端口，不需要停止现有服务。
+
+### 4.3 默认登录账号
+
+系统启动后会自动引导两个默认账号：
+
+- 管理员：`admin@company.com` / `admin123456`
+- 普通用户：`user@company.com` / `user123456`
+
+管理员拥有全部用户功能，并可直接进入系统治理页面。
 
 ---
 
@@ -133,7 +144,7 @@ docker compose -f deployments/compose/docker-compose.yml up -d --build
 可以用以下命令自检：
 
 ```bash
-rg -n "localhost|127\.0\.0\.1" apps/web-user apps/web-admin -g '!**/dist/**'
+rg -n "localhost|127\.0\.0\.1" apps/web-user -g '!**/dist/**'
 ```
 
 如果命令无输出，说明前端源码没有写死本地回环地址。
@@ -162,16 +173,18 @@ curl http://127.0.0.1:3211/api/v1/admin/providers
 
 ## 6. 主要业务流程
 
-### 6.1 管理员流程
-1. 登录管理端
-2. 配置模型提供方
-3. 配置对象存储
-4. 配置生成策略
-5. 配置 Prompt 模板
-6. 查看审计日志
+### 6.1 统一控制台中的管理员流程
+1. 使用管理员账号登录统一控制台
+2. 查看总览页
+3. 配置模型提供方
+4. 配置对象存储
+5. 配置生成策略
+6. 配置 Prompt 模板
+7. 查看审计日志
+8. 同时可以直接使用全部用户侧数据生产功能
 
-### 6.2 用户流程
-1. 登录用户端
+### 6.2 统一控制台中的用户流程
+1. 使用普通用户账号登录统一控制台
 2. 输入关键词与目标数据集规模
 3. 进行计划估算
 4. 创建数据集
@@ -222,6 +235,8 @@ curl http://127.0.0.1:3211/api/v1/admin/providers
 - 前端镜像构建
 - PostgreSQL + Redis + MinIO + API + Worker 端到端 smoke test
 - 通过 `http://127.0.0.1:3210/api/...` 与 `http://127.0.0.1:3211/api/...` 的同源代理验证
+- 登录鉴权：`/api/v1/auth/login`、`/api/v1/auth/me`、`/api/v1/auth/logout`
+- 统一控制台烟雾脚本：`python3 scripts/frontend_same_origin_smoke.py http://127.0.0.1:3210`
 
 已验证的完整链路包括：
 - 管理端配置模型提供方
@@ -238,6 +253,10 @@ curl http://127.0.0.1:3211/api/v1/admin/providers
 - 用户端导出 JSONL 数据集工件
 
 最近一次同源烟雾验证结果：
+- 管理员登录成功：`admin@company.com`
+- 普通用户登录成功：`user@company.com`
+- 普通用户访问 `/api/v1/admin/dashboard` 被正确拒绝（403）
+- 普通用户仍可读取只读策略列表供计划编排使用
 - 通过管理端同源 `/api` 创建 mock 模型提供方、MinIO 存储配置、生成策略、Prompt 模板
 - 通过用户端同源 `/api` 完成估算、建库、领域生成、领域确认、问题生成、推理生成、奖励生成、导出
 - 验证结果：`domainCount=10`、`questionCount=20`、`reasoningCount=20`、`rewardCount=20`、`artifactCount=1`、`runtimeQueueDepth=0`
@@ -246,10 +265,26 @@ curl http://127.0.0.1:3211/api/v1/admin/providers
 
 ## 9. UI 说明
 
-前端现已按 `/root/new-api/web/src` 的**页面结构**重做，而不是只做样式微调。
+前端已按 `/root/new-api/web/src` 的**最新页面结构与主技术栈**重构，并将原本分离的用户端与管理端合并为一个统一控制台。
 
-### 9.1 用户端页面
-- 登录落地页
+### 9.1 当前对齐的 new-api 前端技术栈
+
+参考仓库：
+- `/root/new-api`
+- 最新同步提交：`9ae9040b3c9dab88660fb9724d182393d0137861`
+- 提交时间：`2026-03-23 15:04:06 +08:00`
+
+当前统一控制台已对齐以下主技术与框架：
+- React
+- Vite
+- Semi UI
+- Tailwind CSS
+- React Router
+- i18next
+- Axios
+
+### 9.2 统一控制台页面
+- 登录页
 - 总览页
 - 计划编排页
 - 领域图谱页
@@ -257,23 +292,24 @@ curl http://127.0.0.1:3211/api/v1/admin/providers
 - 推理生成页
 - 奖励数据页
 - 导出交付页
+- 模型提供方页（管理员）
+- 存储配置页（管理员）
+- 生成策略页（管理员）
+- 提示词模板页（管理员）
+- 审计日志页（管理员）
 
-### 9.2 管理端页面
-- 登录落地页
-- 总览页
-- 模型提供方页
-- 存储配置页
-- 生成策略页
-- 提示词模板页
-- 审计日志页
+### 9.3 角色策略
+- 普通用户：只显示数据集生产链路导航
+- 管理员：显示全部用户功能，并额外显示系统治理导航
+- 两种角色共用同一个前端应用与同一套页面骨架
 
-### 9.3 布局特征
+### 9.4 布局特征
 - 固定顶部导航
 - 固定左侧导航栏
 - 右侧分页工作区
-- 更接近 `/root/new-api` 的后台工作台信息架构
+- 更接近 `/root/new-api` 的控制台信息架构
 - 全部中文界面文案
-- 保留同源 `/api` 调用方式，不再写死 localhost
+- 保留同源 `/api` 调用方式，不写死运行时 localhost
 
 说明：
 - 少量技术专有名词（如 S3、MinIO、JSONL）保留英文，便于和基础设施配置保持一致

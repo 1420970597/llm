@@ -1,0 +1,281 @@
+@layer tailwind-base, semi, tailwind-components, tailwind-utils;
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --sidebar-width: 218px;
+  --sidebar-width-collapsed: 68px;
+  --sidebar-current-width: var(--sidebar-width);
+}
+
+body.sidebar-collapsed {
+  --sidebar-current-width: var(--sidebar-width-collapsed);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  font-family: Inter, 'Helvetica Neue', Arial, 'Microsoft YaHei', sans-serif;
+  color: var(--semi-color-text-0);
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 24%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.14), transparent 24%),
+    var(--semi-color-bg-0);
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(circle at center, black, transparent 82%);
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-layout {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.app-sider {
+  height: calc(100vh - 64px);
+  height: calc(100dvh - 64px);
+}
+
+.semi-layout::-webkit-scrollbar,
+.semi-layout-content::-webkit-scrollbar,
+.semi-sider::-webkit-scrollbar {
+  display: none;
+}
+
+.semi-layout,
+.semi-layout-content,
+.semi-sider {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.console-header-shell {
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.08);
+  backdrop-filter: blur(18px);
+  background: color-mix(in srgb, var(--semi-color-bg-0) 82%, transparent);
+}
+
+.console-header-actions .semi-button,
+.console-login-card .semi-button,
+.console-panel .semi-button,
+.console-panel .semi-input,
+.console-panel .semi-input-wrapper,
+.console-panel .semi-select,
+.console-panel .semi-select-selection,
+.console-panel .semi-input-number,
+.console-panel .semi-segmented,
+.console-panel .semi-form-field,
+.console-panel .semi-card,
+.console-sidebar-card,
+.console-stat-card,
+.console-quick-card,
+.console-record-card,
+.console-focus-card,
+.console-toolbar-card {
+  border-radius: 20px;
+}
+
+.console-page-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.console-panel,
+.console-stat-card,
+.console-sidebar-card,
+.console-quick-card,
+.console-record-card,
+.console-focus-card,
+.console-toolbar-card,
+.console-login-card {
+  border: 1px solid rgba(var(--semi-grey-2), 0.12);
+  background: color-mix(in srgb, var(--semi-color-bg-1) 86%, white 14%);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.06);
+}
+
+.console-stat-card .semi-card-body,
+.console-sidebar-card .semi-card-body,
+.console-quick-card .semi-card-body,
+.console-record-card .semi-card-body,
+.console-focus-card .semi-card-body,
+.console-toolbar-card .semi-card-body,
+.console-login-card .semi-card-body,
+.console-panel .semi-card-body {
+  padding: 20px;
+}
+
+.console-page-title {
+  font-size: clamp(28px, 4vw, 40px);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.console-page-subtitle,
+.console-muted,
+.console-caption,
+.console-meta,
+.console-nav-caption {
+  color: var(--semi-color-text-2);
+}
+
+.console-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(var(--semi-blue-0), 0.1);
+  color: var(--semi-color-primary);
+  font-weight: 600;
+}
+
+.console-stat-value {
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: -0.06em;
+}
+
+.console-summary-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.console-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--semi-color-bg-1) 88%, white 12%);
+  border: 1px solid rgba(var(--semi-grey-2), 0.08);
+}
+
+.console-quick-card {
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.console-quick-card:hover,
+.console-link-button:hover,
+.console-clickable:hover {
+  transform: translateY(-1px);
+}
+
+.console-route-banner {
+  display: grid;
+  gap: 12px;
+}
+
+.console-card-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.console-card-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.console-card-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.console-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.console-graph {
+  width: 100%;
+  min-height: 420px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(var(--semi-blue-0), 0.06), rgba(var(--semi-cyan-0), 0.08));
+  border: 1px solid rgba(var(--semi-grey-2), 0.08);
+}
+
+.console-graph text {
+  fill: var(--semi-color-text-0);
+  font-weight: 600;
+}
+
+.console-domain-editor,
+.console-record-list,
+.console-chip-row {
+  display: grid;
+  gap: 12px;
+}
+
+.console-domain-item,
+.console-record-item {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(var(--semi-grey-2), 0.08);
+  background: color-mix(in srgb, var(--semi-color-bg-1) 88%, white 12%);
+}
+
+.console-domain-item input {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.console-nav-shell .semi-navigation {
+  border-right: none;
+  background: transparent;
+}
+
+.console-nav-shell .semi-navigation-item,
+.console-nav-shell .semi-navigation-sub-title {
+  border-radius: 12px;
+}
+
+.console-nav-shell .semi-navigation-item-selected {
+  background: rgba(var(--semi-blue-0), 0.12);
+}
+
+.console-empty {
+  padding: 32px 12px;
+}
+
+.console-login-shell {
+  min-height: calc(100vh - 120px);
+}
+
+@media (max-width: 1200px) {
+  .console-card-grid-4,
+  .console-card-grid-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .console-card-grid-4,
+  .console-card-grid-3,
+  .console-card-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
