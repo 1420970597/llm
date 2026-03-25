@@ -689,7 +689,27 @@ export default function App() {
     }
   }
 
+  const validateProviderDraftForRemoteAction = () => {
+    const providerType = String(providerDraft.providerType ?? '').trim()
+    const baseURL = String(providerDraft.baseUrl ?? '').trim()
+
+    if (!providerType) {
+      Toast.warning('请先选择或填写提供方类型')
+      return false
+    }
+
+    if (providerType !== 'mock' && !baseURL) {
+      Toast.warning('请先填写基础 URL，再获取模型列表或执行连通性测试')
+      return false
+    }
+
+    return true
+  }
+
   const fetchProviderModels = async () => {
+    if (!validateProviderDraftForRemoteAction()) {
+      return
+    }
     setProviderModelsLoading(true)
     try {
       const response = await consoleApi.fetchProviderModels(providerDraft)
@@ -706,6 +726,9 @@ export default function App() {
   }
 
   const testProviderConnectivity = async () => {
+    if (!validateProviderDraftForRemoteAction()) {
+      return
+    }
     setProviderTestLoading(true)
     try {
       const result = await consoleApi.testProviderConnectivity(providerDraft)
@@ -829,8 +852,20 @@ export default function App() {
         { icon: Layers3, label: '每领域问题数', value: estimate.questionsPerDomain, helper: '单领域建议问题量' },
         { icon: BrainCircuit, label: '预计问题总量', value: estimate.estimatedQuestions, helper: '将被送入问题队列的数量' },
         { icon: FileOutput, label: '预计样本总量', value: estimate.estimatedSamples, helper: '最终训练样本总规模' },
-      ]
+      ] 
     : []
+
+  const providerRemoteActionDisabled = (() => {
+    const providerType = String(providerDraft.providerType ?? '').trim()
+    const baseURL = String(providerDraft.baseUrl ?? '').trim()
+    if (!providerType) {
+      return true
+    }
+    if (providerType === 'mock') {
+      return false
+    }
+    return !baseURL
+  })()
 
   const renderOverview = () => (
     <div className="console-page-shell">
@@ -1123,10 +1158,11 @@ export default function App() {
             />
             <Input value={providerDraft.apiKey ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, apiKey: value }))} placeholder="API Key（可留空）" />
             <Space wrap>
-              <Button loading={providerModelsLoading} onClick={() => void fetchProviderModels()}>获取模型列表</Button>
-              <Button loading={providerTestLoading} onClick={() => void testProviderConnectivity()}>模型连通性测试</Button>
+              <Button disabled={providerRemoteActionDisabled} loading={providerModelsLoading} onClick={() => void fetchProviderModels()}>获取模型列表</Button>
+              <Button disabled={providerRemoteActionDisabled} loading={providerTestLoading} onClick={() => void testProviderConnectivity()}>模型连通性测试</Button>
               <Button theme="solid" type="primary" loading={busy} onClick={() => void saveProvider()}>保存提供方</Button>
             </Space>
+            {providerRemoteActionDisabled ? <Text className="console-caption">非 mock 提供方需要先填写基础 URL，才能获取模型列表或执行连通性测试。</Text> : null}
 
             {providerModels.length > 0 ? (
               <div className="console-stack">
