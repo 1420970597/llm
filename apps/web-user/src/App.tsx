@@ -19,6 +19,7 @@ import {
   Switch,
   Table,
   Tag,
+  TextArea,
   Toast,
   Typography,
 } from '@douyinfe/semi-ui'
@@ -345,6 +346,8 @@ export default function App() {
   const [providerModelsLoading, setProviderModelsLoading] = useState(false)
   const [providerTestLoading, setProviderTestLoading] = useState(false)
   const [providerTestResult, setProviderTestResult] = useState<ProviderConnectivityResult | null>(null)
+  const [storageSearchKeyword, setStorageSearchKeyword] = useState('')
+  const [storageModalVisible, setStorageModalVisible] = useState(false)
   const [storageDraft, setStorageDraft] = useState<StorageDraft>({
     name: '本地 MinIO',
     provider: 'minio',
@@ -357,6 +360,8 @@ export default function App() {
     isActive: true,
     isDefault: true,
   })
+  const [strategySearchKeyword, setStrategySearchKeyword] = useState('')
+  const [strategyModalVisible, setStrategyModalVisible] = useState(false)
   const [strategyDraft, setStrategyDraft] = useState<Partial<Strategy>>({
     name: '',
     description: '',
@@ -367,6 +372,8 @@ export default function App() {
     planningMode: 'balanced',
     isDefault: true,
   })
+  const [promptSearchKeyword, setPromptSearchKeyword] = useState('')
+  const [promptModalVisible, setPromptModalVisible] = useState(false)
   const [promptDraft, setPromptDraft] = useState<PromptRecord>({
     name: '',
     stage: 'domain-generation',
@@ -430,6 +437,112 @@ export default function App() {
     setProviderModalVisible(false)
     setProviderModels([])
     setProviderTestResult(null)
+  }, [])
+
+  const makeEmptyStorageDraft = useCallback((): StorageDraft => ({
+    name: '本地 MinIO',
+    provider: 'minio',
+    endpoint: 'http://minio:9000',
+    region: 'us-east-1',
+    bucket: 'llm-factory-local',
+    accessKeyId: 'minioadmin',
+    secretAccessKey: 'minioadmin',
+    usePathStyle: true,
+    isActive: true,
+    isDefault: true,
+  }), [])
+
+  const openCreateStorageModal = useCallback(() => {
+    setStorageDraft(makeEmptyStorageDraft())
+    setStorageModalVisible(true)
+  }, [makeEmptyStorageDraft])
+
+  const openEditStorageModal = useCallback((storage: StorageProfile) => {
+    setStorageDraft({
+      id: storage.id,
+      name: storage.name,
+      provider: storage.provider,
+      endpoint: storage.endpoint,
+      region: storage.region,
+      bucket: storage.bucket,
+      accessKeyId: storage.accessKeyId,
+      secretAccessKey: '',
+      secretKeyMasked: storage.secretKeyMasked,
+      usePathStyle: storage.usePathStyle,
+      isActive: storage.isActive,
+      isDefault: storage.isDefault,
+    })
+    setStorageModalVisible(true)
+  }, [])
+
+  const closeStorageModal = useCallback(() => {
+    setStorageModalVisible(false)
+  }, [])
+
+  const makeEmptyStrategyDraft = useCallback((): Partial<Strategy> => ({
+    name: '',
+    description: '',
+    domainCount: 1000,
+    questionsPerDomain: 10,
+    answerVariants: 1,
+    rewardVariants: 1,
+    planningMode: 'balanced',
+    isDefault: true,
+  }), [])
+
+  const openCreateStrategyModal = useCallback(() => {
+    setStrategyDraft(makeEmptyStrategyDraft())
+    setStrategyModalVisible(true)
+  }, [makeEmptyStrategyDraft])
+
+  const openEditStrategyModal = useCallback((strategy: Strategy) => {
+    setStrategyDraft({
+      id: strategy.id,
+      name: strategy.name,
+      description: strategy.description,
+      domainCount: strategy.domainCount,
+      questionsPerDomain: strategy.questionsPerDomain,
+      answerVariants: strategy.answerVariants,
+      rewardVariants: strategy.rewardVariants,
+      planningMode: strategy.planningMode,
+      isDefault: strategy.isDefault,
+    })
+    setStrategyModalVisible(true)
+  }, [])
+
+  const closeStrategyModal = useCallback(() => {
+    setStrategyModalVisible(false)
+  }, [])
+
+  const makeEmptyPromptDraft = useCallback((): PromptRecord => ({
+    name: '',
+    stage: 'domain-generation',
+    version: 'v1',
+    systemPrompt: '',
+    userPrompt: '',
+    isActive: true,
+  }), [])
+
+  const openCreatePromptModal = useCallback(() => {
+    setPromptDraft(makeEmptyPromptDraft())
+    setPromptModalVisible(true)
+  }, [makeEmptyPromptDraft])
+
+  const openEditPromptModal = useCallback((prompt: PromptRecord) => {
+    setPromptDraft({
+      id: prompt.id,
+      name: prompt.name,
+      stage: prompt.stage,
+      version: prompt.version,
+      systemPrompt: prompt.systemPrompt,
+      userPrompt: prompt.userPrompt,
+      isActive: prompt.isActive,
+    })
+    setPromptModalVisible(true)
+  }, [])
+
+  const closePromptModal = useCallback(() => {
+    setPromptModalVisible(false)
   }, [])
 
   const loadAdminData = useCallback(async () => {
@@ -799,7 +912,8 @@ export default function App() {
     try {
       await consoleApi.saveStorageProfile(storageDraft)
       Toast.success('存储配置已保存')
-      setStorageDraft({ name: '本地 MinIO', provider: 'minio', endpoint: 'http://minio:9000', region: 'us-east-1', bucket: 'llm-factory-local', accessKeyId: 'minioadmin', secretAccessKey: 'minioadmin', usePathStyle: true, isActive: true, isDefault: true })
+      setStorageDraft(makeEmptyStorageDraft())
+      setStorageModalVisible(false)
       await loadBootstrap()
     } catch (error) {
       Toast.error((error as Error).message)
@@ -813,7 +927,8 @@ export default function App() {
     try {
       await consoleApi.saveStrategy(strategyDraft)
       Toast.success('生成策略已保存')
-      setStrategyDraft({ name: '', description: '', domainCount: 1000, questionsPerDomain: 10, answerVariants: 1, rewardVariants: 1, planningMode: 'balanced', isDefault: true })
+      setStrategyDraft(makeEmptyStrategyDraft())
+      setStrategyModalVisible(false)
       await loadBootstrap()
     } catch (error) {
       Toast.error((error as Error).message)
@@ -827,7 +942,8 @@ export default function App() {
     try {
       await consoleApi.savePrompt(promptDraft)
       Toast.success('提示词模板已保存')
-      setPromptDraft({ name: '', stage: 'domain-generation', version: 'v1', systemPrompt: '', userPrompt: '', isActive: true })
+      setPromptDraft(makeEmptyPromptDraft())
+      setPromptModalVisible(false)
       await loadBootstrap()
     } catch (error) {
       Toast.error((error as Error).message)
@@ -864,8 +980,17 @@ export default function App() {
       { title: '存储桶', dataIndex: 'bucket' },
       { title: '启用', dataIndex: 'isActive', render: (value: boolean) => <Tag color={value ? 'green' : 'grey'}>{value ? '启用' : '停用'}</Tag> },
       { title: '默认', dataIndex: 'isDefault', render: (value: boolean) => <Tag color={value ? 'green' : 'grey'}>{value ? '是' : '否'}</Tag> },
+      {
+        title: '操作',
+        dataIndex: 'operate',
+        render: (_: unknown, record: StorageProfile) => (
+          <Space>
+            <Button size="small" onClick={() => openEditStorageModal(record)}>编辑</Button>
+          </Space>
+        ),
+      },
     ],
-    [],
+    [openEditStorageModal],
   )
   const strategyColumns = useMemo(
     () => [
@@ -875,8 +1000,17 @@ export default function App() {
       { title: '每领域问题数', dataIndex: 'questionsPerDomain' },
       { title: '答案变体', dataIndex: 'answerVariants' },
       { title: '奖励变体', dataIndex: 'rewardVariants' },
+      {
+        title: '操作',
+        dataIndex: 'operate',
+        render: (_: unknown, record: Strategy) => (
+          <Space>
+            <Button size="small" onClick={() => openEditStrategyModal(record)}>编辑</Button>
+          </Space>
+        ),
+      },
     ],
-    [],
+    [openEditStrategyModal],
   )
   const promptColumns = useMemo(
     () => [
@@ -884,8 +1018,17 @@ export default function App() {
       { title: '阶段', dataIndex: 'stage', render: (value: string) => <Tag color="amber">{value}</Tag> },
       { title: '版本', dataIndex: 'version' },
       { title: '状态', dataIndex: 'isActive', render: (value: boolean) => <Tag color={value ? 'green' : 'grey'}>{value ? '启用' : '停用'}</Tag> },
+      {
+        title: '操作',
+        dataIndex: 'operate',
+        render: (_: unknown, record: PromptRecord) => (
+          <Space>
+            <Button size="small" onClick={() => openEditPromptModal(record)}>编辑</Button>
+          </Space>
+        ),
+      },
     ],
-    [],
+    [openEditPromptModal],
   )
   const auditColumns = useMemo(
     () => [
@@ -948,6 +1091,53 @@ export default function App() {
     () => storageProfiles.filter((item) => item.isActive),
     [storageProfiles],
   )
+  const filteredStorageProfiles = useMemo(() => {
+    const keyword = storageSearchKeyword.trim().toLowerCase()
+    if (!keyword) {
+      return storageProfiles
+    }
+    return storageProfiles.filter((profile) =>
+      [
+        profile.name,
+        profile.provider,
+        profile.endpoint,
+        profile.region,
+        profile.bucket,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword)),
+    )
+  }, [storageProfiles, storageSearchKeyword])
+  const filteredStrategies = useMemo(() => {
+    const keyword = strategySearchKeyword.trim().toLowerCase()
+    if (!keyword) {
+      return strategies
+    }
+    return strategies.filter((strategy) =>
+      [
+        strategy.name,
+        strategy.description,
+        strategy.planningMode,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword)),
+    )
+  }, [strategies, strategySearchKeyword])
+  const filteredPrompts = useMemo(() => {
+    const keyword = promptSearchKeyword.trim().toLowerCase()
+    if (!keyword) {
+      return prompts
+    }
+    return prompts.filter((prompt) =>
+      [
+        prompt.name,
+        prompt.stage,
+        prompt.version,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword)),
+    )
+  }, [prompts, promptSearchKeyword])
 
   const renderOverview = () => (
     <div className="console-page-shell">
@@ -1352,100 +1542,291 @@ export default function App() {
 
   const renderStorage = () => (
     <div className="console-page-shell">
-      <PageHeader badge="管理员治理 / 存储配置" title="维护 S3 / MinIO / OSS 存储目标" description="长思维链、奖励数据和导出工件都从这里继承对象存储路由。" />
-      <div className="console-card-grid-2">
-        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">对象存储台账</Title>
-          <Table columns={storageColumns} dataSource={storageProfiles} pagination={false} />
-        </Card>
-        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">新增 / 更新存储配置</Title>
-          <div className="console-stack mt-5">
-            <Input value={storageDraft.name ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, name: value }))} placeholder="配置名称" />
-            <Input value={storageDraft.provider ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, provider: value }))} placeholder="提供方" />
-            <Input value={storageDraft.endpoint ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, endpoint: value }))} placeholder="端点" />
-            <div className="console-card-grid-2">
-              <Input value={storageDraft.region ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, region: value }))} placeholder="地域" />
-              <Input value={storageDraft.bucket ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, bucket: value }))} placeholder="存储桶" />
-            </div>
-            <Input value={storageDraft.accessKeyId ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, accessKeyId: value }))} placeholder="Access Key ID" />
-            <Input value={storageDraft.secretAccessKey ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, secretAccessKey: value }))} placeholder="Secret Access Key" />
-            <div className="console-card-grid-2">
-              <div>
-                <Text className="mb-2 block font-medium">启用状态</Text>
-                <div className="flex h-10 items-center rounded-[16px] border border-[var(--semi-color-border)] px-4">
-                  <Switch checked={storageDraft.isActive ?? true} onChange={(checked) => setStorageDraft((current) => ({ ...current, isActive: checked }))} />
-                </div>
-              </div>
-              <div>
-                <Text className="mb-2 block font-medium">设为默认</Text>
-                <div className="flex h-10 items-center rounded-[16px] border border-[var(--semi-color-border)] px-4">
-                  <Switch checked={storageDraft.isDefault ?? true} onChange={(checked) => setStorageDraft((current) => ({ ...current, isDefault: checked }))} />
-                </div>
-              </div>
-            </div>
-            <Text className="console-caption">已内置本地 MinIO 地址与默认凭证，你可以继续新增多个存储来源，并通过开关控制启用。</Text>
-            <Button theme="solid" type="primary" loading={busy} onClick={() => void saveStorage()}>保存存储配置</Button>
+      <PageHeader
+        badge="管理员治理 / 存储配置"
+        title="渠道式管理存储目标"
+        description="改成与模型提供方一致的列表优先工作流：列表页展示，按钮新增，弹窗编辑。"
+        actions={
+          <Space wrap>
+            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('存储配置已刷新')}>刷新配置</Button>
+            <Button theme="solid" type="primary" onClick={() => openCreateStorageModal()}>新增存储</Button>
+          </Space>
+        }
+      />
+      <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <Title heading={4} className="!mb-0">对象存储台账</Title>
+            <Text className="mt-2 block console-caption">已内置本地 MinIO 地址与默认凭证，也支持继续添加多个 S3 / MinIO / OSS 来源，并通过启用开关控制是否可用于计划编排。</Text>
           </div>
-        </Card>
-      </div>
+          <Input
+            value={storageSearchKeyword}
+            onChange={setStorageSearchKeyword}
+            placeholder="搜索名称、提供方、端点、地域或存储桶"
+            style={{ width: 360, maxWidth: '100%' }}
+          />
+        </div>
+        <div className="mt-5">
+          <Table columns={storageColumns} dataSource={filteredStorageProfiles} pagination={false} />
+        </div>
+      </Card>
+
+      <Modal
+        title={storageDraft.id ? '编辑存储配置' : '新增存储配置'}
+        visible={storageModalVisible}
+        onCancel={closeStorageModal}
+        footer={
+          <Space>
+            <Button onClick={closeStorageModal}>取消</Button>
+            <Button theme="solid" type="primary" loading={busy} onClick={() => void saveStorage()}>保存</Button>
+          </Space>
+        }
+        width={860}
+      >
+        <div className="console-stack">
+          <div className="console-card-grid-2">
+            <div>
+              <Text className="mb-2 block font-medium">配置名称</Text>
+              <Input value={storageDraft.name ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, name: value }))} placeholder="例如 本地 MinIO / 生产 OSS" />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">提供方</Text>
+              <Select
+                value={storageDraft.provider ?? 'minio'}
+                optionList={[
+                  { value: 'minio', label: 'MinIO' },
+                  { value: 's3', label: 'AWS S3' },
+                  { value: 'oss', label: '阿里云 OSS' },
+                  { value: 'custom', label: 'Custom S3 Compatible' },
+                ]}
+                onChange={(value) => setStorageDraft((current) => ({ ...current, provider: String(value ?? '') }))}
+                style={{ width: '100%' }}
+              />
+            </div>
+          </div>
+
+          <div className="console-card-grid-2">
+            <div>
+              <Text className="mb-2 block font-medium">端点</Text>
+              <Input value={storageDraft.endpoint ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, endpoint: value }))} placeholder="例如 http://minio:9000" />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">地域</Text>
+              <Input value={storageDraft.region ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, region: value }))} placeholder="例如 us-east-1" />
+            </div>
+          </div>
+
+          <div className="console-card-grid-2">
+            <div>
+              <Text className="mb-2 block font-medium">存储桶</Text>
+              <Input value={storageDraft.bucket ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, bucket: value }))} placeholder="例如 llm-factory-local" />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">Access Key ID</Text>
+              <Input value={storageDraft.accessKeyId ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, accessKeyId: value }))} placeholder="例如 minioadmin" />
+            </div>
+          </div>
+
+          <div>
+            <Text className="mb-2 block font-medium">Secret Access Key</Text>
+            <Input value={storageDraft.secretAccessKey ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, secretAccessKey: value }))} placeholder="留空则沿用已有密钥" mode="password" />
+          </div>
+
+          <div className="console-card-grid-3">
+            <div>
+              <Text className="mb-2 block font-medium">Path Style</Text>
+              <div className="flex h-10 items-center rounded-[16px] border border-[var(--semi-color-border)] px-4">
+                <Switch checked={storageDraft.usePathStyle ?? true} onChange={(checked) => setStorageDraft((current) => ({ ...current, usePathStyle: checked }))} />
+              </div>
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">启用状态</Text>
+              <div className="flex h-10 items-center rounded-[16px] border border-[var(--semi-color-border)] px-4">
+                <Switch checked={storageDraft.isActive ?? true} onChange={(checked) => setStorageDraft((current) => ({ ...current, isActive: checked }))} />
+              </div>
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">设为默认</Text>
+              <div className="flex h-10 items-center rounded-[16px] border border-[var(--semi-color-border)] px-4">
+                <Switch checked={storageDraft.isDefault ?? true} onChange={(checked) => setStorageDraft((current) => ({ ...current, isDefault: checked }))} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 
   const renderStrategies = () => (
     <div className="console-page-shell">
-      <PageHeader badge="管理员治理 / 生成策略" title="定义领域规模、问题量与奖励变体" description="普通用户在计划编排页消费这里预置的策略，管理员则在同一前端直接维护它们。" />
-      <div className="console-card-grid-2">
-        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">生成策略台账</Title>
-          <Table columns={strategyColumns} dataSource={strategies} pagination={false} />
-        </Card>
-        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">新增 / 更新策略</Title>
-          <div className="console-stack mt-5">
-            <Input value={strategyDraft.name ?? ''} onChange={(value) => setStrategyDraft((current) => ({ ...current, name: value }))} placeholder="策略名称" />
-            <Input value={strategyDraft.description ?? ''} onChange={(value) => setStrategyDraft((current) => ({ ...current, description: value }))} placeholder="策略说明" />
-            <div className="console-card-grid-2">
-              <InputNumber value={strategyDraft.domainCount ?? 1000} onChange={(value) => setStrategyDraft((current) => ({ ...current, domainCount: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="领域数" />
-              <InputNumber value={strategyDraft.questionsPerDomain ?? 10} onChange={(value) => setStrategyDraft((current) => ({ ...current, questionsPerDomain: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="每领域问题数" />
-            </div>
-            <div className="console-card-grid-2">
-              <InputNumber value={strategyDraft.answerVariants ?? 1} onChange={(value) => setStrategyDraft((current) => ({ ...current, answerVariants: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="答案变体数" />
-              <InputNumber value={strategyDraft.rewardVariants ?? 1} onChange={(value) => setStrategyDraft((current) => ({ ...current, rewardVariants: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="奖励变体数" />
-            </div>
-            <Select value={strategyDraft.planningMode ?? 'balanced'} optionList={[
-              { value: 'balanced', label: '平衡' },
-              { value: 'wide-first', label: '优先广度' },
-              { value: 'deep-first', label: '优先深度' },
-              { value: 'cost-saving', label: '成本优先' },
-            ]} onChange={(value) => setStrategyDraft((current) => ({ ...current, planningMode: String(value) }))} style={{ width: '100%' }} />
-            <Button theme="solid" type="primary" loading={busy} onClick={() => void saveStrategy()}>保存策略</Button>
+      <PageHeader
+        badge="管理员治理 / 生成策略"
+        title="列表化管理生成策略"
+        description="与模型提供方相同，改成列表展示、搜索、按钮新增、弹窗编辑的治理模式。"
+        actions={
+          <Space wrap>
+            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('生成策略已刷新')}>刷新策略</Button>
+            <Button theme="solid" type="primary" onClick={() => openCreateStrategyModal()}>新增策略</Button>
+          </Space>
+        }
+      />
+      <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <Title heading={4} className="!mb-0">生成策略台账</Title>
+            <Text className="mt-2 block console-caption">用户在计划编排页消费这里的策略，管理员在这里维护策略数量、问题量和规划模式。</Text>
           </div>
-        </Card>
-      </div>
+          <Input
+            value={strategySearchKeyword}
+            onChange={setStrategySearchKeyword}
+            placeholder="搜索策略名称、说明或规划模式"
+            style={{ width: 360, maxWidth: '100%' }}
+          />
+        </div>
+        <div className="mt-5">
+          <Table columns={strategyColumns} dataSource={filteredStrategies} pagination={false} />
+        </div>
+      </Card>
+
+      <Modal
+        title={strategyDraft.id ? '编辑生成策略' : '新增生成策略'}
+        visible={strategyModalVisible}
+        onCancel={closeStrategyModal}
+        footer={
+          <Space>
+            <Button onClick={closeStrategyModal}>取消</Button>
+            <Button theme="solid" type="primary" loading={busy} onClick={() => void saveStrategy()}>保存</Button>
+          </Space>
+        }
+        width={820}
+      >
+        <div className="console-stack">
+          <div className="console-card-grid-2">
+            <div>
+              <Text className="mb-2 block font-medium">策略名称</Text>
+              <Input value={strategyDraft.name ?? ''} onChange={(value) => setStrategyDraft((current) => ({ ...current, name: value }))} placeholder="例如 企业标准策略" />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">规划模式</Text>
+              <Select value={strategyDraft.planningMode ?? 'balanced'} optionList={[
+                { value: 'balanced', label: '平衡' },
+                { value: 'wide-first', label: '优先广度' },
+                { value: 'deep-first', label: '优先深度' },
+                { value: 'cost-saving', label: '成本优先' },
+              ]} onChange={(value) => setStrategyDraft((current) => ({ ...current, planningMode: String(value) }))} style={{ width: '100%' }} />
+            </div>
+          </div>
+          <div>
+            <Text className="mb-2 block font-medium">策略说明</Text>
+            <Input value={strategyDraft.description ?? ''} onChange={(value) => setStrategyDraft((current) => ({ ...current, description: value }))} placeholder="用于说明该策略的适用场景" />
+          </div>
+          <div className="console-card-grid-2">
+            <div>
+              <Text className="mb-2 block font-medium">领域数</Text>
+              <InputNumber value={strategyDraft.domainCount ?? 1000} onChange={(value) => setStrategyDraft((current) => ({ ...current, domainCount: Number(value ?? 0) }))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">每领域问题数</Text>
+              <InputNumber value={strategyDraft.questionsPerDomain ?? 10} onChange={(value) => setStrategyDraft((current) => ({ ...current, questionsPerDomain: Number(value ?? 0) }))} style={{ width: '100%' }} />
+            </div>
+          </div>
+          <div className="console-card-grid-2">
+            <div>
+              <Text className="mb-2 block font-medium">答案变体数</Text>
+              <InputNumber value={strategyDraft.answerVariants ?? 1} onChange={(value) => setStrategyDraft((current) => ({ ...current, answerVariants: Number(value ?? 0) }))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">奖励变体数</Text>
+              <InputNumber value={strategyDraft.rewardVariants ?? 1} onChange={(value) => setStrategyDraft((current) => ({ ...current, rewardVariants: Number(value ?? 0) }))} style={{ width: '100%' }} />
+            </div>
+          </div>
+          <div>
+            <Text className="mb-2 block font-medium">设为默认</Text>
+            <div className="flex h-10 items-center rounded-[16px] border border-[var(--semi-color-border)] px-4">
+              <Switch checked={Boolean(strategyDraft.isDefault ?? true)} onChange={(checked) => setStrategyDraft((current) => ({ ...current, isDefault: checked }))} />
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 
   const renderPrompts = () => (
     <div className="console-page-shell">
-      <PageHeader badge="管理员治理 / 提示词模板" title="治理各阶段系统提示词与版本" description="领域生成、问题生成、推理生成与奖励评估的 Prompt 模板统一从这里维护。" />
-      <div className="console-card-grid-2">
-        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">提示词模板台账</Title>
-          <Table columns={promptColumns} dataSource={prompts} pagination={false} />
-        </Card>
-        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">新增 / 更新 Prompt</Title>
-          <div className="console-stack mt-5">
-            <Input value={promptDraft.name} onChange={(value) => setPromptDraft((current) => ({ ...current, name: value }))} placeholder="提示词名称" />
-            <Input value={promptDraft.stage} onChange={(value) => setPromptDraft((current) => ({ ...current, stage: value }))} placeholder="阶段，例如 domain-generation" />
-            <Input value={promptDraft.version} onChange={(value) => setPromptDraft((current) => ({ ...current, version: value }))} placeholder="版本号" />
-            <Input value={promptDraft.systemPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, systemPrompt: value }))} placeholder="系统提示词" />
-            <Input value={promptDraft.userPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, userPrompt: value }))} placeholder="用户提示词" />
-            <Button theme="solid" type="primary" loading={busy} onClick={() => void savePrompt()}>保存 Prompt</Button>
+      <PageHeader
+        badge="管理员治理 / 提示词模板"
+        title="列表化管理提示词模板"
+        description="和模型提供方一致，改成列表展示、搜索、按钮新增、弹窗编辑的模式。"
+        actions={
+          <Space wrap>
+            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('提示词模板已刷新')}>刷新模板</Button>
+            <Button theme="solid" type="primary" onClick={() => openCreatePromptModal()}>新增模板</Button>
+          </Space>
+        }
+      />
+      <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <Title heading={4} className="!mb-0">提示词模板台账</Title>
+            <Text className="mt-2 block console-caption">领域生成、问题生成、推理生成与奖励评估的 Prompt 模板集中在这里治理。</Text>
           </div>
-        </Card>
-      </div>
+          <Input
+            value={promptSearchKeyword}
+            onChange={setPromptSearchKeyword}
+            placeholder="搜索模板名称、阶段或版本"
+            style={{ width: 360, maxWidth: '100%' }}
+          />
+        </div>
+        <div className="mt-5">
+          <Table columns={promptColumns} dataSource={filteredPrompts} pagination={false} />
+        </div>
+      </Card>
+
+      <Modal
+        title={promptDraft.id ? '编辑提示词模板' : '新增提示词模板'}
+        visible={promptModalVisible}
+        onCancel={closePromptModal}
+        footer={
+          <Space>
+            <Button onClick={closePromptModal}>取消</Button>
+            <Button theme="solid" type="primary" loading={busy} onClick={() => void savePrompt()}>保存</Button>
+          </Space>
+        }
+        width={920}
+      >
+        <div className="console-stack">
+          <div className="console-card-grid-2">
+            <div>
+              <Text className="mb-2 block font-medium">模板名称</Text>
+              <Input value={promptDraft.name} onChange={(value) => setPromptDraft((current) => ({ ...current, name: value }))} placeholder="例如 领域生成模板" />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">阶段</Text>
+              <Input value={promptDraft.stage} onChange={(value) => setPromptDraft((current) => ({ ...current, stage: value }))} placeholder="例如 domain-generation / question-generation" />
+            </div>
+          </div>
+          <div className="console-card-grid-2">
+            <div>
+              <Text className="mb-2 block font-medium">版本号</Text>
+              <Input value={promptDraft.version} onChange={(value) => setPromptDraft((current) => ({ ...current, version: value }))} placeholder="例如 v1" />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">启用状态</Text>
+              <div className="flex h-10 items-center rounded-[16px] border border-[var(--semi-color-border)] px-4">
+                <Switch checked={promptDraft.isActive} onChange={(checked) => setPromptDraft((current) => ({ ...current, isActive: checked }))} />
+              </div>
+            </div>
+          </div>
+          <div>
+            <Text className="mb-2 block font-medium">系统提示词</Text>
+            <TextArea rows={6} value={promptDraft.systemPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, systemPrompt: value }))} placeholder="系统提示词" />
+          </div>
+          <div>
+            <Text className="mb-2 block font-medium">用户提示词</Text>
+            <TextArea rows={6} value={promptDraft.userPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, userPrompt: value }))} placeholder="用户提示词" />
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 
