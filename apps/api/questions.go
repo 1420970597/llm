@@ -4,6 +4,9 @@ import (
   "encoding/json"
   "net/http"
   "strconv"
+  "time"
+
+  "github.com/1420970597/llm/internal/model"
 )
 
 func (app *application) enqueueQuestionGeneration(w http.ResponseWriter, r *http.Request) {
@@ -18,8 +21,18 @@ func (app *application) enqueueQuestionGeneration(w http.ResponseWriter, r *http
     app.writeError(w, http.StatusInternalServerError, err)
     return
   }
+  if err := app.datasets.UpdateStatus(r.Context(), id, "questions_queued"); err != nil {
+    app.writeError(w, http.StatusInternalServerError, err)
+    return
+  }
   _ = app.store.WriteAuditLog(r.Context(), "user", "enqueue", "question_generation", datasetIDString(id), "questions.generate")
-  app.writeJSON(w, http.StatusAccepted, map[string]any{"queued": true, "datasetId": id})
+  app.writeJSON(w, http.StatusAccepted, model.StageEnqueueResult{
+    DatasetID:  id,
+    Stage:      "questions",
+    State:      "queued",
+    Message:    "问题生成任务已入队",
+    AcceptedAt: time.Now().Format(time.RFC3339),
+  })
 }
 
 func (app *application) listQuestions(w http.ResponseWriter, r *http.Request) {

@@ -163,6 +163,20 @@ func (app *application) confirmDomains(w http.ResponseWriter, r *http.Request) {
 	app.writeJSON(w, http.StatusOK, map[string]string{"status": "domains_confirmed"})
 }
 
+func (app *application) pipelineProgress(w http.ResponseWriter, r *http.Request) {
+	id, err := datasetIDFromPath(r.URL.Path)
+	if err != nil {
+		app.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	progress, err := app.datasets.PipelineProgress(r.Context(), id)
+	if err != nil {
+		app.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	app.writeJSON(w, http.StatusOK, progress)
+}
+
 func datasetIDFromPath(path string) (int64, error) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	for index, part := range parts {

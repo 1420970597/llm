@@ -190,6 +190,34 @@ export type Artifact = {
   createdAt: string
 }
 
+export type PipelineStageStatus = {
+  key: string
+  label: string
+  state: 'pending' | 'queued' | 'in_progress' | 'completed'
+  count: number
+  summary: string
+}
+
+export type PipelineProgress = {
+  datasetId: number
+  datasetStatus: string
+  currentStage: string
+  completionPercent: number
+  stages: PipelineStageStatus[]
+  questionCount: number
+  reasoningCount: number
+  rewardCount: number
+  artifactCount: number
+}
+
+export type StageEnqueueResult = {
+  datasetId: number
+  stage: string
+  state: string
+  message: string
+  acceptedAt: string
+}
+
 export type RuntimeStatus = {
   datasetCount: number
   questionCount: number
@@ -229,14 +257,15 @@ export const consoleApi = {
   generateDomains: (id: number) => unwrap(client.post<DatasetGraph>(`/v1/datasets/${id}/domains/generate`)),
   updateGraph: (id: number, domains: Domain[]) => unwrap(client.post<{ updated: number }>(`/v1/datasets/${id}/domains/graph`, { domains })),
   confirmDomains: (id: number) => unwrap(client.post<{ status: string }>(`/v1/datasets/${id}/domains/confirm`)),
-  generateQuestions: (id: number) => unwrap(client.post<{ queued: boolean; datasetId: number }>(`/v1/datasets/${id}/questions/generate`)),
+  generateQuestions: (id: number) => unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/questions/generate`)),
   listQuestions: (id: number) => unwrap(client.get<Question[]>(`/v1/datasets/${id}/questions`)),
-  generateReasoning: (id: number) => unwrap(client.post<{ queued: boolean; datasetId: number }>(`/v1/datasets/${id}/reasoning/generate`)),
+  generateReasoning: (id: number) => unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/reasoning/generate`)),
   listReasoning: (id: number) => unwrap(client.get<ReasoningRecord[]>(`/v1/datasets/${id}/reasoning`)),
-  generateRewards: (id: number) => unwrap(client.post<{ queued: boolean; datasetId: number }>(`/v1/datasets/${id}/rewards/generate`)),
+  generateRewards: (id: number) => unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/rewards/generate`)),
   listRewards: (id: number) => unwrap(client.get<RewardRecord[]>(`/v1/datasets/${id}/rewards`)),
-  generateExport: (id: number) => unwrap(client.post<{ queued: boolean; datasetId: number }>(`/v1/datasets/${id}/export`)),
+  generateExport: (id: number) => unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/export`)),
   listArtifacts: (id: number) => unwrap(client.get<Artifact[]>(`/v1/datasets/${id}/export`)),
+  pipelineProgress: (id: number) => unwrap(client.get<PipelineProgress>(`/v1/datasets/${id}/pipeline/progress`)),
   runtimeStatus: () => unwrap(client.get<RuntimeStatus>('/v1/platform/runtime')),
 }
 

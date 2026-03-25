@@ -3,6 +3,9 @@ package main
 import (
   "encoding/json"
   "net/http"
+  "time"
+
+  "github.com/1420970597/llm/internal/model"
 )
 
 func (app *application) enqueueExport(w http.ResponseWriter, r *http.Request) {
@@ -16,8 +19,18 @@ func (app *application) enqueueExport(w http.ResponseWriter, r *http.Request) {
     app.writeError(w, http.StatusInternalServerError, err)
     return
   }
+  if err := app.datasets.UpdateStatus(r.Context(), id, "export_queued"); err != nil {
+    app.writeError(w, http.StatusInternalServerError, err)
+    return
+  }
   _ = app.store.WriteAuditLog(r.Context(), "user", "enqueue", "dataset_export", datasetIDString(id), "export.generate")
-  app.writeJSON(w, http.StatusAccepted, map[string]any{"queued": true, "datasetId": id})
+  app.writeJSON(w, http.StatusAccepted, model.StageEnqueueResult{
+    DatasetID:  id,
+    Stage:      "export",
+    State:      "queued",
+    Message:    "导出任务已入队",
+    AcceptedAt: time.Now().Format(time.RFC3339),
+  })
 }
 
 func (app *application) listArtifacts(w http.ResponseWriter, r *http.Request) {

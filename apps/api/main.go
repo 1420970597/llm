@@ -289,6 +289,8 @@ func (app *application) routeDatasetGet(w http.ResponseWriter, r *http.Request) 
 		app.listRewards(w, r)
 	case strings.HasSuffix(r.URL.Path, "/export"):
 		app.listArtifacts(w, r)
+	case strings.HasSuffix(r.URL.Path, "/pipeline/progress"):
+		app.pipelineProgress(w, r)
 	default:
 		app.getDataset(w, r)
 	}

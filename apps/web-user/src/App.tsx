@@ -55,6 +55,7 @@ import {
   type Dataset,
   type DatasetGraph,
   type Domain,
+  type PipelineProgress,
   type PromptRecord,
   type Provider,
   type ProviderConnectivityResult,
@@ -83,37 +84,157 @@ type NavPage = {
 }
 
 const userPages: NavPage[] = [
-  { label: '总览', route: '/console/overview', icon: LayoutDashboard, caption: '统一查看平台与数据集运行态' },
-  { label: '计划编排', route: '/console/planning', icon: Target, caption: '配置目标规模与生成策略' },
-  { label: '领域图谱', route: '/console/domains', icon: GitBranch, caption: '生成、修订并确认领域结构' },
-  { label: '问题生成', route: '/console/questions', icon: Layers3, caption: '按领域批量生成训练问题' },
-  { label: '推理生成', route: '/console/reasoning', icon: BrainCircuit, caption: '生成长思维链与答案' },
-  { label: '奖励数据', route: '/console/rewards', icon: ShieldCheck, caption: '生成强化学习奖励评估数据' },
-  { label: '导出交付', route: '/console/exports', icon: HardDriveDownload, caption: '打包工件并查看运行态收口' },
+  { label: '任务中心', route: '/console/overview', icon: LayoutDashboard, caption: '查看整体进展、卡点与交付结果' },
+  { label: '任务设置', route: '/console/planning', icon: Target, caption: '填写主题和目标，创建任务并估算规模' },
+  { label: '方向结构', route: '/console/domains', icon: GitBranch, caption: '生成方向草案并确认可执行结构' },
+  { label: '问题草稿', route: '/console/questions', icon: Layers3, caption: '批量生成问题并检查覆盖情况' },
+  { label: '答案草稿', route: '/console/reasoning', icon: BrainCircuit, caption: '生成答案摘要并确认可读性' },
+  { label: '质量评分', route: '/console/rewards', icon: ShieldCheck, caption: '查看质量评分并判断是否可交付' },
+  { label: '结果交付', route: '/console/exports', icon: HardDriveDownload, caption: '导出最终产物并完成任务闭环' },
 ]
 
 const adminPages: NavPage[] = [
-  { label: '模型提供方', route: '/console/admin/providers', icon: Database, caption: '维护模型网关、路由与并发参数', adminOnly: true },
-  { label: '存储配置', route: '/console/admin/storage', icon: FolderCog, caption: '维护 S3 / MinIO / OSS 存储目标', adminOnly: true },
-  { label: '生成策略', route: '/console/admin/strategies', icon: Workflow, caption: '定义领域规模、问题量与奖励变体', adminOnly: true },
-  { label: '提示词模板', route: '/console/admin/prompts', icon: Sparkles, caption: '治理各阶段系统提示词与版本', adminOnly: true },
-  { label: '审计日志', route: '/console/admin/audit', icon: Settings, caption: '追踪配置变更与治理事件', adminOnly: true },
+  { label: 'AI 服务', route: '/console/admin/providers', icon: Database, caption: '配置生成内容所用的 AI 服务', adminOnly: true },
+  { label: '结果存储', route: '/console/admin/storage', icon: FolderCog, caption: '配置结果保存位置（S3 / MinIO / OSS）', adminOnly: true },
+  { label: '生成规则', route: '/console/admin/strategies', icon: Workflow, caption: '设置主题数量、题目数量和评分样本数', adminOnly: true },
+  { label: '生成指令', route: '/console/admin/prompts', icon: Sparkles, caption: '设置各步骤使用的生成指令文本', adminOnly: true },
+  { label: '操作记录', route: '/console/admin/audit', icon: Settings, caption: '查看配置变更记录', adminOnly: true },
 ]
 
 function statusLabel(status: string) {
   switch (status) {
     case 'draft':
-      return '草稿'
+      return '待确认方向'
     case 'domains_confirmed':
-      return '领域已确认'
+      return '方向已确认，待生成问题'
+    case 'questions_queued':
+      return '问题生成排队中'
     case 'questions_generated':
-      return '问题已生成'
+      return '问题已就绪，待生成答案'
+    case 'reasoning_queued':
+      return '答案生成排队中'
     case 'reasoning_generated':
-      return '推理已生成'
+      return '答案已就绪，待质量评分'
+    case 'rewards_queued':
+      return '质量评分排队中'
     case 'rewards_generated':
-      return '奖励数据已生成'
+      return '评分完成，可导出交付'
+    case 'export_queued':
+      return '导出任务排队中'
+    case 'export_generated':
+      return '导出已完成'
     default:
       return status
+  }
+}
+
+function progressPercent(status: string) {
+  switch (status) {
+    case 'draft':
+      return 15
+    case 'domains_confirmed':
+    case 'questions_queued':
+      return 35
+    case 'questions_generated':
+    case 'reasoning_queued':
+      return 55
+    case 'reasoning_generated':
+    case 'rewards_queued':
+      return 75
+    case 'rewards_generated':
+    case 'export_queued':
+      return 90
+    case 'export_generated':
+      return 100
+    default:
+      return 10
+  }
+}
+
+function nextActionLabel(status: string) {
+  switch (status) {
+    case 'draft':
+      return '先确认方向结构，再开始问题草稿生成'
+    case 'domains_confirmed':
+      return '启动问题草稿生成，补齐任务素材'
+    case 'questions_queued':
+      return '等待问题生成完成后进入答案草稿阶段'
+    case 'questions_generated':
+      return '启动答案草稿生成，形成可评审内容'
+    case 'reasoning_queued':
+      return '等待答案生成完成后进入质量评分'
+    case 'reasoning_generated':
+      return '启动质量评分，准备交付结论'
+    case 'rewards_queued':
+      return '等待质量评分完成后执行导出'
+    case 'rewards_generated':
+      return '导出结果包并通知验收'
+    case 'export_queued':
+      return '等待导出结果准备完成'
+    case 'export_generated':
+      return '下载结果文件并继续下一步'
+    default:
+      return '刷新任务状态后继续'
+  }
+}
+
+function waitingStateLabel(status: string, queueDepth: number) {
+  if (queueDepth > 0) {
+    return `系统正在处理中，还有 ${queueDepth} 个任务在等待`
+  }
+  switch (status) {
+    case 'draft':
+      return '等待你确认方向结构'
+    case 'domains_confirmed':
+      return '等待你启动问题草稿生成'
+    case 'questions_queued':
+      return '问题生成任务已入队，等待执行'
+    case 'questions_generated':
+      return '等待你启动答案草稿生成'
+    case 'reasoning_queued':
+      return '答案生成任务已入队，等待执行'
+    case 'reasoning_generated':
+      return '等待你启动质量评分'
+    case 'rewards_queued':
+      return '质量评分任务已入队，等待执行'
+    case 'rewards_generated':
+      return '等待你执行结果导出'
+    case 'export_queued':
+      return '导出任务已入队，等待执行'
+    case 'export_generated':
+      return '导出已完成，可下载交付'
+    default:
+      return '等待状态同步'
+  }
+}
+
+function stageStateStyle(state: 'pending' | 'queued' | 'in_progress' | 'completed') {
+  switch (state) {
+    case 'completed':
+      return { label: '已完成', color: 'green' as const, percent: 100 }
+    case 'in_progress':
+      return { label: '进行中', color: 'blue' as const, percent: 65 }
+    case 'queued':
+      return { label: '排队中', color: 'cyan' as const, percent: 35 }
+    default:
+      return { label: '待开始', color: 'grey' as const, percent: 10 }
+  }
+}
+
+function stageKeyLabel(key: string) {
+  switch (key) {
+    case 'domains':
+      return '方向整理'
+    case 'questions':
+      return '问题生成'
+    case 'reasoning':
+      return '推理生成'
+    case 'rewards':
+      return '质量评分'
+    case 'export':
+      return '导出交付'
+    default:
+      return key
   }
 }
 
@@ -125,6 +246,17 @@ function sourceLabel(source: string) {
       return '模拟数据'
     default:
       return source
+  }
+}
+
+function reviewStatusLabel(status: string) {
+  switch (status) {
+    case 'approved':
+      return '已确认'
+    case 'pending':
+      return '待复核'
+    default:
+      return status || '待复核'
   }
 }
 
@@ -148,46 +280,83 @@ function formatTime(value?: string) {
   }).format(new Date(value))
 }
 
-function GraphPreview({ rootKeyword, domains }: { rootKeyword: string; domains: Domain[] }) {
-  const visible = domains.slice(0, 16)
-  const width = 880
-  const height = 420
-  const centerX = width / 2
-  const centerY = height / 2
-  const radius = 160
+function questionStatusLabel(status: string) {
+  switch (status) {
+    case 'generated':
+      return { text: '已生成', color: 'green' as const }
+    case 'queued':
+      return { text: '排队中', color: 'blue' as const }
+    case 'failed':
+      return { text: '生成失败', color: 'red' as const }
+    default:
+      return { text: '处理中', color: 'grey' as const }
+  }
+}
 
-  const nodes = visible.map((domain, index) => {
-    const angle = (Math.PI * 2 * index) / Math.max(visible.length, 1)
-    return {
-      ...domain,
-      x: centerX + Math.cos(angle) * radius,
-      y: centerY + Math.sin(angle) * radius,
-    }
-  })
+function reasoningQualityLabel(summary: string) {
+  const length = summary.trim().length
+  if (length >= 140) return { text: '完整', color: 'green' as const, note: '信息较完整，可直接用于评分。' }
+  if (length >= 70) return { text: '可用', color: 'blue' as const, note: '关键信息齐全，建议抽检。' }
+  return { text: '待补充', color: 'orange' as const, note: '摘要较短，建议重跑或复核。' }
+}
+
+function rewardQualityLabel(score: number) {
+  if (score >= 0.85) return { text: '高质量', color: 'green' as const, note: '可以直接进入导出阶段。' }
+  if (score >= 0.7) return { text: '可交付', color: 'blue' as const, note: '建议抽样复核后导出。' }
+  if (score >= 0.5) return { text: '待优化', color: 'orange' as const, note: '建议补充推理后再评估。' }
+  return { text: '风险', color: 'red' as const, note: '不建议直接导出，请先回修。' }
+}
+
+function artifactDisplayName(objectKey: string) {
+  return objectKey.split('/').pop() || objectKey
+}
+
+function DirectionStructurePreview({ rootKeyword, domains }: { rootKeyword: string; domains: Domain[] }) {
+  const topLevelDomains = domains.filter((domain) => !domain.parentId)
+  const childDomains = domains.reduce<Map<number, Domain[]>>((map, domain) => {
+    if (!domain.parentId) return map
+    const siblings = map.get(domain.parentId) ?? []
+    siblings.push(domain)
+    map.set(domain.parentId, siblings)
+    return map
+  }, new Map())
+  const pendingCount = domains.filter((domain) => domain.reviewStatus !== 'approved').length
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="console-graph">
-      <defs>
-        <radialGradient id="consoleGraphGlow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="rgba(59, 130, 246, 0.26)" />
-          <stop offset="100%" stopColor="rgba(59, 130, 246, 0)" />
-        </radialGradient>
-      </defs>
-      <circle cx={centerX} cy={centerY} r="180" fill="url(#consoleGraphGlow)" />
-      {nodes.map((node) => (
-        <line key={`line-${node.id}`} x1={centerX} y1={centerY} x2={node.x} y2={node.y} stroke="rgba(59,130,246,0.18)" strokeWidth="1.4" />
-      ))}
-      <circle cx={centerX} cy={centerY} r="64" fill="white" stroke="rgba(59,130,246,0.28)" strokeWidth="2" />
-      <text x={centerX} y={centerY - 4} textAnchor="middle" dominantBaseline="middle" fontSize="18">{rootKeyword}</text>
-      <text x={centerX} y={centerY + 18} textAnchor="middle" dominantBaseline="middle" fontSize="10" fill="var(--semi-color-text-2)">核心主题</text>
-      {nodes.map((node) => (
-        <g key={node.id}>
-          <circle cx={node.x} cy={node.y} r="32" fill="white" stroke="rgba(59,130,246,0.18)" strokeWidth="1.5" />
-          <text x={node.x} y={node.y - 2} textAnchor="middle" dominantBaseline="middle" fontSize="11">{node.name.slice(0, 8)}</text>
-          <text x={node.x} y={node.y + 14} textAnchor="middle" dominantBaseline="middle" fontSize="9" fill="var(--semi-color-text-2)">{sourceLabel(node.source)}</text>
-        </g>
-      ))}
-    </svg>
+    <div className="console-stack">
+      <div className="console-summary-grid">
+        <div className="console-summary-row"><span>核心主题</span><Text strong>{rootKeyword}</Text></div>
+        <div className="console-summary-row"><span>一级方向</span><Text strong>{topLevelDomains.length}</Text></div>
+        <div className="console-summary-row"><span>待复核方向</span><Text strong>{pendingCount}</Text></div>
+      </div>
+      {topLevelDomains.length > 0 ? (
+        <div className="console-card-grid-2">
+          {topLevelDomains.map((domain) => {
+            const children = childDomains.get(domain.id) ?? []
+            return (
+              <div key={domain.id} className="console-domain-item">
+                <div className="flex items-center justify-between gap-3">
+                  <Text strong>{domain.name}</Text>
+                  <Tag color={domain.reviewStatus === 'approved' ? 'green' : 'blue'}>{reviewStatusLabel(domain.reviewStatus)}</Tag>
+                </div>
+                <Text className="mt-2 block console-caption">{sourceLabel(domain.source)} · 下级方向 {children.length} 个</Text>
+                {children.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {children.map((child) => (
+                      <Tag key={child.id} color="grey">{child.name}</Tag>
+                    ))}
+                  </div>
+                ) : (
+                  <Text className="mt-3 block console-caption">暂无下级方向，可直接进入命名复核。</Text>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <EmptyCard title="尚未生成方向结构" description="点击“生成方向草案”后，这里会展示可复核的方向树。" />
+      )}
+    </div>
   )
 }
 
@@ -235,7 +404,56 @@ function EmptyCard({ title, description }: { title: string; description: string 
   )
 }
 
-function LoginPage({ onSubmit, loading }: { onSubmit: (email: string, password: string) => Promise<void>; loading: boolean }) {
+type TrustSignal = {
+  tone: 'info' | 'success' | 'warning'
+  title: string
+  detail: string
+  recoveryHint?: string
+  nextStep?: { label: string; route: string }
+}
+
+function TrustSignalCard({
+  signal,
+  onDismiss,
+  onNavigate,
+}: {
+  signal: TrustSignal
+  onDismiss: () => void
+  onNavigate: (route: string) => void
+}) {
+  return (
+    <Card className="console-panel" bodyStyle={{ padding: 16 }}>
+      <Space vertical align="start" spacing="medium" style={{ width: '100%' }}>
+        <Space>
+          <Tag color={signal.tone === 'success' ? 'green' : signal.tone === 'warning' ? 'orange' : 'blue'}>
+            {signal.tone === 'success' ? '已完成' : signal.tone === 'warning' ? '需处理' : '提示'}
+          </Tag>
+          <Text strong>{signal.title}</Text>
+        </Space>
+        <Text>{signal.detail}</Text>
+        {signal.recoveryHint ? <Text className="console-caption">恢复建议：{signal.recoveryHint}</Text> : null}
+        <Space>
+          {signal.nextStep ? <Button theme="solid" type="primary" onClick={() => onNavigate(signal.nextStep!.route)}>{signal.nextStep.label}</Button> : null}
+          <Button onClick={onDismiss}>我已知晓</Button>
+        </Space>
+      </Space>
+    </Card>
+  )
+}
+
+function LoginPage({
+  onSubmit,
+  loading,
+  signal,
+  onDismissSignal,
+  onNavigate,
+}: {
+  onSubmit: (email: string, password: string) => Promise<void>
+  loading: boolean
+  signal: TrustSignal | null
+  onDismissSignal: () => void
+  onNavigate: (route: string) => void
+}) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
@@ -243,17 +461,17 @@ function LoginPage({ onSubmit, loading }: { onSubmit: (email: string, password: 
     <div className="console-login-shell flex items-center justify-center px-4 py-10">
       <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[1.15fr,0.85fr]">
         <Card className="console-panel" bodyStyle={{ padding: 28 }}>
-          <span className="console-chip">与 new-api 对齐的统一控制台</span>
-          <Title heading={1} className="!mb-0 mt-4">一个前端同时承载用户与管理员能力。</Title>
+          <span className="console-chip">欢迎来到灵感数据工坊</span>
+          <Title heading={1} className="!mb-0 mt-4">把一个主题想法，快速变成可用的数据成果。</Title>
           <Text className="mt-4 block console-page-subtitle">
-            最新参考代码已同步到 /root/new-api 的 {`2026-03-23 15:04:06 +08:00`} 提交。
-            现在的控制台将用户任务链路和管理员配置治理合并到同一应用，通过登录角色区分可见功能。
+            登录后即可从选题、生成到导出一站式完成。
+            界面会自动保存你的进度，让首次使用也能快速上手。
           </Text>
           <div className="console-card-grid-3 mt-6">
             {[
-              { icon: LayoutDashboard, title: '统一工作台', text: '总览、计划、图谱、问题、推理、奖励、导出在同一控制台切换。' },
-              { icon: ShieldCheck, title: '角色鉴权', text: '普通用户只看生产链路，管理员额外拥有系统配置能力。' },
-              { icon: Database, title: '同源 API', text: '继续通过 /api 访问后端，避免浏览器 localhost 和跨域问题。' },
+              { icon: LayoutDashboard, title: '三步即可开始', text: '创建主题、生成内容、导出结果，流程清晰直观。' },
+              { icon: ShieldCheck, title: '质量全程可见', text: '每个阶段都有结果预览与状态反馈，操作更安心。' },
+              { icon: Database, title: '进度自动同步', text: '登录后即可继续上次工作，不必重复配置流程。' },
             ].map((item) => (
               <Card key={item.title} className="console-quick-card" bodyStyle={{ padding: 18 }}>
                 <div className="feature-icon"><item.icon size={18} strokeWidth={1.9} /></div>
@@ -268,25 +486,30 @@ function LoginPage({ onSubmit, loading }: { onSubmit: (email: string, password: 
           <div className="flex items-center gap-3">
             <div className="feature-icon"><Users size={18} strokeWidth={1.9} /></div>
             <div>
-              <Title heading={4} className="!mb-0">登录统一控制台</Title>
-              <Text className="console-caption">默认内置两个账号，便于首启验证。</Text>
+              <Title heading={4} className="!mb-0">登录你的账号</Title>
+              <Text className="console-caption">继续你的工作进度，马上开始创建第一个任务。</Text>
             </div>
           </div>
+          {signal ? (
+            <div className="mt-5">
+              <TrustSignalCard signal={signal} onDismiss={onDismissSignal} onNavigate={onNavigate} />
+            </div>
+          ) : null}
           <div className="mt-5 grid gap-4">
             <div>
               <Text className="mb-2 block font-medium">邮箱</Text>
-              <Input value={email} onChange={setEmail} size="large" />
+              <Input value={email} onChange={setEmail} size="large" placeholder="请输入邮箱" />
             </div>
             <div>
               <Text className="mb-2 block font-medium">密码</Text>
-              <Input value={password} onChange={setPassword} mode="password" size="large" />
+              <Input value={password} onChange={setPassword} mode="password" size="large" placeholder="请输入密码" />
             </div>
             <Button theme="solid" type="primary" size="large" loading={loading} onClick={() => void onSubmit(email, password)}>
-              登录
+              进入工作台
             </Button>
           </div>
           <div className="mt-6 console-summary-grid">
-            <div className="console-summary-row"><span>登录说明</span><Text strong>请使用已分配账号登录</Text></div>
+            <div className="console-summary-row"><span>新用户指引</span><Text strong>登录后按页面提示 3 步完成首次创建</Text></div>
           </div>
         </Card>
       </div>
@@ -319,6 +542,7 @@ export default function App() {
   const [reasoning, setReasoning] = useState<ReasoningRecord[]>([])
   const [rewards, setRewards] = useState<RewardRecord[]>([])
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
+  const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null)
 
   const [plannerForm, setPlannerForm] = useState({
     name: '',
@@ -328,6 +552,8 @@ export default function App() {
     providerId: 0,
     storageProfileId: 0,
   })
+  const showAdvancedPlanning = false
+  const [trustSignal, setTrustSignal] = useState<TrustSignal | null>(null)
 
   const [providerDraft, setProviderDraft] = useState<ProviderDraft>({
     name: '',
@@ -385,6 +611,10 @@ export default function App() {
 
   const isAdmin = user?.role === 'admin'
   const activeDataset = useMemo(() => datasets.find((item) => item.id === activeDatasetId) ?? graph?.dataset ?? null, [datasets, activeDatasetId, graph?.dataset])
+  const activePipeline = useMemo(
+    () => (pipelineProgress && pipelineProgress.datasetId === activeDatasetId ? pipelineProgress : null),
+    [pipelineProgress, activeDatasetId],
+  )
   const visiblePages = useMemo(() => [...userPages, ...(isAdmin ? adminPages : [])], [isAdmin])
   const activeNav = useMemo(
     () => visiblePages.find((page) => location.pathname === page.route || location.pathname.startsWith(`${page.route}/`))?.route ?? '/console/overview',
@@ -598,12 +828,13 @@ export default function App() {
   const loadDatasetWorkspace = useCallback(async (datasetId: number, successMessage?: string) => {
     setBusy(true)
     try {
-      const [nextGraph, nextQuestions, nextReasoning, nextRewards, nextArtifacts, nextRuntime, nextDatasets] = await Promise.all([
+      const [nextGraph, nextQuestions, nextReasoning, nextRewards, nextArtifacts, nextPipeline, nextRuntime, nextDatasets] = await Promise.all([
         consoleApi.getDataset(datasetId),
         consoleApi.listQuestions(datasetId),
         consoleApi.listReasoning(datasetId),
         consoleApi.listRewards(datasetId),
         consoleApi.listArtifacts(datasetId),
+        consoleApi.pipelineProgress(datasetId),
         consoleApi.runtimeStatus(),
         consoleApi.listDatasets(),
       ])
@@ -612,6 +843,7 @@ export default function App() {
       setReasoning(nextReasoning)
       setRewards(nextRewards)
       setArtifacts(nextArtifacts)
+      setPipelineProgress(nextPipeline)
       setRuntime(nextRuntime)
       setDatasets(nextDatasets)
       setActiveDatasetId(datasetId)
@@ -672,10 +904,18 @@ export default function App() {
     try {
       const result = await authApi.login({ email, password })
       setUser(result.user)
+      setTrustSignal(null)
       Toast.success(`欢迎回来，${result.user.email}`)
       navigate('/console/overview', { replace: true })
     } catch (error) {
-      Toast.error((error as Error).message)
+      const message = (error as Error).message
+      setTrustSignal({
+        tone: 'warning',
+        title: '登录未成功',
+        detail: `系统返回：${message}`,
+        recoveryHint: '请确认账号密码，若连续失败请联系管理员重置账号。',
+      })
+      Toast.error(message)
     } finally {
       setAuthSubmitting(false)
     }
@@ -691,6 +931,7 @@ export default function App() {
       setReasoning([])
       setRewards([])
       setArtifacts([])
+      setPipelineProgress(null)
       navigate('/login', { replace: true })
     }
   }
@@ -713,12 +954,30 @@ export default function App() {
   }
 
   const createDataset = async () => {
-    if (!estimate) {
-      Toast.warning('请先完成计划估算')
+    if (!plannerForm.rootKeyword.trim() || Number(plannerForm.targetSize) <= 0) {
+      setTrustSignal({
+        tone: 'warning',
+        title: '创建前还有必填项',
+        detail: '任务主题和目标规模是创建任务的最小条件。',
+        recoveryHint: '先补齐上述两项，再点击“创建任务”。',
+        nextStep: { label: '回到任务设置', route: '/console/planning' },
+      })
+      Toast.warning('请至少填写任务主题和目标规模')
       return
     }
+
     setBusy(true)
     try {
+      const estimateSnapshot = estimate ?? await consoleApi.estimatePlan({
+        rootKeyword: plannerForm.rootKeyword,
+        targetSize: Number(plannerForm.targetSize),
+        strategyId: Number(plannerForm.strategyId),
+      })
+
+      if (!estimate) {
+        setEstimate(estimateSnapshot)
+      }
+
       const created = await consoleApi.createDataset({
         name: plannerForm.name || `${plannerForm.rootKeyword} 数据集`,
         rootKeyword: plannerForm.rootKeyword,
@@ -727,21 +986,36 @@ export default function App() {
         providerId: Number(plannerForm.providerId),
         storageProfileId: Number(plannerForm.storageProfileId),
         status: 'draft',
-        estimate,
+        estimate: estimateSnapshot,
       })
       setActiveDatasetId(created.id)
+      setTrustSignal({
+        tone: 'success',
+        title: '任务创建成功',
+        detail: '你现在可以进入“整理主题”继续下一步。',
+        recoveryHint: '如果页面未自动刷新，可点击右上角刷新按钮同步状态。',
+        nextStep: { label: '进入整理主题', route: '/console/domains' },
+      })
       navigate('/console/domains')
-      Toast.success('数据集已创建')
+      Toast.success('任务已创建')
       await loadBootstrap()
     } catch (error) {
-      Toast.error((error as Error).message)
+      const message = (error as Error).message
+      setTrustSignal({
+        tone: 'warning',
+        title: '创建任务失败',
+        detail: `系统返回：${message}`,
+        recoveryHint: '请检查策略、AI 服务和存储配置是否可用，再重试。',
+        nextStep: { label: '查看配置', route: '/console/planning' },
+      })
+      Toast.error(message)
     } finally {
       setBusy(false)
     }
   }
 
   const generateDomains = async () => {
-    if (!activeDatasetId) return Toast.warning('请先选择数据集')
+    if (!activeDatasetId) return Toast.warning('请先选择任务')
     setBusy(true)
     try {
       const nextGraph = await consoleApi.generateDomains(activeDatasetId)
@@ -759,7 +1033,7 @@ export default function App() {
     setBusy(true)
     try {
       await consoleApi.updateGraph(graph.dataset.id, graph.domains)
-      Toast.success('图谱命名修改已保存')
+      Toast.success('方向命名修改已保存')
     } catch (error) {
       Toast.error((error as Error).message)
     } finally {
@@ -776,7 +1050,15 @@ export default function App() {
       navigate('/console/questions')
       await loadDatasetWorkspace(graph.dataset.id)
     } catch (error) {
-      Toast.error((error as Error).message)
+      const message = (error as Error).message
+      setTrustSignal({
+        tone: 'warning',
+        title: '确认主题结构失败',
+        detail: `系统返回：${message}`,
+        recoveryHint: '请先保存命名修改，并确认当前数据集仍可访问后再重试。',
+        nextStep: { label: '返回整理主题', route: '/console/domains' },
+      })
+      Toast.error(message)
     } finally {
       setBusy(false)
     }
@@ -786,10 +1068,26 @@ export default function App() {
     if (!activeDatasetId) return
     setBusy(true)
     try {
-      await consoleApi.generateQuestions(activeDatasetId)
-      Toast.success('问题生成任务已入队')
+      const result = await consoleApi.generateQuestions(activeDatasetId)
+      setTrustSignal({
+        tone: 'info',
+        title: '题目生成已开始',
+        detail: result.message,
+        recoveryHint: '预计完成后，点击“刷新结果”同步最新题目列表。',
+        nextStep: { label: '查看题目页', route: '/console/questions' },
+      })
+      Toast.success(result.message)
+      await loadDatasetWorkspace(activeDatasetId)
     } catch (error) {
-      Toast.error((error as Error).message)
+      const message = (error as Error).message
+      setTrustSignal({
+        tone: 'warning',
+        title: '题目生成未启动',
+        detail: `系统返回：${message}`,
+        recoveryHint: '先确认主题已确认，再重新发起生成。',
+        nextStep: { label: '返回整理主题', route: '/console/domains' },
+      })
+      Toast.error(message)
     } finally {
       setBusy(false)
     }
@@ -799,10 +1097,26 @@ export default function App() {
     if (!activeDatasetId) return
     setBusy(true)
     try {
-      await consoleApi.generateReasoning(activeDatasetId)
-      Toast.success('推理生成任务已入队')
+      const result = await consoleApi.generateReasoning(activeDatasetId)
+      setTrustSignal({
+        tone: 'info',
+        title: '答案生成已开始',
+        detail: result.message,
+        recoveryHint: '稍后点击“刷新结果”确认新记录是否写入。',
+        nextStep: { label: '查看推理页', route: '/console/reasoning' },
+      })
+      Toast.success(result.message)
+      await loadDatasetWorkspace(activeDatasetId)
     } catch (error) {
-      Toast.error((error as Error).message)
+      const message = (error as Error).message
+      setTrustSignal({
+        tone: 'warning',
+        title: '答案生成未启动',
+        detail: `系统返回：${message}`,
+        recoveryHint: '请先确认题目数量充足，再重新发起。',
+        nextStep: { label: '检查题目', route: '/console/questions' },
+      })
+      Toast.error(message)
     } finally {
       setBusy(false)
     }
@@ -812,10 +1126,26 @@ export default function App() {
     if (!activeDatasetId) return
     setBusy(true)
     try {
-      await consoleApi.generateRewards(activeDatasetId)
-      Toast.success('奖励数据生成任务已入队')
+      const result = await consoleApi.generateRewards(activeDatasetId)
+      setTrustSignal({
+        tone: 'info',
+        title: '质量评估已开始',
+        detail: result.message,
+        recoveryHint: '若长时间无结果，请先刷新并检查等待任务数。',
+        nextStep: { label: '查看质量评估', route: '/console/rewards' },
+      })
+      Toast.success(result.message)
+      await loadDatasetWorkspace(activeDatasetId)
     } catch (error) {
-      Toast.error((error as Error).message)
+      const message = (error as Error).message
+      setTrustSignal({
+        tone: 'warning',
+        title: '质量评估未启动',
+        detail: `系统返回：${message}`,
+        recoveryHint: '请先确认答案记录已生成，再重新发起。',
+        nextStep: { label: '检查推理结果', route: '/console/reasoning' },
+      })
+      Toast.error(message)
     } finally {
       setBusy(false)
     }
@@ -825,10 +1155,26 @@ export default function App() {
     if (!activeDatasetId) return
     setBusy(true)
     try {
-      await consoleApi.generateExport(activeDatasetId)
-      Toast.success('导出任务已入队')
+      const result = await consoleApi.generateExport(activeDatasetId)
+      setTrustSignal({
+        tone: 'info',
+        title: '导出任务已开始',
+        detail: result.message,
+        recoveryHint: '导出前建议先确认奖励结果已生成，避免重复导出。',
+        nextStep: { label: '查看导出页', route: '/console/exports' },
+      })
+      Toast.success(result.message)
+      await loadDatasetWorkspace(activeDatasetId)
     } catch (error) {
-      Toast.error((error as Error).message)
+      const message = (error as Error).message
+      setTrustSignal({
+        tone: 'warning',
+        title: '导出任务未启动',
+        detail: `系统返回：${message}`,
+        recoveryHint: '先确认评估阶段已完成，再重新发起导出。',
+        nextStep: { label: '返回质量评估', route: '/console/rewards' },
+      })
+      Toast.error(message)
     } finally {
       setBusy(false)
     }
@@ -838,7 +1184,7 @@ export default function App() {
     setBusy(true)
     try {
       await consoleApi.saveProvider(providerDraft)
-      Toast.success('模型提供方已保存')
+      Toast.success('AI 服务已保存')
       setProviderDraft(makeEmptyProviderDraft())
       setProviderModels([])
       setProviderTestResult(null)
@@ -856,7 +1202,7 @@ export default function App() {
     const baseURL = String(providerDraft.baseUrl ?? '').trim()
 
     if (!providerType) {
-      Toast.warning('请先选择或填写提供方类型')
+      Toast.warning('请先选择或填写服务类型')
       return false
     }
 
@@ -941,7 +1287,7 @@ export default function App() {
     setBusy(true)
     try {
       await consoleApi.savePrompt(promptDraft)
-      Toast.success('提示词模板已保存')
+      Toast.success('生成指令模板已保存')
       setPromptDraft(makeEmptyPromptDraft())
       setPromptModalVisible(false)
       await loadBootstrap()
@@ -1042,10 +1388,10 @@ export default function App() {
   )
 
   const overviewCards = [
-    { icon: Database, label: '数据集', value: runtime?.datasetCount ?? 0, helper: '当前平台管理中的数据集数量' },
-    { icon: Layers3, label: '问题', value: runtime?.questionCount ?? 0, helper: '已经入库的问题样本总数' },
-    { icon: BrainCircuit, label: '推理', value: runtime?.reasoningCount ?? 0, helper: '长思维链与答案记录总数' },
-    { icon: HardDriveDownload, label: '工件', value: runtime?.artifactCount ?? 0, helper: '已经打包完成的导出工件' },
+    { icon: Database, label: '任务总数', value: runtime?.datasetCount ?? 0, helper: '当前正在跟进的任务数量' },
+    { icon: Layers3, label: '题目结果', value: runtime?.questionCount ?? 0, helper: '已经生成的题目数量' },
+    { icon: BrainCircuit, label: '答案结果', value: runtime?.reasoningCount ?? 0, helper: '已经生成的答案与思路数量' },
+    { icon: HardDriveDownload, label: '结果文件', value: runtime?.artifactCount ?? 0, helper: '已经准备好的导出结果文件' },
   ]
 
   const planningCards = estimate
@@ -1142,20 +1488,20 @@ export default function App() {
   const renderOverview = () => (
     <div className="console-page-shell">
       <PageHeader
-        badge="统一控制台 / 总览"
-        title="一个界面同时覆盖用户链路与管理员治理"
-        description="当前前端已按 /root/new-api 的页面结构重构为固定头部、左侧导航、右侧分页工作区；管理员登录后自动拥有全部用户链路与系统配置能力。"
+        badge="任务中心 / 总览"
+        title="在一个界面掌握任务进展与下一步"
+        description="这里聚合阶段反馈、等待状态和推荐动作，帮助你快速判断是否继续推进或先处理卡点。"
         actions={
           <>
             <Button theme="solid" type="primary" loading={busy} icon={<RefreshCw size={16} />} onClick={() => void loadBootstrap('控制台数据已刷新')}>
               刷新数据
             </Button>
-            <Button icon={<Target size={16} />} onClick={() => navigate('/console/planning')}>开始计划编排</Button>
+            <Button icon={<Target size={16} />} onClick={() => navigate('/console/planning')}>进入任务设置</Button>
           </>
         }
       />
 
-      <Banner type="info" icon={<Bell size={16} />} description={`当前登录角色：${isAdmin ? '管理员' : '普通用户'}。${isAdmin ? '你可以使用全部用户功能并配置系统。' : '你可以使用数据集生产链路。'}`} />
+      <Banner type="info" icon={<Bell size={16} />} description="当前工作台聚焦任务进展：从创建任务到导出结果可在同一界面连续完成。" />
 
       <div className="console-card-grid-4">
         {overviewCards.map((item) => <StatCard key={item.label} {...item} />)}
@@ -1166,16 +1512,40 @@ export default function App() {
           <Title heading={4} className="!mb-0">当前活动数据集</Title>
           <Text className="mt-2 block console-caption">总览页会持续显示当前任务上下文，避免在新结构下迷失工作流位置。</Text>
           <div className="mt-5 console-summary-grid">
-            <div className="console-summary-row"><span>数据集名称</span><Text strong>{activeDataset?.name ?? '尚未选择'}</Text></div>
-            <div className="console-summary-row"><span>根关键词</span><Text strong>{activeDataset?.rootKeyword ?? '—'}</Text></div>
-            <div className="console-summary-row"><span>状态</span><Text strong>{activeDataset ? statusLabel(activeDataset.status) : '—'}</Text></div>
+            <div className="console-summary-row"><span>任务名称</span><Text strong>{activeDataset?.name ?? '尚未选择'}</Text></div>
+            <div className="console-summary-row"><span>任务主题</span><Text strong>{activeDataset?.rootKeyword ?? '—'}</Text></div>
+            <div className="console-summary-row"><span>当前阶段</span><Text strong>{activeDataset ? statusLabel(activeDataset.status) : '—'}</Text></div>
+            <div className="console-summary-row"><span>完成进度</span><Text strong>{activePipeline ? `${activePipeline.completionPercent}%` : activeDataset ? `${progressPercent(activeDataset.status)}%` : '—'}</Text></div>
+            <div className="console-summary-row"><span>等待状态</span><Text strong>{activeDataset ? waitingStateLabel(activeDataset.status, runtime?.queueDepth ?? 0) : '请先创建任务'}</Text></div>
+            <div className="console-summary-row"><span>下一步动作</span><Text strong>{activeDataset ? nextActionLabel(activeDataset.status) : '先进入任务设置创建任务'}</Text></div>
             <div className="console-summary-row"><span>预计样本</span><Text strong>{activeDataset?.estimate.estimatedSamples ?? '—'}</Text></div>
           </div>
+          {activePipeline ? (
+            <div className="mt-5 console-stack">
+              <div className="console-summary-row"><span>当前执行阶段</span><Text strong>{stageKeyLabel(activePipeline.currentStage)}</Text></div>
+              <div className="console-card-grid-2 mt-3">
+                {activePipeline.stages.map((stage) => {
+                  const style = stageStateStyle(stage.state)
+                  return (
+                    <div key={stage.key} className="console-domain-item">
+                      <div className="flex items-center justify-between gap-3">
+                        <Text strong>{stage.label || stageKeyLabel(stage.key)}</Text>
+                        <Tag color={style.color}>{style.label}</Tag>
+                      </div>
+                      <Progress percent={style.percent} showInfo={false} stroke="#3b82f6" className="mt-3" />
+                      <Text className="mt-2 block console-caption">{stage.summary}</Text>
+                      <Text className="mt-1 block console-caption">记录数：{stage.count}</Text>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
         </Card>
 
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">快速入口</Title>
-          <Text className="mt-2 block console-caption">管理员与用户都从同一个前端进入；管理员额外看到系统治理导航。</Text>
+          <Text className="mt-2 block console-caption">常用入口按任务阶段组织，帮助快速回到当前步骤。</Text>
           <div className="console-card-grid-2 mt-5">
             {[...userPages.slice(1, 4), ...(isAdmin ? adminPages.slice(0, 1) : [])].map((page) => (
               <Card key={page.route} className="console-quick-card" bodyStyle={{ padding: 18 }}>
@@ -1192,7 +1562,7 @@ export default function App() {
 
       <Card className="console-panel" bodyStyle={{ padding: 20 }}>
         <Title heading={4} className="!mb-0">最近的数据集</Title>
-        <Text className="mt-2 block console-caption">从统一控制台直接切换任务，不再在用户端与管理端之间跳转。</Text>
+        <Text className="mt-2 block console-caption">在这里可直接切换任务，无需在不同页面之间来回切换。</Text>
         {datasets.length > 0 ? (
           <div className="console-card-grid-3 mt-5">
             {datasets.map((dataset) => (
@@ -1201,6 +1571,9 @@ export default function App() {
                   <Space vertical align="start" spacing="medium" style={{ width: '100%' }}>
                     <Tag color="blue">{statusLabel(dataset.status)}</Tag>
                     <Title heading={6} className="!mb-0">{dataset.name}</Title>
+                    <Progress percent={dataset.id === activeDatasetId && activePipeline ? activePipeline.completionPercent : progressPercent(dataset.status)} showInfo stroke="#3b82f6" aria-label="任务进度" />
+                    <Text className="console-caption">等待：{waitingStateLabel(dataset.status, runtime?.queueDepth ?? 0)}</Text>
+                    <Text className="console-caption">下一步：{nextActionLabel(dataset.status)}</Text>
                     <Text className="console-caption">{dataset.rootKeyword} · 预计 {dataset.estimate.estimatedSamples} 个样本</Text>
                     <Text className="console-caption">更新于 {formatTime(dataset.updatedAt)}</Text>
                   </Space>
@@ -1209,7 +1582,7 @@ export default function App() {
             ))}
           </div>
         ) : (
-          <EmptyCard title="暂无数据集" description="先进入计划编排页创建你的第一个数据集任务。" />
+          <EmptyCard title="暂无数据集" description="先进入“新建任务”页面创建你的第一个任务。" />
         )}
       </Card>
     </div>
@@ -1218,62 +1591,66 @@ export default function App() {
   const renderPlanning = () => (
     <div className="console-page-shell">
       <PageHeader
-        badge="用户链路 / 计划编排"
-        title="配置目标规模、策略、模型与存储"
-        description="普通用户和管理员在同一页完成数据集编排；管理员只是在左侧额外看到系统治理导航。"
+        badge="任务中心 / 新建任务"
+        title="先填主题和目标，快速创建任务"
+        description="普通用户仅需填写任务主题和目标规模。模型、策略与存储将使用系统默认配置。"
         actions={
           <>
-            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('系统配置与数据集已刷新')}>同步配置</Button>
-            <Button theme="solid" type="primary" icon={<Target size={16} />} loading={busy} onClick={() => void estimatePlan()}>更新估算</Button>
+            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('系统配置与数据集已刷新')}>刷新配置</Button>
+            <Button theme="solid" type="primary" icon={<FileOutput size={16} />} loading={busy} onClick={() => void createDataset()}>创建任务</Button>
           </>
         }
       />
 
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">数据集创建表单</Title>
-          <Text className="mt-2 block console-caption">策略、模型提供方和存储配置来自管理员预置的系统配置。</Text>
+          <Title heading={4} className="!mb-0">创建任务</Title>
+          <Text className="mt-2 block console-caption">默认使用系统推荐配置，通常只需填写主题与目标规模即可创建任务。</Text>
           <div className="console-card-grid-2 mt-5">
             <div>
               <Text className="mb-2 block font-medium">数据集名称</Text>
               <Input value={plannerForm.name} onChange={(value) => setPlannerForm((current) => ({ ...current, name: value }))} placeholder="军事长链思考训练集" />
             </div>
             <div>
-              <Text className="mb-2 block font-medium">根关键词</Text>
+              <Text className="mb-2 block font-medium">任务主题</Text>
               <Input value={plannerForm.rootKeyword} onChange={(value) => setPlannerForm((current) => ({ ...current, rootKeyword: value }))} />
             </div>
             <div>
               <Text className="mb-2 block font-medium">目标规模</Text>
               <InputNumber value={plannerForm.targetSize} onChange={(value) => setPlannerForm((current) => ({ ...current, targetSize: Number(value ?? 0) }))} style={{ width: '100%' }} />
             </div>
-            <div>
-              <Text className="mb-2 block font-medium">生成策略</Text>
-              <Select value={plannerForm.strategyId} optionList={strategies.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => setPlannerForm((current) => ({ ...current, strategyId: Number(value) }))} style={{ width: '100%' }} />
-            </div>
-            <div>
-              <Text className="mb-2 block font-medium">模型提供方</Text>
-              <Select value={plannerForm.providerId} optionList={providers.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => setPlannerForm((current) => ({ ...current, providerId: Number(value) }))} style={{ width: '100%' }} />
-            </div>
-            <div>
-              <Text className="mb-2 block font-medium">存储配置</Text>
-              <Select value={plannerForm.storageProfileId} optionList={activeStorageProfiles.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => setPlannerForm((current) => ({ ...current, storageProfileId: Number(value) }))} style={{ width: '100%' }} />
-            </div>
+            {isAdmin || showAdvancedPlanning ? (
+              <>
+                <div>
+                  <Text className="mb-2 block font-medium">生成策略</Text>
+                  <Select value={plannerForm.strategyId} optionList={strategies.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => setPlannerForm((current) => ({ ...current, strategyId: Number(value) }))} style={{ width: '100%' }} />
+                </div>
+                <div>
+                  <Text className="mb-2 block font-medium">AI 服务</Text>
+                  <Select value={plannerForm.providerId} optionList={providers.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => setPlannerForm((current) => ({ ...current, providerId: Number(value) }))} style={{ width: '100%' }} />
+                </div>
+                <div>
+                  <Text className="mb-2 block font-medium">存储配置</Text>
+                  <Select value={plannerForm.storageProfileId} optionList={activeStorageProfiles.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => setPlannerForm((current) => ({ ...current, storageProfileId: Number(value) }))} style={{ width: '100%' }} />
+                </div>
+              </>
+            ) : null}
           </div>
           <Space className="mt-6" spacing="medium">
             <Button icon={<Target size={16} />} loading={busy} onClick={() => void estimatePlan()}>先做估算</Button>
-            <Button theme="solid" type="primary" icon={<FileOutput size={16} />} loading={busy} onClick={() => void createDataset()}>创建数据集</Button>
+            <Button theme="solid" type="primary" icon={<FileOutput size={16} />} loading={busy} onClick={() => void createDataset()}>创建任务</Button>
           </Space>
         </Card>
 
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">估算结果</Title>
-          <Text className="mt-2 block console-caption">根据目标规模反推领域规模与问题量，作为后续生产链路的前置依据。</Text>
+          <Text className="mt-2 block console-caption">根据目标规模估算方向数量与题目数量，帮助你快速判断任务是否合理。</Text>
           {planningCards.length > 0 ? (
             <div className="console-card-grid-2 mt-5">
               {planningCards.map((item) => <StatCard key={item.label} {...item} />)}
             </div>
           ) : (
-            <EmptyCard title="尚未生成估算" description="填写参数后点击“更新估算”，再决定是否创建数据集。" />
+            <EmptyCard title="尚未生成估算" description="填写参数后点击“更新估算”，再决定是否创建任务。" />
           )}
         </Card>
       </div>
@@ -1283,60 +1660,63 @@ export default function App() {
   const renderDomains = () => (
     <div className="console-page-shell">
       <PageHeader
-        badge="用户链路 / 领域图谱"
-        title="生成、修订并确认领域结构"
-        description="这一页直接对齐 new-api 的控制台内容布局：中心画布展示结构、侧边展示上下文、下方承载治理编辑。"
+        badge="任务中心 / 方向结构确认"
+        title="生成方向草案并完成结构确认"
+        description="先按树状方式浏览方向分组，再逐项复核命名，最后确认进入题目生成。"
         actions={
           <>
-            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '图谱数据已刷新')}>刷新图谱</Button>
-            <Button theme="solid" type="primary" icon={<GitBranch size={16} />} loading={busy} onClick={() => void generateDomains()}>生成领域</Button>
+            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '方向结构已刷新')}>刷新方向结构</Button>
+            <Button theme="solid" type="primary" icon={<GitBranch size={16} />} loading={busy} onClick={() => void generateDomains()}>生成方向草案</Button>
           </>
         }
       />
 
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">领域图谱主画布</Title>
-          <Text className="mt-2 block console-caption">确认领域前建议先保存命名修订，再推进问题生成。</Text>
+          <Title heading={4} className="!mb-0">方向结构预览</Title>
+          <Text className="mt-2 block console-caption">先确认方向是否覆盖完整，再批量校对命名，避免后续题目分布偏移。</Text>
           {graph ? (
             <div className="mt-5 console-stack">
-              <GraphPreview rootKeyword={graph.dataset.rootKeyword} domains={graph.domains} />
+              <DirectionStructurePreview rootKeyword={graph.dataset.rootKeyword} domains={graph.domains} />
               <Space>
                 <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void saveGraph()}>保存编辑</Button>
-                <Button theme="solid" type="primary" loading={busy} onClick={() => void confirmDomains()}>确认领域</Button>
+                <Button theme="solid" type="primary" loading={busy} onClick={() => void confirmDomains()}>确认方向结构</Button>
               </Space>
             </div>
           ) : (
-            <EmptyCard title="尚未加载领域图谱" description="先创建数据集，再点击“生成领域”。" />
+            <EmptyCard title="尚未生成方向结构" description="先创建任务，再点击“生成方向草案”。" />
           )}
         </Card>
 
         <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">当前任务上下文</Title>
-          <Text className="mt-2 block console-caption">管理员和普通用户都在同一条生产链路里推进当前数据集。</Text>
+          <Text className="mt-2 block console-caption">这里持续展示当前任务上下文，避免在不同步骤间丢失状态。</Text>
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>数据集</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
-            <div className="console-summary-row"><span>根关键词</span><Text strong>{activeDataset?.rootKeyword ?? '—'}</Text></div>
+            <div className="console-summary-row"><span>任务主题</span><Text strong>{activeDataset?.rootKeyword ?? '—'}</Text></div>
             <div className="console-summary-row"><span>当前状态</span><Text strong>{activeDataset ? statusLabel(activeDataset.status) : '—'}</Text></div>
-            <div className="console-summary-row"><span>领域数量</span><Text strong>{graph?.domains.length ?? 0}</Text></div>
+            <div className="console-summary-row"><span>方向数量</span><Text strong>{graph?.domains.length ?? 0}</Text></div>
           </div>
         </Card>
       </div>
 
       <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-        <Title heading={4} className="!mb-0">领域命名治理</Title>
-        <Text className="mt-2 block console-caption">当前界面展示前 24 个领域进行人工修订；管理员不再需要切到另一个前端才能回看系统配置。</Text>
+        <Title heading={4} className="!mb-0">方向命名复核</Title>
+        <Text className="mt-2 block console-caption">按列表逐项修订方向名称并保存，再执行“确认方向结构”进入下一步。</Text>
         {graph ? (
           <div className="console-card-grid-2 mt-5">
-            {graph.domains.slice(0, 24).map((domain) => (
+            {graph.domains.map((domain) => (
               <div key={domain.id} className="console-domain-item">
-                <Text className="console-caption">{sourceLabel(domain.source)}</Text>
+                <div className="flex items-center justify-between gap-3">
+                  <Text className="console-caption">{sourceLabel(domain.source)}</Text>
+                  <Tag color={domain.reviewStatus === 'approved' ? 'green' : 'blue'}>{reviewStatusLabel(domain.reviewStatus)}</Tag>
+                </div>
                 <Input value={domain.name} onChange={(value) => setGraph((current) => current ? { ...current, domains: current.domains.map((item) => item.id === domain.id ? { ...item, name: value } : item) } : current)} />
               </div>
             ))}
           </div>
         ) : (
-          <EmptyCard title="暂无领域列表" description="生成领域后，这里会显示可编辑的领域列表。" />
+          <EmptyCard title="暂无方向列表" description="生成方向草案后，这里会显示可编辑的方向列表。" />
         )}
       </Card>
     </div>
@@ -1352,6 +1732,10 @@ export default function App() {
     records,
     emptyTitle,
     emptyDescription,
+    summaryTitle,
+    summaryCards,
+    nextStepTips,
+    exceptionHint,
     renderRecord,
   }: {
     badge: string
@@ -1363,6 +1747,10 @@ export default function App() {
     records: Array<Question | ReasoningRecord | RewardRecord | Artifact>
     emptyTitle: string
     emptyDescription: string
+    summaryTitle: string
+    summaryCards: Array<{ icon: LucideIcon; label: string; value: string | number; helper: string }>
+    nextStepTips: string[]
+    exceptionHint: string
     renderRecord: (record: any) => React.ReactNode
   }) => (
     <div className="console-page-shell">
@@ -1377,21 +1765,32 @@ export default function App() {
           </>
         }
       />
+      <div className="console-card-grid-3">
+        {summaryCards.map((item) => <StatCard key={item.label} {...item} />)}
+      </div>
       <div className="console-card-grid-2">
         <Card className="console-record-card" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">结果预览</Title>
+          <Title heading={4} className="!mb-0">结果中心预览</Title>
+          <Text className="mt-2 block console-caption">共 {records.length} 条可见结果，优先展示可直接决策的信息。</Text>
           {records.length > 0 ? <div className="console-record-list mt-5">{records.map(renderRecord)}</div> : <EmptyCard title={emptyTitle} description={emptyDescription} />}
         </Card>
         <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">当前阶段信号</Title>
+          <Title heading={4} className="!mb-0">{summaryTitle}</Title>
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>活动数据集</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
-            <div className="console-summary-row"><span>问题数量</span><Text strong>{questions.length}</Text></div>
-            <div className="console-summary-row"><span>推理数量</span><Text strong>{reasoning.length}</Text></div>
-            <div className="console-summary-row"><span>奖励数量</span><Text strong>{rewards.length}</Text></div>
-            <div className="console-summary-row"><span>工件数量</span><Text strong>{artifacts.length}</Text></div>
-            <div className="console-summary-row"><span>队列深度</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
+            <div className="console-summary-row"><span>阶段结果数</span><Text strong>{records.length}</Text></div>
+            <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
           </div>
+          <Card className="console-toolbar-card mt-4" bodyStyle={{ padding: 16 }}>
+            <Text strong>异常说明</Text>
+            <Text className="mt-2 block console-caption">{exceptionHint}</Text>
+          </Card>
+          <Card className="console-toolbar-card mt-4" bodyStyle={{ padding: 16 }}>
+            <Text strong>下一步建议</Text>
+            <div className="console-next-step-list mt-3">
+              {nextStepTips.map((tip) => <Text key={tip} className="console-caption">• {tip}</Text>)}
+            </div>
+          </Card>
         </Card>
       </div>
     </div>
@@ -1400,26 +1799,26 @@ export default function App() {
   const renderProviders = () => (
     <div className="console-page-shell">
       <PageHeader
-        badge="管理员治理 / 模型提供方"
-        title="渠道式管理模型提供方"
-        description="这一页改成更接近 new-api 渠道管理的工作方式：先看列表，再通过弹窗编辑配置、获取模型列表、执行连通性测试。"
+        badge="系统设置 / AI 服务"
+        title="管理 AI 服务配置"
+        description="先查看服务列表，再通过弹窗修改配置、获取模型列表并测试连接。"
         actions={
           <Space wrap>
             <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('系统配置已刷新')}>刷新配置</Button>
-            <Button theme="solid" type="primary" onClick={() => openCreateProviderModal()}>新增提供方</Button>
+            <Button theme="solid" type="primary" onClick={() => openCreateProviderModal()}>新增 AI 服务</Button>
           </Space>
         }
       />
       <Card className="console-panel" bodyStyle={{ padding: 20 }}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <Title heading={4} className="!mb-0">模型提供方台账</Title>
-            <Text className="mt-2 block console-caption">直接参考 new-api 渠道管理页的操作习惯：搜索、列表、弹窗编辑、弹窗内拉模型和测试连通性。</Text>
+            <Title heading={4} className="!mb-0">AI 服务列表</Title>
+            <Text className="mt-2 block console-caption">你可以先搜索服务，再在弹窗内修改参数、获取可用模型并测试连接。</Text>
           </div>
           <Input
             value={providerSearchKeyword}
             onChange={setProviderSearchKeyword}
-            placeholder="搜索提供方名称、地址、模型或推理强度"
+            placeholder="搜索服务名称、地址、模型或思考强度"
             style={{ width: 360, maxWidth: '100%' }}
           />
         </div>
@@ -1429,7 +1828,7 @@ export default function App() {
       </Card>
 
       <Modal
-        title={providerDraft.id ? '编辑模型提供方' : '新增模型提供方'}
+        title={providerDraft.id ? '编辑 AI 服务' : '新增 AI 服务'}
         visible={providerModalVisible}
         onCancel={closeProviderModal}
         footer={
@@ -1445,7 +1844,7 @@ export default function App() {
         <div className="console-stack">
           <div className="console-card-grid-2">
             <div>
-              <Text className="mb-2 block font-medium">提供方名称</Text>
+              <Text className="mb-2 block font-medium">服务名称</Text>
               <Input value={providerDraft.name ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, name: value }))} placeholder="例如 OpenAI 生产网关" />
             </div>
             <div>
@@ -1510,8 +1909,8 @@ export default function App() {
           </div>
 
           <div>
-            <Text className="mb-2 block font-medium">API Key</Text>
-            <Input value={providerDraft.apiKey ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, apiKey: value }))} placeholder="保存时会加密；留空则沿用已有密钥" mode="password" />
+            <Text className="mb-2 block font-medium">访问密钥</Text>
+            <Input value={providerDraft.apiKey ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, apiKey: value }))} placeholder="系统会加密保存；留空则继续使用当前密钥" mode="password" />
           </div>
 
           {providerRemoteActionDisabled ? <Text className="console-caption">请先填写基础 URL，再获取模型列表或执行连通性测试。</Text> : null}
@@ -1543,9 +1942,9 @@ export default function App() {
   const renderStorage = () => (
     <div className="console-page-shell">
       <PageHeader
-        badge="管理员治理 / 存储配置"
-        title="渠道式管理存储目标"
-        description="改成与模型提供方一致的列表优先工作流：列表页展示，按钮新增，弹窗编辑。"
+        badge="系统设置 / 结果存储"
+        title="管理结果存储位置"
+        description="统一列表工作流：先查看列表，再新增或编辑。"
         actions={
           <Space wrap>
             <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('存储配置已刷新')}>刷新配置</Button>
@@ -1556,7 +1955,7 @@ export default function App() {
       <Card className="console-panel" bodyStyle={{ padding: 20 }}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <Title heading={4} className="!mb-0">对象存储台账</Title>
+            <Title heading={4} className="!mb-0">结果存储列表</Title>
             <Text className="mt-2 block console-caption">已内置本地 MinIO 地址与默认凭证，也支持继续添加多个 S3 / MinIO / OSS 来源，并通过启用开关控制是否可用于计划编排。</Text>
           </div>
           <Input
@@ -1660,9 +2059,9 @@ export default function App() {
   const renderStrategies = () => (
     <div className="console-page-shell">
       <PageHeader
-        badge="管理员治理 / 生成策略"
-        title="列表化管理生成策略"
-        description="与模型提供方相同，改成列表展示、搜索、按钮新增、弹窗编辑的治理模式。"
+        badge="系统设置 / 生成规则"
+        title="管理生成规则"
+        description="统一列表工作流：支持搜索、新增与编辑。"
         actions={
           <Space wrap>
             <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('生成策略已刷新')}>刷新策略</Button>
@@ -1673,7 +2072,7 @@ export default function App() {
       <Card className="console-panel" bodyStyle={{ padding: 20 }}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <Title heading={4} className="!mb-0">生成策略台账</Title>
+            <Title heading={4} className="!mb-0">生成规则列表</Title>
             <Text className="mt-2 block console-caption">用户在计划编排页消费这里的策略，管理员在这里维护策略数量、问题量和规划模式。</Text>
           </div>
           <Input
@@ -1754,12 +2153,12 @@ export default function App() {
   const renderPrompts = () => (
     <div className="console-page-shell">
       <PageHeader
-        badge="管理员治理 / 提示词模板"
-        title="列表化管理提示词模板"
-        description="和模型提供方一致，改成列表展示、搜索、按钮新增、弹窗编辑的模式。"
+        badge="系统设置 / 生成指令"
+        title="管理生成指令模板"
+        description="统一列表工作流：支持搜索、新增与编辑。"
         actions={
           <Space wrap>
-            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('提示词模板已刷新')}>刷新模板</Button>
+            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('生成指令模板已刷新')}>刷新模板</Button>
             <Button theme="solid" type="primary" onClick={() => openCreatePromptModal()}>新增模板</Button>
           </Space>
         }
@@ -1767,8 +2166,8 @@ export default function App() {
       <Card className="console-panel" bodyStyle={{ padding: 20 }}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <Title heading={4} className="!mb-0">提示词模板台账</Title>
-            <Text className="mt-2 block console-caption">领域生成、问题生成、推理生成与奖励评估的 Prompt 模板集中在这里治理。</Text>
+            <Title heading={4} className="!mb-0">生成指令列表</Title>
+            <Text className="mt-2 block console-caption">主题生成、题目生成、答案生成和质量评估用到的生成指令都在这里统一维护。</Text>
           </div>
           <Input
             value={promptSearchKeyword}
@@ -1783,7 +2182,7 @@ export default function App() {
       </Card>
 
       <Modal
-        title={promptDraft.id ? '编辑提示词模板' : '新增提示词模板'}
+        title={promptDraft.id ? '编辑生成指令模板' : '新增生成指令模板'}
         visible={promptModalVisible}
         onCancel={closePromptModal}
         footer={
@@ -1818,12 +2217,12 @@ export default function App() {
             </div>
           </div>
           <div>
-            <Text className="mb-2 block font-medium">系统提示词</Text>
-            <TextArea rows={6} value={promptDraft.systemPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, systemPrompt: value }))} placeholder="系统提示词" />
+            <Text className="mb-2 block font-medium">系统指令</Text>
+            <TextArea rows={6} value={promptDraft.systemPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, systemPrompt: value }))} placeholder="系统指令" />
           </div>
           <div>
-            <Text className="mb-2 block font-medium">用户提示词</Text>
-            <TextArea rows={6} value={promptDraft.userPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, userPrompt: value }))} placeholder="用户提示词" />
+            <Text className="mb-2 block font-medium">用户指令</Text>
+            <TextArea rows={6} value={promptDraft.userPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, userPrompt: value }))} placeholder="用户指令" />
           </div>
         </div>
       </Modal>
@@ -1832,23 +2231,23 @@ export default function App() {
 
   const renderAudit = () => (
     <div className="console-page-shell">
-      <PageHeader badge="管理员治理 / 审计日志" title="追踪配置变更与治理事件" description="管理员在同一前端直接回看治理动作；不再切换到另一套后台。" />
+      <PageHeader badge="系统设置 / 操作记录" title="查看配置变更记录" description="在同一界面查看配置变更记录，无需切换后台。" />
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">审计事件列表</Title>
           <Table columns={auditColumns} dataSource={auditLogs} pagination={{ pageSize: 8 }} />
         </Card>
         <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">治理摘要</Title>
+          <Title heading={4} className="!mb-0">配置摘要</Title>
           <div className="mt-5 console-summary-grid">
-            <div className="console-summary-row"><span>活动模型路由</span><Text strong>{dashboard?.activeProviderCount ?? 0}</Text></div>
+            <div className="console-summary-row"><span>已启用 AI 服务</span><Text strong>{dashboard?.activeProviderCount ?? 0}</Text></div>
             <div className="console-summary-row"><span>存储配置</span><Text strong>{dashboard?.storageProfileCount ?? 0}</Text></div>
             <div className="console-summary-row"><span>策略数量</span><Text strong>{dashboard?.strategyCount ?? 0}</Text></div>
-            <div className="console-summary-row"><span>Prompt 数量</span><Text strong>{dashboard?.promptCount ?? 0}</Text></div>
+            <div className="console-summary-row"><span>指令模板数</span><Text strong>{dashboard?.promptCount ?? 0}</Text></div>
             <div className="console-summary-row"><span>审计记录</span><Text strong>{dashboard?.auditLogCount ?? 0}</Text></div>
           </div>
           <div className="mt-6">
-            <Text className="console-caption">建议在修改模型、存储、策略或 Prompt 后，立即回到本页复核审计结果。</Text>
+            <Text className="console-caption">建议在修改 AI 服务、存储、规则或指令模板后，立即回到本页复核记录。</Text>
           </div>
         </Card>
       </div>
@@ -1858,14 +2257,29 @@ export default function App() {
   if (sessionLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Spin size="large" tip="正在初始化统一控制台" />
+        <Spin size="large" tip="正在初始化任务中心" />
       </div>
     )
   }
 
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to="/console/overview" replace /> : <LoginPage onSubmit={handleLogin} loading={authSubmitting} />} />
+      <Route
+        path="/login"
+        element={
+          user ? (
+            <Navigate to="/console/overview" replace />
+          ) : (
+            <LoginPage
+              onSubmit={handleLogin}
+              loading={authSubmitting}
+              signal={trustSignal}
+              onDismissSignal={() => setTrustSignal(null)}
+              onNavigate={(route) => navigate(route)}
+            />
+          )
+        }
+      />
       <Route
         path="/*"
         element={
@@ -1877,8 +2291,8 @@ export default function App() {
                     <Button icon={<LayoutDashboard size={16} />} theme="borderless" onClick={() => setSidebarCollapsed((current) => !current)} />
                     <Avatar color="blue" size="small">L</Avatar>
                     <div>
-                      <div className="font-semibold">LLM Data Factory Console</div>
-                      <div className="text-xs console-nav-caption">{visiblePages.find((page) => page.route === activeNav)?.caption ?? '统一控制台'}</div>
+                      <div className="font-semibold">任务结果中心</div>
+                      <div className="text-xs console-nav-caption">{visiblePages.find((page) => page.route === activeNav)?.caption ?? '任务中心'}</div>
                     </div>
                   </div>
                   <div className="console-header-actions flex items-center gap-3">
@@ -1894,7 +2308,7 @@ export default function App() {
                   <div className="console-nav-shell h-full px-3 py-4">
                     <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
                       <Text strong>统一导航</Text>
-                      <Text className="mt-2 block console-caption">管理员继承全部用户能力；普通用户只显示数据链路。</Text>
+                      <Text className="mt-2 block console-caption">默认聚焦任务中心；系统设置仅在需要时进入。</Text>
                     </Card>
                     <Nav
                       bodyStyle={{ paddingBottom: 12 }}
@@ -1902,7 +2316,7 @@ export default function App() {
                       items={[
                         {
                           itemKey: 'user-group',
-                          text: '数据生产链路',
+                          text: '我的任务',
                           items: userPages.map((page) => ({
                             itemKey: page.route,
                             text: page.label,
@@ -1913,7 +2327,7 @@ export default function App() {
                           ? [
                               {
                                 itemKey: 'admin-group',
-                                text: '系统治理',
+                                text: '系统设置',
                                 items: adminPages.map((page) => ({
                                   itemKey: page.route,
                                   text: page.label,
@@ -1929,7 +2343,7 @@ export default function App() {
                           <Card className="console-sidebar-card" bodyStyle={{ padding: 14 }}>
                             <div className="console-summary-grid">
                               <div className="console-summary-row"><span>数据集</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>队列深度</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
+                              <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
                             </div>
                           </Card>
                         </div>
@@ -1939,14 +2353,19 @@ export default function App() {
                 </Sider>
                 <Layout style={{ marginLeft: 'var(--sidebar-current-width)' }}>
                   <Content style={{ padding: 24 }}>
+                    {trustSignal ? (
+                      <div className="mb-4">
+                        <TrustSignalCard signal={trustSignal} onDismiss={() => setTrustSignal(null)} onNavigate={(route) => navigate(route)} />
+                      </div>
+                    ) : null}
                     <Routes>
                       <Route path="/console/overview" element={renderOverview()} />
                       <Route path="/console/planning" element={renderPlanning()} />
                       <Route path="/console/domains" element={renderDomains()} />
-                      <Route path="/console/questions" element={renderRecordPage({ badge: '用户链路 / 问题生成', title: '按领域批量生成问题集合', description: '领域确认后，在同一控制台继续推进问题生成。', actionLabel: '加入问题生成队列', onGenerate: generateQuestions, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '问题结果已刷新') }, records: questions, emptyTitle: '尚未生成问题', emptyDescription: '请先确认领域，然后将问题生成任务加入队列。', renderRecord: (record: Question) => <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Tag color="blue">{record.domainName}</Tag><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.content}</Text></div> })} />
-                      <Route path="/console/reasoning" element={renderRecordPage({ badge: '用户链路 / 推理生成', title: '异步生成长思维链与答案摘要', description: '问题记录足够后，继续在本应用里推进推理生成。', actionLabel: '加入推理生成队列', onGenerate: generateReasoning, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '推理结果已刷新') }, records: reasoning, emptyTitle: '尚未生成推理', emptyDescription: '先完成问题生成，再加入推理队列。', renderRecord: (record: ReasoningRecord) => <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Tag color="cyan">{record.objectKey}</Tag><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.answerSummary}</Text><Text className="mt-2 block console-caption">{record.questionText}</Text></div> })} />
-                      <Route path="/console/rewards" element={renderRecordPage({ badge: '用户链路 / 奖励数据', title: '生成强化学习奖励评估记录', description: '管理员和普通用户共享同一奖励数据页，管理员额外能返回左侧治理区。', actionLabel: '加入奖励生成队列', onGenerate: generateRewards, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '奖励结果已刷新') }, records: rewards, emptyTitle: '尚未生成奖励记录', emptyDescription: '先完成推理生成，再触发奖励评估。', renderRecord: (record: RewardRecord) => <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Tag color="green">评分 {record.score.toFixed(2)}</Tag><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.questionText}</Text><Text className="mt-2 block console-caption">{record.objectKey}</Text></div> })} />
-                      <Route path="/console/exports" element={renderRecordPage({ badge: '用户链路 / 导出交付', title: '查看 JSONL 工件与运行态收口', description: '导出页作为生产链路收口动作，与管理员治理页面保持在同一应用中。', actionLabel: '加入导出队列', onGenerate: generateExport, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '导出结果已刷新') }, records: artifacts, emptyTitle: '尚未生成导出工件', emptyDescription: '完成奖励生成后，即可触发导出。', renderRecord: (record: Artifact) => <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Tag color="violet">{artifactLabel(record.artifactType)}</Tag><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.objectKey}</Text><Text className="mt-2 block console-caption">{record.contentType}</Text></div> })} />
+                      <Route path="/console/questions" element={renderRecordPage({ badge: '结果中心 / 题目结果', title: '题目生成结果中心', description: '查看题目生成质量、异常状态，并决定是否进入答案生成。', actionLabel: '开始生成题目', onGenerate: generateQuestions, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '问题结果已刷新') }, records: questions, emptyTitle: '尚未生成题目', emptyDescription: '请先确认主题，再开始生成题目。', summaryTitle: '题目阶段摘要', summaryCards: [{ icon: Layers3, label: '题目总数', value: questions.length, helper: '当前可用于后续步骤的题目数量' }, { icon: ShieldCheck, label: '状态正常', value: questions.filter((item) => item.status === 'generated').length, helper: '状态为“已生成”的题目数量' }, { icon: Bell, label: '待关注', value: questions.filter((item) => item.status !== 'generated').length, helper: '状态异常或处理中，建议优先复查' }], nextStepTips: ['优先复核“待关注”题目，确认是否需要重跑。', '抽检不同方向题目，避免主题覆盖不均。', '确认题目质量后再进入答案生成。'], exceptionHint: '若状态长时间停留在“处理中/排队中”，通常是等待任务较多或上游任务未完成，先刷新并查看等待任务数。', renderRecord: (record: Question) => { const state = questionStatusLabel(record.status); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="blue">{record.domainName}</Tag><Tag color={state.color}>{state.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.content}</Text></div> } })} />
+                      <Route path="/console/reasoning" element={renderRecordPage({ badge: '结果中心 / 答案结果', title: '答案与思路结果中心', description: '聚焦答案摘要质量，而非底层对象字段。', actionLabel: '开始生成答案', onGenerate: generateReasoning, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '推理结果已刷新') }, records: reasoning, emptyTitle: '尚未生成答案', emptyDescription: '请先完成题目生成，再开始生成答案。', summaryTitle: '答案阶段摘要', summaryCards: [{ icon: BrainCircuit, label: '答案总数', value: reasoning.length, helper: '已返回的答案与思路记录' }, { icon: ShieldCheck, label: '完整摘要', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '完整').length, helper: '摘要信息完整，可直接进入评估' }, { icon: Bell, label: '待补充', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '待补充').length, helper: '摘要过短，建议重试或人工复核' }], nextStepTips: ['先处理“待补充”答案，再批量进入质量评估。', '检查答案是否覆盖题目核心要点。', '确认摘要稳定后再触发奖励评估。'], exceptionHint: '若摘要内容明显过短或重复，通常是模型输出被截断或输入上下文不足，建议重跑该批次。', renderRecord: (record: ReasoningRecord) => { const quality = reasoningQualityLabel(record.answerSummary); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="cyan">答案摘要</Tag><Tag color={quality.color}>{quality.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.answerSummary}</Text><Text className="mt-2 block console-caption">{quality.note}</Text><Text className="mt-2 block console-caption">题目：{record.questionText}</Text></div> } })} />
+                      <Route path="/console/rewards" element={renderRecordPage({ badge: '结果中心 / 质量评估', title: '质量评分结果中心', description: '展示评分等级、风险提示与建议动作，支持快速决策。', actionLabel: '开始质量评估', onGenerate: generateRewards, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '奖励结果已刷新') }, records: rewards, emptyTitle: '尚未生成质量评估', emptyDescription: '先完成答案生成，再触发质量评估。', summaryTitle: '评估阶段摘要', summaryCards: [{ icon: ShieldCheck, label: '评分记录', value: rewards.length, helper: '已生成的质量评分条目' }, { icon: Sparkles, label: '高质量', value: rewards.filter((item) => item.score >= 0.85).length, helper: '可直接进入导出候选' }, { icon: Bell, label: '风险项', value: rewards.filter((item) => item.score < 0.5).length, helper: '建议先回修再继续流程' }], nextStepTips: ['优先处理“风险”与“待优化”记录。', '对“可交付”记录执行抽样复核。', '高质量样本可直接推进导出。'], exceptionHint: '若低分记录突然增多，通常意味着上游答案质量波动，建议回看答案阶段并抽样检查。', renderRecord: (record: RewardRecord) => { const quality = rewardQualityLabel(record.score); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color={quality.color}>{quality.text}</Tag><Tag color="green">评分 {record.score.toFixed(2)}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.questionText}</Text><Text className="mt-2 block console-caption">{quality.note}</Text></div> } })} />
+                      <Route path="/console/exports" element={renderRecordPage({ badge: '结果中心 / 导出交付', title: '导出结果中心', description: '关注交付状态、文件可用性与下一步交付动作。', actionLabel: '开始导出结果', onGenerate: generateExport, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '导出结果已刷新') }, records: artifacts, emptyTitle: '尚未生成导出结果', emptyDescription: '完成质量评估后，即可触发导出。', summaryTitle: '导出阶段摘要', summaryCards: [{ icon: HardDriveDownload, label: '导出包数量', value: artifacts.length, helper: '已生成的可交付文件数量' }, { icon: FileOutput, label: 'JSONL 导出', value: artifacts.filter((item) => item.artifactType === 'jsonl-export').length, helper: '标准训练数据导出格式' }, { icon: Bell, label: '待确认', value: artifacts.filter((item) => item.contentType !== 'application/jsonl').length, helper: '非标准类型，建议确认兼容性' }], nextStepTips: ['优先下载并校验最新导出包。', '确认文件类型与下游训练流程兼容。', '交付前记录版本与生成时间。'], exceptionHint: '若导出后列表为空，多数是任务仍在队列中或上游质量评估未完成，可稍后刷新。', renderRecord: (record: Artifact) => <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Tag color="violet">{artifactLabel(record.artifactType)}</Tag><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{artifactDisplayName(record.objectKey)}</Text><Text className="mt-2 block console-caption">文件类型：{record.contentType}</Text></div> })} />
                       {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
                       {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
                       {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}

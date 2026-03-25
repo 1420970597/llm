@@ -3,6 +3,9 @@ package main
 import (
   "encoding/json"
   "net/http"
+  "time"
+
+  "github.com/1420970597/llm/internal/model"
 )
 
 func (app *application) enqueueRewardGeneration(w http.ResponseWriter, r *http.Request) {
@@ -17,8 +20,18 @@ func (app *application) enqueueRewardGeneration(w http.ResponseWriter, r *http.R
     app.writeError(w, http.StatusInternalServerError, err)
     return
   }
+  if err := app.datasets.UpdateStatus(r.Context(), id, "rewards_queued"); err != nil {
+    app.writeError(w, http.StatusInternalServerError, err)
+    return
+  }
   _ = app.store.WriteAuditLog(r.Context(), "user", "enqueue", "reward_generation", datasetIDString(id), "rewards.generate")
-  app.writeJSON(w, http.StatusAccepted, map[string]any{"queued": true, "datasetId": id})
+  app.writeJSON(w, http.StatusAccepted, model.StageEnqueueResult{
+    DatasetID:  id,
+    Stage:      "rewards",
+    State:      "queued",
+    Message:    "奖励评估任务已入队",
+    AcceptedAt: time.Now().Format(time.RFC3339),
+  })
 }
 
 func (app *application) listRewards(w http.ResponseWriter, r *http.Request) {

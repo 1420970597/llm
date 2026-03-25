@@ -218,6 +218,101 @@ func (s *DatasetStore) ConfirmDomains(ctx context.Context, datasetID int64) erro
 	return err
 }
 
+func (s *DatasetStore) UpdateStatus(ctx context.Context, datasetID int64, status string) error {
+	_, err := s.db.Exec(ctx, `UPDATE datasets SET status = $2, updated_at = NOW() WHERE id = $1`, datasetID, status)
+	return err
+}
+
+func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (model.PipelineProgress, error) {
+	dataset, err := s.GetDataset(ctx, datasetID)
+	if err != nil {
+		return model.PipelineProgress{}, err
+	}
+
+	var domainCount, questionCount, reasoningCount, rewardCount, artifactCount int
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM domains WHERE dataset_id = $1`, datasetID).Scan(&domainCount); err != nil {
+		return model.PipelineProgress{}, err
+	}
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM questions WHERE dataset_id = $1`, datasetID).Scan(&questionCount); err != nil {
+		return model.PipelineProgress{}, err
+	}
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM reasoning_records WHERE dataset_id = $1`, datasetID).Scan(&reasoningCount); err != nil {
+		return model.PipelineProgress{}, err
+	}
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM reward_records WHERE dataset_id = $1`, datasetID).Scan(&rewardCount); err != nil {
+		return model.PipelineProgress{}, err
+	}
+	if err := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM artifacts WHERE dataset_id = $1`, datasetID).Scan(&artifactCount); err != nil {
+		return model.PipelineProgress{}, err
+	}
+
+	rankByStatus := map[string]int{
+		"draft":              0,
+		"domains_confirmed":  1,
+		"questions_queued":   1,
+		"questions_generated": 2,
+		"reasoning_queued":   2,
+		"reasoning_generated": 3,
+		"rewards_queued":     3,
+		"rewards_generated":   4,
+		"export_queued":      4,
+		"export_generated":    5,
+	}
+	queuedStageByStatus := map[string]string{
+		"questions_queued": "questions",
+		"reasoning_queued": "reasoning",
+		"rewards_queued":   "rewards",
+		"export_queued":    "export",
+	}
+	statusRank := rankByStatus[dataset.Status]
+	queuedStage := queuedStageByStatus[dataset.Status]
+
+	stageState := func(key string, threshold int, evidenceCount int) string {
+		if statusRank >= threshold {
+			return "completed"
+		}
+		if queuedStage == key {
+			return "queued"
+		}
+		if evidenceCount > 0 {
+			return "in_progress"
+		}
+		return "pending"
+	}
+
+	stages := []model.PipelineStageStatus{
+		{Key: "domains", Label: "领域整理", State: stageState("domains", 1, domainCount), Count: domainCount, Summary: fmt.Sprintf("已整理 %d 个领域", domainCount)},
+		{Key: "questions", Label: "问题生成", State: stageState("questions", 2, questionCount), Count: questionCount, Summary: fmt.Sprintf("已生成 %d 条问题", questionCount)},
+		{Key: "reasoning", Label: "推理生成", State: stageState("reasoning", 3, reasoningCount), Count: reasoningCount, Summary: fmt.Sprintf("已生成 %d 条推理", reasoningCount)},
+		{Key: "rewards", Label: "奖励评估", State: stageState("rewards", 4, rewardCount), Count: rewardCount, Summary: fmt.Sprintf("已生成 %d 条评分", rewardCount)},
+		{Key: "export", Label: "导出交付", State: stageState("export", 5, artifactCount), Count: artifactCount, Summary: fmt.Sprintf("已产出 %d 个工件", artifactCount)},
+	}
+
+	completed := 0
+	currentStage := "done"
+	for _, stage := range stages {
+		if stage.State == "completed" {
+			completed++
+			continue
+		}
+		if currentStage == "done" {
+			currentStage = stage.Key
+		}
+	}
+
+	return model.PipelineProgress{
+		DatasetID:         datasetID,
+		DatasetStatus:     dataset.Status,
+		CurrentStage:      currentStage,
+		CompletionPercent: completed * 20,
+		Stages:            stages,
+		QuestionCount:     questionCount,
+		ReasoningCount:    reasoningCount,
+		RewardCount:       rewardCount,
+		ArtifactCount:     artifactCount,
+	}, nil
+}
+
 func (s *DatasetStore) ResolveProvider(ctx context.Context, providerID int64) (string, string, string, string, string, error) {
 	var baseURL, modelName, providerType, reasoningEffort, encryptedKey string
 	err := s.db.QueryRow(ctx, `

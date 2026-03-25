@@ -335,7 +335,14 @@ func handleExportGeneration(ctx context.Context, datasetID int64, datasets *stor
 		ObjectKey:    uri,
 		ContentType:  "application/jsonl",
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if err := datasets.UpdateStatus(ctx, datasetID, "export_generated"); err != nil {
+		return err
+	}
+	log.Printf("export generated dataset=%d artifact=%s", datasetID, uri)
+	return nil
 }
 
 var _ = model.Question{}

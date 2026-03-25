@@ -53,6 +53,34 @@ type DatasetGraph struct {
   Edges   []DomainEdge `json:"edges"`
 }
 
+type PipelineStageStatus struct {
+  Key      string `json:"key"`
+  Label    string `json:"label"`
+  State    string `json:"state"`
+  Count    int    `json:"count"`
+  Summary  string `json:"summary"`
+}
+
+type PipelineProgress struct {
+  DatasetID         int64                 `json:"datasetId"`
+  DatasetStatus     string                `json:"datasetStatus"`
+  CurrentStage      string                `json:"currentStage"`
+  CompletionPercent int                   `json:"completionPercent"`
+  Stages            []PipelineStageStatus `json:"stages"`
+  QuestionCount     int                   `json:"questionCount"`
+  ReasoningCount    int                   `json:"reasoningCount"`
+  RewardCount       int                   `json:"rewardCount"`
+  ArtifactCount     int                   `json:"artifactCount"`
+}
+
+type StageEnqueueResult struct {
+  DatasetID  int64  `json:"datasetId"`
+  Stage      string `json:"stage"`
+  State      string `json:"state"`
+  Message    string `json:"message"`
+  AcceptedAt string `json:"acceptedAt"`
+}
+
 type GeneratePlanRequest struct {
   RootKeyword string `json:"rootKeyword"`
   TargetSize  int    `json:"targetSize"`
