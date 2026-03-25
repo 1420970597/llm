@@ -1,12 +1,8 @@
 package llm
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"strings"
 	"time"
 
 	"github.com/1420970597/llm/internal/model"
@@ -15,14 +11,6 @@ import (
 type reasoningPayload struct {
 	Answer    string `json:"answer"`
 	Reasoning string `json:"reasoning"`
-}
-
-type reasoningResponse struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
 }
 
 func GenerateReasoning(ctx context.Context, provider ProviderConfig, dataset model.Dataset, questions []model.Question) ([]model.ReasoningRecord, map[int64]reasoningPayload, error) {
@@ -62,34 +50,13 @@ func generateReasoningForQuestion(ctx context.Context, provider ProviderConfig, 
 		"temperature": 0.6,
 	}
 	applyReasoningEffort(payload, provider)
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(provider.BaseURL, "/")+"/chat/completions", bytes.NewReader(body))
+	decoded, err := requestChatCompletion(ctx, provider, payload, 90*time.Second)
 	if err != nil {
 		return reasoningPayload{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+provider.APIKey)
-
-	client := &http.Client{Timeout: 90 * time.Second}
-	res, err := client.Do(req)
-	if err != nil {
-		return reasoningPayload{}, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode >= 300 {
-		return reasoningPayload{}, fmt.Errorf("provider request failed: %s", res.Status)
-	}
-
-	var decoded reasoningResponse
-	if err := json.NewDecoder(res.Body).Decode(&decoded); err != nil {
-		return reasoningPayload{}, err
-	}
-	if len(decoded.Choices) == 0 {
-		return reasoningPayload{}, fmt.Errorf("provider returned no choices")
 	}
 
 	var generated reasoningPayload
-	if err := json.Unmarshal([]byte(decoded.Choices[0].Message.Content), &generated); err != nil {
+	if err := unmarshalStructuredContent(decoded.Choices[0].Message.Content, &generated); err != nil {
 		return reasoningPayload{}, err
 	}
 	return generated, nil

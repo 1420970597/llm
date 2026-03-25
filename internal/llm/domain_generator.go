@@ -1,11 +1,8 @@
 package llm
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -22,14 +19,6 @@ type ProviderConfig struct {
 	APIKey          string
 }
 
-type domainResponse struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-}
-
 func GenerateDomains(ctx context.Context, provider ProviderConfig, dataset model.Dataset) ([]model.Domain, []model.DomainEdge, error) {
 	if provider.ProviderType == "mock" || provider.APIKey == "" || provider.BaseURL == "" {
 		return mockDomains(dataset), mockEdges(dataset), nil
@@ -40,73 +29,106 @@ func GenerateDomains(ctx context.Context, provider ProviderConfig, dataset model
 		count = 100
 	}
 
-	prompt := fmt.Sprintf("Generate %d unique domain names for the keyword '%s'. Return a JSON array of strings only. Avoid duplicates.", count, dataset.RootKeyword)
-	payload := map[string]any{
-		"model": provider.Model,
-		"messages": []map[string]string{
-			{"role": "system", "content": "You generate unique domain lists for a knowledge graph. Return JSON only."},
-			{"role": "user", "content": prompt},
-		},
-		"temperature": 0.4,
-	}
-	applyReasoningEffort(payload, provider)
-
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(provider.BaseURL, "/")+"/chat/completions", bytes.NewReader(body))
+	domains, err := generateDomainsInBatches(ctx, provider, dataset, count)
 	if err != nil {
 		return nil, nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+provider.APIKey)
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	res, err := client.Do(req)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode >= 300 {
-		return nil, nil, fmt.Errorf("provider request failed: %s", res.Status)
-	}
-
-	var decoded domainResponse
-	if err := json.NewDecoder(res.Body).Decode(&decoded); err != nil {
-		return nil, nil, err
-	}
-	if len(decoded.Choices) == 0 {
-		return nil, nil, fmt.Errorf("provider returned no choices")
-	}
-
-	raw := decoded.Choices[0].Message.Content
-	var names []string
-	if err := json.Unmarshal([]byte(raw), &names); err != nil {
-		return nil, nil, err
-	}
-
-	canonicalSeen := map[string]struct{}{}
-	domains := make([]model.Domain, 0, len(names))
-	for _, name := range names {
-		canonical := canonicalize(name)
-		if canonical == "" {
-			continue
-		}
-		if _, exists := canonicalSeen[canonical]; exists {
-			continue
-		}
-		canonicalSeen[canonical] = struct{}{}
-		domains = append(domains, model.Domain{
-			Name:         strings.TrimSpace(name),
-			Canonical:    canonical,
-			Level:        1,
-			Source:       "ai",
-			ReviewStatus: "draft",
-		})
 	}
 
 	sort.Slice(domains, func(i, j int) bool { return domains[i].Name < domains[j].Name })
 	edges := make([]model.DomainEdge, 0, len(domains))
 	return domains, edges, nil
+}
+
+func generateDomainsInBatches(ctx context.Context, provider ProviderConfig, dataset model.Dataset, targetCount int) ([]model.Domain, error) {
+	batchSize := 25
+	switch {
+	case targetCount > 600:
+		batchSize = 50
+	case targetCount > 250:
+		batchSize = 40
+	case targetCount < 25:
+		batchSize = targetCount
+	}
+
+	roundLimit := max(3, (targetCount+batchSize-1)/batchSize*3)
+	collected := make([]model.Domain, 0, targetCount)
+	seen := map[string]struct{}{}
+
+	for round := 0; round < roundLimit && len(collected) < targetCount; round++ {
+		remaining := targetCount - len(collected)
+		requestCount := min(batchSize, remaining)
+
+		prompt := buildDomainPrompt(dataset.RootKeyword, requestCount, collected)
+		payload := map[string]any{
+			"model": provider.Model,
+			"messages": []map[string]string{
+				{"role": "system", "content": "You generate unique domain lists for a knowledge graph. Return JSON only."},
+				{"role": "user", "content": prompt},
+			},
+			"temperature": 0.4,
+		}
+		applyReasoningEffort(payload, provider)
+
+		decoded, err := requestChatCompletion(ctx, provider, payload, 90*time.Second)
+		if err != nil {
+			if batchSize > 10 {
+				batchSize = max(10, batchSize/2)
+				continue
+			}
+			return nil, err
+		}
+
+		var names []string
+		if err := unmarshalStructuredContent(decoded.Choices[0].Message.Content, &names); err != nil {
+			return nil, err
+		}
+
+		for _, name := range names {
+			canonical := canonicalize(name)
+			if canonical == "" {
+				continue
+			}
+			if _, exists := seen[canonical]; exists {
+				continue
+			}
+			seen[canonical] = struct{}{}
+			collected = append(collected, model.Domain{
+				Name:         strings.TrimSpace(name),
+				Canonical:    canonical,
+				Level:        1,
+				Source:       "ai",
+				ReviewStatus: "draft",
+			})
+			if len(collected) >= targetCount {
+				break
+			}
+		}
+	}
+
+	if len(collected) == 0 {
+		return nil, fmt.Errorf("provider returned no domains")
+	}
+	if len(collected) < targetCount {
+		return nil, fmt.Errorf("provider only produced %d unique domains out of requested %d; please lower the domain count or retry", len(collected), targetCount)
+	}
+	return collected[:targetCount], nil
+}
+
+func buildDomainPrompt(rootKeyword string, count int, existing []model.Domain) string {
+	builder := strings.Builder{}
+	builder.WriteString(fmt.Sprintf("Generate %d unique domain names for the keyword '%s'. Return a JSON array of strings only. Avoid duplicates.", count, rootKeyword))
+	if len(existing) > 0 {
+		builder.WriteString(" Already generated domains, do not repeat any of these: ")
+		limit := min(len(existing), 120)
+		for index := 0; index < limit; index++ {
+			if index > 0 {
+				builder.WriteString(", ")
+			}
+			builder.WriteString(existing[index].Name)
+		}
+		builder.WriteString(".")
+	}
+	return builder.String()
 }
 
 func ResolveAPIKey(masked, decrypted string) string {

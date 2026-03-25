@@ -1,12 +1,8 @@
 package llm
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"strings"
 	"time"
 
 	"github.com/1420970597/llm/internal/model"
@@ -15,14 +11,6 @@ import (
 type rewardPayload struct {
 	Score     float64 `json:"score"`
 	Rationale string  `json:"rationale"`
-}
-
-type rewardResponse struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
 }
 
 func GenerateRewards(ctx context.Context, provider ProviderConfig, dataset model.Dataset, questions []model.Question) ([]model.RewardRecord, map[int64]rewardPayload, error) {
@@ -62,34 +50,13 @@ func generateRewardForQuestion(ctx context.Context, provider ProviderConfig, dat
 		"temperature": 0.4,
 	}
 	applyReasoningEffort(payload, provider)
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(provider.BaseURL, "/")+"/chat/completions", bytes.NewReader(body))
+	decoded, err := requestChatCompletion(ctx, provider, payload, 60*time.Second)
 	if err != nil {
 		return rewardPayload{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+provider.APIKey)
-
-	client := &http.Client{Timeout: 60 * time.Second}
-	res, err := client.Do(req)
-	if err != nil {
-		return rewardPayload{}, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode >= 300 {
-		return rewardPayload{}, fmt.Errorf("provider request failed: %s", res.Status)
-	}
-
-	var decoded rewardResponse
-	if err := json.NewDecoder(res.Body).Decode(&decoded); err != nil {
-		return rewardPayload{}, err
-	}
-	if len(decoded.Choices) == 0 {
-		return rewardPayload{}, fmt.Errorf("provider returned no choices")
 	}
 
 	var generated rewardPayload
-	if err := json.Unmarshal([]byte(decoded.Choices[0].Message.Content), &generated); err != nil {
+	if err := unmarshalStructuredContent(decoded.Choices[0].Message.Content, &generated); err != nil {
 		return rewardPayload{}, err
 	}
 	return generated, nil
