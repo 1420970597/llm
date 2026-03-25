@@ -1,5 +1,7 @@
 import axios from 'axios'
 
+export type ApiError = Error & { statusCode?: number }
+
 const client = axios.create({
   baseURL: '/api',
   withCredentials: true,
@@ -272,7 +274,16 @@ export const consoleApi = {
 client.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message = error?.response?.data?.error ?? error?.message ?? '请求失败'
-    return Promise.reject(new Error(message))
+    const statusCode = error?.response?.status
+    const fallbackMessage =
+      statusCode === 401
+        ? '登录状态已失效，请重新登录。'
+        : statusCode === 403
+          ? '你没有执行该操作的权限，请联系管理员。'
+          : '请求失败'
+    const message = error?.response?.data?.error ?? error?.message ?? fallbackMessage
+    const nextError: ApiError = new Error(message)
+    nextError.statusCode = statusCode
+    return Promise.reject(nextError)
   },
 )

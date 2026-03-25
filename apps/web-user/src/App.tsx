@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import {
   Avatar,
@@ -49,6 +49,7 @@ import clsx from 'clsx'
 import {
   authApi,
   consoleApi,
+  type ApiError,
   type Artifact,
   type AuditRecord,
   type DashboardRecord,
@@ -64,6 +65,7 @@ import {
   type ReasoningRecord,
   type RewardRecord,
   type RuntimeStatus,
+  type StageEnqueueResult,
   type StorageProfile,
   type Strategy,
   type User,
@@ -91,6 +93,7 @@ const userPages: NavPage[] = [
   { label: '答案草稿', route: '/console/reasoning', icon: BrainCircuit, caption: '生成答案摘要并确认可读性' },
   { label: '质量评分', route: '/console/rewards', icon: ShieldCheck, caption: '查看质量评分并判断是否可交付' },
   { label: '结果交付', route: '/console/exports', icon: HardDriveDownload, caption: '导出最终产物并完成任务闭环' },
+  { label: '帮助恢复', route: '/console/help', icon: ServerCog, caption: '查看术语解释、异常说明与恢复建议' },
 ]
 
 const adminPages: NavPage[] = [
@@ -238,6 +241,18 @@ function stageKeyLabel(key: string) {
   }
 }
 
+function asApiError(error: unknown): ApiError {
+  return error as ApiError
+}
+
+function isSessionExpiredError(error: unknown) {
+  return asApiError(error).statusCode === 401
+}
+
+function isForbiddenError(error: unknown) {
+  return asApiError(error).statusCode === 403
+}
+
 function sourceLabel(source: string) {
   switch (source) {
     case 'ai':
@@ -309,6 +324,32 @@ function rewardQualityLabel(score: number) {
 
 function artifactDisplayName(objectKey: string) {
   return objectKey.split('/').pop() || objectKey
+}
+
+function artifactContentTypeLabel(contentType: string) {
+  switch (contentType) {
+    case 'application/jsonl':
+      return '训练数据（JSONL）'
+    case 'application/x-ndjson':
+      return '训练数据（NDJSON）'
+    case 'application/json':
+      return '结构化数据（JSON）'
+    default:
+      return contentType || '未知类型'
+  }
+}
+
+function artifactContentTypeHint(contentType: string) {
+  switch (contentType) {
+    case 'application/jsonl':
+      return '可直接用于主流训练平台导入。'
+    case 'application/x-ndjson':
+      return '按行组织样本，适合流式处理任务。'
+    case 'application/json':
+      return '结构化结果包，适合验收和复核。'
+    default:
+      return '请在交付前确认下游系统是否支持该文件类型。'
+  }
 }
 
 function DirectionStructurePreview({ rootKeyword, domains }: { rootKeyword: string; domains: Domain[] }) {
@@ -775,6 +816,40 @@ export default function App() {
     setPromptModalVisible(false)
   }, [])
 
+  const handleRequestError = useCallback((error: unknown) => {
+    const apiError = asApiError(error)
+
+    if (isSessionExpiredError(error)) {
+      const message = apiError.message || '登录状态已失效，请重新登录。'
+      setTrustSignal({
+        tone: 'warning',
+        title: '登录状态已过期',
+        detail: message,
+        recoveryHint: '请重新登录后继续操作；若反复过期，请联系管理员检查会话时长配置。',
+        nextStep: { label: '重新登录', route: '/login' },
+      })
+      Toast.error(message)
+      setUser(null)
+      navigate('/login', { replace: true })
+      return true
+    }
+
+    if (isForbiddenError(error)) {
+      const message = apiError.message || '你没有执行该操作的权限，请联系管理员。'
+      setTrustSignal({
+        tone: 'warning',
+        title: '权限不足，操作未执行',
+        detail: message,
+        recoveryHint: '确认你当前账号角色；若需要高级权限，请联系管理员开通。',
+        nextStep: { label: '查看恢复指南', route: '/console/help' },
+      })
+      Toast.warning(message)
+      return true
+    }
+
+    return false
+  }, [navigate])
+
   const loadAdminData = useCallback(async () => {
     if (!isAdmin) {
       setDashboard(null)
@@ -819,7 +894,7 @@ export default function App() {
       await loadAdminData()
       if (successMessage) Toast.success(successMessage)
     } catch (error) {
-      Toast.error((error as Error).message)
+      if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
       setBusy(false)
     }
@@ -849,7 +924,7 @@ export default function App() {
       setActiveDatasetId(datasetId)
       if (successMessage) Toast.success(successMessage)
     } catch (error) {
-      Toast.error((error as Error).message)
+      if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
       setBusy(false)
     }
@@ -947,7 +1022,7 @@ export default function App() {
       setEstimate(data)
       Toast.success('计划估算已刷新')
     } catch (error) {
-      Toast.error((error as Error).message)
+      if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
       setBusy(false)
     }
@@ -1022,7 +1097,7 @@ export default function App() {
       setGraph(nextGraph)
       Toast.success(`已生成 ${nextGraph.domains.length} 个领域`)
     } catch (error) {
-      Toast.error((error as Error).message)
+      if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
       setBusy(false)
     }
@@ -1035,7 +1110,7 @@ export default function App() {
       await consoleApi.updateGraph(graph.dataset.id, graph.domains)
       Toast.success('方向命名修改已保存')
     } catch (error) {
-      Toast.error((error as Error).message)
+      if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
       setBusy(false)
     }
@@ -1159,9 +1234,9 @@ export default function App() {
       setTrustSignal({
         tone: 'info',
         title: '导出任务已开始',
-        detail: result.message,
-        recoveryHint: '导出前建议先确认奖励结果已生成，避免重复导出。',
-        nextStep: { label: '查看导出页', route: '/console/exports' },
+        detail: `${result.message}，导出完成后请在结果交付页确认文件类型并执行交付前检查。`,
+        recoveryHint: '交付前请先核对质量评分、文件类型与生成时间，确认后再通知下游下载。',
+        nextStep: { label: '前往结果交付', route: '/console/exports' },
       })
       Toast.success(result.message)
       await loadDatasetWorkspace(activeDatasetId)
@@ -1180,6 +1255,15 @@ export default function App() {
     }
   }
 
+  const copyArtifactKey = async (objectKey: string) => {
+    try {
+      await navigator.clipboard.writeText(objectKey)
+      Toast.success('文件标识已复制，可交给运维或下游下载')
+    } catch {
+      Toast.warning('复制失败，请手动记录文件标识后下载交付')
+    }
+  }
+
   const saveProvider = async () => {
     setBusy(true)
     try {
@@ -1191,7 +1275,7 @@ export default function App() {
       setProviderModalVisible(false)
       await loadBootstrap()
     } catch (error) {
-      Toast.error((error as Error).message)
+      if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
       setBusy(false)
     }
@@ -1227,7 +1311,7 @@ export default function App() {
       }
       Toast.success(`已获取 ${response.models.length} 个模型`)
     } catch (error) {
-      Toast.error((error as Error).message)
+      if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
       setProviderModelsLoading(false)
     }
@@ -1247,7 +1331,7 @@ export default function App() {
       Toast[result.ok ? 'success' : 'warning'](result.message)
     } catch (error) {
       setProviderTestResult(null)
-      Toast.error((error as Error).message)
+      if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
       setProviderTestLoading(false)
     }
@@ -1262,7 +1346,7 @@ export default function App() {
       setStorageModalVisible(false)
       await loadBootstrap()
     } catch (error) {
-      Toast.error((error as Error).message)
+      if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
       setBusy(false)
     }
@@ -1277,7 +1361,7 @@ export default function App() {
       setStrategyModalVisible(false)
       await loadBootstrap()
     } catch (error) {
-      Toast.error((error as Error).message)
+      if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
       setBusy(false)
     }
@@ -1292,7 +1376,7 @@ export default function App() {
       setPromptModalVisible(false)
       await loadBootstrap()
     } catch (error) {
-      Toast.error((error as Error).message)
+      if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
       setBusy(false)
     }
@@ -1795,6 +1879,74 @@ export default function App() {
       </div>
     </div>
   )
+
+  const renderHelp = () => {
+    const glossary = [
+      { term: '任务状态', description: '表示任务所处阶段，例如“待确认方向”“问题生成排队中”。' },
+      { term: '等待任务数', description: '当前系统排队中的任务数量。数字越大，结果返回通常越慢。' },
+      { term: '结果中心', description: '集中查看题目、答案、评分和导出结果的页面。' },
+      { term: '恢复建议', description: '当任务失败或卡住时，页面给出的可执行下一步动作。' },
+    ]
+
+    const recoveryChecklist = [
+      '先看页面顶部提示卡中的“恢复建议”并按按钮跳转。',
+      '确认当前阶段前置结果已生成，再发起下一步。',
+      '若长时间无变化，点击“刷新数据”同步最新状态。',
+      '若提示权限不足，请使用管理员账号或联系管理员开通权限。',
+      '若提示登录失效，请重新登录后继续原任务。',
+    ]
+
+    return (
+      <div className="console-page-shell">
+        <PageHeader
+          badge="任务中心 / 帮助恢复"
+          title="自助排错与术语说明"
+          description="当你遇到登录过期、权限不足、排队等待或结果异常时，可按这里的步骤快速恢复。"
+          actions={
+            <Space>
+              <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('帮助信息与任务状态已刷新')}>刷新数据</Button>
+              <Button theme="solid" type="primary" onClick={() => navigate('/console/overview')}>返回任务中心</Button>
+            </Space>
+          }
+        />
+
+        <div className="console-card-grid-2">
+          <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+            <Title heading={4} className="!mb-0">失败恢复清单</Title>
+            <Text className="mt-2 block console-caption">建议按顺序执行，通常可在 1-2 次操作内恢复流程。</Text>
+            <div className="mt-4 console-next-step-list">
+              {recoveryChecklist.map((item) => <Text key={item} className="console-caption">• {item}</Text>)}
+            </div>
+            <Card className="console-toolbar-card mt-4" bodyStyle={{ padding: 16 }}>
+              <Text strong>快速操作</Text>
+              <Space className="mt-3" wrap>
+                <Button onClick={() => navigate('/login')}>去登录页</Button>
+                <Button onClick={() => navigate('/console/planning')}>去任务设置</Button>
+                <Button onClick={() => navigate('/console/domains')}>去方向结构</Button>
+              </Space>
+            </Card>
+          </Card>
+
+          <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+            <Title heading={4} className="!mb-0">术语解释</Title>
+            <Text className="mt-2 block console-caption">减少系统术语理解成本，帮助你更快判断下一步。</Text>
+            <List
+              className="mt-4"
+              dataSource={glossary}
+              renderItem={(item) => (
+                <List.Item>
+                  <Space vertical align="start" spacing="tight">
+                    <Text strong>{item.term}</Text>
+                    <Text className="console-caption">{item.description}</Text>
+                  </Space>
+                </List.Item>
+              )}
+            />
+          </Card>
+        </div>
+      </div>
+    )
+  }
 
   const renderProviders = () => (
     <div className="console-page-shell">

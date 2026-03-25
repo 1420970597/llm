@@ -65,6 +65,7 @@ _, storage = request_json('POST', '/v1/admin/storage-profiles', {
     'accessKeyId': 'minioadmin',
     'secretAccessKey': 'minioadmin',
     'usePathStyle': True,
+    'isActive': True,
     'isDefault': False,
 })
 _, strategy = request_json('POST', '/v1/admin/generation-strategies', {
