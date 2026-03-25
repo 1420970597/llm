@@ -10,11 +10,13 @@ import {
   InputNumber,
   Layout,
   List,
+  Modal,
   Nav,
   Progress,
   Select,
   Space,
   Spin,
+  Switch,
   Table,
   Tag,
   Toast,
@@ -337,6 +339,8 @@ export default function App() {
     isActive: true,
     apiKey: '',
   })
+  const [providerSearchKeyword, setProviderSearchKeyword] = useState('')
+  const [providerModalVisible, setProviderModalVisible] = useState(false)
   const [providerModels, setProviderModels] = useState<ProviderModelInfo[]>([])
   const [providerModelsLoading, setProviderModelsLoading] = useState(false)
   const [providerTestLoading, setProviderTestLoading] = useState(false)
@@ -383,6 +387,49 @@ export default function App() {
     document.body.classList.toggle('sidebar-collapsed', sidebarCollapsed)
     return () => document.body.classList.remove('sidebar-collapsed')
   }, [sidebarCollapsed])
+
+  const makeEmptyProviderDraft = useCallback((): ProviderDraft => ({
+    name: '',
+    baseUrl: '',
+    model: '',
+    providerType: 'openai-compatible',
+    reasoningEffort: '',
+    maxConcurrency: 4,
+    timeoutSeconds: 120,
+    isActive: true,
+    apiKey: '',
+  }), [])
+
+  const openCreateProviderModal = useCallback(() => {
+    setProviderDraft(makeEmptyProviderDraft())
+    setProviderModels([])
+    setProviderTestResult(null)
+    setProviderModalVisible(true)
+  }, [makeEmptyProviderDraft])
+
+  const openEditProviderModal = useCallback((provider: Provider) => {
+    setProviderDraft({
+      id: provider.id,
+      name: provider.name,
+      baseUrl: provider.baseUrl,
+      model: provider.model,
+      providerType: provider.providerType,
+      reasoningEffort: provider.reasoningEffort ?? '',
+      maxConcurrency: provider.maxConcurrency,
+      timeoutSeconds: provider.timeoutSeconds,
+      isActive: provider.isActive,
+      apiKey: '',
+    })
+    setProviderModels([])
+    setProviderTestResult(null)
+    setProviderModalVisible(true)
+  }, [])
+
+  const closeProviderModal = useCallback(() => {
+    setProviderModalVisible(false)
+    setProviderModels([])
+    setProviderTestResult(null)
+  }, [])
 
   const loadAdminData = useCallback(async () => {
     if (!isAdmin) {
@@ -678,9 +725,10 @@ export default function App() {
     try {
       await consoleApi.saveProvider(providerDraft)
       Toast.success('模型提供方已保存')
-      setProviderDraft({ name: '', baseUrl: '', model: '', providerType: 'openai-compatible', reasoningEffort: '', maxConcurrency: 4, timeoutSeconds: 120, isActive: true, apiKey: '' })
+      setProviderDraft(makeEmptyProviderDraft())
       setProviderModels([])
       setProviderTestResult(null)
+      setProviderModalVisible(false)
       await loadBootstrap()
     } catch (error) {
       Toast.error((error as Error).message)
@@ -795,8 +843,17 @@ export default function App() {
       { title: '类型', dataIndex: 'providerType', render: (value: string) => <Tag color="blue">{value}</Tag> },
       { title: '推理强度', dataIndex: 'reasoningEffort', render: (value: string) => value ? <Tag color="purple">{value}</Tag> : '默认' },
       { title: '状态', dataIndex: 'isActive', render: (value: boolean) => <Tag color={value ? 'green' : 'grey'}>{value ? '启用' : '停用'}</Tag> },
+      {
+        title: '操作',
+        dataIndex: 'operate',
+        render: (_: unknown, record: Provider) => (
+          <Space>
+            <Button size="small" onClick={() => openEditProviderModal(record)}>编辑</Button>
+          </Space>
+        ),
+      },
     ],
-    [],
+    [openEditProviderModal],
   )
   const storageColumns = useMemo(
     () => [
@@ -866,6 +923,24 @@ export default function App() {
     }
     return !baseURL
   })()
+
+  const filteredProviders = useMemo(() => {
+    const keyword = providerSearchKeyword.trim().toLowerCase()
+    if (!keyword) {
+      return providers
+    }
+    return providers.filter((provider) =>
+      [
+        provider.name,
+        provider.baseUrl,
+        provider.model,
+        provider.providerType,
+        provider.reasoningEffort,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword)),
+    )
+  }, [providerSearchKeyword, providers])
 
   const renderOverview = () => (
     <div className="console-page-shell">
@@ -1127,69 +1202,143 @@ export default function App() {
 
   const renderProviders = () => (
     <div className="console-page-shell">
-      <PageHeader badge="管理员治理 / 模型提供方" title="维护模型网关、路由、推理强度与连通性" description="管理员可以直接拉取模型列表、测试连通性，并为推理类模型配置 reasoning effort。" actions={<Button theme="solid" type="primary" icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('系统配置已刷新')}>刷新配置</Button>} />
-      <div className="page-layout-grid console-card-grid-2">
-        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">模型提供方台账</Title>
-          <Table columns={providerColumns} dataSource={providers} pagination={false} />
-        </Card>
-        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">新增 / 更新提供方</Title>
-          <div className="console-stack mt-5">
-            <Input value={providerDraft.name ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, name: value }))} placeholder="提供方名称" />
-            <Input value={providerDraft.baseUrl ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, baseUrl: value }))} placeholder="基础 URL" />
-            <Input value={providerDraft.model ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, model: value }))} placeholder="模型名称" />
-            <Input value={providerDraft.providerType ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, providerType: value }))} placeholder="类型，例如 openai-compatible / mock" />
-            <div className="console-card-grid-2">
-              <InputNumber value={providerDraft.maxConcurrency ?? 4} onChange={(value) => setProviderDraft((current) => ({ ...current, maxConcurrency: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="最大并发数" />
-              <InputNumber value={providerDraft.timeoutSeconds ?? 120} onChange={(value) => setProviderDraft((current) => ({ ...current, timeoutSeconds: Number(value ?? 0) }))} style={{ width: '100%' }} placeholder="超时秒数" />
-            </div>
-            <Select
-              value={providerDraft.reasoningEffort ?? ''}
-              placeholder="推理强度（可选）"
-              optionList={[
-                { value: '', label: '默认' },
-                { value: 'low', label: '低' },
-                { value: 'medium', label: '中' },
-                { value: 'high', label: '高' },
-              ]}
-              onChange={(value) => setProviderDraft((current) => ({ ...current, reasoningEffort: String(value ?? '') }))}
-              style={{ width: '100%' }}
-            />
-            <Input value={providerDraft.apiKey ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, apiKey: value }))} placeholder="API Key（可留空）" />
-            <Space wrap>
-              <Button disabled={providerRemoteActionDisabled} loading={providerModelsLoading} onClick={() => void fetchProviderModels()}>获取模型列表</Button>
-              <Button disabled={providerRemoteActionDisabled} loading={providerTestLoading} onClick={() => void testProviderConnectivity()}>模型连通性测试</Button>
-              <Button theme="solid" type="primary" loading={busy} onClick={() => void saveProvider()}>保存提供方</Button>
-            </Space>
-            {providerRemoteActionDisabled ? <Text className="console-caption">非 mock 提供方需要先填写基础 URL，才能获取模型列表或执行连通性测试。</Text> : null}
-
-            {providerModels.length > 0 ? (
-              <div className="console-stack">
-                <Text className="console-caption">可用模型列表</Text>
-                <div className="flex flex-wrap gap-2">
-                  {providerModels.map((item) => (
-                    <Tag
-                      key={item.id}
-                      color={providerDraft.model === item.id ? 'green' : 'grey'}
-                      onClick={() => setProviderDraft((current) => ({ ...current, model: item.id }))}
-                    >
-                      {item.id}
-                    </Tag>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {providerTestResult ? (
-              <Banner
-                type={providerTestResult.ok ? 'success' : 'warning'}
-                description={`${providerTestResult.message} · HTTP ${providerTestResult.statusCode || 0} · ${providerTestResult.latencyMs}ms${providerTestResult.modelFound ? ' · 已匹配当前模型' : ''}`}
-              />
-            ) : null}
+      <PageHeader
+        badge="管理员治理 / 模型提供方"
+        title="渠道式管理模型提供方"
+        description="这一页改成更接近 new-api 渠道管理的工作方式：先看列表，再通过弹窗编辑配置、获取模型列表、执行连通性测试。"
+        actions={
+          <Space wrap>
+            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('系统配置已刷新')}>刷新配置</Button>
+            <Button theme="solid" type="primary" onClick={() => openCreateProviderModal()}>新增提供方</Button>
+          </Space>
+        }
+      />
+      <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <Title heading={4} className="!mb-0">模型提供方台账</Title>
+            <Text className="mt-2 block console-caption">直接参考 new-api 渠道管理页的操作习惯：搜索、列表、弹窗编辑、弹窗内拉模型和测试连通性。</Text>
           </div>
-        </Card>
-      </div>
+          <Input
+            value={providerSearchKeyword}
+            onChange={setProviderSearchKeyword}
+            placeholder="搜索提供方名称、地址、模型或推理强度"
+            style={{ width: 360, maxWidth: '100%' }}
+          />
+        </div>
+        <div className="mt-5">
+          <Table columns={providerColumns} dataSource={filteredProviders} pagination={false} />
+        </div>
+      </Card>
+
+      <Modal
+        title={providerDraft.id ? '编辑模型提供方' : '新增模型提供方'}
+        visible={providerModalVisible}
+        onCancel={closeProviderModal}
+        footer={
+          <Space>
+            <Button onClick={closeProviderModal}>取消</Button>
+            <Button disabled={providerRemoteActionDisabled} loading={providerModelsLoading} onClick={() => void fetchProviderModels()}>获取模型列表</Button>
+            <Button disabled={providerRemoteActionDisabled} loading={providerTestLoading} onClick={() => void testProviderConnectivity()}>模型连通性测试</Button>
+            <Button theme="solid" type="primary" loading={busy} onClick={() => void saveProvider()}>保存</Button>
+          </Space>
+        }
+        width={920}
+      >
+        <div className="console-stack">
+          <div className="console-card-grid-2">
+            <div>
+              <Text className="mb-2 block font-medium">提供方名称</Text>
+              <Input value={providerDraft.name ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, name: value }))} placeholder="例如 OpenAI 生产网关" />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">协议类型</Text>
+              <Select
+                value={providerDraft.providerType ?? 'openai-compatible'}
+                optionList={[
+                  { value: 'openai-compatible', label: 'OpenAI Compatible' },
+                  { value: 'custom', label: 'Custom Compatible' },
+                ]}
+                onChange={(value) => setProviderDraft((current) => ({ ...current, providerType: String(value ?? '') }))}
+                style={{ width: '100%' }}
+              />
+            </div>
+          </div>
+
+          <div className="console-card-grid-2">
+            <div>
+              <Text className="mb-2 block font-medium">基础 URL</Text>
+              <Input value={providerDraft.baseUrl ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, baseUrl: value }))} placeholder="例如 https://api.openai.com/v1" />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">模型名称</Text>
+              <Input value={providerDraft.model ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, model: value }))} placeholder="可先获取模型列表再选择" />
+            </div>
+          </div>
+
+          <div className="console-card-grid-2">
+            <div>
+              <Text className="mb-2 block font-medium">最大并发数</Text>
+              <InputNumber value={providerDraft.maxConcurrency ?? 4} onChange={(value) => setProviderDraft((current) => ({ ...current, maxConcurrency: Number(value ?? 0) }))} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">超时秒数</Text>
+              <InputNumber value={providerDraft.timeoutSeconds ?? 120} onChange={(value) => setProviderDraft((current) => ({ ...current, timeoutSeconds: Number(value ?? 0) }))} style={{ width: '100%' }} />
+            </div>
+          </div>
+
+          <div className="console-card-grid-2">
+            <div>
+              <Text className="mb-2 block font-medium">推理强度</Text>
+              <Select
+                value={providerDraft.reasoningEffort ?? ''}
+                placeholder="推理强度（可选）"
+                optionList={[
+                  { value: '', label: '默认' },
+                  { value: 'low', label: '低' },
+                  { value: 'medium', label: '中' },
+                  { value: 'high', label: '高' },
+                ]}
+                onChange={(value) => setProviderDraft((current) => ({ ...current, reasoningEffort: String(value ?? '') }))}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">启用状态</Text>
+              <div className="flex h-10 items-center rounded-[16px] border border-[var(--semi-color-border)] px-4">
+                <Switch checked={providerDraft.isActive ?? true} onChange={(checked) => setProviderDraft((current) => ({ ...current, isActive: checked }))} />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <Text className="mb-2 block font-medium">API Key</Text>
+            <Input value={providerDraft.apiKey ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, apiKey: value }))} placeholder="保存时会加密；留空则沿用已有密钥" mode="password" />
+          </div>
+
+          {providerRemoteActionDisabled ? <Text className="console-caption">请先填写基础 URL，再获取模型列表或执行连通性测试。</Text> : null}
+
+          {providerModels.length > 0 ? (
+            <Card className="console-toolbar-card" bodyStyle={{ padding: 16 }}>
+              <Text strong>可用模型列表</Text>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {providerModels.map((item) => (
+                  <Tag key={item.id} color={providerDraft.model === item.id ? 'green' : 'grey'} onClick={() => setProviderDraft((current) => ({ ...current, model: item.id }))}>
+                    {item.id}
+                  </Tag>
+                ))}
+              </div>
+            </Card>
+          ) : null}
+
+          {providerTestResult ? (
+            <Banner
+              type={providerTestResult.ok ? 'success' : 'warning'}
+              description={`${providerTestResult.message} · HTTP ${providerTestResult.statusCode || 0} · ${providerTestResult.latencyMs}ms${providerTestResult.modelFound ? ' · 已匹配当前模型' : ' · 当前模型未命中返回列表'}`}
+            />
+          ) : null}
+        </div>
+      </Modal>
     </div>
   )
 
