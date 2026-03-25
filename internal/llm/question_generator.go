@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -13,11 +14,14 @@ import (
 func GenerateQuestions(ctx context.Context, provider ProviderConfig, dataset model.Dataset, domains []model.Domain) ([]model.Question, error) {
 	questions := make([]model.Question, 0, len(domains)*max(dataset.Estimate.QuestionsPerDomain, 1))
 	for _, domain := range domains {
+		log.Printf("questions.generate.domain.start dataset_id=%d domain_id=%d domain=%q", dataset.ID, domain.ID, domain.Name)
 		generated, err := generateQuestionsForDomain(ctx, provider, dataset, domain)
 		if err != nil {
+			log.Printf("questions.generate.domain.error dataset_id=%d domain_id=%d domain=%q err=%v", dataset.ID, domain.ID, domain.Name, err)
 			return nil, err
 		}
 		questions = append(questions, generated...)
+		log.Printf("questions.generate.domain.done dataset_id=%d domain_id=%d generated=%d", dataset.ID, domain.ID, len(generated))
 	}
 	return questions, nil
 }
@@ -35,9 +39,7 @@ func generateQuestionsForDomain(ctx context.Context, provider ProviderConfig, da
 			{"role": "system", "content": "You generate diverse, non-duplicated training questions. Return JSON only."},
 			{"role": "user", "content": prompt},
 		},
-		"temperature": 0.7,
 	}
-	applyReasoningEffort(payload, provider)
 	decoded, err := requestChatCompletion(ctx, provider, payload, 60*time.Second)
 	if err != nil {
 		return nil, err

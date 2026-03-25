@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/1420970597/llm/internal/config"
@@ -22,6 +23,7 @@ import (
 type jobPayload struct {
 	Type      string `json:"type"`
 	DatasetID int64  `json:"datasetId"`
+	Retry     int    `json:"retry,omitempty"`
 }
 
 func main() {
@@ -94,11 +96,31 @@ func consumeJobs(ctx context.Context, queue string, redisClient *redis.Client, d
 			}
 		case "reasoning.generate":
 			if err := handleReasoningGeneration(ctx, job.DatasetID, datasets, pipeline, reasoningStore); err != nil {
-				log.Printf("reasoning generation failed dataset=%d err=%v", job.DatasetID, err)
+				if shouldRetryJob(err) && job.Retry < 2 {
+					next := job
+					next.Retry++
+					if requeueErr := requeueJob(ctx, redisClient, queue, next); requeueErr != nil {
+						log.Printf("reasoning generation failed dataset=%d retry=%d err=%v requeue_err=%v", job.DatasetID, job.Retry, err, requeueErr)
+						continue
+					}
+					log.Printf("reasoning generation retrying dataset=%d next_retry=%d err=%v", job.DatasetID, next.Retry, err)
+					continue
+				}
+				log.Printf("reasoning generation failed dataset=%d retry=%d err=%v", job.DatasetID, job.Retry, err)
 			}
 		case "rewards.generate":
 			if err := handleRewardGeneration(ctx, job.DatasetID, datasets, pipeline, rewardStore); err != nil {
-				log.Printf("reward generation failed dataset=%d err=%v", job.DatasetID, err)
+				if shouldRetryJob(err) && job.Retry < 2 {
+					next := job
+					next.Retry++
+					if requeueErr := requeueJob(ctx, redisClient, queue, next); requeueErr != nil {
+						log.Printf("reward generation failed dataset=%d retry=%d err=%v requeue_err=%v", job.DatasetID, job.Retry, err, requeueErr)
+						continue
+					}
+					log.Printf("reward generation retrying dataset=%d next_retry=%d err=%v", job.DatasetID, next.Retry, err)
+					continue
+				}
+				log.Printf("reward generation failed dataset=%d retry=%d err=%v", job.DatasetID, job.Retry, err)
 			}
 		case "export.generate":
 			if err := handleExportGeneration(ctx, job.DatasetID, datasets, pipeline, reasoningStore, rewardStore, artifactStore); err != nil {
@@ -178,29 +200,35 @@ func handleReasoningGeneration(ctx context.Context, datasetID int64, datasets *s
 		return err
 	}
 
-	records, payloads, err := llm.GenerateReasoning(ctx, llm.ProviderConfig{
-		BaseURL:         baseURL,
-		Model:           modelName,
-		ProviderType:    providerType,
-		ReasoningEffort: reasoningEffort,
-		APIKey:          apiKey,
-	}, dataset, questions)
-	if err != nil {
-		return err
-	}
-
-	for index := range records {
-		key := filepath.ToSlash(fmt.Sprintf("datasets/%d/reasoning/question-%d.json", datasetID, records[index].QuestionID))
-		uri, err := objectStore.PutJSON(ctx, key, payloads[records[index].QuestionID])
+	recorded := 0
+	for _, question := range questions {
+		records, payloads, err := llm.GenerateReasoning(ctx, llm.ProviderConfig{
+			BaseURL:         baseURL,
+			Model:           modelName,
+			ProviderType:    providerType,
+			ReasoningEffort: reasoningEffort,
+			APIKey:          apiKey,
+		}, dataset, []model.Question{question})
 		if err != nil {
 			return err
 		}
-		records[index].ObjectKey = uri
+		for index := range records {
+			key := filepath.ToSlash(fmt.Sprintf("datasets/%d/reasoning/question-%d.json", datasetID, records[index].QuestionID))
+			uri, putErr := objectStore.PutJSON(ctx, key, payloads[records[index].QuestionID])
+			if putErr != nil {
+				return putErr
+			}
+			records[index].ObjectKey = uri
+			if upsertErr := reasoningStore.UpsertPartial(ctx, datasetID, []model.ReasoningRecord{records[index]}); upsertErr != nil {
+				return upsertErr
+			}
+			recorded++
+		}
 	}
-	if err := reasoningStore.Insert(ctx, datasetID, records); err != nil {
+	if err := datasets.UpdateStatus(ctx, datasetID, "reasoning_generated"); err != nil {
 		return err
 	}
-	log.Printf("reasoning generated dataset=%d count=%d", datasetID, len(records))
+	log.Printf("reasoning generated dataset=%d count=%d", datasetID, recorded)
 	return nil
 }
 
@@ -237,29 +265,35 @@ func handleRewardGeneration(ctx context.Context, datasetID int64, datasets *stor
 		return err
 	}
 
-	records, payloads, err := llm.GenerateRewards(ctx, llm.ProviderConfig{
-		BaseURL:         baseURL,
-		Model:           modelName,
-		ProviderType:    providerType,
-		ReasoningEffort: reasoningEffort,
-		APIKey:          apiKey,
-	}, dataset, questions)
-	if err != nil {
-		return err
-	}
-
-	for index := range records {
-		key := filepath.ToSlash(fmt.Sprintf("datasets/%d/rewards/question-%d.json", datasetID, records[index].QuestionID))
-		uri, err := objectStore.PutJSON(ctx, key, payloads[records[index].QuestionID])
+	recorded := 0
+	for _, question := range questions {
+		records, payloads, err := llm.GenerateRewards(ctx, llm.ProviderConfig{
+			BaseURL:         baseURL,
+			Model:           modelName,
+			ProviderType:    providerType,
+			ReasoningEffort: reasoningEffort,
+			APIKey:          apiKey,
+		}, dataset, []model.Question{question})
 		if err != nil {
 			return err
 		}
-		records[index].ObjectKey = uri
+		for index := range records {
+			key := filepath.ToSlash(fmt.Sprintf("datasets/%d/rewards/question-%d.json", datasetID, records[index].QuestionID))
+			uri, putErr := objectStore.PutJSON(ctx, key, payloads[records[index].QuestionID])
+			if putErr != nil {
+				return putErr
+			}
+			records[index].ObjectKey = uri
+			if upsertErr := rewardStore.UpsertPartial(ctx, datasetID, []model.RewardRecord{records[index]}); upsertErr != nil {
+				return upsertErr
+			}
+			recorded++
+		}
 	}
-	if err := rewardStore.Insert(ctx, datasetID, records); err != nil {
+	if err := datasets.UpdateStatus(ctx, datasetID, "rewards_generated"); err != nil {
 		return err
 	}
-	log.Printf("reward records generated dataset=%d count=%d", datasetID, len(records))
+	log.Printf("reward records generated dataset=%d count=%d", datasetID, recorded)
 	return nil
 }
 
@@ -306,9 +340,13 @@ func handleExportGeneration(ctx context.Context, datasetID int64, datasets *stor
 	}
 
 	lines := make([]byte, 0, len(questions)*256)
+	exportedCount := 0
 	for _, question := range questions {
-		reasoning := reasoningByQuestion[question.ID]
-		reward := rewardByQuestion[question.ID]
+		reasoning, hasReasoning := reasoningByQuestion[question.ID]
+		reward, hasReward := rewardByQuestion[question.ID]
+		if !hasReasoning || !hasReward {
+			continue
+		}
 		payload := map[string]any{
 			"dataset_id":       datasetID,
 			"question_id":      question.ID,
@@ -322,6 +360,10 @@ func handleExportGeneration(ctx context.Context, datasetID int64, datasets *stor
 		body, _ := json.Marshal(payload)
 		lines = append(lines, body...)
 		lines = append(lines, '\n')
+		exportedCount++
+	}
+	if exportedCount == 0 {
+		return fmt.Errorf("no complete records to export for dataset %d", datasetID)
 	}
 
 	key := filepath.ToSlash(fmt.Sprintf("datasets/%d/exports/dataset.jsonl", datasetID))
@@ -343,6 +385,29 @@ func handleExportGeneration(ctx context.Context, datasetID int64, datasets *stor
 	}
 	log.Printf("export generated dataset=%d artifact=%s", datasetID, uri)
 	return nil
+}
+
+func shouldRetryJob(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "connection reset by peer") ||
+		strings.Contains(message, "unexpected eof") ||
+		strings.Contains(message, " timeout") ||
+		strings.Contains(message, "deadline exceeded") ||
+		strings.Contains(message, "502") ||
+		strings.Contains(message, "503") ||
+		strings.Contains(message, "504") ||
+		strings.Contains(message, "429")
+}
+
+func requeueJob(ctx context.Context, redisClient *redis.Client, queue string, job jobPayload) error {
+	payload, err := json.Marshal(job)
+	if err != nil {
+		return err
+	}
+	return redisClient.LPush(ctx, queue, payload).Err()
 }
 
 var _ = model.Question{}

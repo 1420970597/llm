@@ -31,11 +31,15 @@ type ObjectStore struct {
 func New(profile Profile) (*ObjectStore, error) {
   endpoint := strings.TrimPrefix(strings.TrimPrefix(profile.Endpoint, "http://"), "https://")
   secure := strings.HasPrefix(profile.Endpoint, "https://")
-  client, err := minio.New(endpoint, &minio.Options{
+  options := &minio.Options{
     Creds:  credentials.NewStaticV4(profile.AccessKeyID, profile.SecretKey, ""),
     Secure: secure,
     Region: profile.Region,
-  })
+  }
+  if profile.UsePathStyle {
+    options.BucketLookup = minio.BucketLookupPath
+  }
+  client, err := minio.New(endpoint, options)
   if err != nil {
     return nil, err
   }
@@ -72,13 +76,17 @@ func (s *ObjectStore) PutBytes(ctx context.Context, key string, payload []byte, 
   return fmt.Sprintf("s3://%s/%s", s.bucket, key), nil
 }
 
-func (s *ObjectStore) ReadJSON(ctx context.Context, key string, target any) error {
+func (s *ObjectStore) ReadBytes(ctx context.Context, key string) ([]byte, error) {
   object, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
   if err != nil {
-    return err
+    return nil, err
   }
   defer object.Close()
-  content, err := io.ReadAll(object)
+  return io.ReadAll(object)
+}
+
+func (s *ObjectStore) ReadJSON(ctx context.Context, key string, target any) error {
+  content, err := s.ReadBytes(ctx, key)
   if err != nil {
     return err
   }

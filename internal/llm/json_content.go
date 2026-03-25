@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 func unmarshalStructuredContent(raw string, target any) error {
@@ -20,23 +21,68 @@ func unmarshalStructuredContent(raw string, target any) error {
 		return nil
 	}
 
-	start := strings.IndexAny(normalized, "[{")
-	endArray := strings.LastIndex(normalized, "]")
-	endObject := strings.LastIndex(normalized, "}")
-	end := endArray
-	if endObject > end {
-		end = endObject
-	}
-	if start >= 0 && end > start {
-		candidate := strings.TrimSpace(normalized[start : end+1])
+	if candidate := extractLikelyJSONBlock(normalized); candidate != "" {
 		if err := json.Unmarshal([]byte(candidate), target); err == nil {
 			return nil
 		}
 	}
 
-	preview := normalized
-	if len(preview) > 220 {
-		preview = preview[:220]
-	}
+	preview := truncateRunes(normalized, 220)
 	return fmt.Errorf("provider returned non-JSON content: %s", preview)
+}
+
+func extractLikelyJSONBlock(input string) string {
+	bytesInput := []byte(input)
+	start := -1
+	depth := 0
+	inString := false
+	escaped := false
+
+	for i := 0; i < len(bytesInput); i++ {
+		ch := bytesInput[i]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inString = false
+			}
+			continue
+		}
+
+		switch ch {
+		case '"':
+			inString = true
+		case '{', '[':
+			if depth == 0 {
+				start = i
+			}
+			depth++
+		case '}', ']':
+			if depth == 0 {
+				continue
+			}
+			depth--
+			if depth == 0 && start >= 0 {
+				return strings.TrimSpace(string(bytesInput[start : i+1]))
+			}
+		}
+	}
+	return ""
+}
+
+func truncateRunes(input string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(input) <= maxRunes {
+		return input
+	}
+	runes := []rune(input)
+	return string(runes[:maxRunes])
 }

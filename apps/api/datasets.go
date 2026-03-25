@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/1420970597/llm/internal/llm"
 	"github.com/1420970597/llm/internal/model"
@@ -85,20 +88,27 @@ func (app *application) generateDomains(w http.ResponseWriter, r *http.Request) 
 		app.writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	log.Printf("domains.generate.start dataset_id=%d path=%s", id, r.URL.Path)
 
-	dataset, err := app.datasets.GetDataset(r.Context(), id)
+	operationCtx, cancel := context.WithTimeout(context.Background(), 9*time.Minute)
+	defer cancel()
+
+	dataset, err := app.datasets.GetDataset(operationCtx, id)
 	if err != nil {
+		log.Printf("domains.generate.dataset_error dataset_id=%d err=%v", id, err)
 		app.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	baseURL, modelName, providerType, reasoningEffort, apiKey, err := app.datasets.ResolveProvider(r.Context(), dataset.ProviderID)
+	baseURL, modelName, providerType, reasoningEffort, apiKey, err := app.datasets.ResolveProvider(operationCtx, dataset.ProviderID)
 	if err != nil {
+		log.Printf("domains.generate.provider_resolve_error dataset_id=%d provider_id=%d err=%v", id, dataset.ProviderID, err)
 		app.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	log.Printf("domains.generate.provider dataset_id=%d provider_id=%d provider_type=%s model=%s base_url=%s reasoning_effort=%s", id, dataset.ProviderID, providerType, modelName, baseURL, reasoningEffort)
 
-	domains, edges, err := llm.GenerateDomains(r.Context(), llm.ProviderConfig{
+	domains, edges, err := llm.GenerateDomains(operationCtx, llm.ProviderConfig{
 		BaseURL:         baseURL,
 		Model:           modelName,
 		ProviderType:    providerType,
@@ -106,22 +116,27 @@ func (app *application) generateDomains(w http.ResponseWriter, r *http.Request) 
 		APIKey:          apiKey,
 	}, dataset)
 	if err != nil {
+		log.Printf("domains.generate.llm_error dataset_id=%d provider_id=%d err=%v", id, dataset.ProviderID, err)
+		app.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	log.Printf("domains.generate.llm_success dataset_id=%d domains=%d edges=%d", id, len(domains), len(edges))
+
+	if err := app.datasets.ReplaceDomains(operationCtx, id, domains, edges); err != nil {
+		log.Printf("domains.generate.persist_error dataset_id=%d err=%v", id, err)
 		app.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	if err := app.datasets.ReplaceDomains(r.Context(), id, domains, edges); err != nil {
-		app.writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	graph, err := app.datasets.GetDataset(r.Context(), id)
+	graph, err := app.datasets.GetDataset(operationCtx, id)
 	if err != nil {
+		log.Printf("domains.generate.reload_error dataset_id=%d err=%v", id, err)
 		app.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	persistedDomains, _ := app.datasets.ListDomains(r.Context(), id)
-	persistedEdges, _ := app.datasets.ListDomainEdges(r.Context(), id)
+	persistedDomains, _ := app.datasets.ListDomains(operationCtx, id)
+	persistedEdges, _ := app.datasets.ListDomainEdges(operationCtx, id)
+	log.Printf("domains.generate.done dataset_id=%d domains=%d edges=%d", id, len(persistedDomains), len(persistedEdges))
 	app.writeJSON(w, http.StatusOK, model.DatasetGraph{Dataset: graph, Domains: persistedDomains, Edges: persistedEdges})
 }
 

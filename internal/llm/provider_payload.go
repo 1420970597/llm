@@ -1,8 +1,15 @@
 package llm
 
 func applyReasoningEffort(payload map[string]any, provider ProviderConfig) {
-	if provider.ReasoningEffort == "" {
+	effort := provider.ReasoningEffort
+	if effort == "" {
 		return
 	}
-	payload["reasoning_effort"] = provider.ReasoningEffort
+	if provider.Model != "" {
+		switch effort {
+		case "xhigh":
+			effort = "high"
+		}
+	}
+	payload["reasoning_effort"] = effort
 }

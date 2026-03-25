@@ -16,6 +16,14 @@ func NewRewardStore(db *pgxpool.Pool) *RewardStore {
 }
 
 func (s *RewardStore) Insert(ctx context.Context, datasetID int64, records []model.RewardRecord) error {
+  return s.upsert(ctx, datasetID, records, true)
+}
+
+func (s *RewardStore) UpsertPartial(ctx context.Context, datasetID int64, records []model.RewardRecord) error {
+  return s.upsert(ctx, datasetID, records, false)
+}
+
+func (s *RewardStore) upsert(ctx context.Context, datasetID int64, records []model.RewardRecord, markGenerated bool) error {
   for _, record := range records {
     _, err := s.db.Exec(ctx, `
       INSERT INTO reward_records (dataset_id, question_id, score, object_key, status)
@@ -34,6 +42,9 @@ func (s *RewardStore) Insert(ctx context.Context, datasetID int64, records []mod
     if err != nil {
       return err
     }
+  }
+  if !markGenerated {
+    return nil
   }
   _, err := s.db.Exec(ctx, `UPDATE datasets SET status = 'rewards_generated', updated_at = NOW() WHERE id = $1`, datasetID)
   return err

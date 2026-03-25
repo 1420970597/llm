@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -64,6 +65,14 @@ func (app *application) logout(w http.ResponseWriter, _ *http.Request) {
 func (app *application) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				log.Printf("panic method=%s path=%s err=%v stack=%s", r.Method, r.URL.Path, recovered, string(debug.Stack()))
+				app.writeError(w, http.StatusInternalServerError, fmt.Errorf("internal server error"))
+			}
+			log.Printf("method=%s path=%s duration=%s", r.Method, r.URL.Path, time.Since(start))
+		}()
+
 		w.Header().Set("Access-Control-Allow-Origin", app.cfg.AllowedOrigin)
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS")
@@ -75,7 +84,7 @@ func (app *application) middleware(next http.Handler) http.Handler {
 
 		r = app.withSessionUser(r)
 
-		if app.routeRequiresAdmin(r.URL.Path, r.Method) {
+		if app.routeRequiresAdmin(r.URL.Path) {
 			user, ok := app.currentUser(r)
 			if !ok {
 				app.writeError(w, http.StatusUnauthorized, fmt.Errorf("authentication required"))
@@ -93,7 +102,6 @@ func (app *application) middleware(next http.Handler) http.Handler {
 		}
 
 		next.ServeHTTP(w, r)
-		log.Printf("method=%s path=%s duration=%s", r.Method, r.URL.Path, time.Since(start))
 	})
 }
 
@@ -103,12 +111,6 @@ func (app *application) routeRequiresAuth(path string) bool {
 		return false
 	case path == "/api/v1/platform/overview":
 		return false
-	case path == "/api/v1/admin/providers":
-		return true
-	case path == "/api/v1/admin/storage-profiles":
-		return true
-	case path == "/api/v1/admin/generation-strategies":
-		return true
 	case strings.HasPrefix(path, "/api/v1/datasets"):
 		return true
 	case path == "/api/v1/platform/runtime":
@@ -118,19 +120,8 @@ func (app *application) routeRequiresAuth(path string) bool {
 	}
 }
 
-func (app *application) routeRequiresAdmin(path, method string) bool {
-	switch {
-	case path == "/api/v1/admin/dashboard":
-		return true
-	case path == "/api/v1/admin/prompts":
-		return true
-	case path == "/api/v1/admin/audit-logs":
-		return true
-	case method != http.MethodGet && strings.HasPrefix(path, "/api/v1/admin/"):
-		return true
-	default:
-		return false
-	}
+func (app *application) routeRequiresAdmin(path string) bool {
+	return strings.HasPrefix(path, "/api/v1/admin/")
 }
 
 func (app *application) withSessionUser(r *http.Request) *http.Request {

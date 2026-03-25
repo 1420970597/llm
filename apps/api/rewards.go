@@ -1,7 +1,7 @@
 package main
 
 import (
-  "encoding/json"
+  "fmt"
   "net/http"
   "time"
 
@@ -15,21 +15,29 @@ func (app *application) enqueueRewardGeneration(w http.ResponseWriter, r *http.R
     return
   }
 
-  payload, _ := json.Marshal(map[string]any{"type": "rewards.generate", "datasetId": id})
-  if err := app.redis.LPush(r.Context(), app.cfg.QueueName, payload).Err(); err != nil {
+  reasoning, err := app.reasoning.List(r.Context(), id)
+  if err != nil {
     app.writeError(w, http.StatusInternalServerError, err)
     return
   }
-  if err := app.datasets.UpdateStatus(r.Context(), id, "rewards_queued"); err != nil {
+  if len(reasoning) == 0 {
+    app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue rewards: dataset %d has no reasoning records", id))
+    return
+  }
+
+  enqueued, err := app.enqueueDatasetJob(r.Context(), "rewards.generate", id, "rewards_queued")
+  if err != nil {
     app.writeError(w, http.StatusInternalServerError, err)
     return
   }
-  _ = app.store.WriteAuditLog(r.Context(), "user", "enqueue", "reward_generation", datasetIDString(id), "rewards.generate")
+  if enqueued {
+    _ = app.store.WriteAuditLog(r.Context(), "user", "enqueue", "reward_generation", datasetIDString(id), "rewards.generate")
+  }
   app.writeJSON(w, http.StatusAccepted, model.StageEnqueueResult{
     DatasetID:  id,
     Stage:      "rewards",
     State:      "queued",
-    Message:    "奖励评估任务已入队",
+    Message:    queuedMessage(enqueued, "奖励评估任务已入队", "奖励评估任务已在队列中"),
     AcceptedAt: time.Now().Format(time.RFC3339),
   })
 }

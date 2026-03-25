@@ -192,6 +192,10 @@ export type Artifact = {
   createdAt: string
 }
 
+export type ArtifactDownload = {
+  downloadUrl: string
+}
+
 export type PipelineStageStatus = {
   key: string
   label: string
@@ -267,6 +271,7 @@ export const consoleApi = {
   listRewards: (id: number) => unwrap(client.get<RewardRecord[]>(`/v1/datasets/${id}/rewards`)),
   generateExport: (id: number) => unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/export`)),
   listArtifacts: (id: number) => unwrap(client.get<Artifact[]>(`/v1/datasets/${id}/export`)),
+  artifactDownloadUrl: (datasetId: number, artifactId: number) => `/api/v1/datasets/${datasetId}/export/download?artifactId=${artifactId}`,
   pipelineProgress: (id: number) => unwrap(client.get<PipelineProgress>(`/v1/datasets/${id}/pipeline/progress`)),
   runtimeStatus: () => unwrap(client.get<RuntimeStatus>('/v1/platform/runtime')),
 }

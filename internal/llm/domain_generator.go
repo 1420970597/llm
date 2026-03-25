@@ -67,7 +67,6 @@ func generateDomainsInBatches(ctx context.Context, provider ProviderConfig, data
 			},
 			"temperature": 0.4,
 		}
-		applyReasoningEffort(payload, provider)
 
 		decoded, err := requestChatCompletion(ctx, provider, payload, 90*time.Second)
 		if err != nil {
@@ -139,7 +138,7 @@ func ResolveAPIKey(masked, decrypted string) string {
 }
 
 func mockDomains(dataset model.Dataset) []model.Domain {
-	facets := []string{"Operations", "Systems", "Scenarios", "Tactics", "Capabilities", "Threat Models", "Logistics", "Decision Paths", "Training Contexts", "Evaluation Tracks"}
+	facets := []string{"基础概念", "常见场景", "核心问题", "关键方法", "实操步骤", "风险误区", "进阶技巧", "工具资源", "评估指标", "案例复盘"}
 	domains := make([]model.Domain, 0, dataset.Estimate.DomainCount)
 	for i := 0; i < dataset.Estimate.DomainCount; i++ {
 		facet := facets[i%len(facets)]

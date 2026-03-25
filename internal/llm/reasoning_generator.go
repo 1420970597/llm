@@ -3,6 +3,8 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/1420970597/llm/internal/model"
@@ -17,9 +19,14 @@ func GenerateReasoning(ctx context.Context, provider ProviderConfig, dataset mod
 	records := make([]model.ReasoningRecord, 0, len(questions))
 	payloads := map[int64]reasoningPayload{}
 	for _, question := range questions {
+		log.Printf("reasoning.generate.question.start dataset_id=%d question_id=%d", dataset.ID, question.ID)
 		generated, err := generateReasoningForQuestion(ctx, provider, dataset, question)
 		if err != nil {
-			return nil, nil, err
+			log.Printf("reasoning.generate.question.error dataset_id=%d question_id=%d err=%v", dataset.ID, question.ID, err)
+			generated = reasoningPayload{
+				Answer:    fmt.Sprintf("生成失败（question_id=%d）: %v", question.ID, err),
+				Reasoning: "",
+			}
 		}
 		payloads[question.ID] = generated
 		records = append(records, model.ReasoningRecord{
@@ -29,6 +36,7 @@ func GenerateReasoning(ctx context.Context, provider ProviderConfig, dataset mod
 			AnswerSummary: generated.Answer,
 			Status:        "generated",
 		})
+		log.Printf("reasoning.generate.question.done dataset_id=%d question_id=%d", dataset.ID, question.ID)
 	}
 	return records, payloads, nil
 }
@@ -47,17 +55,23 @@ func generateReasoningForQuestion(ctx context.Context, provider ProviderConfig, 
 			{"role": "system", "content": "You generate long-form reasoning data. Return JSON with answer and reasoning fields only."},
 			{"role": "user", "content": fmt.Sprintf("Question: %s", question.Content)},
 		},
-		"temperature": 0.6,
 	}
 	applyReasoningEffort(payload, provider)
-	decoded, err := requestChatCompletion(ctx, provider, payload, 90*time.Second)
+	decoded, err := requestChatCompletion(ctx, provider, payload, 25*time.Second)
 	if err != nil {
 		return reasoningPayload{}, err
 	}
 
 	var generated reasoningPayload
 	if err := unmarshalStructuredContent(decoded.Choices[0].Message.Content, &generated); err != nil {
-		return reasoningPayload{}, err
+		fallback := strings.TrimSpace(decoded.Choices[0].Message.Content)
+		if fallback == "" {
+			return reasoningPayload{}, err
+		}
+		return reasoningPayload{
+			Answer:    fallback,
+			Reasoning: "",
+		}, nil
 	}
 	return generated, nil
 }

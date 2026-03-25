@@ -182,8 +182,8 @@ function nextActionLabel(status: string) {
 }
 
 function waitingStateLabel(status: string, queueDepth: number) {
-  if (queueDepth > 0) {
-    return `系统正在处理中，还有 ${queueDepth} 个任务在等待`
+  if (queueDepth > 0 && status.endsWith('_queued')) {
+    return `系统正在处理队列（前方约 ${queueDepth} 个任务）`
   }
   switch (status) {
     case 'draft':
@@ -191,24 +191,164 @@ function waitingStateLabel(status: string, queueDepth: number) {
     case 'domains_confirmed':
       return '等待你启动问题草稿生成'
     case 'questions_queued':
-      return '问题生成任务已入队，等待执行'
+      return '题目生成处理中'
     case 'questions_generated':
       return '等待你启动答案草稿生成'
     case 'reasoning_queued':
-      return '答案生成任务已入队，等待执行'
+      return '答案生成处理中'
     case 'reasoning_generated':
       return '等待你启动质量评分'
     case 'rewards_queued':
-      return '质量评分任务已入队，等待执行'
+      return '质量评分处理中'
     case 'rewards_generated':
       return '等待你执行结果导出'
     case 'export_queued':
-      return '导出任务已入队，等待执行'
+      return '导出处理中'
     case 'export_generated':
       return '导出已完成，可下载交付'
     default:
       return '等待状态同步'
   }
+}
+
+function waitingReasonLabel(status: string, queueDepth: number) {
+  if (status.endsWith('_queued')) {
+    return queueDepth > 0
+      ? `该阶段已入队，当前前方约 ${queueDepth} 个任务，系统会按顺序执行。`
+      : '该阶段已入队，正在等待执行资源分配。'
+  }
+  switch (status) {
+    case 'draft':
+      return '系统尚未开始生成，因为方向结构还未确认。'
+    case 'domains_confirmed':
+      return '方向已确认，等待你手动启动问题生成。'
+    case 'questions_generated':
+      return '问题结果已准备好，等待你启动答案生成。'
+    case 'reasoning_generated':
+      return '答案结果已准备好，等待你启动质量评分。'
+    case 'rewards_generated':
+      return '评分结果已准备好，等待你启动导出。'
+    case 'export_generated':
+      return '导出文件已生成，等待你下载并交付。'
+    default:
+      return '系统正在同步阶段信息，请稍后刷新。'
+  }
+}
+
+function waitingActionLabel(status: string) {
+  switch (status) {
+    case 'draft':
+      return '前往“方向结构”，确认后继续。'
+    case 'domains_confirmed':
+      return '前往“问题草稿”，点击“生成问题草稿”。'
+    case 'questions_queued':
+    case 'reasoning_queued':
+    case 'rewards_queued':
+    case 'export_queued':
+      return '无需停留本页，可先处理其他步骤，再按刷新建议回看。'
+    case 'questions_generated':
+      return '前往“答案草稿”，点击“生成答案草稿”。'
+    case 'reasoning_generated':
+      return '前往“质量评分”，点击“生成质量评分”。'
+    case 'rewards_generated':
+      return '前往“结果交付”，点击“导出结果包”。'
+    case 'export_generated':
+      return '进入“结果交付”下载文件，并完成交付确认。'
+    default:
+      return '点击刷新同步状态后继续。'
+  }
+}
+
+function refreshExpectationLabel(status: string, queueDepth: number) {
+  if (status.endsWith('_queued')) {
+    if (queueDepth > 3) return '建议 2~3 分钟后刷新一次；频繁刷新不会加速处理。'
+    return '建议 60~90 秒后刷新一次；频繁刷新不会更快。'
+  }
+  if (status === 'export_generated' || status.endsWith('_generated')) {
+    return '当前阶段已完成，可直接进入下一步。'
+  }
+  return '当前阶段无需频繁刷新，状态变化后再同步即可。'
+}
+
+function trustMessageLabel(status: string) {
+  if (status.endsWith('_queued')) {
+    return '任务已进入后台持续处理，可先切换到其他页面，进度不会丢失。'
+  }
+  if (status.endsWith('_generated') || status === 'export_generated') {
+    return '当前阶段结果已落库，可放心继续后续操作。'
+  }
+  return '系统会自动保存当前任务上下文，可按节奏推进。'
+}
+
+type StageKey = 'questions' | 'reasoning' | 'rewards' | 'export'
+
+function statusStageKey(status: string): StageKey | null {
+  switch (status) {
+    case 'questions_queued':
+    case 'questions_generated':
+      return 'questions'
+    case 'reasoning_queued':
+    case 'reasoning_generated':
+      return 'reasoning'
+    case 'rewards_queued':
+    case 'rewards_generated':
+      return 'rewards'
+    case 'export_queued':
+    case 'export_generated':
+      return 'export'
+    default:
+      return null
+  }
+}
+
+function minutesSince(value?: string) {
+  if (!value) return null
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) return null
+  const elapsedMinutes = Math.floor((Date.now() - parsed) / 60000)
+  return elapsedMinutes >= 0 ? elapsedMinutes : null
+}
+
+function etaBaseWindow(status: string) {
+  switch (status) {
+    case 'questions_queued':
+      return { min: 2, max: 8 }
+    case 'reasoning_queued':
+      return { min: 4, max: 12 }
+    case 'rewards_queued':
+      return { min: 2, max: 6 }
+    case 'export_queued':
+      return { min: 1, max: 4 }
+    default:
+      return null
+  }
+}
+
+function etaLabel(status: string, queueDepth: number, acceptedAt?: string) {
+  if (status === 'export_generated') return '已完成，可立即下载交付'
+  if (status.endsWith('_generated')) return '当前阶段已完成，可立即推进下一步'
+  if (status.endsWith('_queued')) {
+    const base = etaBaseWindow(status)
+    if (!base) return '预计处理中'
+    const queuePenalty = Math.min(20, Math.max(0, queueDepth) * 2)
+    const estimatedMin = base.min + Math.floor(queuePenalty / 2)
+    const estimatedMax = base.max + queuePenalty
+    const elapsedMinutes = minutesSince(acceptedAt)
+
+    if (elapsedMinutes === null) {
+      return `预计还需 ${estimatedMin}~${estimatedMax} 分钟`
+    }
+
+    const remainingMin = Math.max(1, estimatedMin - elapsedMinutes)
+    const remainingMax = Math.max(1, estimatedMax - elapsedMinutes)
+    if (elapsedMinutes >= estimatedMax) {
+      return `已等待 ${elapsedMinutes} 分钟，预计接近完成，请刷新确认`
+    }
+    return `预计还需 ${remainingMin}~${remainingMax} 分钟（已等待 ${elapsedMinutes} 分钟）`
+  }
+  if (status === 'draft') return '确认方向结构后即可生成 ETA'
+  if (status === 'domains_confirmed') return '启动问题生成后即可看到 ETA'
+  return '刷新后更新 ETA'
 }
 
 function stageStateStyle(state: 'pending' | 'queued' | 'in_progress' | 'completed') {
@@ -258,7 +398,7 @@ function sourceLabel(source: string) {
     case 'ai':
       return '模型生成'
     case 'mock':
-      return '模拟数据'
+      return '示例生成（模拟）'
     default:
       return source
   }
@@ -584,6 +724,7 @@ export default function App() {
   const [rewards, setRewards] = useState<RewardRecord[]>([])
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null)
+  const [stageRunMeta, setStageRunMeta] = useState<Partial<Record<StageKey, StageEnqueueResult>>>({})
 
   const [plannerForm, setPlannerForm] = useState({
     name: '',
@@ -656,6 +797,17 @@ export default function App() {
     () => (pipelineProgress && pipelineProgress.datasetId === activeDatasetId ? pipelineProgress : null),
     [pipelineProgress, activeDatasetId],
   )
+  const activeStageKey = activeDataset ? statusStageKey(activeDataset.status) : null
+  const activeStageRun = activeStageKey ? stageRunMeta[activeStageKey] : undefined
+  const exportDeliveryPending = Boolean(
+    activeDataset?.status === 'export_generated' &&
+    activePipeline?.stages.some((stage) => stage.key === 'export' && stage.state !== 'completed'),
+  )
+  const activeEta = activeDataset
+    ? exportDeliveryPending
+      ? '预计 1~3 分钟内完成交付文件落盘'
+      : etaLabel(activeDataset.status, runtime?.queueDepth ?? 0, activeStageRun?.acceptedAt)
+    : '请先创建任务'
   const visiblePages = useMemo(() => [...userPages, ...(isAdmin ? adminPages : [])], [isAdmin])
   const activeNav = useMemo(
     () => visiblePages.find((page) => location.pathname === page.route || location.pathname.startsWith(`${page.route}/`))?.route ?? '/console/overview',
@@ -919,6 +1071,7 @@ export default function App() {
       setRewards(nextRewards)
       setArtifacts(nextArtifacts)
       setPipelineProgress(nextPipeline)
+      setStageRunMeta({})
       setRuntime(nextRuntime)
       setDatasets(nextDatasets)
       setActiveDatasetId(datasetId)
@@ -1095,9 +1248,39 @@ export default function App() {
     try {
       const nextGraph = await consoleApi.generateDomains(activeDatasetId)
       setGraph(nextGraph)
-      Toast.success(`已生成 ${nextGraph.domains.length} 个领域`)
+      Toast.success(`已生成 ${nextGraph.domains.length} 个方向`)
     } catch (error) {
-      if (!handleRequestError(error)) Toast.error((error as Error).message)
+      if (handleRequestError(error)) return
+
+      const message = (error as Error).message
+      const normalizedMessage = message.toLowerCase()
+      const isProviderDecodeError = normalizedMessage.includes('provider returned undecodable response')
+        || normalizedMessage.includes('provider returned no choices')
+        || normalizedMessage.includes('chat.completion.chunk')
+
+      if (isProviderDecodeError) {
+        setTrustSignal({
+          tone: 'warning',
+          title: 'AI 服务返回异常，方向未生成',
+          detail: `系统返回：${message}`,
+          recoveryHint: isAdmin
+            ? '请到“AI 服务”页切换模型（建议优先使用标准 chat/completions 兼容模型）后重试；也可先回到任务设置缩小主题范围。'
+            : '请联系管理员切换模型后重试；你也可以先回到任务设置缩小主题范围，再次发起生成。',
+          nextStep: isAdmin
+            ? { label: '去 AI 服务', route: '/console/admin/providers' }
+            : { label: '查看恢复指南', route: '/console/help' },
+        })
+      } else {
+        setTrustSignal({
+          tone: 'warning',
+          title: '方向草案生成失败',
+          detail: `系统返回：${message}`,
+          recoveryHint: '可先回到任务设置调整主题和规模后重试；若持续失败，请查看帮助恢复页。',
+          nextStep: { label: '回到任务设置', route: '/console/planning' },
+        })
+      }
+
+      Toast.error(message)
     } finally {
       setBusy(false)
     }
@@ -1121,7 +1304,7 @@ export default function App() {
     setBusy(true)
     try {
       await consoleApi.confirmDomains(graph.dataset.id)
-      Toast.success('领域已确认')
+      Toast.success('方向结构已确认')
       navigate('/console/questions')
       await loadDatasetWorkspace(graph.dataset.id)
     } catch (error) {
@@ -1144,11 +1327,12 @@ export default function App() {
     setBusy(true)
     try {
       const result = await consoleApi.generateQuestions(activeDatasetId)
+      setStageRunMeta((current) => ({ ...current, questions: result }))
       setTrustSignal({
         tone: 'info',
         title: '题目生成已开始',
-        detail: result.message,
-        recoveryHint: '预计完成后，点击“刷新结果”同步最新题目列表。',
+        detail: `${result.message}，当前阶段 ETA：${etaLabel('questions_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。你可以先切换到其他页面继续操作，后台会持续处理。`,
+        recoveryHint: '建议 60~90 秒后刷新一次；如果等待任务数较高，可改为 2~3 分钟再刷新。',
         nextStep: { label: '查看题目页', route: '/console/questions' },
       })
       Toast.success(result.message)
@@ -1173,11 +1357,12 @@ export default function App() {
     setBusy(true)
     try {
       const result = await consoleApi.generateReasoning(activeDatasetId)
+      setStageRunMeta((current) => ({ ...current, reasoning: result }))
       setTrustSignal({
         tone: 'info',
         title: '答案生成已开始',
-        detail: result.message,
-        recoveryHint: '稍后点击“刷新结果”确认新记录是否写入。',
+        detail: `${result.message}，当前阶段 ETA：${etaLabel('reasoning_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。你可以先切换到其他页面，后台会持续处理并保留进度。`,
+        recoveryHint: '建议 60~90 秒后刷新一次；若等待任务数较高，可改为 2~3 分钟再刷新。',
         nextStep: { label: '查看推理页', route: '/console/reasoning' },
       })
       Toast.success(result.message)
@@ -1202,11 +1387,12 @@ export default function App() {
     setBusy(true)
     try {
       const result = await consoleApi.generateRewards(activeDatasetId)
+      setStageRunMeta((current) => ({ ...current, rewards: result }))
       setTrustSignal({
         tone: 'info',
         title: '质量评估已开始',
-        detail: result.message,
-        recoveryHint: '若长时间无结果，请先刷新并检查等待任务数。',
+        detail: `${result.message}，当前阶段 ETA：${etaLabel('rewards_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。你可以先切换到其他页面，后台会持续处理并保留进度。`,
+        recoveryHint: '建议 60~90 秒后刷新一次；若等待任务数较高，可改为 2~3 分钟再刷新。',
         nextStep: { label: '查看质量评估', route: '/console/rewards' },
       })
       Toast.success(result.message)
@@ -1231,11 +1417,12 @@ export default function App() {
     setBusy(true)
     try {
       const result = await consoleApi.generateExport(activeDatasetId)
+      setStageRunMeta((current) => ({ ...current, export: result }))
       setTrustSignal({
         tone: 'info',
         title: '导出任务已开始',
-        detail: `${result.message}，导出完成后请在结果交付页确认文件类型并执行交付前检查。`,
-        recoveryHint: '交付前请先核对质量评分、文件类型与生成时间，确认后再通知下游下载。',
+        detail: `${result.message}，当前阶段 ETA：${etaLabel('export_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。你可以先切换到其他页面，后台会持续处理并保留进度。`,
+        recoveryHint: '建议 60~90 秒后刷新一次；若等待任务数较高，可改为 2~3 分钟再刷新。',
         nextStep: { label: '前往结果交付', route: '/console/exports' },
       })
       Toast.success(result.message)
@@ -1261,6 +1448,42 @@ export default function App() {
       Toast.success('文件标识已复制，可交给运维或下游下载')
     } catch {
       Toast.warning('复制失败，请手动记录文件标识后下载交付')
+    }
+  }
+
+  const downloadArtifact = async (artifact: Artifact) => {
+    if (!artifact.datasetId || !artifact.id) return
+    try {
+      const response = await fetch(consoleApi.artifactDownloadUrl(artifact.datasetId, artifact.id), {
+        credentials: 'include',
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || '下载失败，请稍后重试')
+      }
+      const blob = await response.blob()
+      const disposition = response.headers.get('Content-Disposition') || ''
+      const matched = disposition.match(/filename="?([^";]+)"?/)
+      const fileName = matched?.[1] || artifactDisplayName(artifact.objectKey)
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      Toast.success('结果文件下载已开始')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '下载失败，请稍后重试'
+      setTrustSignal({
+        tone: 'warning',
+        title: '结果文件下载失败',
+        detail: `系统返回：${message}`,
+        recoveryHint: '请先刷新结果页，确认交付文件已生成；若重复失败，请联系管理员检查存储配置。',
+        nextStep: { label: '返回结果交付', route: '/console/exports' },
+      })
+      Toast.error(message)
     }
   }
 
@@ -1598,10 +1821,15 @@ export default function App() {
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>任务名称</span><Text strong>{activeDataset?.name ?? '尚未选择'}</Text></div>
             <div className="console-summary-row"><span>任务主题</span><Text strong>{activeDataset?.rootKeyword ?? '—'}</Text></div>
-            <div className="console-summary-row"><span>当前阶段</span><Text strong>{activeDataset ? statusLabel(activeDataset.status) : '—'}</Text></div>
+            <div className="console-summary-row"><span>当前阶段</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出收尾中' : statusLabel(activeDataset.status)) : '—'}</Text></div>
             <div className="console-summary-row"><span>完成进度</span><Text strong>{activePipeline ? `${activePipeline.completionPercent}%` : activeDataset ? `${progressPercent(activeDataset.status)}%` : '—'}</Text></div>
-            <div className="console-summary-row"><span>等待状态</span><Text strong>{activeDataset ? waitingStateLabel(activeDataset.status, runtime?.queueDepth ?? 0) : '请先创建任务'}</Text></div>
-            <div className="console-summary-row"><span>下一步动作</span><Text strong>{activeDataset ? nextActionLabel(activeDataset.status) : '先进入任务设置创建任务'}</Text></div>
+            <div className="console-summary-row"><span>等待状态</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出状态已完成，正在确认交付文件，请稍后刷新' : waitingStateLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '请先创建任务'}</Text></div>
+            <div className="console-summary-row"><span>等待原因</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出计算已完成，系统正在将结果写入交付存储。' : waitingReasonLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '创建任务后显示等待原因'}</Text></div>
+            <div className="console-summary-row"><span>建议操作</span><Text strong>{activeDataset ? (exportDeliveryPending ? '暂时无需重复触发导出，等待交付文件落盘后再下载。' : waitingActionLabel(activeDataset.status)) : '创建任务后显示可执行操作'}</Text></div>
+            <div className="console-summary-row"><span>刷新建议</span><Text strong>{activeDataset ? (exportDeliveryPending ? '系统会每 20 秒自动刷新；检测到交付文件后将自动变为可下载。' : refreshExpectationLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '创建任务后显示刷新建议'}</Text></div>
+            <div className="console-summary-row"><span>进度保障</span><Text strong>{activeDataset ? (exportDeliveryPending ? '任务已完成导出计算，正在落盘交付文件，请勿重复触发导出。' : trustMessageLabel(activeDataset.status)) : '创建任务后显示进度保障说明'}</Text></div>
+            <div className="console-summary-row"><span>当前阶段 ETA</span><Text strong>{activeEta}</Text></div>
+            <div className="console-summary-row"><span>下一步动作</span><Text strong>{activeDataset ? (exportDeliveryPending ? '等待交付文件出现后再下载结果' : nextActionLabel(activeDataset.status)) : '先进入任务设置创建任务'}</Text></div>
             <div className="console-summary-row"><span>预计样本</span><Text strong>{activeDataset?.estimate.estimatedSamples ?? '—'}</Text></div>
           </div>
           {activePipeline ? (
@@ -1653,11 +1881,12 @@ export default function App() {
               <Card key={dataset.id} className={clsx('console-quick-card', { 'border-[var(--semi-color-primary)]': dataset.id === activeDatasetId })} bodyStyle={{ padding: 18 }}>
                 <div className="cursor-pointer" onClick={() => void loadDatasetWorkspace(dataset.id, `已切换到数据集「${dataset.name}」`)}>
                   <Space vertical align="start" spacing="medium" style={{ width: '100%' }}>
-                    <Tag color="blue">{statusLabel(dataset.status)}</Tag>
+                    <Tag color="blue">{dataset.id === activeDatasetId && exportDeliveryPending ? '导出收尾中' : statusLabel(dataset.status)}</Tag>
                     <Title heading={6} className="!mb-0">{dataset.name}</Title>
                     <Progress percent={dataset.id === activeDatasetId && activePipeline ? activePipeline.completionPercent : progressPercent(dataset.status)} showInfo stroke="#3b82f6" aria-label="任务进度" />
-                    <Text className="console-caption">等待：{waitingStateLabel(dataset.status, runtime?.queueDepth ?? 0)}</Text>
-                    <Text className="console-caption">下一步：{nextActionLabel(dataset.status)}</Text>
+                    <Text className="console-caption">当前阶段 ETA：{dataset.id === activeDatasetId && exportDeliveryPending ? '预计 1~3 分钟内完成交付文件落盘' : etaLabel(dataset.status, runtime?.queueDepth ?? 0)}</Text>
+                    <Text className="console-caption">等待：{dataset.id === activeDatasetId && exportDeliveryPending ? '导出状态已完成，正在确认交付文件，请稍后刷新' : waitingStateLabel(dataset.status, runtime?.queueDepth ?? 0)}</Text>
+                    <Text className="console-caption">下一步：{dataset.id === activeDatasetId && exportDeliveryPending ? '等待交付文件出现后再下载结果' : nextActionLabel(dataset.status)}</Text>
                     <Text className="console-caption">{dataset.rootKeyword} · 预计 {dataset.estimate.estimatedSamples} 个样本</Text>
                     <Text className="console-caption">更新于 {formatTime(dataset.updatedAt)}</Text>
                   </Space>
@@ -1778,7 +2007,7 @@ export default function App() {
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>数据集</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
             <div className="console-summary-row"><span>任务主题</span><Text strong>{activeDataset?.rootKeyword ?? '—'}</Text></div>
-            <div className="console-summary-row"><span>当前状态</span><Text strong>{activeDataset ? statusLabel(activeDataset.status) : '—'}</Text></div>
+            <div className="console-summary-row"><span>当前状态</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出收尾中' : statusLabel(activeDataset.status)) : '—'}</Text></div>
             <div className="console-summary-row"><span>方向数量</span><Text strong>{graph?.domains.length ?? 0}</Text></div>
           </div>
         </Card>
@@ -1862,8 +2091,14 @@ export default function App() {
           <Title heading={4} className="!mb-0">{summaryTitle}</Title>
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>活动数据集</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
+            <div className="console-summary-row"><span>当前阶段</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出收尾中' : statusLabel(activeDataset.status)) : '未开始'}</Text></div>
             <div className="console-summary-row"><span>阶段结果数</span><Text strong>{records.length}</Text></div>
             <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
+            <div className="console-summary-row"><span>等待状态</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出状态已完成，正在确认交付文件，请稍后刷新' : waitingStateLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '请先创建任务'}</Text></div>
+            <div className="console-summary-row"><span>等待原因</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出计算已完成，系统正在将结果写入交付存储。' : waitingReasonLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '创建任务后显示等待原因'}</Text></div>
+            <div className="console-summary-row"><span>建议操作</span><Text strong>{activeDataset ? (exportDeliveryPending ? '暂时无需重复触发导出，等待交付文件落盘后再下载。' : waitingActionLabel(activeDataset.status)) : '创建任务后显示可执行操作'}</Text></div>
+            <div className="console-summary-row"><span>当前阶段 ETA</span><Text strong>{activeEta}</Text></div>
+            <div className="console-summary-row"><span>刷新建议</span><Text strong>{activeDataset ? (exportDeliveryPending ? '系统会每 20 秒自动刷新；检测到交付文件后将自动变为可下载。' : refreshExpectationLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '创建任务后显示刷新建议'}</Text></div>
           </div>
           <Card className="console-toolbar-card mt-4" bodyStyle={{ padding: 16 }}>
             <Text strong>异常说明</Text>
@@ -2517,7 +2752,8 @@ export default function App() {
                       <Route path="/console/questions" element={renderRecordPage({ badge: '结果中心 / 题目结果', title: '题目生成结果中心', description: '查看题目生成质量、异常状态，并决定是否进入答案生成。', actionLabel: '开始生成题目', onGenerate: generateQuestions, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '问题结果已刷新') }, records: questions, emptyTitle: '尚未生成题目', emptyDescription: '请先确认主题，再开始生成题目。', summaryTitle: '题目阶段摘要', summaryCards: [{ icon: Layers3, label: '题目总数', value: questions.length, helper: '当前可用于后续步骤的题目数量' }, { icon: ShieldCheck, label: '状态正常', value: questions.filter((item) => item.status === 'generated').length, helper: '状态为“已生成”的题目数量' }, { icon: Bell, label: '待关注', value: questions.filter((item) => item.status !== 'generated').length, helper: '状态异常或处理中，建议优先复查' }], nextStepTips: ['优先复核“待关注”题目，确认是否需要重跑。', '抽检不同方向题目，避免主题覆盖不均。', '确认题目质量后再进入答案生成。'], exceptionHint: '若状态长时间停留在“处理中/排队中”，通常是等待任务较多或上游任务未完成，先刷新并查看等待任务数。', renderRecord: (record: Question) => { const state = questionStatusLabel(record.status); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="blue">{record.domainName}</Tag><Tag color={state.color}>{state.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.content}</Text></div> } })} />
                       <Route path="/console/reasoning" element={renderRecordPage({ badge: '结果中心 / 答案结果', title: '答案与思路结果中心', description: '聚焦答案摘要质量，而非底层对象字段。', actionLabel: '开始生成答案', onGenerate: generateReasoning, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '推理结果已刷新') }, records: reasoning, emptyTitle: '尚未生成答案', emptyDescription: '请先完成题目生成，再开始生成答案。', summaryTitle: '答案阶段摘要', summaryCards: [{ icon: BrainCircuit, label: '答案总数', value: reasoning.length, helper: '已返回的答案与思路记录' }, { icon: ShieldCheck, label: '完整摘要', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '完整').length, helper: '摘要信息完整，可直接进入评估' }, { icon: Bell, label: '待补充', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '待补充').length, helper: '摘要过短，建议重试或人工复核' }], nextStepTips: ['先处理“待补充”答案，再批量进入质量评估。', '检查答案是否覆盖题目核心要点。', '确认摘要稳定后再触发奖励评估。'], exceptionHint: '若摘要内容明显过短或重复，通常是模型输出被截断或输入上下文不足，建议重跑该批次。', renderRecord: (record: ReasoningRecord) => { const quality = reasoningQualityLabel(record.answerSummary); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="cyan">答案摘要</Tag><Tag color={quality.color}>{quality.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.answerSummary}</Text><Text className="mt-2 block console-caption">{quality.note}</Text><Text className="mt-2 block console-caption">题目：{record.questionText}</Text></div> } })} />
                       <Route path="/console/rewards" element={renderRecordPage({ badge: '结果中心 / 质量评估', title: '质量评分结果中心', description: '展示评分等级、风险提示与建议动作，支持快速决策。', actionLabel: '开始质量评估', onGenerate: generateRewards, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '奖励结果已刷新') }, records: rewards, emptyTitle: '尚未生成质量评估', emptyDescription: '先完成答案生成，再触发质量评估。', summaryTitle: '评估阶段摘要', summaryCards: [{ icon: ShieldCheck, label: '评分记录', value: rewards.length, helper: '已生成的质量评分条目' }, { icon: Sparkles, label: '高质量', value: rewards.filter((item) => item.score >= 0.85).length, helper: '可直接进入导出候选' }, { icon: Bell, label: '风险项', value: rewards.filter((item) => item.score < 0.5).length, helper: '建议先回修再继续流程' }], nextStepTips: ['优先处理“风险”与“待优化”记录。', '对“可交付”记录执行抽样复核。', '高质量样本可直接推进导出。'], exceptionHint: '若低分记录突然增多，通常意味着上游答案质量波动，建议回看答案阶段并抽样检查。', renderRecord: (record: RewardRecord) => { const quality = rewardQualityLabel(record.score); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color={quality.color}>{quality.text}</Tag><Tag color="green">评分 {record.score.toFixed(2)}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.questionText}</Text><Text className="mt-2 block console-caption">{quality.note}</Text></div> } })} />
-                      <Route path="/console/exports" element={renderRecordPage({ badge: '结果中心 / 导出交付', title: '导出结果中心', description: '关注交付状态、文件可用性与下一步交付动作。', actionLabel: '开始导出结果', onGenerate: generateExport, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '导出结果已刷新') }, records: artifacts, emptyTitle: '尚未生成导出结果', emptyDescription: '完成质量评估后，即可触发导出。', summaryTitle: '导出阶段摘要', summaryCards: [{ icon: HardDriveDownload, label: '导出包数量', value: artifacts.length, helper: '已生成的可交付文件数量' }, { icon: FileOutput, label: 'JSONL 导出', value: artifacts.filter((item) => item.artifactType === 'jsonl-export').length, helper: '标准训练数据导出格式' }, { icon: Bell, label: '待确认', value: artifacts.filter((item) => item.contentType !== 'application/jsonl').length, helper: '非标准类型，建议确认兼容性' }], nextStepTips: ['优先下载并校验最新导出包。', '确认文件类型与下游训练流程兼容。', '交付前记录版本与生成时间。'], exceptionHint: '若导出后列表为空，多数是任务仍在队列中或上游质量评估未完成，可稍后刷新。', renderRecord: (record: Artifact) => <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Tag color="violet">{artifactLabel(record.artifactType)}</Tag><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{artifactDisplayName(record.objectKey)}</Text><Text className="mt-2 block console-caption">文件类型：{record.contentType}</Text></div> })} />
+                      <Route path="/console/exports" element={renderRecordPage({ badge: '结果中心 / 导出交付', title: '导出结果中心', description: '关注交付状态、文件可用性与下一步交付动作。', actionLabel: '开始导出结果', onGenerate: generateExport, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '导出结果已刷新') }, records: artifacts, emptyTitle: '尚未生成导出结果', emptyDescription: '完成质量评估后，即可触发导出。', summaryTitle: '导出阶段摘要', summaryCards: [{ icon: HardDriveDownload, label: '导出包数量', value: artifacts.length, helper: '已生成的可交付文件数量' }, { icon: FileOutput, label: 'JSONL 导出', value: artifacts.filter((item) => item.artifactType === 'jsonl-export').length, helper: '标准训练数据导出格式' }, { icon: Bell, label: '待确认', value: artifacts.filter((item) => item.contentType !== 'application/jsonl').length, helper: '非标准类型，建议确认兼容性' }], nextStepTips: ['下载前先确认最新导出时间，避免交付旧版本。', '先核对文件类型说明，再与下游训练流程做兼容确认。', '交付前完成“三项检查”：评分结果、文件类型、生成时间。', '交付后同步文件标识并提醒下游完成下载验收反馈。'], exceptionHint: '若导出后列表为空，多数是任务仍在队列中或上游质量评估未完成；若多次刷新仍为空，请先回到质量评分页确认已完成。', renderRecord: (record: Artifact) => <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Tag color="violet">{artifactLabel(record.artifactType)}</Tag><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{artifactDisplayName(record.objectKey)}</Text><Text className="mt-2 block console-caption">文件类型：{artifactContentTypeLabel(record.contentType)}</Text><Text className="mt-1 block console-caption">说明：{artifactContentTypeHint(record.contentType)}</Text><div className="mt-3 flex flex-wrap gap-2"><Button size="small" theme="solid" type="primary" onClick={() => downloadArtifact(record)}>下载结果</Button><Button size="small" theme="light" onClick={() => void copyArtifactKey(record.objectKey)}>复制交付标识</Button></div></div> })} />
+                      <Route path="/console/help" element={renderHelp()} />
                       {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
                       {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
                       {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}

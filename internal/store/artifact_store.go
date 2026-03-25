@@ -71,11 +71,22 @@ func (s *ArtifactStore) Runtime(ctx context.Context) (model.RuntimeStatus, error
       return model.RuntimeStatus{}, fmt.Errorf("runtime query failed: %w", err)
     }
   }
+
+  queuedStatusDepth := 0
+  if err := s.db.QueryRow(ctx, `
+    SELECT COUNT(*)
+    FROM datasets
+    WHERE status IN ('questions_queued', 'reasoning_queued', 'rewards_queued', 'export_queued')`).Scan(&queuedStatusDepth); err != nil {
+    return model.RuntimeStatus{}, fmt.Errorf("runtime queued status query failed: %w", err)
+  }
+  status.QueueDepth = queuedStatusDepth
+
   if s.redis != nil {
     depth, err := s.redis.LLen(ctx, s.queue).Result()
-    if err == nil {
+    if err == nil && int(depth) > status.QueueDepth {
       status.QueueDepth = int(depth)
     }
   }
+
   return status, nil
 }

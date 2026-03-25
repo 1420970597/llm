@@ -1,11 +1,15 @@
 package main
 
 import (
-  "encoding/json"
+  "fmt"
   "net/http"
+  "net/url"
+  "strconv"
+  "strings"
   "time"
 
   "github.com/1420970597/llm/internal/model"
+  "github.com/1420970597/llm/internal/storage"
 )
 
 func (app *application) enqueueExport(w http.ResponseWriter, r *http.Request) {
@@ -14,21 +18,30 @@ func (app *application) enqueueExport(w http.ResponseWriter, r *http.Request) {
     app.writeError(w, http.StatusBadRequest, err)
     return
   }
-  payload, _ := json.Marshal(map[string]any{"type": "export.generate", "datasetId": id})
-  if err := app.redis.LPush(r.Context(), app.cfg.QueueName, payload).Err(); err != nil {
+
+  rewards, err := app.rewards.List(r.Context(), id)
+  if err != nil {
     app.writeError(w, http.StatusInternalServerError, err)
     return
   }
-  if err := app.datasets.UpdateStatus(r.Context(), id, "export_queued"); err != nil {
+  if len(rewards) == 0 {
+    app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue export: dataset %d has no reward records", id))
+    return
+  }
+
+  enqueued, err := app.enqueueDatasetJob(r.Context(), "export.generate", id, "export_queued")
+  if err != nil {
     app.writeError(w, http.StatusInternalServerError, err)
     return
   }
-  _ = app.store.WriteAuditLog(r.Context(), "user", "enqueue", "dataset_export", datasetIDString(id), "export.generate")
+  if enqueued {
+    _ = app.store.WriteAuditLog(r.Context(), "user", "enqueue", "dataset_export", datasetIDString(id), "export.generate")
+  }
   app.writeJSON(w, http.StatusAccepted, model.StageEnqueueResult{
     DatasetID:  id,
     Stage:      "export",
     State:      "queued",
-    Message:    "导出任务已入队",
+    Message:    queuedMessage(enqueued, "导出任务已入队", "导出任务已在队列中"),
     AcceptedAt: time.Now().Format(time.RFC3339),
   })
 }
@@ -45,6 +58,68 @@ func (app *application) listArtifacts(w http.ResponseWriter, r *http.Request) {
     return
   }
   app.writeJSON(w, http.StatusOK, items)
+}
+
+func (app *application) downloadArtifact(w http.ResponseWriter, r *http.Request) {
+  id, err := datasetIDFromPath(r.URL.Path)
+  if err != nil {
+    app.writeError(w, http.StatusBadRequest, err)
+    return
+  }
+  artifactID := r.URL.Query().Get("artifactId")
+  if artifactID == "" {
+    app.writeError(w, http.StatusBadRequest, http.ErrMissingFile)
+    return
+  }
+  items, err := app.artifacts.List(r.Context(), id)
+  if err != nil {
+    app.writeError(w, http.StatusInternalServerError, err)
+    return
+  }
+  dataset, err := app.datasets.GetDataset(r.Context(), id)
+  if err != nil {
+    app.writeError(w, http.StatusInternalServerError, err)
+    return
+  }
+  endpoint, region, bucket, accessKeyID, secretKey, usePathStyle, err := app.datasets.ResolveStorageProfile(r.Context(), dataset.StorageProfileID)
+  if err != nil {
+    app.writeError(w, http.StatusInternalServerError, err)
+    return
+  }
+  objectStore, err := storage.New(storage.Profile{
+    Endpoint:     endpoint,
+    Region:       region,
+    Bucket:       bucket,
+    AccessKeyID:  accessKeyID,
+    SecretKey:    secretKey,
+    UsePathStyle: usePathStyle,
+  })
+  if err != nil {
+    app.writeError(w, http.StatusInternalServerError, err)
+    return
+  }
+  for _, item := range items {
+    if artifactID == strconv.FormatInt(item.ID, 10) {
+      fileName := item.ObjectKey[strings.LastIndex(item.ObjectKey, "/")+1:]
+      if fileName == "" {
+        fileName = "dataset-export.jsonl"
+      }
+      objectKey := item.ObjectKey
+      if parsed, parseErr := url.Parse(item.ObjectKey); parseErr == nil && parsed.Scheme == "s3" {
+        objectKey = strings.TrimPrefix(parsed.Path, "/")
+      }
+      payload, err := objectStore.ReadBytes(r.Context(), objectKey)
+      if err != nil {
+        app.writeError(w, http.StatusInternalServerError, err)
+        return
+      }
+      w.Header().Set("Content-Type", item.ContentType)
+      w.Header().Set("Content-Disposition", "attachment; filename=\""+fileName+"\"")
+      _, _ = w.Write(payload)
+      return
+    }
+  }
+  http.NotFound(w, r)
 }
 
 func (app *application) runtimeStatus(w http.ResponseWriter, r *http.Request) {

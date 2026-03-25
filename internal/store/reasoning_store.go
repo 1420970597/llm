@@ -16,6 +16,14 @@ func NewReasoningStore(db *pgxpool.Pool) *ReasoningStore {
 }
 
 func (s *ReasoningStore) Insert(ctx context.Context, datasetID int64, records []model.ReasoningRecord) error {
+  return s.upsert(ctx, datasetID, records, true)
+}
+
+func (s *ReasoningStore) UpsertPartial(ctx context.Context, datasetID int64, records []model.ReasoningRecord) error {
+  return s.upsert(ctx, datasetID, records, false)
+}
+
+func (s *ReasoningStore) upsert(ctx context.Context, datasetID int64, records []model.ReasoningRecord, markGenerated bool) error {
   for _, record := range records {
     _, err := s.db.Exec(ctx, `
       INSERT INTO reasoning_records (dataset_id, question_id, answer_summary, object_key, status)
@@ -34,6 +42,9 @@ func (s *ReasoningStore) Insert(ctx context.Context, datasetID int64, records []
     if err != nil {
       return err
     }
+  }
+  if !markGenerated {
+    return nil
   }
   _, err := s.db.Exec(ctx, `UPDATE datasets SET status = 'reasoning_generated', updated_at = NOW() WHERE id = $1`, datasetID)
   return err

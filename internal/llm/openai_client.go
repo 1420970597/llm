@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -42,11 +43,8 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}
-	if _, exists := payload["stream"]; !exists {
-		payload["stream"] = false
-	}
 
-	body, err := json.Marshal(payload)
+	requestBodies, err := buildChatCompletionBodies(provider, payload)
 	if err != nil {
 		return decoded, err
 	}
@@ -55,8 +53,10 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 	client := &http.Client{Timeout: timeout}
 	var lastErr error
 
-	for attempt := 1; attempt <= 3; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	const maxAttempts = 3
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		requestBody := requestBodies[(attempt-1)%len(requestBodies)]
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(requestBody))
 		if err != nil {
 			return decoded, err
 		}
@@ -66,7 +66,8 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 		res, err := client.Do(req)
 		if err != nil {
 			lastErr = err
-			if shouldRetryTransportError(err) && attempt < 3 {
+			log.Printf("llm.chat.transport_error model=%s attempt=%d err=%v", provider.Model, attempt, err)
+			if shouldRetryTransportError(err) && attempt < maxAttempts {
 				time.Sleep(time.Duration(attempt) * time.Second)
 				continue
 			}
@@ -77,7 +78,7 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 			message, retryable := readProviderError(res)
 			_ = res.Body.Close()
 			lastErr = fmt.Errorf("provider request failed: %s", message)
-			if retryable && attempt < 3 {
+			if retryable && attempt < maxAttempts {
 				time.Sleep(time.Duration(attempt) * time.Second)
 				continue
 			}
@@ -88,7 +89,7 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 		_ = res.Body.Close()
 		if readErr != nil {
 			lastErr = readErr
-			if attempt < 3 {
+			if attempt < maxAttempts {
 				time.Sleep(time.Duration(attempt) * time.Second)
 				continue
 			}
@@ -98,15 +99,15 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 		err = decodeChatCompletionBody(raw, &decoded)
 		if err != nil {
 			lastErr = err
-			if attempt < 3 {
+			if attempt < maxAttempts {
 				time.Sleep(time.Duration(attempt) * time.Second)
 				continue
 			}
-			return decoded, err
+			return decoded, fmt.Errorf("provider response decode failed after %d attempts: %w", attempt, err)
 		}
 		if len(decoded.Choices) == 0 {
 			lastErr = fmt.Errorf("provider returned no choices")
-			if attempt < 3 {
+			if attempt < maxAttempts {
 				time.Sleep(time.Duration(attempt) * time.Second)
 				continue
 			}
@@ -119,6 +120,69 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 		return decoded, lastErr
 	}
 	return decoded, fmt.Errorf("provider request failed")
+}
+
+func buildChatCompletionBodies(provider ProviderConfig, payload map[string]any) ([][]byte, error) {
+	base := clonePayload(payload)
+	if _, exists := base["stream"]; !exists {
+		base["stream"] = false
+	}
+
+	if strings.HasPrefix(strings.ToLower(provider.Model), "gpt-5") {
+		if _, hasReasoning := base["reasoning_effort"]; hasReasoning {
+			delete(base, "temperature")
+		}
+		if _, hasMaxTokens := base["max_tokens"]; !hasMaxTokens {
+			if _, hasMaxCompletionTokens := base["max_completion_tokens"]; !hasMaxCompletionTokens {
+				base["max_completion_tokens"] = 4096
+			}
+		}
+	}
+
+	variants := []map[string]any{base}
+	if strings.HasPrefix(strings.ToLower(provider.Model), "gpt-5") {
+		altTokens := clonePayload(base)
+		if _, hasMaxTokens := altTokens["max_tokens"]; !hasMaxTokens {
+			if value, ok := altTokens["max_completion_tokens"]; ok {
+				altTokens["max_tokens"] = value
+				delete(altTokens, "max_completion_tokens")
+			} else {
+				altTokens["max_tokens"] = 4096
+			}
+			variants = append(variants, altTokens)
+		}
+
+		altStreaming := clonePayload(base)
+		altStreaming["stream"] = true
+		variants = append(variants, altStreaming)
+	}
+
+	bodies := make([][]byte, 0, len(variants))
+	seen := map[string]struct{}{}
+	for _, variant := range variants {
+		body, err := json.Marshal(variant)
+		if err != nil {
+			return nil, err
+		}
+		signature := string(body)
+		if _, exists := seen[signature]; exists {
+			continue
+		}
+		seen[signature] = struct{}{}
+		bodies = append(bodies, body)
+	}
+	if len(bodies) == 0 {
+		return nil, fmt.Errorf("provider payload empty")
+	}
+	return bodies, nil
+}
+
+func clonePayload(payload map[string]any) map[string]any {
+	cloned := make(map[string]any, len(payload))
+	for key, value := range payload {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func shouldRetryTransportError(err error) bool {
@@ -156,7 +220,25 @@ func decodeChatCompletionBody(raw []byte, target *chatCompletionResponse) error 
 				target.Choices[0].Message.Text,
 			)
 		}
-		return nil
+		if len(target.Choices) > 0 && strings.TrimSpace(target.Choices[0].Message.Content) != "" {
+			return nil
+		}
+	}
+
+	var generic map[string]any
+	if err := json.Unmarshal(trimmed, &generic); err == nil {
+		text := strings.Join(extractKnownText(generic), "")
+		if strings.TrimSpace(text) != "" {
+			target.Choices = make([]struct {
+				Message struct {
+					Content          string `json:"content"`
+					ReasoningContent string `json:"reasoning_content"`
+					Text             string `json:"text"`
+				} `json:"message"`
+			}, 1)
+			target.Choices[0].Message.Content = text
+			return nil
+		}
 	}
 
 	content, err := decodeChatCompletionSSE(trimmed)
@@ -173,8 +255,10 @@ func decodeChatCompletionBody(raw []byte, target *chatCompletionResponse) error 
 	}
 
 	preview := string(trimmed)
-	if len(preview) > 220 {
-		preview = preview[:220]
+	if len(preview) > 440 {
+		head := preview[:220]
+		tail := preview[len(preview)-220:]
+		preview = head + " ... " + tail
 	}
 	return fmt.Errorf("provider returned undecodable response: %s", preview)
 }
@@ -182,22 +266,156 @@ func decodeChatCompletionBody(raw []byte, target *chatCompletionResponse) error 
 func decodeChatCompletionSSE(raw []byte) (string, error) {
 	lines := strings.Split(string(raw), "\n")
 	var builder strings.Builder
+	eventPayload := make([]string, 0, 4)
+	sawNonContentEvent := false
+
+	flushEvent := func() {
+		if len(eventPayload) == 0 {
+			return
+		}
+		payload := strings.TrimSpace(strings.Join(eventPayload, ""))
+		eventPayload = eventPayload[:0]
+		if payload == "" || payload == "[DONE]" {
+			return
+		}
+		if text, ok := extractSSEPayloadText(payload); ok && text != "" {
+			builder.WriteString(text)
+			return
+		}
+		if isSSEMetadataOnlyPayload(payload) {
+			sawNonContentEvent = true
+		}
+	}
+
 	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "data:") {
+		line = strings.TrimRight(line, "\r")
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			flushEvent()
 			continue
 		}
-		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if !strings.HasPrefix(trimmed, "data:") {
+			if len(eventPayload) > 0 {
+				eventPayload[len(eventPayload)-1] += strings.TrimSpace(line)
+			}
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
 		if payload == "" || payload == "[DONE]" {
 			continue
 		}
 
-		var chunk chatCompletionStreamChunk
-		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
-			return "", err
+		if text, ok := extractSSEPayloadText(payload); ok {
+			flushEvent()
+			if text != "" {
+				builder.WriteString(text)
+			} else if isSSEMetadataOnlyPayload(payload) {
+				sawNonContentEvent = true
+			}
+			continue
+		}
+		if isSSEMetadataOnlyPayload(payload) {
+			sawNonContentEvent = true
+			continue
 		}
 
-		wrote := false
+		eventPayload = append(eventPayload, payload)
+	}
+	flushEvent()
+
+	if builder.Len() == 0 {
+		if fallback, sawMetadata := extractEmbeddedSSEContent(string(raw)); strings.TrimSpace(fallback) != "" {
+			return fallback, nil
+		} else if sawMetadata {
+			sawNonContentEvent = true
+		}
+		if sawNonContentEvent {
+			return "", fmt.Errorf("sse stream contained metadata chunks but no content")
+		}
+		return "", fmt.Errorf("no sse content")
+	}
+	return builder.String(), nil
+}
+
+func extractEmbeddedSSEContent(raw string) (string, bool) {
+	payloads := extractJSONObjectPayloads(raw)
+	if len(payloads) == 0 {
+		return "", false
+	}
+
+	var builder strings.Builder
+	sawMetadata := false
+	for _, payload := range payloads {
+		text, ok := extractSSEPayloadText(payload)
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(text) != "" {
+			builder.WriteString(text)
+			continue
+		}
+		if isSSEMetadataOnlyPayload(payload) {
+			sawMetadata = true
+		}
+	}
+	return builder.String(), sawMetadata
+}
+
+func extractJSONObjectPayloads(raw string) []string {
+	bytesRaw := []byte(raw)
+	payloads := make([]string, 0, 8)
+	depth := 0
+	start := -1
+	inString := false
+	escaped := false
+
+	for i := 0; i < len(bytesRaw); i++ {
+		ch := bytesRaw[i]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inString = false
+			}
+			continue
+		}
+
+		switch ch {
+		case '"':
+			inString = true
+		case '{':
+			if depth == 0 {
+				start = i
+			}
+			depth++
+		case '}':
+			if depth == 0 {
+				continue
+			}
+			depth--
+			if depth == 0 && start >= 0 {
+				candidate := strings.TrimSpace(string(bytesRaw[start : i+1]))
+				if strings.Contains(candidate, `"choices"`) {
+					payloads = append(payloads, candidate)
+				}
+				start = -1
+			}
+		}
+	}
+
+	return payloads
+}
+
+func extractSSEPayloadText(payload string) (string, bool) {
+	var chunk chatCompletionStreamChunk
+	if err := json.Unmarshal([]byte(payload), &chunk); err == nil {
+		var builder strings.Builder
 		for _, choice := range chunk.Choices {
 			text := firstNonEmpty(
 				choice.Message.Content,
@@ -209,27 +427,55 @@ func decodeChatCompletionSSE(raw []byte) (string, error) {
 			)
 			if text != "" {
 				builder.WriteString(text)
-				wrote = true
 			}
 		}
-
-		if wrote {
-			continue
-		}
-
-		var generic map[string]any
-		if err := json.Unmarshal([]byte(payload), &generic); err != nil {
-			return "", err
-		}
-		for _, text := range extractKnownText(generic) {
-			builder.WriteString(text)
+		if builder.Len() > 0 {
+			return builder.String(), true
 		}
 	}
 
-	if builder.Len() == 0 {
-		return "", fmt.Errorf("no sse content")
+	var generic map[string]any
+	if err := json.Unmarshal([]byte(payload), &generic); err != nil {
+		return "", false
 	}
-	return builder.String(), nil
+	return strings.Join(extractKnownText(generic), ""), true
+}
+
+func isSSEMetadataOnlyPayload(payload string) bool {
+	normalized := strings.ToLower(payload)
+	if strings.Contains(normalized, `"object":"chat.completion.chunk"`) &&
+		(strings.Contains(normalized, `"choices":[]`) || strings.Contains(normalized, `"choices": []`)) &&
+		!strings.Contains(normalized, `"content":"`) &&
+		!strings.Contains(normalized, `"reasoning_content":"`) &&
+		!strings.Contains(normalized, `"text":"`) {
+		return true
+	}
+
+	var generic map[string]any
+	if err := json.Unmarshal([]byte(payload), &generic); err != nil {
+		return false
+	}
+	object, _ := generic["object"].(string)
+	if !strings.Contains(object, "chat.completion.chunk") {
+		return false
+	}
+	choices, ok := generic["choices"].([]any)
+	if !ok {
+		return false
+	}
+	if len(choices) == 0 {
+		return true
+	}
+	for _, rawChoice := range choices {
+		choice, ok := rawChoice.(map[string]any)
+		if !ok {
+			return false
+		}
+		if strings.TrimSpace(strings.Join(extractKnownText(choice), "")) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 func firstNonEmpty(values ...string) string {
@@ -247,10 +493,12 @@ func extractKnownText(value any) []string {
 		collected := []string{}
 		for key, nested := range typed {
 			switch key {
-			case "content", "reasoning_content", "reasoning", "text", "output_text":
+			case "content", "reasoning_content", "reasoning", "text", "output_text", "delta":
 				if text, ok := nested.(string); ok && strings.TrimSpace(text) != "" {
 					collected = append(collected, text)
+					continue
 				}
+				collected = append(collected, extractKnownText(nested)...)
 			default:
 				collected = append(collected, extractKnownText(nested)...)
 			}
