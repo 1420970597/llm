@@ -1298,6 +1298,7 @@ export default function App() {
                   { value: 'low', label: '低' },
                   { value: 'medium', label: '中' },
                   { value: 'high', label: '高' },
+                  { value: 'xhigh', label: '超高' },
                 ]}
                 onChange={(value) => setProviderDraft((current) => ({ ...current, reasoningEffort: String(value ?? '') }))}
                 style={{ width: '100%' }}
