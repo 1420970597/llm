@@ -346,14 +346,15 @@ export default function App() {
   const [providerTestLoading, setProviderTestLoading] = useState(false)
   const [providerTestResult, setProviderTestResult] = useState<ProviderConnectivityResult | null>(null)
   const [storageDraft, setStorageDraft] = useState<StorageDraft>({
-    name: '',
+    name: '本地 MinIO',
     provider: 'minio',
-    endpoint: '',
+    endpoint: 'http://minio:9000',
     region: 'us-east-1',
-    bucket: '',
-    accessKeyId: '',
-    secretAccessKey: '',
+    bucket: 'llm-factory-local',
+    accessKeyId: 'minioadmin',
+    secretAccessKey: 'minioadmin',
     usePathStyle: true,
+    isActive: true,
     isDefault: true,
   })
   const [strategyDraft, setStrategyDraft] = useState<Partial<Strategy>>({
@@ -467,7 +468,7 @@ export default function App() {
         ...current,
         strategyId: current.strategyId || strategyData[0]?.id || 0,
         providerId: current.providerId || providerData[0]?.id || 0,
-        storageProfileId: current.storageProfileId || storageData[0]?.id || 0,
+        storageProfileId: current.storageProfileId || storageData.find((item) => item.isActive)?.id || storageData[0]?.id || 0,
       }))
       if (!activeDatasetId && datasetData[0]?.id) {
         setActiveDatasetId(datasetData[0].id)
@@ -798,7 +799,7 @@ export default function App() {
     try {
       await consoleApi.saveStorageProfile(storageDraft)
       Toast.success('存储配置已保存')
-      setStorageDraft({ name: '', provider: 'minio', endpoint: '', region: 'us-east-1', bucket: '', accessKeyId: '', secretAccessKey: '', usePathStyle: true, isDefault: true })
+      setStorageDraft({ name: '本地 MinIO', provider: 'minio', endpoint: 'http://minio:9000', region: 'us-east-1', bucket: 'llm-factory-local', accessKeyId: 'minioadmin', secretAccessKey: 'minioadmin', usePathStyle: true, isActive: true, isDefault: true })
       await loadBootstrap()
     } catch (error) {
       Toast.error((error as Error).message)
@@ -861,6 +862,7 @@ export default function App() {
       { title: '提供方', dataIndex: 'provider', render: (value: string) => <Tag color="cyan">{value}</Tag> },
       { title: '端点', dataIndex: 'endpoint' },
       { title: '存储桶', dataIndex: 'bucket' },
+      { title: '启用', dataIndex: 'isActive', render: (value: boolean) => <Tag color={value ? 'green' : 'grey'}>{value ? '启用' : '停用'}</Tag> },
       { title: '默认', dataIndex: 'isDefault', render: (value: boolean) => <Tag color={value ? 'green' : 'grey'}>{value ? '是' : '否'}</Tag> },
     ],
     [],
@@ -941,6 +943,11 @@ export default function App() {
         .some((value) => String(value).toLowerCase().includes(keyword)),
     )
   }, [providerSearchKeyword, providers])
+
+  const activeStorageProfiles = useMemo(
+    () => storageProfiles.filter((item) => item.isActive),
+    [storageProfiles],
+  )
 
   const renderOverview = () => (
     <div className="console-page-shell">
@@ -1059,7 +1066,7 @@ export default function App() {
             </div>
             <div>
               <Text className="mb-2 block font-medium">存储配置</Text>
-              <Select value={plannerForm.storageProfileId} optionList={storageProfiles.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => setPlannerForm((current) => ({ ...current, storageProfileId: Number(value) }))} style={{ width: '100%' }} />
+              <Select value={plannerForm.storageProfileId} optionList={activeStorageProfiles.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => setPlannerForm((current) => ({ ...current, storageProfileId: Number(value) }))} style={{ width: '100%' }} />
             </div>
           </div>
           <Space className="mt-6" spacing="medium">
@@ -1363,6 +1370,21 @@ export default function App() {
             </div>
             <Input value={storageDraft.accessKeyId ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, accessKeyId: value }))} placeholder="Access Key ID" />
             <Input value={storageDraft.secretAccessKey ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, secretAccessKey: value }))} placeholder="Secret Access Key" />
+            <div className="console-card-grid-2">
+              <div>
+                <Text className="mb-2 block font-medium">启用状态</Text>
+                <div className="flex h-10 items-center rounded-[16px] border border-[var(--semi-color-border)] px-4">
+                  <Switch checked={storageDraft.isActive ?? true} onChange={(checked) => setStorageDraft((current) => ({ ...current, isActive: checked }))} />
+                </div>
+              </div>
+              <div>
+                <Text className="mb-2 block font-medium">设为默认</Text>
+                <div className="flex h-10 items-center rounded-[16px] border border-[var(--semi-color-border)] px-4">
+                  <Switch checked={storageDraft.isDefault ?? true} onChange={(checked) => setStorageDraft((current) => ({ ...current, isDefault: checked }))} />
+                </div>
+              </div>
+            </div>
+            <Text className="console-caption">已内置本地 MinIO 地址与默认凭证，你可以继续新增多个存储来源，并通过开关控制启用。</Text>
             <Button theme="solid" type="primary" loading={busy} onClick={() => void saveStorage()}>保存存储配置</Button>
           </div>
         </Card>

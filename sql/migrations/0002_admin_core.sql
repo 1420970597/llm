@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS storage_profiles (
   encrypted_secret_key TEXT,
   secret_key_masked TEXT NOT NULL DEFAULT '',
   use_path_style BOOLEAN NOT NULL DEFAULT TRUE,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
   is_default BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

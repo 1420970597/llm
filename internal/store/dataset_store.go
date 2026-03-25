@@ -240,7 +240,7 @@ func (s *DatasetStore) ResolveStorageProfile(ctx context.Context, storageProfile
 	err = s.db.QueryRow(ctx, `
     SELECT endpoint, region, bucket, access_key_id, COALESCE(encrypted_secret_key, ''), use_path_style
     FROM storage_profiles
-    WHERE id = $1`, storageProfileID,
+    WHERE id = $1 AND is_active = TRUE`, storageProfileID,
 	).Scan(&endpoint, &region, &bucket, &accessKeyID, &encryptedSecret, &usePathStyle)
 	if err != nil {
 		return "", "", "", "", "", false, err

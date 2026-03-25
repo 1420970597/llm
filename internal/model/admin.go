@@ -46,6 +46,7 @@ type StorageProfile struct {
 	SecretAccessKey string    `json:"secretAccessKey,omitempty"`
 	SecretKeyMasked string    `json:"secretKeyMasked"`
 	UsePathStyle    bool      `json:"usePathStyle"`
+	IsActive        bool      `json:"isActive"`
 	IsDefault       bool      `json:"isDefault"`
 	CreatedAt       time.Time `json:"createdAt"`
 	UpdatedAt       time.Time `json:"updatedAt"`

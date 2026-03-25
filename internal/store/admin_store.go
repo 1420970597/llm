@@ -132,7 +132,7 @@ func (s *AdminStore) GetProviderWithSecret(ctx context.Context, providerID int64
 
 func (s *AdminStore) ListStorageProfiles(ctx context.Context) ([]model.StorageProfile, error) {
 	rows, err := s.db.Query(ctx, `
-    SELECT id, name, provider, endpoint, region, bucket, access_key_id, secret_key_masked, use_path_style, is_default, created_at, updated_at
+    SELECT id, name, provider, endpoint, region, bucket, access_key_id, secret_key_masked, use_path_style, is_active, is_default, created_at, updated_at
     FROM storage_profiles
     ORDER BY id DESC`)
 	if err != nil {
@@ -143,7 +143,7 @@ func (s *AdminStore) ListStorageProfiles(ctx context.Context) ([]model.StoragePr
 	items := []model.StorageProfile{}
 	for rows.Next() {
 		var item model.StorageProfile
-		if err := rows.Scan(&item.ID, &item.Name, &item.Provider, &item.Endpoint, &item.Region, &item.Bucket, &item.AccessKeyID, &item.SecretKeyMasked, &item.UsePathStyle, &item.IsDefault, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Provider, &item.Endpoint, &item.Region, &item.Bucket, &item.AccessKeyID, &item.SecretKeyMasked, &item.UsePathStyle, &item.IsActive, &item.IsDefault, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -161,9 +161,9 @@ func (s *AdminStore) UpsertStorageProfile(ctx context.Context, input model.Stora
 	if input.ID == 0 {
 		err = s.db.QueryRow(ctx, `
       INSERT INTO storage_profiles (
-        name, provider, endpoint, region, bucket, access_key_id, encrypted_secret_key, secret_key_masked, use_path_style, is_default
-      ) VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $7 = '' THEN NULL ELSE $7 END, $8, $9, $10)
-      RETURNING id, name, provider, endpoint, region, bucket, access_key_id, secret_key_masked, use_path_style, is_default, created_at, updated_at`,
+        name, provider, endpoint, region, bucket, access_key_id, encrypted_secret_key, secret_key_masked, use_path_style, is_active, is_default
+      ) VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $7 = '' THEN NULL ELSE $7 END, $8, $9, $10, $11)
+      RETURNING id, name, provider, endpoint, region, bucket, access_key_id, secret_key_masked, use_path_style, is_active, is_default, created_at, updated_at`,
 			input.Name,
 			input.Provider,
 			input.Endpoint,
@@ -173,8 +173,9 @@ func (s *AdminStore) UpsertStorageProfile(ctx context.Context, input model.Stora
 			encryptedSecret,
 			appcrypto.MaskSecret(input.SecretAccessKey),
 			input.UsePathStyle,
+			input.IsActive,
 			input.IsDefault,
-		).Scan(&item.ID, &item.Name, &item.Provider, &item.Endpoint, &item.Region, &item.Bucket, &item.AccessKeyID, &item.SecretKeyMasked, &item.UsePathStyle, &item.IsDefault, &item.CreatedAt, &item.UpdatedAt)
+		).Scan(&item.ID, &item.Name, &item.Provider, &item.Endpoint, &item.Region, &item.Bucket, &item.AccessKeyID, &item.SecretKeyMasked, &item.UsePathStyle, &item.IsActive, &item.IsDefault, &item.CreatedAt, &item.UpdatedAt)
 	} else {
 		err = s.db.QueryRow(ctx, `
       UPDATE storage_profiles SET
@@ -187,10 +188,11 @@ func (s *AdminStore) UpsertStorageProfile(ctx context.Context, input model.Stora
         encrypted_secret_key = COALESCE(NULLIF($8, ''), encrypted_secret_key),
         secret_key_masked = CASE WHEN $9 = '' THEN secret_key_masked ELSE $9 END,
         use_path_style = $10,
-        is_default = $11,
+        is_active = $11,
+        is_default = $12,
         updated_at = NOW()
       WHERE id = $1
-      RETURNING id, name, provider, endpoint, region, bucket, access_key_id, secret_key_masked, use_path_style, is_default, created_at, updated_at`,
+      RETURNING id, name, provider, endpoint, region, bucket, access_key_id, secret_key_masked, use_path_style, is_active, is_default, created_at, updated_at`,
 			input.ID,
 			input.Name,
 			input.Provider,
@@ -201,8 +203,9 @@ func (s *AdminStore) UpsertStorageProfile(ctx context.Context, input model.Stora
 			encryptedSecret,
 			appcrypto.MaskSecret(input.SecretAccessKey),
 			input.UsePathStyle,
+			input.IsActive,
 			input.IsDefault,
-		).Scan(&item.ID, &item.Name, &item.Provider, &item.Endpoint, &item.Region, &item.Bucket, &item.AccessKeyID, &item.SecretKeyMasked, &item.UsePathStyle, &item.IsDefault, &item.CreatedAt, &item.UpdatedAt)
+		).Scan(&item.ID, &item.Name, &item.Provider, &item.Endpoint, &item.Region, &item.Bucket, &item.AccessKeyID, &item.SecretKeyMasked, &item.UsePathStyle, &item.IsActive, &item.IsDefault, &item.CreatedAt, &item.UpdatedAt)
 	}
 
 	return item, err

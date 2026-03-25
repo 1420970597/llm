@@ -73,6 +73,7 @@ export type StorageProfile = {
   accessKeyId: string
   secretKeyMasked?: string
   usePathStyle: boolean
+  isActive: boolean
   isDefault: boolean
 }
 
