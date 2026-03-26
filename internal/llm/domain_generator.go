@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	appcrypto "github.com/1420970597/llm/internal/crypto"
 	"github.com/1420970597/llm/internal/model"
@@ -83,8 +84,12 @@ func generateDomainsInBatches(ctx context.Context, provider ProviderConfig, data
 		}
 
 		for _, name := range names {
-			canonical := canonicalize(name)
+			cleaned := cleanDomainLabel(name)
+			canonical := canonicalize(cleaned)
 			if canonical == "" {
+				continue
+			}
+			if looksLikeDNSName(canonical) {
 				continue
 			}
 			if _, exists := seen[canonical]; exists {
@@ -92,7 +97,7 @@ func generateDomainsInBatches(ctx context.Context, provider ProviderConfig, data
 			}
 			seen[canonical] = struct{}{}
 			collected = append(collected, model.Domain{
-				Name:         strings.TrimSpace(name),
+				Name:         cleaned,
 				Canonical:    canonical,
 				Level:        1,
 				Source:       "ai",
@@ -115,17 +120,20 @@ func generateDomainsInBatches(ctx context.Context, provider ProviderConfig, data
 
 func buildDomainPrompt(rootKeyword string, count int, existing []model.Domain) string {
 	builder := strings.Builder{}
-	builder.WriteString(fmt.Sprintf("Generate %d unique domain names for the keyword '%s'. Return a JSON array of strings only. Avoid duplicates.", count, rootKeyword))
+	builder.WriteString(fmt.Sprintf("围绕主题‘%s’生成 %d 个语义方向标签，用于后续问题生成。返回 JSON 字符串数组。", rootKeyword, count))
+	builder.WriteString(" 每个方向必须是人能直接理解的中文短语或概念分组，例如‘基础概念’、‘作战体系’、‘装备发展’、‘训练方法’。")
+	builder.WriteString(" 严禁输出域名、网址、品牌名拼接词、拼音站点名、带 .com/.cn 等后缀的字符串。")
+	builder.WriteString(" 每个方向应简短、可复核、彼此有区分，不要编号，不要解释，不要输出对象。")
 	if len(existing) > 0 {
-		builder.WriteString(" Already generated domains, do not repeat any of these: ")
+		builder.WriteString(" 已生成方向，禁止重复：")
 		limit := min(len(existing), 120)
 		for index := 0; index < limit; index++ {
 			if index > 0 {
-				builder.WriteString(", ")
+				builder.WriteString("、")
 			}
 			builder.WriteString(existing[index].Name)
 		}
-		builder.WriteString(".")
+		builder.WriteString("。")
 	}
 	return builder.String()
 }
@@ -163,4 +171,32 @@ func canonicalize(input string) string {
 	lowered = strings.ReplaceAll(lowered, "_", " ")
 	lowered = strings.Join(strings.Fields(lowered), " ")
 	return lowered
+}
+
+func cleanDomainLabel(input string) string {
+	trimmed := strings.TrimSpace(input)
+	trimmed = strings.Trim(trimmed, "-—•·:：;,，。.!！?？[]()（）{}\"'")
+	trimmed = strings.Join(strings.Fields(trimmed), " ")
+	return trimmed
+}
+
+func looksLikeDNSName(input string) bool {
+	if !strings.Contains(input, ".") {
+		return false
+	}
+	parts := strings.Split(input, ".")
+	if len(parts) < 2 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+		for _, r := range part {
+			if !(unicode.IsLower(r) || unicode.IsDigit(r) || r == '-') {
+				return false
+			}
+		}
+	}
+	return true
 }
