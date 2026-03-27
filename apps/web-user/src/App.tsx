@@ -1930,7 +1930,7 @@ export default function App() {
     return (
       <div className="console-page-shell">
         <PageHeader
-          badge="企业工作台 / 首页"
+          badge="任务中心 / 总览"
           title="围绕任务、结果、风险与动作做日常推进"
           description="首页聚合我的任务、最近结果、风险提醒与待办动作，帮助你快速判断今天先做什么。"
           actions={
@@ -2710,7 +2710,7 @@ export default function App() {
             <Card className="console-toolbar-card mt-4" bodyStyle={{ padding: 16 }}>
               <Text strong>快捷入口</Text>
               <Space className="mt-3" wrap>
-                <Button onClick={() => navigate('/console/home')}>回到工作台</Button>
+                <Button onClick={() => navigate('/console/tasks')}>回到任务中心</Button>
                 <Button onClick={() => navigate('/console/results')}>查看数据资产</Button>
                 <Button onClick={() => navigate('/console/help')}>查看恢复指引</Button>
               </Space>
@@ -2785,7 +2785,7 @@ export default function App() {
           actions={
             <Space>
               <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('帮助信息与任务状态已刷新')}>刷新数据</Button>
-              <Button theme="solid" type="primary" onClick={() => navigate('/console/home')}>返回工作台</Button>
+              <Button theme="solid" type="primary" onClick={() => navigate('/console/tasks')}>返回任务中心</Button>
             </Space>
           }
         />
@@ -3397,7 +3397,7 @@ export default function App() {
                       </div>
                     ) : null}
                     <Routes>
-                      <Route path="/console/home" element={renderOverview()} />
+                      <Route path="/console/home" element={<Navigate to="/console/tasks" replace />} />
                       <Route path="/console/overview" element={<Navigate to="/console/tasks" replace />} />
                       <Route path="/console/tasks" element={renderTaskDetail()} />
                       <Route path="/console/planning" element={renderPlanning()} />
