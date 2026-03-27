@@ -87,7 +87,6 @@ type NavPage = {
 }
 
 const userPages: NavPage[] = [
-  { label: '工作台', route: '/console/home', icon: LayoutDashboard, caption: '查看任务、资产、风险与待办动作' },
   { label: '新建任务', route: '/console/planning', icon: CirclePlus, caption: '直接创建新任务并立即开始推进' },
   { label: '我的任务', route: '/console/tasks', icon: Target, caption: '围绕单个任务查看状态、阶段与恢复动作' },
   { label: '结果与交付', route: '/console/results', icon: HardDriveDownload, caption: '统一查看结果、质量状态与交付文件' },
@@ -870,7 +869,7 @@ export default function App() {
   const visibleUserPages = useMemo(() => userPages.filter((page) => !page.adminOnly || isAdmin), [isAdmin])
   const visiblePages = useMemo(() => [...visibleUserPages, ...(isAdmin ? adminPages : [])], [isAdmin, visibleUserPages])
   const activeNav = useMemo(
-    () => visiblePages.find((page) => location.pathname === page.route || location.pathname.startsWith(`${page.route}/`))?.route ?? stageRouteNavMap[location.pathname] ?? '/console/home',
+    () => visiblePages.find((page) => location.pathname === page.route || location.pathname.startsWith(`${page.route}/`))?.route ?? stageRouteNavMap[location.pathname] ?? '/console/planning',
     [location.pathname, visiblePages],
   )
 
@@ -1179,11 +1178,11 @@ export default function App() {
       return
     }
     if (user && location.pathname === '/login') {
-      navigate('/console/home', { replace: true })
+      navigate('/console/planning', { replace: true })
       return
     }
     if (user && !isAdmin && location.pathname.startsWith('/console/admin/')) {
-      navigate('/console/home', { replace: true })
+      navigate('/console/planning', { replace: true })
     }
   }, [isAdmin, location.pathname, navigate, sessionLoading, user])
 
@@ -1194,7 +1193,7 @@ export default function App() {
       setUser(result.user)
       setTrustSignal(null)
       Toast.success(`欢迎回来，${result.user.email}`)
-      navigate('/console/home', { replace: true })
+      navigate('/console/planning', { replace: true })
     } catch (error) {
       const message = (error as Error).message
       setTrustSignal({
@@ -3282,7 +3281,7 @@ export default function App() {
         path="/login"
         element={
           user ? (
-            <Navigate to="/console/home" replace />
+            <Navigate to="/console/planning" replace />
           ) : (
             <LoginPage
               onSubmit={handleLogin}
@@ -3321,8 +3320,8 @@ export default function App() {
                 <Sider className="app-sider" style={{ position: 'fixed', top: 64, left: 0, border: 'none', width: 'var(--sidebar-current-width)', zIndex: 30 }}>
                   <div className="console-nav-shell h-full px-3 py-4">
                     <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
-                      <Text strong>工作台导航</Text>
-                      <Text className="mt-2 block console-caption">一级菜单只保留工作台、新建任务、我的任务、数据资产与帮助；具体阶段动作下沉到页面内部。</Text>
+                      <Text strong>任务导航</Text>
+                      <Text className="mt-2 block console-caption">按“新建任务 → 我的任务 → 结果与交付 → 帮助”的顺序使用；工作台作为辅助总览入口。</Text>
                     </Card>
                     <Nav
                       bodyStyle={{ paddingBottom: 12 }}
@@ -3374,7 +3373,7 @@ export default function App() {
                     ) : null}
                     <Routes>
                       <Route path="/console/home" element={renderOverview()} />
-                      <Route path="/console/overview" element={<Navigate to="/console/home" replace />} />
+                      <Route path="/console/overview" element={<Navigate to="/console/planning" replace />} />
                       <Route path="/console/tasks" element={renderTaskDetail()} />
                       <Route path="/console/planning" element={renderPlanning()} />
                       <Route path="/console/results" element={renderResultsHub()} />
@@ -3464,7 +3463,7 @@ export default function App() {
                       {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
                       {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
                       {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
-                      <Route path="*" element={<Navigate to="/console/home" replace />} />
+                      <Route path="*" element={<Navigate to="/console/planning" replace />} />
                     </Routes>
                   </Content>
                 </Layout>
