@@ -87,14 +87,13 @@ type NavPage = {
 }
 
 const userPages: NavPage[] = [
-  { label: '新建任务', route: '/console/planning', icon: CirclePlus, caption: '直接创建新任务并立即开始推进' },
-  { label: '我的任务', route: '/console/tasks', icon: Target, caption: '围绕单个任务查看状态、阶段与恢复动作' },
-  { label: '结果与交付', route: '/console/results', icon: HardDriveDownload, caption: '统一查看结果、质量状态与交付文件' },
-  { label: '账户与帮助', route: '/console/help', icon: Users, caption: '查看帮助、恢复指引、账户状态与常见问题' },
+  { label: '任务中心', route: '/console/tasks', icon: Target, caption: '创建任务、继续任务并推进当前阶段' },
+  { label: '结果中心', route: '/console/results', icon: HardDriveDownload, caption: '统一查看结果、质量状态与交付文件' },
+  { label: '帮助', route: '/console/help', icon: Users, caption: '查看帮助、恢复指引与常见问题' },
 ]
 
 const stageRouteNavMap: Record<string, string> = {
-  '/console/planning': '/console/planning',
+  '/console/planning': '/console/tasks',
   '/console/domains': '/console/tasks',
   '/console/questions': '/console/results',
   '/console/reasoning': '/console/results',
@@ -1178,11 +1177,11 @@ export default function App() {
       return
     }
     if (user && location.pathname === '/login') {
-      navigate('/console/planning', { replace: true })
+      navigate('/console/tasks', { replace: true })
       return
     }
     if (user && !isAdmin && location.pathname.startsWith('/console/admin/')) {
-      navigate('/console/planning', { replace: true })
+      navigate('/console/tasks', { replace: true })
     }
   }, [isAdmin, location.pathname, navigate, sessionLoading, user])
 
@@ -1193,7 +1192,7 @@ export default function App() {
       setUser(result.user)
       setTrustSignal(null)
       Toast.success(`欢迎回来，${result.user.email}`)
-      navigate('/console/planning', { replace: true })
+      navigate('/console/tasks', { replace: true })
     } catch (error) {
       const message = (error as Error).message
       setTrustSignal({
@@ -2081,6 +2080,9 @@ export default function App() {
   const renderTaskDetail = () => {
     const queueDepth = runtime?.queueDepth ?? 0
     const datasetStatus = activeDataset?.status ?? 'draft'
+    const recentDatasets = [...datasets]
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+      .slice(0, 6)
 
     const pipelineStageMap = new Map((activePipeline?.stages ?? []).map((stage) => [stage.key, stage]))
     const questionsStage = pipelineStageMap.get('questions')
@@ -2184,9 +2186,9 @@ export default function App() {
     return (
       <div className="console-page-shell">
         <PageHeader
-          badge="我的任务 / 任务详情"
-          title="围绕单个任务推进目标、阶段与交付"
-          description="按任务目标、阶段状态、当前产物、恢复动作和审核动作组织，减少重复跳转与盲目刷新。"
+          badge="任务中心 / 当前任务"
+          title="在一个入口完成创建、继续与恢复"
+          description="任务中心统一承载新建任务、当前任务、阶段推进与恢复动作，避免在多个页面之间来回寻找入口。"
           actions={
             <>
               <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('任务详情已刷新')}>刷新任务</Button>
@@ -2196,7 +2198,32 @@ export default function App() {
 
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-            <Title heading={4} className="!mb-0">任务目标</Title>
+            <Title heading={4} className="!mb-0">快速开始</Title>
+            <Text className="mt-2 block console-caption">从这里直接创建任务，或继续你最近正在推进的任务。</Text>
+            <Space className="mt-5" wrap>
+              <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
+              <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('任务中心已刷新')}>刷新任务中心</Button>
+            </Space>
+            <div className="mt-5 console-stack">
+              <Text strong>最近任务</Text>
+              {recentDatasets.length > 0 ? recentDatasets.map((dataset) => (
+                <div key={dataset.id} className="console-domain-item">
+                  <div className="flex items-center justify-between gap-3">
+                    <Space>
+                      <Tag color="blue">任务 #{dataset.id}</Tag>
+                      <Tag color="cyan">{statusLabel(dataset.status)}</Tag>
+                    </Space>
+                    <Button size="small" onClick={() => void loadDatasetWorkspace(dataset.id, `已切换到任务「${dataset.name}」`)}>继续任务</Button>
+                  </div>
+                  <Text className="mt-2 block" strong>{dataset.name}</Text>
+                  <Text className="mt-1 block console-caption">{dataset.rootKeyword} · 更新于 {formatTime(dataset.updatedAt)}</Text>
+                </div>
+              )) : <Empty description="暂无任务" />}
+            </div>
+          </Card>
+
+          <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+            <Title heading={4} className="!mb-0">当前任务</Title>
             <Text className="mt-2 block console-caption">将当前主题从方向整理推进到可下载交付文件，形成可复核的任务闭环。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>任务 ID</span><Text strong>{activeDataset?.id ?? '—'}</Text></div>
@@ -2281,7 +2308,7 @@ export default function App() {
   const renderPlanning = () => (
     <div className="console-page-shell">
       <PageHeader
-        badge="工作台 / 新建任务"
+        badge="任务中心 / 创建任务"
         title="先填主题和目标，快速创建任务"
         description="普通用户仅需填写任务主题和目标规模。模型、策略与存储将使用系统默认配置。"
         actions={
@@ -2376,8 +2403,8 @@ export default function App() {
     return (
       <div className="console-page-shell">
         <PageHeader
-          badge="我的任务 / 方向结构确认"
-          title="生成方向结构并完成结构确认"
+          badge="任务中心 / 主题结构"
+          title="生成主题结构并完成确认"
           description="先按树状方式浏览方向分组，再逐项复核命名，最后确认进入题目生成。"
           actions={
             <>
@@ -2592,17 +2619,15 @@ export default function App() {
 
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">结果中心总览</Title>
-          <Text className="mt-2 block console-caption">优先在这里判断“产出了什么、质量如何、下一步做什么”，再进入具体阶段页面处理。</Text>
+          <Title heading={4} className="!mb-0">结果总览</Title>
+          <Text className="mt-2 block console-caption">这里主要回答“已经产出了什么、哪些结果可以继续处理或交付”。</Text>
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
-            <div className="console-summary-row"><span>当前阶段</span><Text strong>{activeDataset ? statusLabel(activeDataset.status) : '未开始'}</Text></div>
             <div className="console-summary-row"><span>题目结果</span><Text strong>{questions.length}</Text></div>
             <div className="console-summary-row"><span>答案结果</span><Text strong>{reasoning.length}</Text></div>
-            <div className="console-summary-row"><span>质量评分</span><Text strong>{rewards.length}</Text></div>
+            <div className="console-summary-row"><span>质量评估</span><Text strong>{rewards.length}</Text></div>
             <div className="console-summary-row"><span>导出文件</span><Text strong>{artifacts.length}</Text></div>
-            <div className="console-summary-row"><span>下一步</span><Text strong>{activeDataset ? nextActionLabel(activeDataset.status) : '先点击“新建任务”'}</Text></div>
-            <div className="console-summary-row"><span>等待说明</span><Text strong>{activeDataset ? waitingReasonLabel(activeDataset.status, runtime?.queueDepth ?? 0) : '创建任务后显示'}</Text></div>
+            <div className="console-summary-row"><span>建议动作</span><Text strong>{activeDataset ? nextActionLabel(activeDataset.status) : '先前往任务中心创建任务'}</Text></div>
           </div>
         </Card>
 
@@ -2732,7 +2757,7 @@ export default function App() {
     const glossary = [
       { term: '任务状态', description: '表示任务所处阶段，例如“待确认方向”“问题生成排队中”。' },
       { term: '等待任务数', description: '当前系统排队中的任务数量。数字越大，结果返回通常越慢。' },
-      { term: '数据资产', description: '集中查看题目、答案、评分和交付文件的页面。' },
+      { term: '结果中心', description: '集中查看题目、答案内容、质量评估和导出交付的页面。' },
       { term: '恢复建议', description: '当任务失败或卡住时，页面给出的可执行下一步动作。' },
     ]
 
@@ -2776,7 +2801,7 @@ export default function App() {
               <Text strong>快速操作</Text>
               <Space className="mt-3" wrap>
                 <Button onClick={() => navigate('/console/planning')}>去新建任务</Button>
-                <Button onClick={() => navigate('/console/tasks')}>回到我的任务</Button>
+                <Button onClick={() => navigate('/console/results')}>回到结果中心</Button>
                 <Button onClick={() => activeDatasetId ? void loadDatasetWorkspace(activeDatasetId, '当前任务状态已刷新') : void loadBootstrap('控制台数据已刷新')}>刷新当前任务状态</Button>
               </Space>
             </Card>
@@ -3281,7 +3306,7 @@ export default function App() {
         path="/login"
         element={
           user ? (
-            <Navigate to="/console/planning" replace />
+            <Navigate to="/console/tasks" replace />
           ) : (
             <LoginPage
               onSubmit={handleLogin}
@@ -3321,7 +3346,7 @@ export default function App() {
                   <div className="console-nav-shell h-full px-3 py-4">
                     <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
                       <Text strong>任务导航</Text>
-                      <Text className="mt-2 block console-caption">按“新建任务 → 我的任务 → 结果与交付 → 帮助”的顺序使用；工作台作为辅助总览入口。</Text>
+                      <Text className="mt-2 block console-caption">普通用户按“任务中心 → 结果中心 → 帮助”的顺序使用；系统设置仅对管理员显示。</Text>
                     </Card>
                     <Nav
                       bodyStyle={{ paddingBottom: 12 }}
@@ -3373,7 +3398,7 @@ export default function App() {
                     ) : null}
                     <Routes>
                       <Route path="/console/home" element={renderOverview()} />
-                      <Route path="/console/overview" element={<Navigate to="/console/planning" replace />} />
+                      <Route path="/console/overview" element={<Navigate to="/console/tasks" replace />} />
                       <Route path="/console/tasks" element={renderTaskDetail()} />
                       <Route path="/console/planning" element={renderPlanning()} />
                       <Route path="/console/results" element={renderResultsHub()} />
@@ -3463,7 +3488,7 @@ export default function App() {
                       {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
                       {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
                       {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
-                      <Route path="*" element={<Navigate to="/console/planning" replace />} />
+                      <Route path="*" element={<Navigate to="/console/tasks" replace />} />
                     </Routes>
                   </Content>
                 </Layout>
