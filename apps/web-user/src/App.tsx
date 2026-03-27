@@ -113,6 +113,7 @@ const resultWorkbenchPages: NavPage[] = [
 ]
 
 const adminPages: NavPage[] = [
+  { label: '运营监控', route: '/console/operations', icon: ServerCog, caption: '查看队列、配置健康度与最近操作', adminOnly: true },
   { label: 'AI 服务', route: '/console/admin/providers', icon: Database, caption: '配置生成内容所用的 AI 服务', adminOnly: true },
   { label: '结果存储', route: '/console/admin/storage', icon: FolderCog, caption: '配置结果保存位置（S3 / MinIO / OSS）', adminOnly: true },
   { label: '生成规则', route: '/console/admin/strategies', icon: Workflow, caption: '设置主题数量、题目数量和评分样本数', adminOnly: true },
@@ -735,7 +736,7 @@ function LoginPage({
               <Input value={password} onChange={setPassword} mode="password" size="large" placeholder="请输入密码" />
             </div>
             <Button theme="solid" type="primary" size="large" loading={loading} onClick={() => void onSubmit(email, password)}>
-              进入工作台
+进入任务中心
             </Button>
           </div>
           <div className="mt-6 console-summary-grid">
@@ -868,7 +869,7 @@ export default function App() {
   const visibleUserPages = useMemo(() => userPages.filter((page) => !page.adminOnly || isAdmin), [isAdmin])
   const visiblePages = useMemo(() => [...visibleUserPages, ...(isAdmin ? adminPages : [])], [isAdmin, visibleUserPages])
   const activeNav = useMemo(
-    () => visiblePages.find((page) => location.pathname === page.route || location.pathname.startsWith(`${page.route}/`))?.route ?? stageRouteNavMap[location.pathname] ?? '/console/planning',
+    () => visiblePages.find((page) => location.pathname === page.route || location.pathname.startsWith(`${page.route}/`))?.route ?? stageRouteNavMap[location.pathname] ?? '/console/tasks',
     [location.pathname, visiblePages],
   )
 
@@ -1930,7 +1931,7 @@ export default function App() {
     return (
       <div className="console-page-shell">
         <PageHeader
-          badge="任务中心 / 总览"
+          badge="任务中心 / 辅助总览"
           title="围绕任务、结果、风险与动作做日常推进"
           description="首页聚合我的任务、最近结果、风险提醒与待办动作，帮助你快速判断今天先做什么。"
           actions={
@@ -2126,10 +2127,10 @@ export default function App() {
     }> = [
       {
         key: 'domains',
-        label: '方向结构',
+        label: '第 1 步：主题结构',
         route: '/console/domains',
         state: activeDataset?.status === 'draft' ? 'in_progress' : activeDataset ? 'completed' : 'pending',
-        summary: activeDataset?.status === 'draft' ? '当前应先完成方向整理与确认。' : '方向结构已确认，可继续后续阶段。',
+        summary: activeDataset?.status === 'draft' ? '先确认主题结构，系统才能继续生成问题。' : '主题结构已确认，可以进入下一步。',
         count: graph?.domains.length ?? 0,
         startLabel: '进入阶段',
         startAction: () => navigate('/console/domains'),
@@ -2137,10 +2138,10 @@ export default function App() {
       },
       {
         key: 'questions',
-        label: '问题生成',
+        label: '第 2 步：问题生成',
         route: '/console/questions',
         state: questionsStage?.state ?? inferStageState('questions'),
-        summary: questionsStage?.summary ?? waitingStateLabel(activeDataset?.status ?? 'draft', queueDepth),
+        summary: questionsStage?.summary ?? (datasetStatus === 'domains_confirmed' ? '主题结构已确认，下一步应开始生成问题。' : datasetStatus === 'questions_generated' ? '问题已经生成完成，可以继续生成答案内容。' : '进入本阶段查看问题生成结果与覆盖情况。'),
         count: questionsStage?.count ?? questions.length,
         startLabel: '启动阶段',
         startAction: () => void generateQuestions(),
@@ -2148,10 +2149,10 @@ export default function App() {
       },
       {
         key: 'reasoning',
-        label: '答案生成',
+        label: '第 3 步：答案内容',
         route: '/console/reasoning',
         state: reasoningStage?.state ?? inferStageState('reasoning'),
-        summary: reasoningStage?.summary ?? waitingStateLabel(activeDataset?.status ?? 'draft', queueDepth),
+        summary: reasoningStage?.summary ?? (datasetStatus === 'questions_generated' ? '问题已准备好，下一步应生成答案内容。' : datasetStatus === 'reasoning_generated' ? '答案内容已经生成完成，可以继续质量评估。' : '进入本阶段查看答案内容是否完整可用。'),
         count: reasoningStage?.count ?? reasoning.length,
         startLabel: '启动阶段',
         startAction: () => void generateReasoning(),
@@ -2159,10 +2160,10 @@ export default function App() {
       },
       {
         key: 'rewards',
-        label: '质量评分',
+        label: '第 4 步：质量评估',
         route: '/console/rewards',
         state: rewardsStage?.state ?? inferStageState('rewards'),
-        summary: rewardsStage?.summary ?? waitingStateLabel(activeDataset?.status ?? 'draft', queueDepth),
+        summary: rewardsStage?.summary ?? (datasetStatus === 'reasoning_generated' ? '答案内容已准备好，下一步应做质量评估。' : datasetStatus === 'rewards_generated' ? '质量评估已完成，可以进入导出交付。' : '进入本阶段查看质量评估结果与风险项。'),
         count: rewardsStage?.count ?? rewards.length,
         startLabel: '启动阶段',
         startAction: () => void generateRewards(),
@@ -2170,12 +2171,12 @@ export default function App() {
       },
       {
         key: 'export',
-        label: '导出交付',
+        label: '第 5 步：导出交付',
         route: '/console/exports',
         state: exportStage?.state ?? inferStageState('export'),
         summary: exportDeliveryPending
           ? '导出计算已完成，交付文件正在落盘。'
-          : exportStage?.summary ?? waitingStateLabel(activeDataset?.status ?? 'draft', queueDepth),
+          : exportStage?.summary ?? (datasetStatus === 'rewards_generated' ? '质量评估已完成，下一步应导出交付文件。' : datasetStatus === 'export_generated' ? '导出交付已完成，可以下载文件。' : '进入本阶段查看导出结果和交付文件。'),
         count: exportStage?.count ?? artifacts.length,
         startLabel: '启动阶段',
         startAction: () => void generateExport(),
@@ -2241,10 +2242,10 @@ export default function App() {
             <Title heading={4} className="!mb-0">当前产物</Title>
             <Text className="mt-2 block console-caption">每个阶段的已产出记录会在这里汇总，便于判断是否进入下一步。</Text>
             <div className="mt-5 console-summary-grid">
-              <div className="console-summary-row"><span>方向数量</span><Text strong>{graph?.domains.length ?? 0}</Text></div>
-              <div className="console-summary-row"><span>题目结果</span><Text strong>{questions.length}</Text></div>
-              <div className="console-summary-row"><span>答案结果</span><Text strong>{reasoning.length}</Text></div>
-              <div className="console-summary-row"><span>质量评分</span><Text strong>{rewards.length}</Text></div>
+              <div className="console-summary-row"><span>主题结构</span><Text strong>{graph?.domains.length ?? 0}</Text></div>
+              <div className="console-summary-row"><span>问题结果</span><Text strong>{questions.length}</Text></div>
+              <div className="console-summary-row"><span>答案内容</span><Text strong>{reasoning.length}</Text></div>
+              <div className="console-summary-row"><span>质量评估</span><Text strong>{rewards.length}</Text></div>
               <div className="console-summary-row"><span>导出文件</span><Text strong>{artifacts.length}</Text></div>
               <div className="console-summary-row"><span>最新更新时间</span><Text strong>{activeDataset ? formatTime(activeDataset.updatedAt) : '—'}</Text></div>
             </div>
@@ -2779,7 +2780,7 @@ export default function App() {
     return (
       <div className="console-page-shell">
         <PageHeader
-          badge="账户与帮助 / 恢复指引"
+          badge="帮助 / 恢复指引"
           title="自助排错与术语说明"
           description="当你遇到登录过期、权限不足、排队等待或结果异常时，可按这里的步骤快速恢复。"
           actions={
