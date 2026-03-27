@@ -90,12 +90,12 @@ const userPages: NavPage[] = [
   { label: '工作台', route: '/console/home', icon: LayoutDashboard, caption: '查看任务、资产、风险与待办动作' },
   { label: '新建任务', route: '/console/planning', icon: CirclePlus, caption: '直接创建新任务并立即开始推进' },
   { label: '我的任务', route: '/console/tasks', icon: Target, caption: '围绕单个任务查看状态、阶段与恢复动作' },
-  { label: '数据资产', route: '/console/results', icon: HardDriveDownload, caption: '统一查看结果、交付文件与资产说明' },
+  { label: '结果与交付', route: '/console/results', icon: HardDriveDownload, caption: '统一查看结果、质量状态与交付文件' },
   { label: '账户与帮助', route: '/console/help', icon: Users, caption: '查看帮助、恢复指引、账户状态与常见问题' },
 ]
 
 const stageRouteNavMap: Record<string, string> = {
-  '/console/planning': '/console/home',
+  '/console/planning': '/console/planning',
   '/console/domains': '/console/tasks',
   '/console/questions': '/console/results',
   '/console/reasoning': '/console/results',
@@ -104,14 +104,14 @@ const stageRouteNavMap: Record<string, string> = {
 }
 
 const taskWorkbenchPages: NavPage[] = [
-  { label: '方向结构', route: '/console/domains', icon: GitBranch, caption: '生成方向结构并确认可执行层级' },
+  { label: '主题结构', route: '/console/domains', icon: GitBranch, caption: '生成主题结构并确认可执行层级' },
 ]
 
 const resultWorkbenchPages: NavPage[] = [
   { label: '问题生成', route: '/console/questions', icon: Layers3, caption: '批量生成问题并检查覆盖情况' },
-  { label: '答案生成', route: '/console/reasoning', icon: BrainCircuit, caption: '生成答案摘要并确认可读性' },
-  { label: '质量评分', route: '/console/rewards', icon: ShieldCheck, caption: '查看质量评分并判断是否可交付' },
-  { label: '结果交付', route: '/console/exports', icon: HardDriveDownload, caption: '导出最终产物并完成任务闭环' },
+  { label: '答案内容', route: '/console/reasoning', icon: BrainCircuit, caption: '生成答案摘要并确认可读性' },
+  { label: '质量评估', route: '/console/rewards', icon: ShieldCheck, caption: '查看质量评估并判断是否可交付' },
+  { label: '导出交付', route: '/console/exports', icon: HardDriveDownload, caption: '导出最终产物并完成任务闭环' },
 ]
 
 const adminPages: NavPage[] = [
@@ -125,9 +125,9 @@ const adminPages: NavPage[] = [
 function statusLabel(status: string) {
   switch (status) {
     case 'draft':
-      return '待确认方向'
+      return '待确认主题结构'
     case 'domains_confirmed':
-      return '方向已确认，待生成问题'
+      return '主题结构已确认，待生成问题'
     case 'questions_queued':
       return '问题生成排队中'
     case 'questions_generated':
@@ -175,7 +175,7 @@ function progressPercent(status: string) {
 function nextActionLabel(status: string) {
   switch (status) {
     case 'draft':
-      return '先确认方向结构，再启动问题生成'
+      return '先确认主题结构，再启动问题生成'
     case 'domains_confirmed':
       return '启动问题生成，补齐任务素材'
     case 'questions_queued':
@@ -205,7 +205,7 @@ function waitingStateLabel(status: string, queueDepth: number) {
   }
   switch (status) {
     case 'draft':
-      return '等待你确认方向结构'
+      return '等待你确认主题结构'
     case 'domains_confirmed':
       return '等待你启动问题生成'
     case 'questions_queued':
@@ -237,7 +237,7 @@ function waitingReasonLabel(status: string, queueDepth: number) {
   }
   switch (status) {
     case 'draft':
-      return '系统尚未开始生成，因为方向结构还未确认。'
+      return '系统尚未开始生成，因为主题结构还未确认。'
     case 'domains_confirmed':
       return '方向已确认，等待你手动启动问题生成。'
     case 'questions_generated':
@@ -256,7 +256,7 @@ function waitingReasonLabel(status: string, queueDepth: number) {
 function waitingActionLabel(status: string) {
   switch (status) {
     case 'draft':
-      return '前往“方向结构”，确认后继续。'
+      return '前往“主题结构”，确认后继续。'
     case 'domains_confirmed':
       return '前往“问题生成”，点击“开始生成题目”。'
     case 'questions_queued':
@@ -1333,7 +1333,7 @@ export default function App() {
       } else {
         setTrustSignal({
           tone: 'warning',
-          title: '方向结构生成失败',
+          title: '主题结构生成失败',
           detail: `系统返回：${message}`,
           recoveryHint: '可先回到任务创建页调整主题和规模后重试；若持续失败，请查看帮助恢复页。',
           nextStep: { label: '回到任务创建', route: '/console/planning' },
@@ -1364,7 +1364,7 @@ export default function App() {
     setBusy(true)
     try {
       await consoleApi.confirmDomains(graph.dataset.id)
-      Toast.success('方向结构已确认')
+      Toast.success('主题结构已确认')
       navigate('/console/questions')
       await loadDatasetWorkspace(graph.dataset.id)
     } catch (error) {
@@ -1933,8 +1933,8 @@ export default function App() {
       <div className="console-page-shell">
         <PageHeader
           badge="企业工作台 / 首页"
-          title="围绕任务、产出、风险与动作做日常推进"
-          description="首页聚合我的任务、最近结果、风险提醒、待办动作与系统概览，帮助你快速判断今天先做什么。"
+          title="围绕任务、结果、风险与动作做日常推进"
+          description="首页聚合我的任务、最近结果、风险提醒与待办动作，帮助你快速判断今天先做什么。"
           actions={
             <>
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>
@@ -1983,7 +1983,10 @@ export default function App() {
                   </div>
                 ))
               ) : (
-                <Empty description="暂无任务" />
+                <div className="console-stack">
+                  <Empty description="暂无任务" />
+                  <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
+                </div>
               )}
             </div>
           </Card>
@@ -2050,7 +2053,7 @@ export default function App() {
               <div className="console-summary-row"><span>进度保障</span><Text strong>{activeDataset ? (exportDeliveryPending ? '任务已完成导出计算，正在落盘交付文件，请勿重复触发导出。' : trustMessageLabel(activeDataset.status)) : '创建任务后显示'}</Text></div>
             </div>
             <Space className="mt-5" wrap>
-              <Button theme="solid" type="primary" onClick={() => navigate(nextRoute)}>执行下一步</Button>
+              <Button theme="solid" type="primary" onClick={() => navigate(nextRoute)}>{activeDataset ? nextActionLabel(activeDataset.status) : '新建任务'}</Button>
               <Button onClick={() => navigate('/console/results')}>查看最近结果</Button>
               <Button onClick={() => navigate('/console/help')}>查看恢复指引</Button>
             </Space>
@@ -2058,8 +2061,8 @@ export default function App() {
         </div>
 
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">系统概览</Title>
-          <Text className="mt-2 block console-caption">用于判断整体负载和配置健康度，支持运营巡检。</Text>
+          <Title heading={4} className="!mb-0">当前系统状态</Title>
+          <Text className="mt-2 block console-caption">仅保留与你当前任务相关的轻量系统信号，详细运行态请进入运营监控。</Text>
           <div className="mt-5 console-card-grid-4">
             {overviewCards.map((item) => <StatCard key={item.label} {...item} />)}
           </div>
@@ -2188,7 +2191,6 @@ export default function App() {
           actions={
             <>
               <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('任务详情已刷新')}>刷新任务</Button>
-              <Button theme="solid" type="primary" icon={<HardDriveDownload size={16} />} onClick={() => navigate('/console/results')}>查看结果中心</Button>
             </>
           }
         />
@@ -2225,7 +2227,7 @@ export default function App() {
 
         <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">阶段推进</Title>
-          <Text className="mt-2 block console-caption">每个阶段都提供“进入阶段”与“启动阶段”动作，明确当前可执行入口。</Text>
+          <Text className="mt-2 block console-caption">每个阶段都提供“进入阶段”动作；真正的执行动作在对应阶段页面中完成。</Text>
           <div className="console-card-grid-2 mt-5">
             {stageCards.map((stage) => {
               const style = stageStateStyle(stage.state)
@@ -2240,15 +2242,6 @@ export default function App() {
                   <Text className="mt-1 block console-caption">当前记录数：{stage.count}</Text>
                   <Space className="mt-3" wrap>
                     <Button size="small" onClick={() => navigate(stage.route)}>进入阶段</Button>
-                    <Button
-                      size="small"
-                      theme="solid"
-                      type="primary"
-                      disabled={stage.startDisabled || busy}
-                      onClick={stage.startAction}
-                    >
-                      {stage.startLabel}
-                    </Button>
                   </Space>
                 </div>
               )
@@ -2295,7 +2288,6 @@ export default function App() {
         actions={
           <>
             <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('系统配置与数据集已刷新')}>刷新配置</Button>
-            <Button theme="solid" type="primary" icon={<FileOutput size={16} />} loading={busy} onClick={() => void createDataset()}>创建任务</Button>
           </>
         }
       />
@@ -2306,16 +2298,17 @@ export default function App() {
           <Text className="mt-2 block console-caption">默认使用系统推荐配置，通常只需填写主题与目标规模即可创建任务。</Text>
           <div className="console-card-grid-2 mt-5">
             <div>
-              <Text className="mb-2 block font-medium">数据集名称</Text>
-              <Input value={plannerForm.name} onChange={(value) => setPlannerForm((current) => ({ ...current, name: value }))} placeholder="军事长链思考训练集" />
+              <Text className="mb-2 block font-medium">任务名称（可选）</Text>
+              <Input value={plannerForm.name} onChange={(value) => setPlannerForm((current) => ({ ...current, name: value }))} placeholder="例如：行业研究问答任务" />
             </div>
             <div>
               <Text className="mb-2 block font-medium">任务主题</Text>
               <Input value={plannerForm.rootKeyword} onChange={(value) => setPlannerForm((current) => ({ ...current, rootKeyword: value }))} />
             </div>
             <div>
-              <Text className="mb-2 block font-medium">目标规模</Text>
-              <InputNumber value={plannerForm.targetSize} onChange={(value) => setPlannerForm((current) => ({ ...current, targetSize: Number(value ?? 0) }))} style={{ width: '100%' }} />
+              <Text className="mb-2 block font-medium">目标样本数（条）</Text>
+              <InputNumber value={plannerForm.targetSize} onChange={(value) => setPlannerForm((current) => ({ ...current, targetSize: Number(value ?? 0) }))} min={1} style={{ width: '100%' }} />
+              <Text className="mt-2 block console-caption">建议先从小规模开始，确认质量后再扩大任务规模。</Text>
             </div>
             {isAdmin || showAdvancedPlanning ? (
               <>
@@ -2335,7 +2328,7 @@ export default function App() {
             ) : null}
           </div>
           <Space className="mt-6" spacing="medium">
-            <Button icon={<Target size={16} />} loading={busy} onClick={() => void estimatePlan()}>先做估算</Button>
+            <Button icon={<Target size={16} />} loading={busy} onClick={() => void estimatePlan()}>估算规模</Button>
             <Button theme="solid" type="primary" icon={<FileOutput size={16} />} loading={busy} onClick={() => void createDataset()}>创建任务</Button>
           </Space>
         </Card>
@@ -2348,7 +2341,7 @@ export default function App() {
               {planningCards.map((item) => <StatCard key={item.label} {...item} />)}
             </div>
           ) : (
-            <EmptyCard title="尚未生成估算" description="填写参数后点击“更新估算”，再决定是否创建任务。" />
+            <EmptyCard title="尚未生成估算" description="填写参数后点击“估算规模”，再决定是否创建任务。" />
           )}
         </Card>
       </div>
@@ -2587,7 +2580,6 @@ export default function App() {
         actions={
           <>
             <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '结果中心已刷新')}>刷新结果</Button>
-            <Button theme="solid" type="primary" icon={<HardDriveDownload size={16} />} onClick={() => navigate('/console/exports')}>进入结果交付</Button>
           </>
         }
       />
@@ -2784,9 +2776,9 @@ export default function App() {
             <Card className="console-toolbar-card mt-4" bodyStyle={{ padding: 16 }}>
               <Text strong>快速操作</Text>
               <Space className="mt-3" wrap>
-                <Button onClick={() => navigate('/login')}>去登录页</Button>
                 <Button onClick={() => navigate('/console/planning')}>去新建任务</Button>
-                <Button onClick={() => navigate('/console/domains')}>去方向结构</Button>
+                <Button onClick={() => navigate('/console/tasks')}>回到我的任务</Button>
+                <Button onClick={() => activeDatasetId ? void loadDatasetWorkspace(activeDatasetId, '当前任务状态已刷新') : void loadBootstrap('控制台数据已刷新')}>刷新当前任务状态</Button>
               </Space>
             </Card>
           </Card>
@@ -3329,8 +3321,8 @@ export default function App() {
                 <Sider className="app-sider" style={{ position: 'fixed', top: 64, left: 0, border: 'none', width: 'var(--sidebar-current-width)', zIndex: 30 }}>
                   <div className="console-nav-shell h-full px-3 py-4">
                     <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
-                      <Text strong>企业导航</Text>
-                      <Text className="mt-2 block console-caption">一级菜单只保留工作台、任务、资产、运营与帮助；具体阶段动作下沉到页面内部。</Text>
+                      <Text strong>工作台导航</Text>
+                      <Text className="mt-2 block console-caption">一级菜单只保留工作台、新建任务、我的任务、数据资产与帮助；具体阶段动作下沉到页面内部。</Text>
                     </Card>
                     <Nav
                       bodyStyle={{ paddingBottom: 12 }}
