@@ -42,11 +42,11 @@ func GenerateRewards(ctx context.Context, provider ProviderConfig, dataset model
 }
 
 func generateRewardForQuestion(ctx context.Context, provider ProviderConfig, dataset model.Dataset, question model.Question) (rewardPayload, error) {
-	if provider.ProviderType == "mock" || provider.APIKey == "" || provider.BaseURL == "" {
-		return rewardPayload{
-			Score:     0.85,
-			Rationale: fmt.Sprintf("围绕 %s 的问题具有清晰目标、可评估约束和可展开的推理步骤，适合作为奖励评估样本。", dataset.RootKeyword),
-		}, nil
+	if provider.ProviderType == "mock" {
+		return rewardPayload{}, fmt.Errorf("mock provider is disabled in real-data mode")
+	}
+	if provider.APIKey == "" || provider.BaseURL == "" {
+		return rewardPayload{}, fmt.Errorf("real provider configuration is incomplete")
 	}
 
 	payload := map[string]any{
@@ -57,7 +57,7 @@ func generateRewardForQuestion(ctx context.Context, provider ProviderConfig, dat
 		},
 	}
 	applyReasoningEffort(payload, provider)
-	decoded, err := requestChatCompletion(ctx, provider, payload, 20*time.Second)
+	decoded, err := requestChatCompletion(ctx, provider, payload, 60*time.Second)
 	if err != nil {
 		return rewardPayload{}, err
 	}

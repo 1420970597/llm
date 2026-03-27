@@ -28,8 +28,11 @@ func GenerateQuestions(ctx context.Context, provider ProviderConfig, dataset mod
 
 func generateQuestionsForDomain(ctx context.Context, provider ProviderConfig, dataset model.Dataset, domain model.Domain) ([]model.Question, error) {
 	count := max(dataset.Estimate.QuestionsPerDomain, 1)
-	if provider.ProviderType == "mock" || provider.APIKey == "" || provider.BaseURL == "" {
-		return mockQuestions(dataset, domain, count), nil
+	if provider.ProviderType == "mock" {
+		return nil, fmt.Errorf("mock provider is disabled in real-data mode")
+	}
+	if provider.APIKey == "" || provider.BaseURL == "" {
+		return nil, fmt.Errorf("real provider configuration is incomplete")
 	}
 
 	prompt := fmt.Sprintf("Generate %d unique user questions for the domain '%s' under root keyword '%s'. Return a JSON array of strings only.", count, domain.Name, dataset.RootKeyword)
@@ -40,6 +43,7 @@ func generateQuestionsForDomain(ctx context.Context, provider ProviderConfig, da
 			{"role": "user", "content": prompt},
 		},
 	}
+	applyReasoningEffort(payload, provider)
 	decoded, err := requestChatCompletion(ctx, provider, payload, 60*time.Second)
 	if err != nil {
 		return nil, err
@@ -62,22 +66,6 @@ func generateQuestionsForDomain(ctx context.Context, provider ProviderConfig, da
 		})
 	}
 	return questions, nil
-}
-
-func mockQuestions(dataset model.Dataset, domain model.Domain, count int) []model.Question {
-	questions := make([]model.Question, 0, count)
-	for index := 0; index < count; index++ {
-		text := fmt.Sprintf("在 %s 场景 %02d 中，如何围绕 %s 制定高质量推理任务？", domain.Name, index+1, dataset.RootKeyword)
-		questions = append(questions, model.Question{
-			DatasetID:     dataset.ID,
-			DomainID:      domain.ID,
-			DomainName:    domain.Name,
-			Content:       text,
-			CanonicalHash: store.CanonicalHash(text),
-			Status:        "generated",
-		})
-	}
-	return questions
 }
 
 func max(a, b int) int {

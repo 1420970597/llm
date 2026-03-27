@@ -236,10 +236,10 @@ curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
 - API 镜像构建
 - Worker 镜像构建
 - 前端镜像构建
-- PostgreSQL + Redis + MinIO + API + Worker 端到端 smoke test
+- PostgreSQL + Redis + MinIO + API + Worker 端到端真实链路验证
 - 通过 `http://127.0.0.1:3210/api/...` 的同源代理验证
 - 登录鉴权：`/api/v1/auth/login`、`/api/v1/auth/me`、`/api/v1/auth/logout`
-- 统一控制台烟雾脚本：`python3 scripts/frontend_same_origin_smoke.py http://127.0.0.1:3210`
+- 统一控制台真实链路脚本：`python3 scripts/frontend_same_origin_smoke.py http://127.0.0.1:3210`
 
 已验证的完整链路包括：
 - 管理员角色配置模型提供方
@@ -264,7 +264,7 @@ curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
 - 验证结果：`domainCount=10`、`questionCount=20`、`reasoningCount=20`、`rewardCount=20`、`artifactCount=1`、`runtimeQueueDepth=0`
 
 当前数据库状态：
-- 已清空验收阶段残留的 mock / smoke 业务数据
+- 已清空验收阶段残留的临时业务数据
 - 当前不再预置模型提供方、存储配置、生成策略、Prompt 模板、数据集、问题、推理、奖励、导出工件
 - 登录账号保留，用于进入统一控制台
 
@@ -379,9 +379,9 @@ docker compose -f deployments/compose/docker-compose.yml down -v
 
 ## 13. 维护说明
 
-### 13.1 清理验收 / mock 数据
+### 13.1 清理临时验收数据
 
-如果后续联调或验收再次生成了临时假数据，可执行：
+如果后续联调或验收再次生成了临时数据，可执行：
 
 ```bash
 ./scripts/clear_demo_data.sh

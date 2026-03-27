@@ -11,7 +11,7 @@
 - Dockerized `go mod tidy && go test ./...`
 - `docker build -f deployments/docker/api.Dockerfile -t llm-api-phase6 .`
 - `docker build -f deployments/docker/worker.Dockerfile -t llm-worker-phase6 .`
-- End-to-end Docker smoke flow with PostgreSQL + Redis + API + worker + MinIO, resulting in 6 reward records with persisted `s3://...` object keys.
+- End-to-end Docker real-provider flow with PostgreSQL + Redis + API + worker + MinIO, resulting in persisted reward records with `s3://...` object keys.
 
 ## Remaining follow-up for later phases
 - Export packaging and dataset artifact manifests.

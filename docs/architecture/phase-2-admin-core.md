@@ -12,7 +12,7 @@
 - `docker build -f deployments/docker/api.Dockerfile -t llm-api-phase2 .`
 - `docker build -f deployments/docker/worker.Dockerfile -t llm-worker-phase2 .`
 - `docker build -f deployments/docker/web-admin.Dockerfile -t llm-web-admin-phase2 .`
-- Dockerized PostgreSQL + API smoke run with successful dashboard, provider/storage/strategy/prompt creation, and audit-log reads.
+- Dockerized PostgreSQL + API validation run with successful dashboard, provider/storage/strategy/prompt creation, and audit-log reads.
 - Dockerized `go test ./...`
 
 ## Remaining follow-up for later phases

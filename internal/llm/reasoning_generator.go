@@ -42,11 +42,11 @@ func GenerateReasoning(ctx context.Context, provider ProviderConfig, dataset mod
 }
 
 func generateReasoningForQuestion(ctx context.Context, provider ProviderConfig, dataset model.Dataset, question model.Question) (reasoningPayload, error) {
-	if provider.ProviderType == "mock" || provider.APIKey == "" || provider.BaseURL == "" {
-		return reasoningPayload{
-			Answer:    fmt.Sprintf("围绕问题“%s”的高质量答案摘要。", question.Content),
-			Reasoning: fmt.Sprintf("长思维链示例：先识别 %s 的核心目标，再拆解约束、参与方、行动路径、风险与评估指标，最终组织成可训练的推理步骤。", dataset.RootKeyword),
-		}, nil
+	if provider.ProviderType == "mock" {
+		return reasoningPayload{}, fmt.Errorf("mock provider is disabled in real-data mode")
+	}
+	if provider.APIKey == "" || provider.BaseURL == "" {
+		return reasoningPayload{}, fmt.Errorf("real provider configuration is incomplete")
 	}
 
 	payload := map[string]any{
@@ -57,7 +57,7 @@ func generateReasoningForQuestion(ctx context.Context, provider ProviderConfig, 
 		},
 	}
 	applyReasoningEffort(payload, provider)
-	decoded, err := requestChatCompletion(ctx, provider, payload, 25*time.Second)
+	decoded, err := requestChatCompletion(ctx, provider, payload, 90*time.Second)
 	if err != nil {
 		return reasoningPayload{}, err
 	}

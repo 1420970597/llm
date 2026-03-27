@@ -17,6 +17,8 @@ ts = int(time.time())
 request_timeout = int(os.getenv('SMOKE_REQUEST_TIMEOUT', '300'))
 stage_timeout = int(os.getenv('SMOKE_STAGE_TIMEOUT', '1800'))
 lock_path = os.getenv('SMOKE_LOCK_PATH', '/tmp/frontend_same_origin_smoke.lock')
+admin_email = os.getenv('SMOKE_ADMIN_EMAIL', os.getenv('APP_DEFAULT_ADMIN_EMAIL', '')).strip()
+target_size = int(os.getenv('SMOKE_TARGET_SIZE', '12'))
 jar = CookieJar()
 opener = build_opener(HTTPCookieProcessor(jar))
 
@@ -118,22 +120,31 @@ def choose_storage_profile(profiles):
     raise RuntimeError('No active storage profile found. Configure storage first.')
 
 
-def strategy_cost(strategy):
-    return (
-        int(strategy.get('domainCount', 0))
-        * int(strategy.get('questionsPerDomain', 0))
-        * max(1, int(strategy.get('answerVariants', 1)))
-    )
-
-
 def choose_strategy(strategies):
     if not strategies:
         raise RuntimeError('No generation strategy found. Configure a strategy first.')
-    return min(strategies, key=strategy_cost)
+    for strategy in strategies:
+        if strategy.get('isDefault'):
+            return strategy
+    return strategies[0]
 
+
+def wait_until_count(label, path, expected_count, timeout=600, interval=5):
+    start = time.time()
+    last = None
+    while time.time() - start < timeout:
+        _, last = request_json('GET', path)
+        if isinstance(last, list) and len(last) >= expected_count:
+            return last
+        time.sleep(interval)
+    raise TimeoutError(f'{label} timeout; expected>={expected_count}; last_count={0 if not isinstance(last, list) else len(last)}')
+
+
+if not admin_email or not admin_password:
+    raise RuntimeError('SMOKE_ADMIN_EMAIL and SMOKE_ADMIN_PASSWORD are required (or APP_DEFAULT_ADMIN_EMAIL / APP_DEFAULT_ADMIN_PASSWORD).')
 
 # admin login
-request_json('POST', '/v1/auth/login', {'email': 'admin@company.com', 'password': 'admin123456'})
+request_json('POST', '/v1/auth/login', {'email': admin_email, 'password': admin_password})
 
 _, providers = request_json('GET', '/v1/admin/providers')
 _, storage_profiles = request_json('GET', '/v1/admin/storage-profiles')
@@ -145,13 +156,13 @@ strategy = choose_strategy(strategies)
 
 _, estimate = request_json('POST', '/v1/datasets/plans/estimate', {
     'rootKeyword': f'真实链路验证-{ts}',
-    'targetSize': 12,
+    'targetSize': target_size,
     'strategyId': strategy['id'],
 })
 _, dataset = request_json('POST', '/v1/datasets', {
     'name': f'Real LLM Smoke Dataset {ts}',
     'rootKeyword': f'真实链路验证-{ts}',
-    'targetSize': 12,
+    'targetSize': target_size,
     'strategyId': strategy['id'],
     'providerId': provider['id'],
     'storageProfileId': storage['id'],
@@ -164,11 +175,11 @@ log(f'smoke start dataset_id={dataset_id} provider={provider.get("id")} strategy
 _, graph = request_json('POST', f'/v1/datasets/{dataset_id}/domains/generate', retries=2)
 request_json('POST', f'/v1/datasets/{dataset_id}/domains/confirm', retries=2)
 request_json('POST', f'/v1/datasets/{dataset_id}/questions/generate', retries=2)
-questions = wait_until('questions', f'/v1/datasets/{dataset_id}/questions', timeout=stage_timeout)
+questions = wait_until_count('questions', f'/v1/datasets/{dataset_id}/questions', estimate['estimatedQuestions'], timeout=stage_timeout)
 request_json('POST', f'/v1/datasets/{dataset_id}/reasoning/generate', retries=2)
-reasoning = wait_until('reasoning', f'/v1/datasets/{dataset_id}/reasoning', timeout=stage_timeout)
+reasoning = wait_until_count('reasoning', f'/v1/datasets/{dataset_id}/reasoning', len(questions), timeout=stage_timeout)
 request_json('POST', f'/v1/datasets/{dataset_id}/rewards/generate', retries=2)
-rewards = wait_until('rewards', f'/v1/datasets/{dataset_id}/rewards', timeout=stage_timeout)
+rewards = wait_until_count('rewards', f'/v1/datasets/{dataset_id}/rewards', len(reasoning), timeout=stage_timeout)
 request_json('POST', f'/v1/datasets/{dataset_id}/export', retries=2)
 export_dataset = wait_until_predicate(
     'dataset export status',

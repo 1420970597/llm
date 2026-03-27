@@ -12,7 +12,7 @@
 - Dockerized `go test ./...`
 - `docker build -f deployments/docker/api.Dockerfile -t llm-api-phase7 .`
 - `docker build -f deployments/docker/worker.Dockerfile -t llm-worker-phase7 .`
-- End-to-end Docker smoke flow with PostgreSQL + Redis + API + worker + MinIO, resulting in a packaged `s3://.../exports/dataset.jsonl` artifact and a runtime status response with queue depth 0.
+- End-to-end Docker real-provider flow with PostgreSQL + Redis + API + worker + MinIO, resulting in a packaged `s3://.../exports/dataset.jsonl` artifact and a runtime status response with queue depth 0.
 
 ## Residual risks
 - The admin web bundle is still large and should be code-split before production scale-up.

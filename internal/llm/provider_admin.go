@@ -24,21 +24,7 @@ type providerModelsEnvelope struct {
 
 func FetchProviderModels(ctx context.Context, provider model.ModelProvider) ([]model.ProviderModelInfo, int, error) {
 	if provider.ProviderType == "mock" {
-		ids := []string{"mock-gpt-5.4", "mock-gpt", provider.Model}
-		seen := map[string]struct{}{}
-		models := make([]model.ProviderModelInfo, 0, len(ids))
-		for _, id := range ids {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			if _, exists := seen[id]; exists {
-				continue
-			}
-			seen[id] = struct{}{}
-			models = append(models, model.ProviderModelInfo{ID: id})
-		}
-		return models, http.StatusOK, nil
+		return nil, http.StatusBadRequest, fmt.Errorf("mock provider is disabled in real-data mode")
 	}
 
 	if strings.TrimSpace(provider.BaseURL) == "" {

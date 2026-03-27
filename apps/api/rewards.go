@@ -20,8 +20,17 @@ func (app *application) enqueueRewardGeneration(w http.ResponseWriter, r *http.R
     app.writeError(w, http.StatusInternalServerError, err)
     return
   }
+  questions, err := app.pipeline.ListQuestions(r.Context(), id)
+  if err != nil {
+    app.writeError(w, http.StatusInternalServerError, err)
+    return
+  }
   if len(reasoning) == 0 {
     app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue rewards: dataset %d has no reasoning records", id))
+    return
+  }
+  if len(reasoning) < len(questions) {
+    app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue rewards: dataset %d reasoning incomplete (%d/%d)", id, len(reasoning), len(questions)))
     return
   }
 

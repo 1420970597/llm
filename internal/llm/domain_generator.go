@@ -21,8 +21,11 @@ type ProviderConfig struct {
 }
 
 func GenerateDomains(ctx context.Context, provider ProviderConfig, dataset model.Dataset) ([]model.Domain, []model.DomainEdge, error) {
-	if provider.ProviderType == "mock" || provider.APIKey == "" || provider.BaseURL == "" {
-		return mockDomains(dataset), mockEdges(dataset), nil
+	if provider.ProviderType == "mock" {
+		return nil, nil, fmt.Errorf("mock provider is disabled in real-data mode")
+	}
+	if provider.APIKey == "" || provider.BaseURL == "" {
+		return nil, nil, fmt.Errorf("real provider configuration is incomplete")
 	}
 
 	count := dataset.Estimate.DomainCount
@@ -63,11 +66,11 @@ func generateDomainsInBatches(ctx context.Context, provider ProviderConfig, data
 		payload := map[string]any{
 			"model": provider.Model,
 			"messages": []map[string]string{
-				{"role": "system", "content": "You generate unique domain lists for a knowledge graph. Return JSON only."},
 				{"role": "user", "content": prompt},
 			},
-			"temperature": 0.4,
+			"stream": true,
 		}
+		applyReasoningEffort(payload, provider)
 
 		decoded, err := requestChatCompletion(ctx, provider, payload, 90*time.Second)
 		if err != nil {
@@ -143,27 +146,6 @@ func ResolveAPIKey(masked, decrypted string) string {
 		return decrypted
 	}
 	return appcrypto.MaskSecret(masked)
-}
-
-func mockDomains(dataset model.Dataset) []model.Domain {
-	facets := []string{"基础概念", "常见场景", "核心问题", "关键方法", "实操步骤", "风险误区", "进阶技巧", "工具资源", "评估指标", "案例复盘"}
-	domains := make([]model.Domain, 0, dataset.Estimate.DomainCount)
-	for i := 0; i < dataset.Estimate.DomainCount; i++ {
-		facet := facets[i%len(facets)]
-		name := fmt.Sprintf("%s %s %03d", dataset.RootKeyword, facet, i+1)
-		domains = append(domains, model.Domain{
-			Name:         name,
-			Canonical:    canonicalize(name),
-			Level:        1,
-			Source:       "mock",
-			ReviewStatus: "draft",
-		})
-	}
-	return domains
-}
-
-func mockEdges(dataset model.Dataset) []model.DomainEdge {
-	return []model.DomainEdge{}
 }
 
 func canonicalize(input string) string {

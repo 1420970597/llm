@@ -11,7 +11,7 @@
 - Dockerized `go test ./...`
 - `docker build -f deployments/docker/api.Dockerfile -t llm-api-phase4 .`
 - `docker build -f deployments/docker/worker.Dockerfile -t llm-worker-phase4 .`
-- End-to-end Docker smoke flow with PostgreSQL + Redis + API + worker, resulting in 60 generated questions for a 20-domain mock dataset.
+- End-to-end Docker real-provider flow with PostgreSQL + Redis + API + worker, producing persisted question records for the active dataset.
 
 ## Remaining follow-up for later phases
 - Long reasoning/answer generation.

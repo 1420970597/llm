@@ -24,8 +24,17 @@ func (app *application) enqueueExport(w http.ResponseWriter, r *http.Request) {
     app.writeError(w, http.StatusInternalServerError, err)
     return
   }
+  questions, err := app.pipeline.ListQuestions(r.Context(), id)
+  if err != nil {
+    app.writeError(w, http.StatusInternalServerError, err)
+    return
+  }
   if len(rewards) == 0 {
     app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue export: dataset %d has no reward records", id))
+    return
+  }
+  if len(rewards) < len(questions) {
+    app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue export: dataset %d rewards incomplete (%d/%d)", id, len(rewards), len(questions)))
     return
   }
 

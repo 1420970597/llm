@@ -53,7 +53,10 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 	client := &http.Client{Timeout: timeout}
 	var lastErr error
 
-	const maxAttempts = 3
+	maxAttempts := len(requestBodies)
+	if maxAttempts < 3 {
+		maxAttempts = 3
+	}
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		requestBody := requestBodies[(attempt-1)%len(requestBodies)]
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(requestBody))
@@ -125,7 +128,7 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 func buildChatCompletionBodies(provider ProviderConfig, payload map[string]any) ([][]byte, error) {
 	base := clonePayload(payload)
 	if _, exists := base["stream"]; !exists {
-		base["stream"] = false
+		base["stream"] = true
 	}
 
 	if strings.HasPrefix(strings.ToLower(provider.Model), "gpt-5") {
@@ -141,6 +144,10 @@ func buildChatCompletionBodies(provider ProviderConfig, payload map[string]any) 
 
 	variants := []map[string]any{base}
 	if strings.HasPrefix(strings.ToLower(provider.Model), "gpt-5") {
+		altNonStream := clonePayload(base)
+		altNonStream["stream"] = false
+		variants = append(variants, altNonStream)
+
 		altTokens := clonePayload(base)
 		if _, hasMaxTokens := altTokens["max_tokens"]; !hasMaxTokens {
 			if value, ok := altTokens["max_completion_tokens"]; ok {
@@ -152,9 +159,15 @@ func buildChatCompletionBodies(provider ProviderConfig, payload map[string]any) 
 			variants = append(variants, altTokens)
 		}
 
-		altStreaming := clonePayload(base)
-		altStreaming["stream"] = true
-		variants = append(variants, altStreaming)
+		if _, hasReasoning := base["reasoning_effort"]; hasReasoning {
+			altNoReasoning := clonePayload(base)
+			delete(altNoReasoning, "reasoning_effort")
+			variants = append(variants, altNoReasoning)
+
+			altNoReasoningNoTemp := clonePayload(altNoReasoning)
+			delete(altNoReasoningNoTemp, "temperature")
+			variants = append(variants, altNoReasoningNoTemp)
+		}
 	}
 
 	bodies := make([][]byte, 0, len(variants))
@@ -255,12 +268,7 @@ func decodeChatCompletionBody(raw []byte, target *chatCompletionResponse) error 
 	}
 
 	preview := string(trimmed)
-	if len(preview) > 440 {
-		head := preview[:220]
-		tail := preview[len(preview)-220:]
-		preview = head + " ... " + tail
-	}
-	return fmt.Errorf("provider returned undecodable response: %s", preview)
+	return fmt.Errorf("provider returned undecodable response (len=%d): %s", len(trimmed), preview)
 }
 
 func decodeChatCompletionSSE(raw []byte) (string, error) {
