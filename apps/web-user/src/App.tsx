@@ -2275,12 +2275,29 @@ export default function App() {
       },
     ]
 
+    const progressValue = activePipeline ? activePipeline.completionPercent : progressPercent(activeDataset.status)
+    const currentStageLabel = exportDeliveryPending ? '导出收尾中' : statusLabel(activeDataset.status)
+    const warningQuestionCount = questions.filter((item) => item.status !== 'generated').length
+    const missingReasoningCount = reasoning.filter((item) => !item.reasoning.trim()).length
+    const lowRewardCount = rewards.filter((item) => item.score < 0.5).length
+    const deliveryArtifactCount = artifacts.filter((item) => artifactUsageCategory(item) === 'delivery').length
+    const reviewArtifactCount = artifacts.filter((item) => artifactUsageCategory(item) === 'review').length
+    const otherArtifactCount = artifacts.filter((item) => artifactUsageCategory(item) === 'other').length
+    const workbenchStats = [
+      { label: '主题结构', value: graph?.domains.length ?? 0, helper: '当前任务主题节点' },
+      { label: '问题结果', value: questions.length, helper: '待进入答案阶段的问题数' },
+      { label: '答案内容', value: reasoning.length, helper: '含最终答案与思考过程' },
+      { label: '质量评估', value: rewards.length, helper: '已完成评分的记录数' },
+      { label: '导出文件', value: artifacts.length, helper: '可交付或可复核资产' },
+      { label: '等待任务', value: queueDepth, helper: '当前排队中的后台任务' },
+    ]
+
     return (
       <div className="console-page-shell">
         <PageHeader
           badge={`任务中心 / 任务 #${activeDataset.id}`}
           title={activeDataset.name}
-          description="当前页面只负责这一个任务的流程推进、恢复和审核动作。切换别的任务请返回任务列表。"
+          description="将任务推进、质量抽检与导出交付收口到单页运营工作台中处理。"
           actions={
             <>
               <Button onClick={() => navigate('/console/tasks')}>返回任务列表</Button>
@@ -2289,96 +2306,206 @@ export default function App() {
           }
         />
 
-        <div className="console-card-grid-2">
-          <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-            <Title heading={4} className="!mb-0">任务身份</Title>
-            <Text className="mt-2 block console-caption">先确认你当前处理的是哪个任务，再决定后续动作。</Text>
-            <div className="mt-5 console-summary-grid">
-              <div className="console-summary-row"><span>任务 ID</span><Text strong>{activeDataset.id}</Text></div>
-              <div className="console-summary-row"><span>任务名称</span><Text strong>{activeDataset.name}</Text></div>
-              <div className="console-summary-row"><span>任务主题</span><Text strong>{activeDataset.rootKeyword}</Text></div>
-              <div className="console-summary-row"><span>当前阶段</span><Text strong>{statusLabel(activeDataset.status)}</Text></div>
-              <div className="console-summary-row"><span>最新更新时间</span><Text strong>{formatTime(activeDataset.updatedAt)}</Text></div>
+        <Card className="console-focus-card" bodyStyle={{ padding: 24 }}>
+          <div className="console-workbench-hero">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Tag color="blue">任务主题：{activeDataset.rootKeyword}</Tag>
+                <Tag color="cyan">当前阶段：{currentStageLabel}</Tag>
+                <Tag color="green">完成进度：{progressValue}%</Tag>
+              </div>
+              <Title heading={3} className="!mb-0 mt-4">训练数据运营工作台</Title>
+              <Text className="mt-2 block console-caption">先看整体状态，再按生命周期、抽检重点和交付资产推进。所有现有功能都保留在当前任务页里。</Text>
             </div>
-          </Card>
-
-          <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-            <Title heading={4} className="!mb-0">当前最该做什么</Title>
-            <Text className="mt-2 block console-caption">把下一步动作、等待原因和风险集中在一起，避免先看一堆统计再找入口。</Text>
-            <div className="mt-5 console-summary-grid">
-              <div className="console-summary-row"><span>下一步动作</span><Text strong>{nextActionLabel(activeDataset.status)}</Text></div>
-              <div className="console-summary-row"><span>阶段 ETA</span><Text strong>{activeEta}</Text></div>
-              <div className="console-summary-row"><span>等待说明</span><Text strong>{waitingReasonLabel(activeDataset.status, queueDepth)}</Text></div>
-              <div className="console-summary-row"><span>等待状态</span><Text strong>{waitingStateLabel(activeDataset.status, queueDepth)}</Text></div>
-              <div className="console-summary-row"><span>刷新建议</span><Text strong>{refreshExpectationLabel(activeDataset.status, queueDepth)}</Text></div>
-              <div className="console-summary-row"><span>进度保障</span><Text strong>{trustMessageLabel(activeDataset.status)}</Text></div>
+            <div className="console-workbench-hero-actions">
+              <Button theme="solid" type="primary" onClick={() => document.getElementById('stage-lifecycle')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{nextActionLabel(activeDataset.status)}</Button>
+              <Button onClick={() => document.getElementById('stage-quality')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>查看质量抽检</Button>
+              <Button onClick={() => document.getElementById('stage-assets')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>查看导出资产</Button>
             </div>
-          </Card>
-        </div>
-
-        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">产出统计</Title>
-          <Text className="mt-2 block console-caption">在真正进入步骤前，先确认这个任务当前已经产出了什么。</Text>
-          <div className="mt-5 console-summary-grid">
-            <div className="console-summary-row"><span>完成进度</span><Text strong>{activePipeline ? `${activePipeline.completionPercent}%` : `${progressPercent(activeDataset.status)}%`}</Text></div>
-            <div className="console-summary-row"><span>主题结构</span><Text strong>{graph?.domains.length ?? 0}</Text></div>
-            <div className="console-summary-row"><span>问题结果</span><Text strong>{questions.length}</Text></div>
-            <div className="console-summary-row"><span>答案内容</span><Text strong>{reasoning.length}</Text></div>
-            <div className="console-summary-row"><span>质量评估</span><Text strong>{rewards.length}</Text></div>
-            <div className="console-summary-row"><span>导出文件</span><Text strong>{artifacts.length}</Text></div>
-            <div className="console-summary-row"><span>等待任务数</span><Text strong>{queueDepth}</Text></div>
+          </div>
+          <div className="console-workbench-stat-grid mt-5">
+            {workbenchStats.map((item) => (
+              <div key={item.label} className="console-workbench-stat-card">
+                <Text className="console-caption">{item.label}</Text>
+                <div className="console-stat-value mt-2">{item.value}</div>
+                <Text className="mt-2 block console-caption">{item.helper}</Text>
+              </div>
+            ))}
           </div>
         </Card>
 
-        <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">阶段推进</Title>
-          <Text className="mt-2 block console-caption">每个步骤都在当前任务下单独推进，不需要回到列表页滚动查找。</Text>
-          <div className="console-card-grid-2 mt-5">
-            {stageCards.map((stage) => {
-              const style = stageStateStyle(stage.state)
-              return (
-                <div key={stage.key} className="console-domain-item">
-                  <div className="flex items-center justify-between gap-3">
-                    <Text strong>{stage.label}</Text>
-                    <Tag color={style.color}>{style.label}</Tag>
-                  </div>
-                  <Progress percent={style.percent} showInfo={false} stroke="#3b82f6" className="mt-3" />
-                  <Text className="mt-2 block console-caption">{stage.summary}</Text>
-                  <Text className="mt-1 block console-caption">当前记录数：{stage.count}</Text>
-                  <Space className="mt-3" wrap>
-                    <Button size="small" onClick={() => navigate(stage.route)}>进入阶段</Button>
-                  </Space>
+        <div className="console-workbench-layout">
+          <div className="console-workbench-sidebar">
+            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+              <Title heading={5} className="!mb-0">任务上下文</Title>
+              <div className="mt-4 console-summary-grid">
+                <div className="console-summary-row"><span>任务 ID</span><Text strong>{activeDataset.id}</Text></div>
+                <div className="console-summary-row"><span>最新更新时间</span><Text strong>{formatTime(activeDataset.updatedAt)}</Text></div>
+                <div className="console-summary-row"><span>阶段 ETA</span><Text strong>{activeEta}</Text></div>
+                <div className="console-summary-row"><span>等待状态</span><Text strong>{waitingStateLabel(activeDataset.status, queueDepth)}</Text></div>
+              </div>
+            </Card>
+
+            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+              <Title heading={5} className="!mb-0">生命周期导航</Title>
+              <div className="mt-4 console-stack">
+                {stageCards.map((stage) => {
+                  const style = stageStateStyle(stage.state)
+                  return (
+                    <button
+                      key={stage.key}
+                      type="button"
+                      className={clsx('console-workbench-stage-nav', `is-${stage.state}`)}
+                      onClick={() => document.getElementById(`stage-${stage.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <Text strong>{stage.label}</Text>
+                        <Tag color={style.color}>{style.label}</Tag>
+                      </div>
+                      <Progress percent={style.percent} showInfo={false} stroke="#3b82f6" className="mt-3" />
+                      <Text className="mt-2 block console-caption">{stage.count} 条记录</Text>
+                    </button>
+                  )
+                })}
+              </div>
+            </Card>
+
+            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+              <Title heading={5} className="!mb-0">恢复与帮助</Title>
+              <div className="mt-4 console-next-step-list">
+                <Text className="console-caption">• 先刷新当前任务，确认是否仍处于排队或处理中。</Text>
+                <Text className="console-caption">• 优先检查当前阶段输入是否完整，再决定是否重跑。</Text>
+                <Text className="console-caption">• 连续异常时进入帮助页按恢复指引处理。</Text>
+              </div>
+              <Space className="mt-4" wrap>
+                <Button onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务状态已刷新')}>立即刷新</Button>
+                <Button onClick={() => navigate('/console/help')}>恢复指引</Button>
+              </Space>
+            </Card>
+          </div>
+
+          <div className="console-workbench-main">
+            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+              <Title heading={4} className="!mb-0">当前最该做什么</Title>
+              <Text className="mt-2 block console-caption">参考主流数据运营台做法，把动作、等待原因和风险提示固定在主工作区顶部。</Text>
+              <div className="mt-5 console-summary-grid">
+                <div className="console-summary-row"><span>下一步动作</span><Text strong>{nextActionLabel(activeDataset.status)}</Text></div>
+                <div className="console-summary-row"><span>等待说明</span><Text strong>{waitingReasonLabel(activeDataset.status, queueDepth)}</Text></div>
+                <div className="console-summary-row"><span>刷新建议</span><Text strong>{refreshExpectationLabel(activeDataset.status, queueDepth)}</Text></div>
+                <div className="console-summary-row"><span>进度保障</span><Text strong>{trustMessageLabel(activeDataset.status)}</Text></div>
+              </div>
+            </Card>
+
+            <section id="stage-lifecycle" className="console-stack">
+              <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
+                <Title heading={4} className="!mb-0">生命周期主轴</Title>
+                <Text className="mt-2 block console-caption">按“主题结构 → 问题 → 答案 → 评分 → 导出”串起整个任务，不删功能，只重排信息密度。</Text>
+                <div className="mt-5 console-stack">
+                  {stageCards.map((stage) => {
+                    const style = stageStateStyle(stage.state)
+                    return (
+                      <div key={stage.key} id={`stage-${stage.key}`} className="console-workbench-stage-card">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <Text strong>{stage.label}</Text>
+                            <Text className="mt-2 block console-caption">{stage.summary}</Text>
+                          </div>
+                          <Space>
+                            <Tag color={style.color}>{style.label}</Tag>
+                            <Tag color="blue">{stage.count} 条记录</Tag>
+                          </Space>
+                        </div>
+                        <Progress percent={style.percent} showInfo={false} stroke="#3b82f6" className="mt-4" />
+                      </div>
+                    )
+                  })}
                 </div>
-              )
-            })}
+              </Card>
+            </section>
+
+            <section id="stage-quality" className="console-card-grid-2">
+              <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+                <Title heading={4} className="!mb-0">质量抽检</Title>
+                <Text className="mt-2 block console-caption">把抽检入口和风险信号并排放在主工作区，减少阶段跳转成本。</Text>
+                <div className="mt-5 console-summary-grid">
+                  <div className="console-summary-row"><span>问题抽检</span><Space><Tag color={warningQuestionCount > 0 ? 'orange' : 'green'}>{warningQuestionCount > 0 ? `${warningQuestionCount} 条待关注` : '状态正常'}</Tag><Button size="small" onClick={() => navigate('/console/questions')}>去审核</Button></Space></div>
+                  <div className="console-summary-row"><span>答案抽检</span><Space><Tag color={missingReasoningCount > 0 ? 'orange' : 'green'}>{missingReasoningCount > 0 ? `${missingReasoningCount} 条缺少思考` : '结构完整'}</Tag><Button size="small" onClick={() => navigate('/console/reasoning')}>去审核</Button></Space></div>
+                  <div className="console-summary-row"><span>评分复核</span><Space><Tag color={lowRewardCount > 0 ? 'red' : 'green'}>{lowRewardCount > 0 ? `${lowRewardCount} 条低分` : '评分稳定'}</Tag><Button size="small" onClick={() => navigate('/console/rewards')}>去审核</Button></Space></div>
+                  <div className="console-summary-row"><span>交付复核</span><Space><Tag color={deliveryArtifactCount > 0 ? 'green' : 'grey'}>{deliveryArtifactCount > 0 ? `${deliveryArtifactCount} 个可交付` : '暂无交付包'}</Tag><Button size="small" onClick={() => navigate('/console/exports')}>去审核</Button></Space></div>
+                </div>
+              </Card>
+
+              <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+                <Title heading={4} className="!mb-0">风险与恢复</Title>
+                <Text className="mt-2 block console-caption">把等待与恢复提示紧邻质量动作展示，符合运营台的处置路径。</Text>
+                <div className="mt-5 console-summary-grid">
+                  <div className="console-summary-row"><span>等待任务数</span><Text strong>{queueDepth}</Text></div>
+                  <div className="console-summary-row"><span>导出状态</span><Text strong>{exportDeliveryPending ? '导出落盘中' : '按当前阶段推进'}</Text></div>
+                  <div className="console-summary-row"><span>建议动作</span><Text strong>{nextActionLabel(activeDataset.status)}</Text></div>
+                  <div className="console-summary-row"><span>恢复入口</span><Button size="small" onClick={() => navigate('/console/help')}>查看帮助</Button></div>
+                </div>
+              </Card>
+            </section>
+
+            <section id="stage-assets">
+              <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+                <Title heading={4} className="!mb-0">导出与交付资产</Title>
+                <Text className="mt-2 block console-caption">保留原有导出功能，但在任务页中直接暴露交付状态与资产规模，符合数据资产平台常见布局。</Text>
+                <div className="mt-5 console-card-grid-3">
+                  <div className="console-workbench-stat-card">
+                    <Text className="console-caption">最新交付</Text>
+                    <div className="console-stat-value mt-2">{deliveryArtifactCount}</div>
+                    <Text className="mt-2 block console-caption">优先下载并交付下游</Text>
+                  </div>
+                  <div className="console-workbench-stat-card">
+                    <Text className="console-caption">版本复核</Text>
+                    <div className="console-stat-value mt-2">{reviewArtifactCount}</div>
+                    <Text className="mt-2 block console-caption">用于内部复核与抽样</Text>
+                  </div>
+                  <div className="console-workbench-stat-card">
+                    <Text className="console-caption">其他格式</Text>
+                    <div className="console-stat-value mt-2">{otherArtifactCount}</div>
+                    <Text className="mt-2 block console-caption">按需确认兼容性</Text>
+                  </div>
+                </div>
+                <div className="mt-5 console-summary-grid">
+                  <div className="console-summary-row"><span>默认交付视图</span><Text strong>{deliveryArtifactCount > 0 ? '优先显示最新交付包' : '等待生成交付包'}</Text></div>
+                  <div className="console-summary-row"><span>版本策略</span><Text strong>先看最新版本，再进入导出中心查看历史版本与文件详情</Text></div>
+                  <div className="console-summary-row"><span>交付说明</span><Text strong>{reviewArtifactCount > 0 ? '存在复核资料，建议先内部确认再对外交付' : '当前可直接以交付包为主继续推进'}</Text></div>
+                </div>
+                <Space className="mt-5" wrap>
+                  <Button theme="solid" type="primary" onClick={() => navigate('/console/exports')}>进入导出中心</Button>
+                  <Button onClick={() => document.getElementById('stage-lifecycle')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>返回生命周期</Button>
+                </Space>
+              </Card>
+            </section>
           </div>
-        </Card>
 
-        <div className="console-card-grid-2">
-          <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-            <Title heading={4} className="!mb-0">恢复动作</Title>
-            <Text className="mt-2 block console-caption">当阶段等待过久或状态异常时，按以下顺序恢复。</Text>
-            <div className="mt-5 console-next-step-list">
-              <Text className="console-caption">• 先刷新当前任务状态，确认是否仍处于排队或处理中。</Text>
-              <Text className="console-caption">• 如需回退排查，优先进入当前阶段的上一步页面复核输入。</Text>
-              <Text className="console-caption">• 如果连续失败，进入帮助页按恢复指引处理。</Text>
-            </div>
-            <Space className="mt-4" wrap>
-              <Button onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务状态已刷新')}>立即刷新</Button>
-              <Button onClick={() => navigate('/console/help')}>查看恢复指引</Button>
-            </Space>
-          </Card>
+          <div className="console-workbench-delivery">
+            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+              <Title heading={5} className="!mb-0">最新交付</Title>
+              <Text className="mt-2 block console-caption">交付资产持续可见，但不打断当前阶段处理。</Text>
+              <div className="mt-4 console-summary-grid">
+                <div className="console-summary-row"><span>最新交付包</span><Text strong>{deliveryArtifactCount > 0 ? `${deliveryArtifactCount} 个可交付` : '暂无交付包'}</Text></div>
+                <div className="console-summary-row"><span>版本复核</span><Text strong>{reviewArtifactCount > 0 ? `${reviewArtifactCount} 个复核资产` : '暂无复核资产'}</Text></div>
+                <div className="console-summary-row"><span>导出状态</span><Text strong>{exportDeliveryPending ? '导出落盘中' : '可按当前阶段推进'}</Text></div>
+                <div className="console-summary-row"><span>版本策略</span><Text strong>优先最新版本</Text></div>
+              </div>
+              <Space className="mt-4" wrap>
+                <Button theme="solid" type="primary" onClick={() => navigate('/console/exports')}>进入导出中心</Button>
+                <Button onClick={() => document.getElementById('stage-assets')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>查看资产区</Button>
+              </Space>
+            </Card>
 
-          <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-            <Title heading={4} className="!mb-0">审核动作</Title>
-            <Text className="mt-2 block console-caption">按产物类型进入对应页面抽检，确认质量后再进入下一阶段。</Text>
-            <div className="mt-5 console-summary-grid">
-              <div className="console-summary-row"><span>问题抽检</span><Button size="small" onClick={() => navigate('/console/questions')}>去审核</Button></div>
-              <div className="console-summary-row"><span>答案抽检</span><Button size="small" onClick={() => navigate('/console/reasoning')}>去审核</Button></div>
-              <div className="console-summary-row"><span>评分复核</span><Button size="small" onClick={() => navigate('/console/rewards')}>去审核</Button></div>
-              <div className="console-summary-row"><span>交付复核</span><Button size="small" onClick={() => navigate('/console/exports')}>去审核</Button></div>
-            </div>
-          </Card>
+            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+              <Title heading={5} className="!mb-0">交付判断</Title>
+              <div className="mt-4 console-summary-grid">
+                <div className="console-summary-row"><span>默认交付视图</span><Text strong>{deliveryArtifactCount > 0 ? '先看最新交付包' : '等待导出产物'}</Text></div>
+                <div className="console-summary-row"><span>对外交付前</span><Text strong>{reviewArtifactCount > 0 ? '建议先完成内部复核' : '可直接以交付包为主继续推进'}</Text></div>
+                <div className="console-summary-row"><span>其他格式</span><Text strong>{otherArtifactCount > 0 ? `${otherArtifactCount} 个待确认格式` : '无额外格式风险'}</Text></div>
+              </div>
+            </Card>
+          </div>
         </div>
       </div>
     )
