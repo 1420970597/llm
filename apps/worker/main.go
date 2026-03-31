@@ -44,11 +44,15 @@ func main() {
 	datasets := store.NewDatasetStore(pool, box)
 	pipeline := store.NewPipelineStore(pool)
 	reasoningStore := store.NewReasoningStore(pool)
+	if err := reasoningStore.EnsureSchemaReady(ctx); err != nil {
+		log.Fatalf("worker reasoning schema readiness failed: %v", err)
+	}
 	rewardStore := store.NewRewardStore(pool)
 	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisHost + ":" + cfg.RedisPort})
+	promptStore := store.NewAdminStore(pool, box)
 	artifactStore := store.NewArtifactStore(pool, redisClient, cfg.QueueName)
 
-	go consumeJobs(ctx, cfg.QueueName, redisClient, datasets, pipeline, reasoningStore, rewardStore, artifactStore)
+	go consumeJobs(ctx, cfg.QueueName, redisClient, datasets, pipeline, promptStore, reasoningStore, rewardStore, artifactStore)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -68,7 +72,7 @@ func main() {
 	}
 }
 
-func consumeJobs(ctx context.Context, queue string, redisClient *redis.Client, datasets *store.DatasetStore, pipeline *store.PipelineStore, reasoningStore *store.ReasoningStore, rewardStore *store.RewardStore, artifactStore *store.ArtifactStore) {
+func consumeJobs(ctx context.Context, queue string, redisClient *redis.Client, datasets *store.DatasetStore, pipeline *store.PipelineStore, promptStore *store.AdminStore, reasoningStore *store.ReasoningStore, rewardStore *store.RewardStore, artifactStore *store.ArtifactStore) {
 	for {
 		result, err := redisClient.BRPop(ctx, 5*time.Second, queue).Result()
 		if err != nil {
@@ -91,39 +95,45 @@ func consumeJobs(ctx context.Context, queue string, redisClient *redis.Client, d
 
 		switch job.Type {
 		case "questions.generate":
-			if err := handleQuestionGeneration(ctx, job.DatasetID, datasets, pipeline); err != nil {
+			if err := handleQuestionGeneration(ctx, job.DatasetID, datasets, pipeline, promptStore); err != nil {
+				_ = datasets.UpdateStatus(ctx, job.DatasetID, "questions_failed")
 				log.Printf("question generation failed dataset=%d err=%v", job.DatasetID, err)
 			}
 		case "reasoning.generate":
-			if err := handleReasoningGeneration(ctx, job.DatasetID, datasets, pipeline, reasoningStore); err != nil {
+			if err := handleReasoningGeneration(ctx, job.DatasetID, datasets, pipeline, promptStore, reasoningStore); err != nil {
 				if shouldRetryJob(err) && job.Retry < 2 {
 					next := job
 					next.Retry++
 					if requeueErr := requeueJob(ctx, redisClient, queue, next); requeueErr != nil {
+						_ = datasets.UpdateStatus(ctx, job.DatasetID, "reasoning_failed")
 						log.Printf("reasoning generation failed dataset=%d retry=%d err=%v requeue_err=%v", job.DatasetID, job.Retry, err, requeueErr)
 						continue
 					}
 					log.Printf("reasoning generation retrying dataset=%d next_retry=%d err=%v", job.DatasetID, next.Retry, err)
 					continue
 				}
+				_ = datasets.UpdateStatus(ctx, job.DatasetID, "reasoning_failed")
 				log.Printf("reasoning generation failed dataset=%d retry=%d err=%v", job.DatasetID, job.Retry, err)
 			}
 		case "rewards.generate":
-			if err := handleRewardGeneration(ctx, job.DatasetID, datasets, pipeline, rewardStore); err != nil {
+			if err := handleRewardGeneration(ctx, job.DatasetID, datasets, pipeline, promptStore, rewardStore); err != nil {
 				if shouldRetryJob(err) && job.Retry < 2 {
 					next := job
 					next.Retry++
 					if requeueErr := requeueJob(ctx, redisClient, queue, next); requeueErr != nil {
+						_ = datasets.UpdateStatus(ctx, job.DatasetID, "rewards_failed")
 						log.Printf("reward generation failed dataset=%d retry=%d err=%v requeue_err=%v", job.DatasetID, job.Retry, err, requeueErr)
 						continue
 					}
 					log.Printf("reward generation retrying dataset=%d next_retry=%d err=%v", job.DatasetID, next.Retry, err)
 					continue
 				}
+				_ = datasets.UpdateStatus(ctx, job.DatasetID, "rewards_failed")
 				log.Printf("reward generation failed dataset=%d retry=%d err=%v", job.DatasetID, job.Retry, err)
 			}
 		case "export.generate":
 			if err := handleExportGeneration(ctx, job.DatasetID, datasets, pipeline, reasoningStore, rewardStore, artifactStore); err != nil {
+				_ = datasets.UpdateStatus(ctx, job.DatasetID, "export_failed")
 				log.Printf("export generation failed dataset=%d err=%v", job.DatasetID, err)
 			}
 		default:
@@ -132,7 +142,7 @@ func consumeJobs(ctx context.Context, queue string, redisClient *redis.Client, d
 	}
 }
 
-func handleQuestionGeneration(ctx context.Context, datasetID int64, datasets *store.DatasetStore, pipeline *store.PipelineStore) error {
+func handleQuestionGeneration(ctx context.Context, datasetID int64, datasets *store.DatasetStore, pipeline *store.PipelineStore, promptStore *store.AdminStore) error {
 	dataset, err := datasets.GetDataset(ctx, datasetID)
 	if err != nil {
 		return err
@@ -150,13 +160,19 @@ func handleQuestionGeneration(ctx context.Context, datasetID int64, datasets *st
 		return err
 	}
 
+	promptTemplate, promptErr := promptStore.GetActivePromptByStage(ctx, "question-generation")
+	var promptConfig *model.PromptTemplate
+	if promptErr == nil {
+		promptConfig = &promptTemplate
+	}
+
 	questions, err := llm.GenerateQuestions(ctx, llm.ProviderConfig{
 		BaseURL:         baseURL,
 		Model:           modelName,
 		ProviderType:    providerType,
 		ReasoningEffort: reasoningEffort,
 		APIKey:          apiKey,
-	}, dataset, domains)
+	}, dataset, domains, promptConfig)
 	if err != nil {
 		return err
 	}
@@ -167,7 +183,7 @@ func handleQuestionGeneration(ctx context.Context, datasetID int64, datasets *st
 	return nil
 }
 
-func handleReasoningGeneration(ctx context.Context, datasetID int64, datasets *store.DatasetStore, pipeline *store.PipelineStore, reasoningStore *store.ReasoningStore) error {
+func handleReasoningGeneration(ctx context.Context, datasetID int64, datasets *store.DatasetStore, pipeline *store.PipelineStore, promptStore *store.AdminStore, reasoningStore *store.ReasoningStore) error {
 	dataset, err := datasets.GetDataset(ctx, datasetID)
 	if err != nil {
 		return err
@@ -198,6 +214,12 @@ func handleReasoningGeneration(ctx context.Context, datasetID int64, datasets *s
 	})
 	if err != nil {
 		return err
+	}
+
+	promptTemplate, promptErr := promptStore.GetActivePromptByStage(ctx, "reasoning-generation")
+	var promptConfig *model.PromptTemplate
+	if promptErr == nil {
+		promptConfig = &promptTemplate
 	}
 
 	recorded := 0
@@ -208,7 +230,7 @@ func handleReasoningGeneration(ctx context.Context, datasetID int64, datasets *s
 			ProviderType:    providerType,
 			ReasoningEffort: reasoningEffort,
 			APIKey:          apiKey,
-		}, dataset, []model.Question{question})
+		}, dataset, []model.Question{question}, promptConfig)
 		if err != nil {
 			return err
 		}
@@ -219,20 +241,17 @@ func handleReasoningGeneration(ctx context.Context, datasetID int64, datasets *s
 				return putErr
 			}
 			records[index].ObjectKey = uri
-			if upsertErr := reasoningStore.UpsertPartial(ctx, datasetID, []model.ReasoningRecord{records[index]}); upsertErr != nil {
-				return upsertErr
-			}
-			recorded++
 		}
-	}
-	if err := datasets.UpdateStatus(ctx, datasetID, "reasoning_generated"); err != nil {
-		return err
+		if upsertErr := reasoningStore.Insert(ctx, datasetID, records); upsertErr != nil {
+			return upsertErr
+		}
+		recorded += len(records)
 	}
 	log.Printf("reasoning generated dataset=%d count=%d", datasetID, recorded)
 	return nil
 }
 
-func handleRewardGeneration(ctx context.Context, datasetID int64, datasets *store.DatasetStore, pipeline *store.PipelineStore, rewardStore *store.RewardStore) error {
+func handleRewardGeneration(ctx context.Context, datasetID int64, datasets *store.DatasetStore, pipeline *store.PipelineStore, promptStore *store.AdminStore, rewardStore *store.RewardStore) error {
 	dataset, err := datasets.GetDataset(ctx, datasetID)
 	if err != nil {
 		return err
@@ -265,6 +284,12 @@ func handleRewardGeneration(ctx context.Context, datasetID int64, datasets *stor
 		return err
 	}
 
+	promptTemplate, promptErr := promptStore.GetActivePromptByStage(ctx, "reward-generation")
+	var promptConfig *model.PromptTemplate
+	if promptErr == nil {
+		promptConfig = &promptTemplate
+	}
+
 	recorded := 0
 	for _, question := range questions {
 		records, payloads, err := llm.GenerateRewards(ctx, llm.ProviderConfig{
@@ -273,7 +298,7 @@ func handleRewardGeneration(ctx context.Context, datasetID int64, datasets *stor
 			ProviderType:    providerType,
 			ReasoningEffort: reasoningEffort,
 			APIKey:          apiKey,
-		}, dataset, []model.Question{question})
+		}, dataset, []model.Question{question}, promptConfig)
 		if err != nil {
 			return err
 		}
@@ -284,14 +309,11 @@ func handleRewardGeneration(ctx context.Context, datasetID int64, datasets *stor
 				return putErr
 			}
 			records[index].ObjectKey = uri
-			if upsertErr := rewardStore.UpsertPartial(ctx, datasetID, []model.RewardRecord{records[index]}); upsertErr != nil {
-				return upsertErr
-			}
-			recorded++
 		}
-	}
-	if err := datasets.UpdateStatus(ctx, datasetID, "rewards_generated"); err != nil {
-		return err
+		if upsertErr := rewardStore.Insert(ctx, datasetID, records); upsertErr != nil {
+			return upsertErr
+		}
+		recorded += len(records)
 	}
 	log.Printf("reward records generated dataset=%d count=%d", datasetID, recorded)
 	return nil
@@ -344,7 +366,7 @@ func handleExportGeneration(ctx context.Context, datasetID int64, datasets *stor
 	for _, question := range questions {
 		reasoning, hasReasoning := reasoningByQuestion[question.ID]
 		reward, hasReward := rewardByQuestion[question.ID]
-		if !hasReasoning || !hasReward {
+		if !hasReasoning || !hasReward || reasoning.Status == "failed" || reward.Status == "failed" {
 			continue
 		}
 		payload := map[string]any{

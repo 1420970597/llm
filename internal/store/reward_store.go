@@ -24,30 +24,48 @@ func (s *RewardStore) UpsertPartial(ctx context.Context, datasetID int64, record
 }
 
 func (s *RewardStore) upsert(ctx context.Context, datasetID int64, records []model.RewardRecord, markGenerated bool) error {
-  for _, record := range records {
-    _, err := s.db.Exec(ctx, `
-      INSERT INTO reward_records (dataset_id, question_id, score, object_key, status)
-      VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (question_id) DO UPDATE SET
-        score = EXCLUDED.score,
-        object_key = EXCLUDED.object_key,
-        status = EXCLUDED.status,
-        updated_at = NOW()`,
-      datasetID,
-      record.QuestionID,
-      record.Score,
-      record.ObjectKey,
-      "generated",
-    )
-    if err != nil {
-      return err
-    }
-  }
-  if !markGenerated {
-    return nil
-  }
-  _, err := s.db.Exec(ctx, `UPDATE datasets SET status = 'rewards_generated', updated_at = NOW() WHERE id = $1`, datasetID)
-  return err
+	generatedCount := 0
+	failedCount := 0
+	for _, record := range records {
+		status := record.Status
+		if status == "" {
+			status = "generated"
+		}
+		if status == "failed" {
+			failedCount++
+		} else {
+			generatedCount++
+		}
+		_, err := s.db.Exec(ctx, `
+	      INSERT INTO reward_records (dataset_id, question_id, score, object_key, status)
+	      VALUES ($1, $2, $3, $4, $5)
+	      ON CONFLICT (question_id) DO UPDATE SET
+	        score = EXCLUDED.score,
+	        object_key = EXCLUDED.object_key,
+	        status = EXCLUDED.status,
+	        updated_at = NOW()`,
+			datasetID,
+			record.QuestionID,
+			record.Score,
+			record.ObjectKey,
+			status,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	if !markGenerated {
+		return nil
+	}
+	nextStatus := "rewards_generated"
+	if failedCount > 0 {
+		nextStatus = "rewards_partial"
+		if generatedCount == 0 {
+			nextStatus = "rewards_failed"
+		}
+	}
+	_, err := s.db.Exec(ctx, `UPDATE datasets SET status = $2, updated_at = NOW() WHERE id = $1`, datasetID, nextStatus)
+	return err
 }
 
 func (s *RewardStore) List(ctx context.Context, datasetID int64) ([]model.RewardRecord, error) {

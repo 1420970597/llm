@@ -131,18 +131,30 @@ function statusLabel(status: string) {
       return '问题生成排队中'
     case 'questions_generated':
       return '问题已就绪，待生成答案'
+    case 'questions_failed':
+      return '问题生成失败'
     case 'reasoning_queued':
       return '答案生成排队中'
     case 'reasoning_generated':
       return '答案已就绪，待质量评分'
+    case 'reasoning_partial':
+      return '答案部分生成，需复核'
+    case 'reasoning_failed':
+      return '答案生成失败'
     case 'rewards_queued':
       return '质量评分排队中'
     case 'rewards_generated':
       return '评分完成，可导出交付'
+    case 'rewards_partial':
+      return '评分部分完成，需复核'
+    case 'rewards_failed':
+      return '质量评分失败'
     case 'export_queued':
       return '导出任务排队中'
     case 'export_generated':
       return '导出已完成'
+    case 'export_failed':
+      return '导出失败'
     default:
       return status
   }
@@ -265,12 +277,22 @@ function waitingActionLabel(status: string) {
       return '无需停留本页，可先处理其他步骤，再按刷新建议回看。'
     case 'questions_generated':
       return '前往“答案生成”，点击“开始生成答案”。'
+    case 'questions_failed':
+      return '请先回到“题目结果”排查失败原因，再重新生成。'
     case 'reasoning_generated':
-      return '前往“质量评分”，点击“生成质量评分”。'
+    case 'reasoning_partial':
+      return '前往“质量评分”，确认可用后再启动评分。'
+    case 'reasoning_failed':
+      return '请先回到“答案结果”排查失败原因，再重新生成。'
     case 'rewards_generated':
-      return '前往“结果交付”，点击“导出结果包”。'
+    case 'rewards_partial':
+      return '前往“结果交付”，确认可用后再导出。'
+    case 'rewards_failed':
+      return '请先回到“质量评分”排查失败原因，再重新评分。'
     case 'export_generated':
       return '进入“结果交付”下载文件，并完成交付确认。'
+    case 'export_failed':
+      return '请重新发起导出，或先检查上游评分结果是否完整。'
     default:
       return '点击刷新同步状态后继续。'
   }
@@ -368,7 +390,7 @@ function etaLabel(status: string, queueDepth: number, acceptedAt?: string) {
   return '刷新后更新 ETA'
 }
 
-function stageStateStyle(state: 'pending' | 'queued' | 'in_progress' | 'completed') {
+function stageStateStyle(state: 'pending' | 'queued' | 'in_progress' | 'completed' | 'failed') {
   switch (state) {
     case 'completed':
       return { label: '已完成', color: 'green' as const, percent: 100 }
@@ -376,6 +398,8 @@ function stageStateStyle(state: 'pending' | 'queued' | 'in_progress' | 'complete
       return { label: '进行中', color: 'blue' as const, percent: 65 }
     case 'queued':
       return { label: '排队中', color: 'cyan' as const, percent: 35 }
+    case 'failed':
+      return { label: '失败', color: 'red' as const, percent: 100 }
     default:
       return { label: '待开始', color: 'grey' as const, percent: 10 }
   }
@@ -448,6 +472,13 @@ function formatTime(value?: string) {
     minute: '2-digit',
     hour12: false,
   }).format(new Date(value))
+}
+
+function taskRouteDatasetId(pathname: string) {
+  const matched = pathname.match(/^\/console\/tasks\/(\d+)(?:\/)?$/)
+  if (!matched) return null
+  const parsed = Number(matched[1])
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 function questionStatusLabel(status: string) {
@@ -753,7 +784,9 @@ export default function App() {
   const navigate = useNavigate()
   const [sessionLoading, setSessionLoading] = useState(true)
   const [authSubmitting, setAuthSubmitting] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const [bootstrapLoading, setBootstrapLoading] = useState(false)
+  const [workspaceLoading, setWorkspaceLoading] = useState(false)
+  const [actionLoading, setActionLoading] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [user, setUser] = useState<User | null>(null)
 
@@ -860,6 +893,12 @@ export default function App() {
       ? '预计 1~3 分钟内完成交付文件落盘'
       : etaLabel(activeDataset.status, runtime?.queueDepth ?? 0, activeStageRun?.acceptedAt)
     : '请先创建任务'
+  const activeTaskDetailRoute = activeDataset ? `/console/tasks/${activeDataset.id}` : '/console/tasks'
+  const activeTaskNavLabel = activeDataset ? '返回当前任务' : '返回任务列表'
+  const canGenerateQuestions = activeDataset?.status === 'domains_confirmed'
+  const canGenerateReasoning = activeDataset?.status === 'questions_generated'
+  const canGenerateRewards = activeDataset?.status === 'reasoning_generated' || activeDataset?.status === 'reasoning_partial'
+  const canGenerateExport = activeDataset?.status === 'rewards_generated' || activeDataset?.status === 'rewards_partial'
   const filteredArtifacts = useMemo(() => {
     if (exportFilter === 'delivery') return artifacts.filter((item) => artifactUsageCategory(item) === 'delivery')
     if (exportFilter === 'review') return artifacts.filter((item) => artifactUsageCategory(item) === 'review')
@@ -1079,7 +1118,7 @@ export default function App() {
   }, [isAdmin])
 
   const loadBootstrap = useCallback(async (successMessage?: string) => {
-    setBusy(true)
+    setBootstrapLoading(true)
     try {
       const [providerData, storageData, strategyData, datasetData, runtimeData] = await Promise.all([
         consoleApi.listProviders(),
@@ -1099,20 +1138,17 @@ export default function App() {
         providerId: current.providerId || providerData[0]?.id || 0,
         storageProfileId: current.storageProfileId || storageData.find((item) => item.isActive)?.id || storageData[0]?.id || 0,
       }))
-      if (!activeDatasetId && datasetData[0]?.id) {
-        setActiveDatasetId(datasetData[0].id)
-      }
       await loadAdminData()
       if (successMessage) Toast.success(successMessage)
     } catch (error) {
       if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
-      setBusy(false)
+      setBootstrapLoading(false)
     }
-  }, [activeDatasetId, loadAdminData])
+  }, [loadAdminData])
 
   const loadDatasetWorkspace = useCallback(async (datasetId: number, successMessage?: string) => {
-    setBusy(true)
+    setWorkspaceLoading(true)
     try {
       const [nextGraph, nextQuestions, nextReasoning, nextRewards, nextArtifacts, nextPipeline, nextRuntime, nextDatasets] = await Promise.all([
         consoleApi.getDataset(datasetId),
@@ -1138,7 +1174,7 @@ export default function App() {
     } catch (error) {
       if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
-      setBusy(false)
+      setWorkspaceLoading(false)
     }
   }, [])
 
@@ -1167,9 +1203,12 @@ export default function App() {
   }, [user, loadBootstrap])
 
   useEffect(() => {
-    if (!user || !activeDatasetId) return
-    void loadDatasetWorkspace(activeDatasetId)
-  }, [user, activeDatasetId, loadDatasetWorkspace])
+    if (!user) return
+    const routeDatasetId = taskRouteDatasetId(location.pathname)
+    if (!routeDatasetId) return
+    if (routeDatasetId === activeDatasetId && graph?.dataset.id === routeDatasetId) return
+    void loadDatasetWorkspace(routeDatasetId)
+  }, [activeDatasetId, graph?.dataset.id, loadDatasetWorkspace, location.pathname, user])
 
   useEffect(() => {
     if (sessionLoading) return
@@ -1224,7 +1263,7 @@ export default function App() {
   }
 
   const estimatePlan = async () => {
-    setBusy(true)
+    setActionLoading(true)
     try {
       const data = await consoleApi.estimatePlan({
         rootKeyword: plannerForm.rootKeyword,
@@ -1236,7 +1275,7 @@ export default function App() {
     } catch (error) {
       if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
-      setBusy(false)
+      setActionLoading(false)
     }
   }
 
@@ -1253,7 +1292,7 @@ export default function App() {
       return
     }
 
-    setBusy(true)
+    setActionLoading(true)
     try {
       const estimateSnapshot = estimate ?? await consoleApi.estimatePlan({
         rootKeyword: plannerForm.rootKeyword,
@@ -1283,7 +1322,7 @@ export default function App() {
         recoveryHint: '如果页面未自动刷新，可点击右上角刷新按钮同步状态。',
         nextStep: { label: '进入整理主题', route: '/console/domains' },
       })
-      navigate('/console/domains')
+      navigate(`/console/tasks/${created.id}`)
       Toast.success('任务已创建')
       await loadBootstrap()
     } catch (error) {
@@ -1297,13 +1336,13 @@ export default function App() {
       })
       Toast.error(message)
     } finally {
-      setBusy(false)
+      setActionLoading(false)
     }
   }
 
   const generateDomains = async () => {
     if (!activeDatasetId) return Toast.warning('请先选择任务')
-    setBusy(true)
+    setActionLoading(true)
     try {
       const nextGraph = await consoleApi.generateDomains(activeDatasetId)
       setGraph(nextGraph)
@@ -1341,26 +1380,26 @@ export default function App() {
 
       Toast.error(message)
     } finally {
-      setBusy(false)
+      setActionLoading(false)
     }
   }
 
   const saveGraph = async () => {
     if (!graph) return
-    setBusy(true)
+    setActionLoading(true)
     try {
       await consoleApi.updateGraph(graph.dataset.id, graph.domains)
       Toast.success('方向命名修改已保存')
     } catch (error) {
       if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
-      setBusy(false)
+      setActionLoading(false)
     }
   }
 
   const confirmDomains = async () => {
     if (!graph) return
-    setBusy(true)
+    setActionLoading(true)
     try {
       await consoleApi.confirmDomains(graph.dataset.id)
       Toast.success('主题结构已确认')
@@ -1377,13 +1416,13 @@ export default function App() {
       })
       Toast.error(message)
     } finally {
-      setBusy(false)
+      setActionLoading(false)
     }
   }
 
   const generateQuestions = async () => {
     if (!activeDatasetId) return
-    setBusy(true)
+    setActionLoading(true)
     try {
       const result = await consoleApi.generateQuestions(activeDatasetId)
       setStageRunMeta((current) => ({ ...current, questions: result }))
@@ -1407,13 +1446,13 @@ export default function App() {
       })
       Toast.error(message)
     } finally {
-      setBusy(false)
+      setActionLoading(false)
     }
   }
 
   const generateReasoning = async () => {
     if (!activeDatasetId) return
-    setBusy(true)
+    setActionLoading(true)
     try {
       const result = await consoleApi.generateReasoning(activeDatasetId)
       setStageRunMeta((current) => ({ ...current, reasoning: result }))
@@ -1437,13 +1476,13 @@ export default function App() {
       })
       Toast.error(message)
     } finally {
-      setBusy(false)
+      setActionLoading(false)
     }
   }
 
   const generateRewards = async () => {
     if (!activeDatasetId) return
-    setBusy(true)
+    setActionLoading(true)
     try {
       const result = await consoleApi.generateRewards(activeDatasetId)
       setStageRunMeta((current) => ({ ...current, rewards: result }))
@@ -1467,13 +1506,13 @@ export default function App() {
       })
       Toast.error(message)
     } finally {
-      setBusy(false)
+      setActionLoading(false)
     }
   }
 
   const generateExport = async () => {
     if (!activeDatasetId) return
-    setBusy(true)
+    setActionLoading(true)
     try {
       const result = await consoleApi.generateExport(activeDatasetId)
       setStageRunMeta((current) => ({ ...current, export: result }))
@@ -1497,7 +1536,7 @@ export default function App() {
       })
       Toast.error(message)
     } finally {
-      setBusy(false)
+      setActionLoading(false)
     }
   }
 
@@ -1547,7 +1586,7 @@ export default function App() {
   }
 
   const saveProvider = async () => {
-    setBusy(true)
+    setActionLoading(true)
     try {
       await consoleApi.saveProvider(providerDraft)
       Toast.success('AI 服务已保存')
@@ -1559,7 +1598,7 @@ export default function App() {
     } catch (error) {
       if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
-      setBusy(false)
+      setActionLoading(false)
     }
   }
 
@@ -1620,7 +1659,7 @@ export default function App() {
   }
 
   const saveStorage = async () => {
-    setBusy(true)
+    setActionLoading(true)
     try {
       await consoleApi.saveStorageProfile(storageDraft)
       Toast.success('存储配置已保存')
@@ -1630,12 +1669,12 @@ export default function App() {
     } catch (error) {
       if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
-      setBusy(false)
+      setActionLoading(false)
     }
   }
 
   const saveStrategy = async () => {
-    setBusy(true)
+    setActionLoading(true)
     try {
       await consoleApi.saveStrategy(strategyDraft)
       Toast.success('生成策略已保存')
@@ -1645,12 +1684,12 @@ export default function App() {
     } catch (error) {
       if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
-      setBusy(false)
+      setActionLoading(false)
     }
   }
 
   const savePrompt = async () => {
-    setBusy(true)
+    setActionLoading(true)
     try {
       await consoleApi.savePrompt(promptDraft)
       Toast.success('生成指令模板已保存')
@@ -1660,7 +1699,7 @@ export default function App() {
     } catch (error) {
       if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
-      setBusy(false)
+      setActionLoading(false)
     }
   }
 
@@ -1939,7 +1978,7 @@ export default function App() {
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>
                 新建任务
               </Button>
-              <Button loading={busy} icon={<RefreshCw size={16} />} onClick={() => void loadBootstrap('工作台数据已刷新')}>
+              <Button loading={bootstrapLoading} icon={<RefreshCw size={16} />} onClick={() => void loadBootstrap('工作台数据已刷新')}>
                 刷新工作台
               </Button>
               <Button icon={<Target size={16} />} onClick={() => navigate('/console/tasks')}>查看我的任务</Button>
@@ -2078,12 +2117,82 @@ export default function App() {
   }
 
 
+  const renderTaskIndex = () => {
+    const recentDatasets = [...datasets]
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+      .slice(0, 10)
+
+    return (
+      <div className="console-page-shell">
+        <PageHeader
+          badge="任务中心 / 任务列表"
+          title="先选任务，再进入独立任务页推进"
+          description="任务中心首页只负责创建任务和查看任务列表；切换任务会进入独立页面，不再在当前页混排所有流程。"
+          actions={
+            <>
+              <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
+              <Button icon={<RefreshCw size={16} />} loading={bootstrapLoading} onClick={() => void loadBootstrap('任务中心已刷新')}>刷新任务中心</Button>
+            </>
+          }
+        />
+
+        <div className="console-card-grid-2">
+          <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+            <Title heading={4} className="!mb-0">创建入口</Title>
+            <Text className="mt-2 block console-caption">新任务入口固定放在这里，不和任务详情、阶段按钮混在一起。</Text>
+            <div className="mt-5 console-summary-grid">
+              <div className="console-summary-row"><span>当前任务总数</span><Text strong>{datasets.length}</Text></div>
+              <div className="console-summary-row"><span>最近活跃任务</span><Text strong>{recentDatasets[0]?.name ?? '暂无任务'}</Text></div>
+              <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
+              <div className="console-summary-row"><span>推荐动作</span><Text strong>先新建任务，或从右侧列表进入已有任务</Text></div>
+            </div>
+            <Space className="mt-5" wrap>
+              <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
+              <Button onClick={() => navigate('/console/results')}>查看结果中心</Button>
+            </Space>
+          </Card>
+
+          <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+            <Title heading={4} className="!mb-0">任务列表</Title>
+            <Text className="mt-2 block console-caption">点击任意任务后进入它的独立详情页，避免同页来回滚动。</Text>
+            <div className="mt-5 console-stack">
+              {recentDatasets.length > 0 ? recentDatasets.map((dataset) => (
+                <div key={dataset.id} className="console-domain-item">
+                  <div className="flex items-center justify-between gap-3">
+                    <Space>
+                      <Tag color="blue">任务 #{dataset.id}</Tag>
+                      <Tag color={dataset.id === activeDatasetId ? 'green' : 'cyan'}>{dataset.id === activeDatasetId ? '当前任务' : statusLabel(dataset.status)}</Tag>
+                    </Space>
+                    <Button size="small" onClick={() => navigate(`/console/tasks/${dataset.id}`)}>{dataset.id === activeDatasetId ? '进入详情' : '继续任务'}</Button>
+                  </div>
+                  <Text className="mt-2 block" strong>{dataset.name}</Text>
+                  <Text className="mt-1 block console-caption">{dataset.rootKeyword} · 更新于 {formatTime(dataset.updatedAt)}</Text>
+                </div>
+              )) : <Empty description="暂无任务" />}
+            </div>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
   const renderTaskDetail = () => {
     const queueDepth = runtime?.queueDepth ?? 0
     const datasetStatus = activeDataset?.status ?? 'draft'
-    const recentDatasets = [...datasets]
-      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
-      .slice(0, 6)
+
+    if (!activeDataset) {
+      return (
+        <div className="console-page-shell">
+          <PageHeader
+            badge="任务中心 / 任务详情"
+            title="未找到任务详情"
+            description="请先从任务列表进入某个任务，或先创建新任务。"
+            actions={<Button onClick={() => navigate('/console/tasks')}>返回任务列表</Button>}
+          />
+          <EmptyCard title="暂无任务详情" description="进入 /console/tasks 查看任务列表后，再打开具体任务。" />
+        </div>
+      )
+    }
 
     const pipelineStageMap = new Map((activePipeline?.stages ?? []).map((stage) => [stage.key, stage]))
     const questionsStage = pipelineStageMap.get('questions')
@@ -2118,23 +2227,17 @@ export default function App() {
       key: string
       label: string
       route: string
-      state: 'pending' | 'queued' | 'in_progress' | 'completed'
+      state: 'pending' | 'queued' | 'in_progress' | 'completed' | 'failed'
       summary: string
       count: number
-      startLabel: string
-      startAction: () => void
-      startDisabled: boolean
     }> = [
       {
         key: 'domains',
         label: '第 1 步：主题结构',
         route: '/console/domains',
-        state: activeDataset?.status === 'draft' ? 'in_progress' : activeDataset ? 'completed' : 'pending',
-        summary: activeDataset?.status === 'draft' ? '先确认主题结构，系统才能继续生成问题。' : '主题结构已确认，可以进入下一步。',
+        state: activeDataset.status === 'draft' ? 'in_progress' : 'completed',
+        summary: activeDataset.status === 'draft' ? '先确认主题结构，系统才能继续生成问题。' : '主题结构已确认，可以进入下一步。',
         count: graph?.domains.length ?? 0,
-        startLabel: '进入阶段',
-        startAction: () => navigate('/console/domains'),
-        startDisabled: false,
       },
       {
         key: 'questions',
@@ -2143,9 +2246,6 @@ export default function App() {
         state: questionsStage?.state ?? inferStageState('questions'),
         summary: questionsStage?.summary ?? (datasetStatus === 'domains_confirmed' ? '主题结构已确认，下一步应开始生成问题。' : datasetStatus === 'questions_generated' ? '问题已经生成完成，可以继续生成答案内容。' : '进入本阶段查看问题生成结果与覆盖情况。'),
         count: questionsStage?.count ?? questions.length,
-        startLabel: '启动阶段',
-        startAction: () => void generateQuestions(),
-        startDisabled: !activeDataset || activeDataset.status !== 'domains_confirmed',
       },
       {
         key: 'reasoning',
@@ -2154,9 +2254,6 @@ export default function App() {
         state: reasoningStage?.state ?? inferStageState('reasoning'),
         summary: reasoningStage?.summary ?? (datasetStatus === 'questions_generated' ? '问题已准备好，下一步应生成答案内容。' : datasetStatus === 'reasoning_generated' ? '答案内容已经生成完成，可以继续质量评估。' : '进入本阶段查看答案内容是否完整可用。'),
         count: reasoningStage?.count ?? reasoning.length,
-        startLabel: '启动阶段',
-        startAction: () => void generateReasoning(),
-        startDisabled: !activeDataset || activeDataset.status !== 'questions_generated',
       },
       {
         key: 'rewards',
@@ -2165,9 +2262,6 @@ export default function App() {
         state: rewardsStage?.state ?? inferStageState('rewards'),
         summary: rewardsStage?.summary ?? (datasetStatus === 'reasoning_generated' ? '答案内容已准备好，下一步应做质量评估。' : datasetStatus === 'rewards_generated' ? '质量评估已完成，可以进入导出交付。' : '进入本阶段查看质量评估结果与风险项。'),
         count: rewardsStage?.count ?? rewards.length,
-        startLabel: '启动阶段',
-        startAction: () => void generateRewards(),
-        startDisabled: !activeDataset || activeDataset.status !== 'reasoning_generated',
       },
       {
         key: 'export',
@@ -2178,75 +2272,67 @@ export default function App() {
           ? '导出计算已完成，交付文件正在落盘。'
           : exportStage?.summary ?? (datasetStatus === 'rewards_generated' ? '质量评估已完成，下一步应导出交付文件。' : datasetStatus === 'export_generated' ? '导出交付已完成，可以下载文件。' : '进入本阶段查看导出结果和交付文件。'),
         count: exportStage?.count ?? artifacts.length,
-        startLabel: '启动阶段',
-        startAction: () => void generateExport(),
-        startDisabled: !activeDataset || activeDataset.status !== 'rewards_generated',
       },
     ]
 
     return (
       <div className="console-page-shell">
         <PageHeader
-          badge="任务中心 / 当前任务"
-          title="在一个入口完成创建、继续与恢复"
-          description="任务中心统一承载新建任务、当前任务、阶段推进与恢复动作，避免在多个页面之间来回寻找入口。"
+          badge={`任务中心 / 任务 #${activeDataset.id}`}
+          title={activeDataset.name}
+          description="当前页面只负责这一个任务的流程推进、恢复和审核动作。切换别的任务请返回任务列表。"
           actions={
             <>
-              <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('任务详情已刷新')}>刷新任务</Button>
+              <Button onClick={() => navigate('/console/tasks')}>返回任务列表</Button>
+              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务详情已刷新')}>刷新任务</Button>
             </>
           }
         />
 
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-            <Title heading={4} className="!mb-0">任务列表</Title>
-            <Text className="mt-2 block console-caption">先从这里创建新任务或切换到正在推进的任务，不把所有任务和当前流程混在同一块里。</Text>
-            <Space className="mt-5" wrap>
-              <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
-              <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('任务中心已刷新')}>刷新任务中心</Button>
-            </Space>
-            <div className="mt-5 console-stack">
-              {recentDatasets.length > 0 ? recentDatasets.map((dataset) => (
-                <div key={dataset.id} className="console-domain-item">
-                  <div className="flex items-center justify-between gap-3">
-                    <Space>
-                      <Tag color="blue">任务 #{dataset.id}</Tag>
-                      <Tag color={dataset.id === activeDatasetId ? 'green' : 'cyan'}>{dataset.id === activeDatasetId ? '当前任务' : statusLabel(dataset.status)}</Tag>
-                    </Space>
-                    <Button size="small" onClick={() => void loadDatasetWorkspace(dataset.id, `已切换到任务「${dataset.name}」`)}>{dataset.id === activeDatasetId ? '查看流程' : '继续任务'}</Button>
-                  </div>
-                  <Text className="mt-2 block" strong>{dataset.name}</Text>
-                  <Text className="mt-1 block console-caption">{dataset.rootKeyword} · 更新于 {formatTime(dataset.updatedAt)}</Text>
-                </div>
-              )) : <Empty description="暂无任务" />}
+            <Title heading={4} className="!mb-0">任务身份</Title>
+            <Text className="mt-2 block console-caption">先确认你当前处理的是哪个任务，再决定后续动作。</Text>
+            <div className="mt-5 console-summary-grid">
+              <div className="console-summary-row"><span>任务 ID</span><Text strong>{activeDataset.id}</Text></div>
+              <div className="console-summary-row"><span>任务名称</span><Text strong>{activeDataset.name}</Text></div>
+              <div className="console-summary-row"><span>任务主题</span><Text strong>{activeDataset.rootKeyword}</Text></div>
+              <div className="console-summary-row"><span>当前阶段</span><Text strong>{statusLabel(activeDataset.status)}</Text></div>
+              <div className="console-summary-row"><span>最新更新时间</span><Text strong>{formatTime(activeDataset.updatedAt)}</Text></div>
             </div>
           </Card>
 
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-            <Title heading={4} className="!mb-0">当前任务流程</Title>
-            <Text className="mt-2 block console-caption">这里只展示你当前选中的任务，不再和其他任务列表混排。</Text>
+            <Title heading={4} className="!mb-0">当前最该做什么</Title>
+            <Text className="mt-2 block console-caption">把下一步动作、等待原因和风险集中在一起，避免先看一堆统计再找入口。</Text>
             <div className="mt-5 console-summary-grid">
-              <div className="console-summary-row"><span>任务 ID</span><Text strong>{activeDataset?.id ?? '—'}</Text></div>
-              <div className="console-summary-row"><span>任务名称</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
-              <div className="console-summary-row"><span>任务主题</span><Text strong>{activeDataset?.rootKeyword ?? '—'}</Text></div>
-              <div className="console-summary-row"><span>当前阶段</span><Text strong>{activeDataset ? statusLabel(activeDataset.status) : '未开始'}</Text></div>
-              <div className="console-summary-row"><span>完成进度</span><Text strong>{activePipeline ? `${activePipeline.completionPercent}%` : activeDataset ? `${progressPercent(activeDataset.status)}%` : '—'}</Text></div>
+              <div className="console-summary-row"><span>下一步动作</span><Text strong>{nextActionLabel(activeDataset.status)}</Text></div>
               <div className="console-summary-row"><span>阶段 ETA</span><Text strong>{activeEta}</Text></div>
-              <div className="console-summary-row"><span>等待说明</span><Text strong>{activeDataset ? waitingReasonLabel(activeDataset.status, queueDepth) : '创建任务后显示'}</Text></div>
-              <div className="console-summary-row"><span>下一步动作</span><Text strong>{activeDataset ? nextActionLabel(activeDataset.status) : '先点击“新建任务”'}</Text></div>
-              <div className="console-summary-row"><span>主题结构</span><Text strong>{graph?.domains.length ?? 0}</Text></div>
-              <div className="console-summary-row"><span>问题结果</span><Text strong>{questions.length}</Text></div>
-              <div className="console-summary-row"><span>答案内容</span><Text strong>{reasoning.length}</Text></div>
-              <div className="console-summary-row"><span>质量评估</span><Text strong>{rewards.length}</Text></div>
-              <div className="console-summary-row"><span>导出文件</span><Text strong>{artifacts.length}</Text></div>
-              <div className="console-summary-row"><span>最新更新时间</span><Text strong>{activeDataset ? formatTime(activeDataset.updatedAt) : '—'}</Text></div>
+              <div className="console-summary-row"><span>等待说明</span><Text strong>{waitingReasonLabel(activeDataset.status, queueDepth)}</Text></div>
+              <div className="console-summary-row"><span>等待状态</span><Text strong>{waitingStateLabel(activeDataset.status, queueDepth)}</Text></div>
+              <div className="console-summary-row"><span>刷新建议</span><Text strong>{refreshExpectationLabel(activeDataset.status, queueDepth)}</Text></div>
+              <div className="console-summary-row"><span>进度保障</span><Text strong>{trustMessageLabel(activeDataset.status)}</Text></div>
             </div>
           </Card>
         </div>
 
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">产出统计</Title>
+          <Text className="mt-2 block console-caption">在真正进入步骤前，先确认这个任务当前已经产出了什么。</Text>
+          <div className="mt-5 console-summary-grid">
+            <div className="console-summary-row"><span>完成进度</span><Text strong>{activePipeline ? `${activePipeline.completionPercent}%` : `${progressPercent(activeDataset.status)}%`}</Text></div>
+            <div className="console-summary-row"><span>主题结构</span><Text strong>{graph?.domains.length ?? 0}</Text></div>
+            <div className="console-summary-row"><span>问题结果</span><Text strong>{questions.length}</Text></div>
+            <div className="console-summary-row"><span>答案内容</span><Text strong>{reasoning.length}</Text></div>
+            <div className="console-summary-row"><span>质量评估</span><Text strong>{rewards.length}</Text></div>
+            <div className="console-summary-row"><span>导出文件</span><Text strong>{artifacts.length}</Text></div>
+            <div className="console-summary-row"><span>等待任务数</span><Text strong>{queueDepth}</Text></div>
+          </div>
+        </Card>
+
         <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">阶段推进</Title>
-          <Text className="mt-2 block console-caption">每个阶段都提供“进入阶段”动作；真正的执行动作在对应阶段页面中完成。</Text>
+          <Text className="mt-2 block console-caption">每个步骤都在当前任务下单独推进，不需要回到列表页滚动查找。</Text>
           <div className="console-card-grid-2 mt-5">
             {stageCards.map((stage) => {
               const style = stageStateStyle(stage.state)
@@ -2273,12 +2359,12 @@ export default function App() {
             <Title heading={4} className="!mb-0">恢复动作</Title>
             <Text className="mt-2 block console-caption">当阶段等待过久或状态异常时，按以下顺序恢复。</Text>
             <div className="mt-5 console-next-step-list">
-              <Text className="console-caption">• 先刷新任务状态，确认是否仍处于排队或处理中。</Text>
+              <Text className="console-caption">• 先刷新当前任务状态，确认是否仍处于排队或处理中。</Text>
               <Text className="console-caption">• 如需回退排查，优先进入当前阶段的上一步页面复核输入。</Text>
               <Text className="console-caption">• 如果连续失败，进入帮助页按恢复指引处理。</Text>
             </div>
             <Space className="mt-4" wrap>
-              <Button onClick={() => void loadBootstrap('任务状态已刷新')}>立即刷新</Button>
+              <Button onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务状态已刷新')}>立即刷新</Button>
               <Button onClick={() => navigate('/console/help')}>查看恢复指引</Button>
             </Space>
           </Card>
@@ -2306,7 +2392,8 @@ export default function App() {
         description="普通用户仅需填写任务主题和目标规模。模型、策略与存储将使用系统默认配置。"
         actions={
           <>
-            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('系统配置与数据集已刷新')}>刷新配置</Button>
+            <Button onClick={() => navigate('/console/tasks')}>返回任务列表</Button>
+            <Button icon={<RefreshCw size={16} />} loading={bootstrapLoading} onClick={() => void loadBootstrap('系统配置与数据集已刷新')}>刷新配置</Button>
           </>
         }
       />
@@ -2347,8 +2434,8 @@ export default function App() {
             ) : null}
           </div>
           <Space className="mt-6" spacing="medium">
-            <Button icon={<Target size={16} />} loading={busy} onClick={() => void estimatePlan()}>估算规模</Button>
-            <Button theme="solid" type="primary" icon={<FileOutput size={16} />} loading={busy} onClick={() => void createDataset()}>创建任务</Button>
+            <Button icon={<Target size={16} />} loading={actionLoading} onClick={() => void estimatePlan()}>估算规模</Button>
+            <Button theme="solid" type="primary" icon={<FileOutput size={16} />} loading={actionLoading} onClick={() => void createDataset()}>创建任务</Button>
           </Space>
         </Card>
 
@@ -2401,8 +2488,10 @@ export default function App() {
           description="先按树状方式浏览方向分组，再逐项复核命名，最后确认进入题目生成。"
           actions={
             <>
-              <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '方向结构已刷新')}>刷新方向结构</Button>
-              <Button theme="solid" type="primary" icon={<GitBranch size={16} />} loading={busy} onClick={() => void generateDomains()}>生成方向结构</Button>
+              <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button>
+              <Button onClick={() => navigate('/console/tasks')}>返回任务列表</Button>
+              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '方向结构已刷新')}>刷新方向结构</Button>
+              <Button theme="solid" type="primary" icon={<GitBranch size={16} />} loading={workspaceLoading} onClick={() => void generateDomains()}>生成方向结构</Button>
             </>
           }
         />
@@ -2452,8 +2541,8 @@ export default function App() {
                 <Space wrap>
                   <Button onClick={() => markAllDomains('approved')}>批量标记为已确认</Button>
                   <Button onClick={() => markAllDomains('pending')}>批量标记为待复核</Button>
-                  <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void saveGraph()}>保存编辑</Button>
-                  <Button theme="solid" type="primary" loading={busy} onClick={() => void confirmDomains()}>确认方向结构</Button>
+                  <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void saveGraph()}>保存编辑</Button>
+                  <Button theme="solid" type="primary" loading={workspaceLoading} onClick={() => void confirmDomains()}>确认方向结构</Button>
                 </Space>
               </div>
             ) : (
@@ -2517,6 +2606,7 @@ export default function App() {
     actionLabel,
     onGenerate,
     onRefresh,
+    generateDisabled,
     records,
     emptyTitle,
     emptyDescription,
@@ -2532,6 +2622,7 @@ export default function App() {
     actionLabel: string
     onGenerate: () => Promise<void>
     onRefresh: () => Promise<void>
+    generateDisabled?: boolean
     records: Array<Question | ReasoningRecord | RewardRecord | Artifact>
     emptyTitle: string
     emptyDescription: string
@@ -2548,8 +2639,10 @@ export default function App() {
         description={description}
         actions={
           <>
-            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void onRefresh()}>刷新结果</Button>
-            <Button theme="solid" type="primary" loading={busy} onClick={() => void onGenerate()}>{actionLabel}</Button>
+            <Button onClick={() => navigate(activeTaskDetailRoute)}>{activeTaskNavLabel}</Button>
+            {activeDataset ? <Button onClick={() => navigate('/console/tasks')}>返回任务列表</Button> : null}
+            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void onRefresh()}>刷新结果</Button>
+            <Button theme="solid" type="primary" loading={actionLoading} disabled={generateDisabled || actionLoading || workspaceLoading} onClick={() => void onGenerate()}>{actionLabel}</Button>
           </>
         }
       />
@@ -2598,7 +2691,9 @@ export default function App() {
         description="这里汇总题目、答案、评分与导出交付，帮助你先判断结果质量，再进入具体页面处理。"
         actions={
           <>
-            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '结果中心已刷新')}>刷新结果</Button>
+            <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button>
+            <Button onClick={() => navigate('/console/tasks')}>返回任务列表</Button>
+            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '结果中心已刷新')}>刷新结果</Button>
           </>
         }
       />
@@ -2660,7 +2755,7 @@ export default function App() {
           description="把运行态信息集中到一个入口，避免普通用户在一级菜单里理解流水线细节。"
           actions={
             <>
-              <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('运营监控数据已刷新')}>刷新监控</Button>
+              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('运营监控数据已刷新')}>刷新监控</Button>
               <Button theme="solid" type="primary" onClick={() => navigate('/console/admin/audit')}>查看完整审计</Button>
             </>
           }
@@ -2723,7 +2818,10 @@ export default function App() {
                       <Tag color="blue">任务 #{dataset.id}</Tag>
                       <Tag color="cyan">{statusLabel(dataset.status)}</Tag>
                     </Space>
-                    <Text className="console-caption">{formatTime(dataset.updatedAt)}</Text>
+                    <Space>
+                      <Text className="console-caption">{formatTime(dataset.updatedAt)}</Text>
+                      <Button size="small" onClick={() => navigate(`/console/tasks/${dataset.id}`)}>查看任务</Button>
+                    </Space>
                   </div>
                   <Text className="mt-2 block" strong>{dataset.name}</Text>
                   <Text className="mt-1 block console-caption">{dataset.rootKeyword}</Text>
@@ -2777,7 +2875,7 @@ export default function App() {
           description="当你遇到登录过期、权限不足、排队等待或结果异常时，可按这里的步骤快速恢复。"
           actions={
             <Space>
-              <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('帮助信息与任务状态已刷新')}>刷新数据</Button>
+              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('帮助信息与任务状态已刷新')}>刷新数据</Button>
               <Button theme="solid" type="primary" onClick={() => navigate('/console/tasks')}>返回任务中心</Button>
             </Space>
           }
@@ -2793,6 +2891,7 @@ export default function App() {
             <Card className="console-toolbar-card mt-4" bodyStyle={{ padding: 16 }}>
               <Text strong>快速操作</Text>
               <Space className="mt-3" wrap>
+                {activeDataset ? <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button> : null}
                 <Button onClick={() => navigate('/console/planning')}>去新建任务</Button>
                 <Button onClick={() => navigate('/console/results')}>回到结果中心</Button>
                 <Button onClick={() => activeDatasetId ? void loadDatasetWorkspace(activeDatasetId, '当前任务状态已刷新') : void loadBootstrap('控制台数据已刷新')}>刷新当前任务状态</Button>
@@ -2835,7 +2934,7 @@ export default function App() {
         description="先查看服务列表，再通过弹窗修改配置、获取模型列表并测试连接。"
         actions={
           <Space wrap>
-            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('系统配置已刷新')}>刷新配置</Button>
+            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('系统配置已刷新')}>刷新配置</Button>
             <Button theme="solid" type="primary" onClick={() => openCreateProviderModal()}>新增 AI 服务</Button>
           </Space>
         }
@@ -2867,7 +2966,7 @@ export default function App() {
             <Button onClick={closeProviderModal}>取消</Button>
             <Button disabled={providerRemoteActionDisabled} loading={providerModelsLoading} onClick={() => void fetchProviderModels()}>获取模型列表</Button>
             <Button disabled={providerRemoteActionDisabled} loading={providerTestLoading} onClick={() => void testProviderConnectivity()}>模型连通性测试</Button>
-            <Button theme="solid" type="primary" loading={busy} onClick={() => void saveProvider()}>保存</Button>
+            <Button theme="solid" type="primary" loading={workspaceLoading} onClick={() => void saveProvider()}>保存</Button>
           </Space>
         }
         width={920}
@@ -2978,7 +3077,7 @@ export default function App() {
         description="统一列表工作流：先查看列表，再新增或编辑。"
         actions={
           <Space wrap>
-            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('存储配置已刷新')}>刷新配置</Button>
+            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('存储配置已刷新')}>刷新配置</Button>
             <Button theme="solid" type="primary" onClick={() => openCreateStorageModal()}>新增存储</Button>
           </Space>
         }
@@ -3008,7 +3107,7 @@ export default function App() {
         footer={
           <Space>
             <Button onClick={closeStorageModal}>取消</Button>
-            <Button theme="solid" type="primary" loading={busy} onClick={() => void saveStorage()}>保存</Button>
+            <Button theme="solid" type="primary" loading={workspaceLoading} onClick={() => void saveStorage()}>保存</Button>
           </Space>
         }
         width={860}
@@ -3095,7 +3194,7 @@ export default function App() {
         description="统一列表工作流：支持搜索、新增与编辑。"
         actions={
           <Space wrap>
-            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('生成策略已刷新')}>刷新策略</Button>
+            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('生成策略已刷新')}>刷新策略</Button>
             <Button theme="solid" type="primary" onClick={() => openCreateStrategyModal()}>新增策略</Button>
           </Space>
         }
@@ -3125,7 +3224,7 @@ export default function App() {
         footer={
           <Space>
             <Button onClick={closeStrategyModal}>取消</Button>
-            <Button theme="solid" type="primary" loading={busy} onClick={() => void saveStrategy()}>保存</Button>
+            <Button theme="solid" type="primary" loading={workspaceLoading} onClick={() => void saveStrategy()}>保存</Button>
           </Space>
         }
         width={820}
@@ -3189,7 +3288,7 @@ export default function App() {
         description="统一列表工作流：支持搜索、新增与编辑。"
         actions={
           <Space wrap>
-            <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('生成指令模板已刷新')}>刷新模板</Button>
+            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('生成指令模板已刷新')}>刷新模板</Button>
             <Button theme="solid" type="primary" onClick={() => openCreatePromptModal()}>新增模板</Button>
           </Space>
         }
@@ -3219,7 +3318,7 @@ export default function App() {
         footer={
           <Space>
             <Button onClick={closePromptModal}>取消</Button>
-            <Button theme="solid" type="primary" loading={busy} onClick={() => void savePrompt()}>保存</Button>
+            <Button theme="solid" type="primary" loading={workspaceLoading} onClick={() => void savePrompt()}>保存</Button>
           </Space>
         }
         width={920}
@@ -3329,7 +3428,7 @@ export default function App() {
                   <div className="console-header-actions flex items-center gap-3">
                     <Tag color={isAdmin ? 'green' : 'blue'}>{isAdmin ? '管理员' : '普通用户'}</Tag>
                     <Text>{user.email}</Text>
-                    <Button icon={<RefreshCw size={16} />} loading={busy} onClick={() => void loadBootstrap('控制台数据已刷新')} />
+                    <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('控制台数据已刷新')} />
                     <Button icon={<LogOut size={16} />} onClick={() => void handleLogout()}>退出</Button>
                   </div>
                 </div>
@@ -3392,89 +3491,16 @@ export default function App() {
                     <Routes>
                       <Route path="/console/home" element={<Navigate to="/console/tasks" replace />} />
                       <Route path="/console/overview" element={<Navigate to="/console/tasks" replace />} />
-                      <Route path="/console/tasks" element={renderTaskDetail()} />
+                      <Route path="/console/tasks" element={renderTaskIndex()} />
+                      <Route path="/console/tasks/:taskId" element={renderTaskDetail()} />
                       <Route path="/console/planning" element={renderPlanning()} />
                       <Route path="/console/results" element={renderResultsHub()} />
                       {isAdmin ? <Route path="/console/operations" element={renderOperations()} /> : null}
-                      <Route path="/console/domains" element={renderDomains()} />
-                      <Route path="/console/questions" element={renderRecordPage({ badge: '结果中心 / 题目结果', title: '题目生成结果中心', description: '查看题目生成质量、异常状态，并决定是否进入答案生成。', actionLabel: '开始生成题目', onGenerate: generateQuestions, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '问题结果已刷新') }, records: questions, emptyTitle: '尚未生成题目', emptyDescription: '请先确认主题，再开始生成题目。', summaryTitle: '题目阶段摘要', summaryCards: [{ icon: Layers3, label: '题目总数', value: questions.length, helper: '当前可用于后续步骤的题目数量' }, { icon: ShieldCheck, label: '状态正常', value: questions.filter((item) => item.status === 'generated').length, helper: '状态为“已生成”的题目数量' }, { icon: Bell, label: '待关注', value: questions.filter((item) => item.status !== 'generated').length, helper: '状态异常或处理中，建议优先复查' }], nextStepTips: ['优先复核“待关注”题目，确认是否需要重跑。', '抽检不同方向题目，避免主题覆盖不均。', '确认题目质量后再进入答案生成。'], exceptionHint: '若状态长时间停留在“处理中/排队中”，通常是等待任务较多或上游任务未完成，先刷新并查看等待任务数。', renderRecord: (record: Question) => { const state = questionStatusLabel(record.status); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="blue">{record.domainName}</Tag><Tag color={state.color}>{state.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.content}</Text></div> } })} />
-                      <Route path="/console/reasoning" element={renderRecordPage({ badge: '结果中心 / 答案结果', title: '答案与思路结果中心', description: '聚焦答案摘要质量，而非底层对象字段。', actionLabel: '开始生成答案', onGenerate: generateReasoning, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '推理结果已刷新') }, records: reasoning, emptyTitle: '尚未生成答案', emptyDescription: '请先完成题目生成，再开始生成答案。', summaryTitle: '答案阶段摘要', summaryCards: [{ icon: BrainCircuit, label: '答案总数', value: reasoning.length, helper: '已返回的答案与思路记录' }, { icon: ShieldCheck, label: '完整摘要', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '完整').length, helper: '摘要信息完整，可直接进入评估' }, { icon: Bell, label: '待补充', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '待补充').length, helper: '摘要过短，建议重试或人工复核' }], nextStepTips: ['先处理“待补充”答案，再批量进入质量评估。', '检查答案是否覆盖题目核心要点。', '确认摘要稳定后再触发奖励评估。'], exceptionHint: '若摘要内容明显过短或重复，通常是模型输出被截断或输入上下文不足，建议重跑该批次。', renderRecord: (record: ReasoningRecord) => { const quality = reasoningQualityLabel(record.answerSummary); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="cyan">答案摘要</Tag><Tag color={quality.color}>{quality.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.answerSummary}</Text><Text className="mt-2 block console-caption">{quality.note}</Text><Text className="mt-2 block console-caption">题目：{record.questionText}</Text></div> } })} />
-                      <Route path="/console/rewards" element={renderRecordPage({ badge: '结果中心 / 质量评估', title: '质量评分结果中心', description: '展示评分等级、风险提示与建议动作，支持快速决策。', actionLabel: '开始质量评估', onGenerate: generateRewards, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '奖励结果已刷新') }, records: rewards, emptyTitle: '尚未生成质量评估', emptyDescription: '先完成答案生成，再触发质量评估。', summaryTitle: '评估阶段摘要', summaryCards: [{ icon: ShieldCheck, label: '评分记录', value: rewards.length, helper: '已生成的质量评分条目' }, { icon: Sparkles, label: '高质量', value: rewards.filter((item) => item.score >= 0.85).length, helper: '可直接进入导出候选' }, { icon: Bell, label: '风险项', value: rewards.filter((item) => item.score < 0.5).length, helper: '建议先回修再继续流程' }], nextStepTips: ['优先处理“风险”与“待优化”记录。', '对“可交付”记录执行抽样复核。', '高质量样本可直接推进导出。'], exceptionHint: '若低分记录突然增多，通常意味着上游答案质量波动，建议回看答案阶段并抽样检查。', renderRecord: (record: RewardRecord) => { const quality = rewardQualityLabel(record.score); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color={quality.color}>{quality.text}</Tag><Tag color="green">评分 {record.score.toFixed(2)}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.questionText}</Text><Text className="mt-2 block console-caption">{quality.note}</Text></div> } })} />
-                      <Route
-                        path="/console/exports"
-                        element={renderRecordPage({
-                          badge: '结果中心 / 导出交付',
-                          title: '导出结果中心',
-                          description: '展示交付用途、来源版本与下载建议，帮助快速决定交付动作。',
-                          actionLabel: '开始导出结果',
-                          onGenerate: generateExport,
-                          onRefresh: async () => {
-                            if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '导出结果已刷新')
-                          },
-                          records: filteredArtifacts,
-                          emptyTitle: '尚未生成导出结果',
-                          emptyDescription: '完成质量评估后，即可触发导出。',
-                          summaryTitle: '导出阶段摘要',
-                          summaryCards: [
-                            {
-                              icon: HardDriveDownload,
-                              label: '可见导出文件',
-                              value: filteredArtifacts.length,
-                              helper: '按当前筛选展示的可处理文件数量',
-                            },
-                            {
-                              icon: FileOutput,
-                              label: '交付优先',
-                              value: artifacts.filter((item) => artifactUsageCategory(item) === 'delivery').length,
-                              helper: '推荐优先下载并交付下游的标准文件',
-                            },
-                            {
-                              icon: Bell,
-                              label: '需先确认',
-                              value: artifacts.filter((item) => artifactUsageCategory(item) !== 'delivery').length,
-                              helper: '建议先做复核或兼容性确认',
-                            },
-                          ],
-                          nextStepTips: [
-                            '先看“来源与版本”确认是否为当前任务的最新导出。',
-                            '根据“交付说明”判断文件用于正式交付还是内部复核。',
-                            '下载前按“下载建议”确认优先级，避免误发非目标格式。',
-                            '交付后同步文件标识，并要求下游反馈验收结果。',
-                          ],
-                          exceptionHint:
-                            '若导出后列表为空，多数是任务仍在队列中或上游质量评估未完成；若多次刷新仍为空，请先回到质量评分页确认已完成。',
-                          renderRecord: (record: Artifact) => {
-                            const usageCategory = artifactUsageCategory(record)
-                            return (
-                              <div key={record.id} className="console-record-item">
-                                <div className="flex items-center justify-between gap-3">
-                                  <Space>
-                                    <Tag color="violet">{artifactLabel(record.artifactType)}</Tag>
-                                    <Tag color={usageCategory === 'delivery' ? 'green' : usageCategory === 'review' ? 'blue' : 'grey'}>{artifactUsageLabel(usageCategory)}</Tag>
-                                  </Space>
-                                  <Text className="console-caption">{formatTime(record.createdAt)}</Text>
-                                </div>
-                                <Text className="mt-3 block">{artifactDisplayName(record.objectKey)}</Text>
-                                <Text className="mt-2 block console-caption">交付格式：{artifactContentTypeLabel(record.contentType)}</Text>
-                                <Text className="mt-1 block console-caption">来源与版本：{artifactSourceVersionHint(record)}</Text>
-                                <Text className="mt-1 block console-caption">格式说明：{artifactContentTypeHint(record.contentType)}</Text>
-                                <Text className="mt-1 block console-caption">交付说明：{artifactDeliveryNote(record)}</Text>
-                                <Text className="mt-1 block console-caption">下载建议：{artifactDownloadDecisionHint(record)}</Text>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  <Button size="small" theme={exportFilter === 'all' ? 'solid' : 'light'} onClick={() => setExportFilter('all')}>查看全部</Button>
-                                  <Button size="small" theme={exportFilter === 'delivery' ? 'solid' : 'light'} onClick={() => setExportFilter('delivery')}>交付优先</Button>
-                                  <Button size="small" theme={exportFilter === 'review' ? 'solid' : 'light'} onClick={() => setExportFilter('review')}>复核资料</Button>
-                                  <Button size="small" theme={exportFilter === 'other' ? 'solid' : 'light'} onClick={() => setExportFilter('other')}>其他格式</Button>
-                                </div>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  <Button size="small" theme="solid" type="primary" onClick={() => downloadArtifact(record)}>下载结果</Button>
-                                  <Button size="small" theme="light" onClick={() => void copyArtifactKey(record.objectKey)}>复制交付标识</Button>
-                                </div>
-                              </div>
-                            )
-                          },
-                        })}
-                      />
+                      <Route path="/console/domains" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                      <Route path="/console/questions" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                      <Route path="/console/reasoning" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                      <Route path="/console/rewards" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                      <Route path="/console/exports" element={<Navigate to={activeTaskDetailRoute} replace />} />
                       <Route path="/console/help" element={renderHelp()} />
                       {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
                       {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}

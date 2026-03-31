@@ -24,8 +24,8 @@ func (s *DatasetStore) Estimate(ctx context.Context, rootKeyword string, targetS
 	estimate := model.PlanEstimate{DomainCount: 100, QuestionsPerDomain: 10, AnswerVariants: 1, RewardVariants: 1}
 	if strategyID != 0 {
 		if err := s.db.QueryRow(ctx, `
-      SELECT domain_count, questions_per_domain, answer_variants, reward_variants
-      FROM generation_strategies WHERE id = $1`, strategyID,
+	      SELECT domain_count, questions_per_domain, answer_variants, reward_variants
+	      FROM generation_strategies WHERE id = $1`, strategyID,
 		).Scan(&estimate.DomainCount, &estimate.QuestionsPerDomain, &estimate.AnswerVariants, &estimate.RewardVariants); err != nil {
 			return model.PlanEstimate{}, err
 		}
@@ -49,9 +49,9 @@ func (s *DatasetStore) CreateDataset(ctx context.Context, input model.Dataset) (
 	payload, _ := json.Marshal(input.Estimate)
 	var item model.Dataset
 	err := s.db.QueryRow(ctx, `
-    INSERT INTO datasets (name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id, estimate_json, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-    RETURNING id, name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id, estimate_json, created_at, updated_at`,
+	    INSERT INTO datasets (name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id, estimate_json, updated_at)
+	    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+	    RETURNING id, name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id, estimate_json, created_at, updated_at`,
 		input.Name,
 		input.RootKeyword,
 		input.TargetSize,
@@ -70,8 +70,8 @@ func (s *DatasetStore) CreateDataset(ctx context.Context, input model.Dataset) (
 
 func (s *DatasetStore) ListDatasets(ctx context.Context) ([]model.Dataset, error) {
 	rows, err := s.db.Query(ctx, `
-    SELECT id, name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id, estimate_json, created_at, updated_at
-    FROM datasets ORDER BY id DESC`)
+	    SELECT id, name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id, estimate_json, created_at, updated_at
+	    FROM datasets ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -94,8 +94,8 @@ func (s *DatasetStore) GetDataset(ctx context.Context, id int64) (model.Dataset,
 	var item model.Dataset
 	var payload []byte
 	err := s.db.QueryRow(ctx, `
-    SELECT id, name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id, estimate_json, created_at, updated_at
-    FROM datasets WHERE id = $1`, id,
+	    SELECT id, name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id, estimate_json, created_at, updated_at
+	    FROM datasets WHERE id = $1`, id,
 	).Scan(&item.ID, &item.Name, &item.RootKeyword, &item.TargetSize, &item.Status, &item.StrategyID, &item.ProviderID, &item.StorageProfileID, &payload, &item.CreatedAt, &item.UpdatedAt)
 	if err != nil {
 		return model.Dataset{}, err
@@ -121,9 +121,9 @@ func (s *DatasetStore) ReplaceDomains(ctx context.Context, datasetID int64, doma
 	for _, domain := range domains {
 		var item model.Domain
 		if err := tx.QueryRow(ctx, `
-      INSERT INTO domains (dataset_id, name, canonical_name, level, parent_id, source, review_status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING id, dataset_id, name, canonical_name, level, parent_id, source, review_status, created_at, updated_at`,
+	      INSERT INTO domains (dataset_id, name, canonical_name, level, parent_id, source, review_status)
+	      VALUES ($1, $2, $3, $4, $5, $6, $7)
+	      RETURNING id, dataset_id, name, canonical_name, level, parent_id, source, review_status, created_at, updated_at`,
 			datasetID,
 			domain.Name,
 			domain.Canonical,
@@ -138,8 +138,8 @@ func (s *DatasetStore) ReplaceDomains(ctx context.Context, datasetID int64, doma
 
 	for _, edge := range edges {
 		if _, err := tx.Exec(ctx, `
-      INSERT INTO domain_edges (dataset_id, source_domain_id, target_domain_id, relation_type)
-      VALUES ($1, $2, $3, $4)`, datasetID, edge.SourceID, edge.TargetID, edge.Relation); err != nil {
+	      INSERT INTO domain_edges (dataset_id, source_domain_id, target_domain_id, relation_type)
+	      VALUES ($1, $2, $3, $4)`, datasetID, edge.SourceID, edge.TargetID, edge.Relation); err != nil {
 			return err
 		}
 	}
@@ -153,8 +153,8 @@ func (s *DatasetStore) ReplaceDomains(ctx context.Context, datasetID int64, doma
 
 func (s *DatasetStore) ListDomains(ctx context.Context, datasetID int64) ([]model.Domain, error) {
 	rows, err := s.db.Query(ctx, `
-    SELECT id, dataset_id, name, canonical_name, level, parent_id, source, review_status, created_at, updated_at
-    FROM domains WHERE dataset_id = $1 ORDER BY id ASC`, datasetID)
+	    SELECT id, dataset_id, name, canonical_name, level, parent_id, source, review_status, created_at, updated_at
+	    FROM domains WHERE dataset_id = $1 ORDER BY id ASC`, datasetID)
 	if err != nil {
 		return nil, err
 	}
@@ -173,8 +173,8 @@ func (s *DatasetStore) ListDomains(ctx context.Context, datasetID int64) ([]mode
 
 func (s *DatasetStore) ListDomainEdges(ctx context.Context, datasetID int64) ([]model.DomainEdge, error) {
 	rows, err := s.db.Query(ctx, `
-    SELECT id, dataset_id, source_domain_id, target_domain_id, relation_type, created_at
-    FROM domain_edges WHERE dataset_id = $1 ORDER BY id ASC`, datasetID)
+	    SELECT id, dataset_id, source_domain_id, target_domain_id, relation_type, created_at
+	    FROM domain_edges WHERE dataset_id = $1 ORDER BY id ASC`, datasetID)
 	if err != nil {
 		return nil, err
 	}
@@ -200,8 +200,8 @@ func (s *DatasetStore) UpdateGraph(ctx context.Context, datasetID int64, domains
 
 	for _, domain := range domains {
 		if _, err := tx.Exec(ctx, `
-      UPDATE domains SET name = $2, canonical_name = $3, review_status = $4, updated_at = NOW()
-      WHERE id = $1 AND dataset_id = $5`,
+	      UPDATE domains SET name = $2, canonical_name = $3, review_status = $4, updated_at = NOW()
+	      WHERE id = $1 AND dataset_id = $5`,
 			domain.ID,
 			domain.Name,
 			domain.Canonical,
@@ -252,16 +252,22 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 	}
 
 	rankByStatus := map[string]int{
-		"draft":              0,
-		"domains_confirmed":  1,
-		"questions_queued":   1,
+		"draft":               0,
+		"domains_confirmed":   1,
+		"questions_queued":    1,
 		"questions_generated": 2,
-		"reasoning_queued":   2,
+		"questions_failed":    2,
+		"reasoning_queued":    2,
 		"reasoning_generated": 3,
-		"rewards_queued":     3,
+		"reasoning_partial":   3,
+		"reasoning_failed":    3,
+		"rewards_queued":      3,
 		"rewards_generated":   4,
-		"export_queued":      4,
+		"rewards_partial":     4,
+		"rewards_failed":      4,
+		"export_queued":       4,
 		"export_generated":    5,
+		"export_failed":       5,
 	}
 	queuedStageByStatus := map[string]string{
 		"questions_queued": "questions",
@@ -269,10 +275,20 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 		"rewards_queued":   "rewards",
 		"export_queued":    "export",
 	}
+	failedStageByStatus := map[string]string{
+		"questions_failed": "questions",
+		"reasoning_failed": "reasoning",
+		"rewards_failed":   "rewards",
+		"export_failed":    "export",
+	}
 	statusRank := rankByStatus[dataset.Status]
 	queuedStage := queuedStageByStatus[dataset.Status]
+	failedStage := failedStageByStatus[dataset.Status]
 
 	stageState := func(key string, threshold int, evidenceCount int) string {
+		if failedStage == key {
+			return "failed"
+		}
 		if statusRank >= threshold {
 			return "completed"
 		}
@@ -288,6 +304,9 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 	exportState := "pending"
 	exportSummary := "尚未产出导出工件"
 	switch {
+	case dataset.Status == "export_failed":
+		exportState = "failed"
+		exportSummary = "导出任务失败，请检查上游结果后重试"
 	case dataset.Status == "export_queued":
 		exportState = "queued"
 		if artifactCount > 0 {
@@ -328,12 +347,18 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 		"domains_confirmed":   35,
 		"questions_queued":    35,
 		"questions_generated": 55,
+		"questions_failed":    35,
 		"reasoning_queued":    55,
 		"reasoning_generated": 75,
+		"reasoning_partial":   75,
+		"reasoning_failed":    55,
 		"rewards_queued":      75,
 		"rewards_generated":   90,
+		"rewards_partial":     90,
+		"rewards_failed":      75,
 		"export_queued":       90,
 		"export_generated":    100,
+		"export_failed":       90,
 	}
 	completionPercent, ok := completionByStatus[dataset.Status]
 	if !ok {
@@ -359,9 +384,9 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 func (s *DatasetStore) ResolveProvider(ctx context.Context, providerID int64) (string, string, string, string, string, error) {
 	var baseURL, modelName, providerType, reasoningEffort, encryptedKey string
 	err := s.db.QueryRow(ctx, `
-    SELECT base_url, model, provider_type, reasoning_effort, COALESCE(encrypted_api_key, '')
-    FROM model_providers
-    WHERE id = $1`, providerID,
+	    SELECT base_url, model, provider_type, reasoning_effort, COALESCE(encrypted_api_key, '')
+	    FROM model_providers
+	    WHERE id = $1`, providerID,
 	).Scan(&baseURL, &modelName, &providerType, &reasoningEffort, &encryptedKey)
 	if err != nil {
 		return "", "", "", "", "", err
@@ -376,9 +401,9 @@ func (s *DatasetStore) ResolveProvider(ctx context.Context, providerID int64) (s
 func (s *DatasetStore) ResolveStorageProfile(ctx context.Context, storageProfileID int64) (endpoint, region, bucket, accessKeyID, secretKey string, usePathStyle bool, err error) {
 	var encryptedSecret string
 	query := `
-    SELECT endpoint, region, bucket, access_key_id, COALESCE(encrypted_secret_key, ''), use_path_style
-    FROM storage_profiles
-    WHERE is_active = TRUE`
+	    SELECT endpoint, region, bucket, access_key_id, COALESCE(encrypted_secret_key, ''), use_path_style
+	    FROM storage_profiles
+	    WHERE is_active = TRUE`
 	args := []any{}
 	if storageProfileID != 0 {
 		query += ` AND id = $1`
@@ -390,33 +415,15 @@ func (s *DatasetStore) ResolveStorageProfile(ctx context.Context, storageProfile
 	err = row.Scan(&endpoint, &region, &bucket, &accessKeyID, &encryptedSecret, &usePathStyle)
 	if err != nil && storageProfileID != 0 && err == pgx.ErrNoRows {
 		row = s.db.QueryRow(ctx, `
-    SELECT endpoint, region, bucket, access_key_id, COALESCE(encrypted_secret_key, ''), use_path_style
-    FROM storage_profiles
-    WHERE is_active = TRUE
-    ORDER BY is_default DESC, id DESC
-    LIMIT 1`)
+	      SELECT endpoint, region, bucket, access_key_id, COALESCE(encrypted_secret_key, ''), use_path_style
+	      FROM storage_profiles
+	      WHERE is_active = TRUE
+	      ORDER BY is_default DESC, id DESC LIMIT 1`)
 		err = row.Scan(&endpoint, &region, &bucket, &accessKeyID, &encryptedSecret, &usePathStyle)
 	}
 	if err != nil {
-		return "", "", "", "", "", false, err
+		return
 	}
 	secretKey, err = s.box.Decrypt(encryptedSecret)
-	if err != nil {
-		return "", "", "", "", "", false, err
-	}
-	return endpoint, region, bucket, accessKeyID, secretKey, usePathStyle, nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
+	return
 }

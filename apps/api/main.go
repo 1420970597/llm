@@ -67,6 +67,10 @@ func main() {
 		redis:     redisClient,
 	}
 
+	if err := app.reasoning.EnsureSchemaReady(ctx); err != nil {
+		log.Fatalf("reasoning schema readiness failed: %v", err)
+	}
+
 	if err := app.auth.EnsureBootstrapUser(ctx, cfg.DefaultAdminEmail, cfg.DefaultAdminPassword, "admin"); err != nil {
 		log.Fatalf("bootstrap admin user failed: %v", err)
 	}

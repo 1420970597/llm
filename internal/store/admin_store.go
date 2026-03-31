@@ -299,6 +299,18 @@ func (s *AdminStore) ListPrompts(ctx context.Context) ([]model.PromptTemplate, e
 	return items, rows.Err()
 }
 
+func (s *AdminStore) GetActivePromptByStage(ctx context.Context, stage string) (model.PromptTemplate, error) {
+	var item model.PromptTemplate
+	err := s.db.QueryRow(ctx, `
+	    SELECT id, name, stage, version, system_prompt, user_prompt, is_active, created_at, updated_at
+	    FROM prompt_templates
+	    WHERE stage = $1 AND is_active = TRUE
+	    ORDER BY updated_at DESC, id DESC
+	    LIMIT 1`, stage,
+	).Scan(&item.ID, &item.Name, &item.Stage, &item.Version, &item.SystemPrompt, &item.UserPrompt, &item.IsActive, &item.CreatedAt, &item.UpdatedAt)
+	return item, err
+}
+
 func (s *AdminStore) UpsertPrompt(ctx context.Context, input model.PromptTemplate) (model.PromptTemplate, error) {
 	var item model.PromptTemplate
 	var err error

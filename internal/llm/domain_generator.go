@@ -20,7 +20,7 @@ type ProviderConfig struct {
 	APIKey          string
 }
 
-func GenerateDomains(ctx context.Context, provider ProviderConfig, dataset model.Dataset) ([]model.Domain, []model.DomainEdge, error) {
+func GenerateDomains(ctx context.Context, provider ProviderConfig, dataset model.Dataset, promptTemplate *model.PromptTemplate) ([]model.Domain, []model.DomainEdge, error) {
 	if provider.ProviderType == "mock" {
 		return nil, nil, fmt.Errorf("mock provider is disabled in real-data mode")
 	}
@@ -33,7 +33,7 @@ func GenerateDomains(ctx context.Context, provider ProviderConfig, dataset model
 		count = 100
 	}
 
-	domains, err := generateDomainsInBatches(ctx, provider, dataset, count)
+	domains, err := generateDomainsInBatches(ctx, provider, dataset, count, promptTemplate)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -43,7 +43,7 @@ func GenerateDomains(ctx context.Context, provider ProviderConfig, dataset model
 	return domains, edges, nil
 }
 
-func generateDomainsInBatches(ctx context.Context, provider ProviderConfig, dataset model.Dataset, targetCount int) ([]model.Domain, error) {
+func generateDomainsInBatches(ctx context.Context, provider ProviderConfig, dataset model.Dataset, targetCount int, promptTemplate *model.PromptTemplate) ([]model.Domain, error) {
 	batchSize := 25
 	switch {
 	case targetCount > 600:
@@ -63,11 +63,22 @@ func generateDomainsInBatches(ctx context.Context, provider ProviderConfig, data
 		requestCount := min(batchSize, remaining)
 
 		prompt := buildDomainPrompt(dataset.RootKeyword, requestCount, collected)
+		systemPrompt := ""
+		if promptTemplate != nil {
+			if strings.TrimSpace(promptTemplate.UserPrompt) != "" {
+				prompt = strings.ReplaceAll(promptTemplate.UserPrompt, "{{rootKeyword}}", dataset.RootKeyword)
+				prompt = strings.ReplaceAll(prompt, "{{count}}", fmt.Sprintf("%d", requestCount))
+			}
+			systemPrompt = strings.TrimSpace(promptTemplate.SystemPrompt)
+		}
+		messages := []map[string]string{}
+		if systemPrompt != "" {
+			messages = append(messages, map[string]string{"role": "system", "content": systemPrompt})
+		}
+		messages = append(messages, map[string]string{"role": "user", "content": prompt})
 		payload := map[string]any{
 			"model": provider.Model,
-			"messages": []map[string]string{
-				{"role": "user", "content": prompt},
-			},
+			"messages": messages,
 			"stream": true,
 		}
 		applyReasoningEffort(payload, provider)

@@ -165,6 +165,7 @@ export type ReasoningRecord = {
   questionId: number
   questionText: string
   answerSummary: string
+  reasoning: string
   objectKey: string
   status: string
   createdAt: string
@@ -199,7 +200,7 @@ export type ArtifactDownload = {
 export type PipelineStageStatus = {
   key: string
   label: string
-  state: 'pending' | 'queued' | 'in_progress' | 'completed'
+  state: 'pending' | 'queued' | 'in_progress' | 'completed' | 'failed'
   count: number
   summary: string
 }

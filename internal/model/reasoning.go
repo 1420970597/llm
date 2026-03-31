@@ -8,6 +8,7 @@ type ReasoningRecord struct {
   QuestionID    int64     `json:"questionId"`
   QuestionText  string    `json:"questionText"`
   AnswerSummary string    `json:"answerSummary"`
+  Reasoning     string    `json:"reasoning"`
   ObjectKey     string    `json:"objectKey"`
   Status        string    `json:"status"`
   CreatedAt     time.Time `json:"createdAt"`

@@ -1,0 +1,2 @@
+ALTER TABLE reasoning_records
+  ADD COLUMN IF NOT EXISTS reasoning TEXT NOT NULL DEFAULT '';

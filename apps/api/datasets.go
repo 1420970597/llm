@@ -108,13 +108,19 @@ func (app *application) generateDomains(w http.ResponseWriter, r *http.Request) 
 	}
 	log.Printf("domains.generate.provider dataset_id=%d provider_id=%d provider_type=%s model=%s base_url=%s reasoning_effort=%s", id, dataset.ProviderID, providerType, modelName, baseURL, reasoningEffort)
 
+	promptTemplate, promptErr := app.store.GetActivePromptByStage(operationCtx, "domain-generation")
+	var promptConfig *model.PromptTemplate
+	if promptErr == nil {
+		promptConfig = &promptTemplate
+	}
+
 	domains, edges, err := llm.GenerateDomains(operationCtx, llm.ProviderConfig{
 		BaseURL:         baseURL,
 		Model:           modelName,
 		ProviderType:    providerType,
 		ReasoningEffort: reasoningEffort,
 		APIKey:          apiKey,
-	}, dataset)
+	}, dataset, promptConfig)
 	if err != nil {
 		log.Printf("domains.generate.llm_error dataset_id=%d provider_id=%d err=%v", id, dataset.ProviderID, err)
 		app.writeError(w, http.StatusInternalServerError, err)
