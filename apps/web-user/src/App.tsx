@@ -87,13 +87,15 @@ type NavPage = {
 }
 
 const userPages: NavPage[] = [
-  { label: '任务中心', route: '/console/tasks', icon: Target, caption: '创建任务、继续任务并推进当前阶段' },
-  { label: '结果中心', route: '/console/results', icon: HardDriveDownload, caption: '统一查看结果、质量状态与交付文件' },
-  { label: '帮助', route: '/console/help', icon: Users, caption: '查看帮助、恢复指引与常见问题' },
+  { label: '工作台', route: '/console/tasks', icon: LayoutDashboard, caption: '查看当前任务、待办动作与最近进展' },
+  { label: '新建任务', route: '/console/planning', icon: CirclePlus, caption: '快速创建任务，先填主题和目标规模' },
+  { label: '我的任务', route: '/console/tasks', icon: Target, caption: '进入任务列表并继续推进具体任务' },
+  { label: '数据资产', route: '/console/results', icon: HardDriveDownload, caption: '统一查看结果、质量状态与交付文件' },
+  { label: '账户与帮助', route: '/console/help', icon: Users, caption: '查看帮助、恢复指引与当前账号状态' },
 ]
 
 const stageRouteNavMap: Record<string, string> = {
-  '/console/planning': '/console/tasks',
+  '/console/planning': '/console/planning',
   '/console/domains': '/console/tasks',
   '/console/questions': '/console/results',
   '/console/reasoning': '/console/results',
@@ -721,19 +723,20 @@ function LoginPage({
 
   return (
     <div className="console-login-shell flex items-center justify-center px-4 py-10">
-      <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[1.15fr,0.85fr]">
+      <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[1.2fr,0.8fr]">
         <Card className="console-panel" bodyStyle={{ padding: 28 }}>
-          <span className="console-chip">任务数据中心登录</span>
-          <Title heading={1} className="!mb-0 mt-4">围绕单个主题持续生成、评估并交付数据资产。</Title>
+          <span className="console-chip">企业数据工厂</span>
+          <Title heading={1} className="!mb-0 mt-4">先创建任务，再持续推进交付。</Title>
           <Text className="mt-4 block console-page-subtitle">
-            登录后即可按任务阶段持续推进生成、评估与导出。
-            界面会自动保存你的进度，让首次使用也能快速上手。
+            现在的控制台按“工作台 → 新建任务 → 我的任务 → 数据资产”组织。
+            登录后先建立任务，再回到任务页持续推进生成、评估与导出。
           </Text>
-          <div className="console-card-grid-3 mt-6">
+          <div className="console-card-grid-2 mt-6">
             {[
-              { icon: LayoutDashboard, title: '按阶段持续推进', text: '从任务创建到结果交付按统一流程执行，状态清晰可追踪。' },
-              { icon: ShieldCheck, title: '质量全程可见', text: '每个阶段都有结果预览与状态反馈，操作更安心。' },
-              { icon: Database, title: '进度自动同步', text: '登录后即可继续上次工作，不必重复配置流程。' },
+              { icon: CirclePlus, title: '新建任务更靠前', text: '首次进入先看到主入口，不需要先理解内部阶段名词。' },
+              { icon: Target, title: '任务推进更清晰', text: '已有任务统一从“我的任务”进入，避免在首页混排全部流程。' },
+              { icon: HardDriveDownload, title: '结果集中查看', text: '交付文件、质量状态与复核资产都统一收敛到数据资产页。' },
+              { icon: ShieldCheck, title: '状态持续可见', text: '登录后可以继续上次进度，并在工作台看到当前待办。' },
             ].map((item) => (
               <Card key={item.title} className="console-quick-card" bodyStyle={{ padding: 18 }}>
                 <div className="feature-icon"><item.icon size={18} strokeWidth={1.9} /></div>
@@ -749,7 +752,7 @@ function LoginPage({
             <div className="feature-icon"><Users size={18} strokeWidth={1.9} /></div>
             <div>
               <Title heading={4} className="!mb-0">登录你的账号</Title>
-              <Text className="console-caption">继续你的工作进度，进入企业工作台处理当前任务。</Text>
+              <Text className="console-caption">登录后先进入工作台，再从新建任务或我的任务开始。</Text>
             </div>
           </div>
           {signal ? (
@@ -771,7 +774,9 @@ function LoginPage({
             </Button>
           </div>
           <div className="mt-6 console-summary-grid">
-            <div className="console-summary-row"><span>新用户指引</span><Text strong>登录后先点击“新建任务”，再按页面提示推进审核、生成与交付</Text></div>
+            <div className="console-summary-row"><span>登录后第一步</span><Text strong>先点击“新建任务”</Text></div>
+            <div className="console-summary-row"><span>已有任务</span><Text strong>从“我的任务”继续推进</Text></div>
+            <div className="console-summary-row"><span>交付完成后</span><Text strong>去“数据资产”查看结果和下载文件</Text></div>
           </div>
         </Card>
       </div>
@@ -2125,30 +2130,31 @@ export default function App() {
     return (
       <div className="console-page-shell">
         <PageHeader
-          badge="任务中心 / 任务列表"
-          title="先选任务，再进入独立任务页推进"
-          description="任务中心首页只负责创建任务和查看任务列表；切换任务会进入独立页面，不再在当前页混排所有流程。"
+          badge="工作台 / 我的任务"
+          title="先看当前待办，再决定新建任务或继续已有任务"
+          description="这里优先展示当前任务、推荐动作和最近进展；要创建新任务就直接进入“新建任务”，已有任务则从列表继续推进。"
           actions={
             <>
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
-              <Button icon={<RefreshCw size={16} />} loading={bootstrapLoading} onClick={() => void loadBootstrap('任务中心已刷新')}>刷新任务中心</Button>
+              <Button onClick={() => navigate('/console/results')}>查看数据资产</Button>
+              <Button icon={<RefreshCw size={16} />} loading={bootstrapLoading} onClick={() => void loadBootstrap('工作台已刷新')}>刷新工作台</Button>
             </>
           }
         />
 
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-            <Title heading={4} className="!mb-0">创建入口</Title>
-            <Text className="mt-2 block console-caption">新任务入口固定放在这里，不和任务详情、阶段按钮混在一起。</Text>
+            <Title heading={4} className="!mb-0">当前待办</Title>
+            <Text className="mt-2 block console-caption">把最常见的两个动作固定在这里：新建任务，或继续当前任务。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>当前任务总数</span><Text strong>{datasets.length}</Text></div>
               <div className="console-summary-row"><span>最近活跃任务</span><Text strong>{recentDatasets[0]?.name ?? '暂无任务'}</Text></div>
               <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
-              <div className="console-summary-row"><span>推荐动作</span><Text strong>先新建任务，或从右侧列表进入已有任务</Text></div>
+              <div className="console-summary-row"><span>推荐动作</span><Text strong>{recentDatasets.length > 0 ? '继续当前任务，或新建一个任务' : '先新建任务'}</Text></div>
             </div>
             <Space className="mt-5" wrap>
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
-              <Button onClick={() => navigate('/console/results')}>查看结果中心</Button>
+              <Button onClick={() => navigate(recentDatasets[0] ? `/console/tasks/${recentDatasets[0].id}` : '/console/tasks')}>继续当前任务</Button>
             </Space>
           </Card>
 
@@ -2295,13 +2301,13 @@ export default function App() {
     return (
       <div className="console-page-shell">
         <PageHeader
-          badge={`任务中心 / 任务 #${activeDataset.id}`}
+          badge={`我的任务 / 任务 #${activeDataset.id}`}
           title={activeDataset.name}
-          description="将任务推进、质量抽检与导出交付收口到单页运营工作台中处理。"
+          description="把任务推进、质量抽检与导出交付收口到单页工作台；先看当前待办，再按生命周期继续推进。"
           actions={
             <>
-              <Button onClick={() => navigate('/console/tasks')}>返回任务列表</Button>
-              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务详情已刷新')}>刷新任务</Button>
+              <Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>
+              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务工作台已刷新')}>刷新任务</Button>
             </>
           }
         />
@@ -2314,8 +2320,8 @@ export default function App() {
                 <Tag color="cyan">当前阶段：{currentStageLabel}</Tag>
                 <Tag color="green">完成进度：{progressValue}%</Tag>
               </div>
-              <Title heading={3} className="!mb-0 mt-4">训练数据运营工作台</Title>
-              <Text className="mt-2 block console-caption">先看整体状态，再按生命周期、抽检重点和交付资产推进。所有现有功能都保留在当前任务页里。</Text>
+              <Title heading={3} className="!mb-0 mt-4">当前任务工作台</Title>
+              <Text className="mt-2 block console-caption">先看整体状态和下一步动作，再按生命周期、抽检重点和交付资产推进；所有现有功能仍保留在当前任务页。</Text>
             </div>
             <div className="console-workbench-hero-actions">
               <Button theme="solid" type="primary" onClick={() => document.getElementById('stage-lifecycle')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{nextActionLabel(activeDataset.status)}</Button>
@@ -2514,21 +2520,21 @@ export default function App() {
   const renderPlanning = () => (
     <div className="console-page-shell">
       <PageHeader
-        badge="任务中心 / 创建任务"
-        title="先填主题和目标，快速创建任务"
-        description="普通用户仅需填写任务主题和目标规模。模型、策略与存储将使用系统默认配置。"
+        badge="新建任务"
+        title="先填主题和目标规模，立即创建新任务"
+        description="普通用户默认只需要任务主题和目标规模。高级配置继续保留，但不干扰首次创建路径。"
         actions={
           <>
-            <Button onClick={() => navigate('/console/tasks')}>返回任务列表</Button>
-            <Button icon={<RefreshCw size={16} />} loading={bootstrapLoading} onClick={() => void loadBootstrap('系统配置与数据集已刷新')}>刷新配置</Button>
+            <Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>
+            <Button icon={<RefreshCw size={16} />} loading={bootstrapLoading} onClick={() => void loadBootstrap('新建任务页已刷新')}>刷新配置</Button>
           </>
         }
       />
 
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">创建任务</Title>
-          <Text className="mt-2 block console-caption">默认使用系统推荐配置，通常只需填写主题与目标规模即可创建任务。</Text>
+          <Title heading={4} className="!mb-0">任务基础信息</Title>
+          <Text className="mt-2 block console-caption">先完成这 3 个核心字段即可创建任务；高级配置继续保留在下方，不打断主流程。</Text>
           <div className="console-card-grid-2 mt-5">
             <div>
               <Text className="mb-2 block font-medium">任务名称（可选）</Text>
@@ -2813,14 +2819,14 @@ export default function App() {
   const renderResultsHub = () => (
     <div className="console-page-shell">
       <PageHeader
-        badge="结果中心"
-        title="统一查看已产出结果与下一步动作"
-        description="这里汇总题目、答案、评分与导出交付，帮助你先判断结果质量，再进入具体页面处理。"
+        badge="数据资产"
+        title="统一查看结果、质量状态与交付文件"
+        description="这里先回答“产出了什么、哪些内容可交付、哪些结果还需要复核”，再进入具体结果页面处理。"
         actions={
           <>
             <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button>
-            <Button onClick={() => navigate('/console/tasks')}>返回任务列表</Button>
-            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '结果中心已刷新')}>刷新结果</Button>
+            <Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>
+            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '数据资产页已刷新')}>刷新结果</Button>
           </>
         }
       />
@@ -2877,9 +2883,9 @@ export default function App() {
     return (
       <div className="console-page-shell">
         <PageHeader
-          badge="运营监控"
-          title="查看队列、配置健康度与最近操作"
-          description="把运行态信息集中到一个入口，避免普通用户在一级菜单里理解流水线细节。"
+          badge="系统设置 / 运营监控"
+          title="集中查看队列、配置健康度与最近操作"
+          description="把运行态信息放到管理员工作台里统一查看，普通用户不需要在一级导航里理解流水线细节。"
           actions={
             <>
               <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('运营监控数据已刷新')}>刷新监控</Button>
@@ -2925,7 +2931,7 @@ export default function App() {
             <Card className="console-toolbar-card mt-4" bodyStyle={{ padding: 16 }}>
               <Text strong>快捷入口</Text>
               <Space className="mt-3" wrap>
-                <Button onClick={() => navigate('/console/tasks')}>回到任务中心</Button>
+                <Button onClick={() => navigate('/console/tasks')}>回到我的任务</Button>
                 <Button onClick={() => navigate('/console/results')}>查看数据资产</Button>
                 <Button onClick={() => navigate('/console/help')}>查看恢复指引</Button>
               </Space>
@@ -2997,13 +3003,13 @@ export default function App() {
     return (
       <div className="console-page-shell">
         <PageHeader
-          badge="帮助 / 恢复指引"
-          title="自助排错与术语说明"
-          description="当你遇到登录过期、权限不足、排队等待或结果异常时，可按这里的步骤快速恢复。"
+          badge="账户与帮助"
+          title="自助排错、恢复流程与理解关键术语"
+          description="遇到登录过期、权限不足、排队等待或结果异常时，先按这里的恢复路径处理，再决定是否重试。"
           actions={
             <Space>
               <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('帮助信息与任务状态已刷新')}>刷新数据</Button>
-              <Button theme="solid" type="primary" onClick={() => navigate('/console/tasks')}>返回任务中心</Button>
+              <Button theme="solid" type="primary" onClick={() => navigate('/console/tasks')}>返回我的任务</Button>
             </Space>
           }
         />
@@ -3020,7 +3026,7 @@ export default function App() {
               <Space className="mt-3" wrap>
                 {activeDataset ? <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button> : null}
                 <Button onClick={() => navigate('/console/planning')}>去新建任务</Button>
-                <Button onClick={() => navigate('/console/results')}>回到结果中心</Button>
+                <Button onClick={() => navigate('/console/results')}>查看数据资产</Button>
                 <Button onClick={() => activeDatasetId ? void loadDatasetWorkspace(activeDatasetId, '当前任务状态已刷新') : void loadBootstrap('控制台数据已刷新')}>刷新当前任务状态</Button>
               </Space>
             </Card>
@@ -3564,8 +3570,12 @@ export default function App() {
                 <Sider className="app-sider" style={{ position: 'fixed', top: 64, left: 0, border: 'none', width: 'var(--sidebar-current-width)', zIndex: 30 }}>
                   <div className="console-nav-shell h-full px-3 py-4">
                     <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
-                      <Text strong>任务导航</Text>
-                      <Text className="mt-2 block console-caption">普通用户按“任务中心 → 结果中心 → 帮助”的顺序使用；系统设置仅对管理员显示。</Text>
+                      <Text strong>工作入口</Text>
+                      <Text className="mt-2 block console-caption">优先从“新建任务”开始；已有任务统一在“我的任务”继续推进，交付结果进入“数据资产”查看。</Text>
+                      <Space className="mt-4" wrap>
+                        <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
+                        <Button onClick={() => navigate('/console/tasks')}>我的任务</Button>
+                      </Space>
                     </Card>
                     <Nav
                       bodyStyle={{ paddingBottom: 12 }}
@@ -3599,8 +3609,9 @@ export default function App() {
                         <div className="px-3 pb-3">
                           <Card className="console-sidebar-card" bodyStyle={{ padding: 14 }}>
                             <div className="console-summary-grid">
-                              <div className="console-summary-row"><span>数据集</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
+                              <div className="console-summary-row"><span>任务总数</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
                               <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
+                              <div className="console-summary-row"><span>当前建议</span><Text strong>{runtime?.datasetCount ? '继续我的任务' : '先新建任务'}</Text></div>
                             </div>
                           </Card>
                         </div>
