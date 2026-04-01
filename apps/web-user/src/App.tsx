@@ -1289,7 +1289,7 @@ export default function App() {
       setTrustSignal({
         tone: 'warning',
         title: '创建前还有必填项',
-        detail: '任务主题和目标规模是创建任务的最小条件。',
+        detail: '任务主题和目标规模是必填项。',
         recoveryHint: '先补齐上述两项，再点击“创建任务”。',
         nextStep: { label: '回到任务创建', route: '/console/planning' },
       })
@@ -1929,7 +1929,7 @@ export default function App() {
       riskItems.push({
         level: 'medium',
         title: '导出交付仍在落盘',
-        detail: '导出计算已完成，正在写入交付文件，请勿重复触发导出。',
+        detail: '导出结果正在写入交付文件。',
       })
     }
     if (activeDataset?.status === 'export_generated' && !exportDeliveryPending && artifacts.length === 0) {
@@ -1943,7 +1943,7 @@ export default function App() {
       riskItems.push({
         level: 'low',
         title: '当前无明显风险',
-        detail: '流程状态稳定，可按下一步动作继续推进。',
+        detail: '流程状态稳定，可继续推进。',
       })
     }
 
@@ -1977,7 +1977,7 @@ export default function App() {
         <PageHeader
           badge="工作台"
           title="围绕当前任务、风险与待办做日常推进"
-          description="工作台聚合当前任务、最近结果、风险提醒与待办动作，帮助你快速判断现在先做什么。"
+          description="只展示当前任务、风险、结果和待办。"
           actions={
             <>
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>
@@ -2157,7 +2157,7 @@ export default function App() {
           <PageHeader
             badge="我的任务 / 任务详情"
             title="未找到任务详情"
-            description="请先从“我的任务”页进入某个任务，或先创建新任务。"
+            description="先从“我的任务”进入具体任务，或先创建任务。"
             actions={<Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>}
           />
           <EmptyCard title="暂无任务详情" description="先从“我的任务”进入具体任务。" />
@@ -2786,7 +2786,7 @@ export default function App() {
       <PageHeader
         badge="数据资产"
         title="统一查看结果、质量状态与交付文件"
-        description="这里先回答“产出了什么、哪些内容可交付、哪些结果还需要复核”，再进入具体结果页面处理。"
+        description="只看结果、评分和交付文件。"
         actions={
           <>
             <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button>
@@ -2850,7 +2850,7 @@ export default function App() {
         <PageHeader
           badge="系统设置 / 运营监控"
           title="集中查看队列、配置健康度与最近操作"
-          description="把运行态信息放到管理员工作台里统一查看，普通用户不需要在一级导航里理解流水线细节。"
+          description="把运行态信息集中到管理员工作台。"
           actions={
             <>
               <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('运营监控数据已刷新')}>刷新监控</Button>
@@ -2970,7 +2970,7 @@ export default function App() {
         <PageHeader
           badge="账户与帮助"
           title="自助排错、恢复流程与理解关键术语"
-          description="遇到登录过期、权限不足、排队等待或结果异常时，先按这里的恢复路径处理，再决定是否重试。"
+          description="遇到异常时先按这里的恢复路径处理。"
           actions={
             <Space>
               <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('帮助信息与任务状态已刷新')}>刷新数据</Button>
