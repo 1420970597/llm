@@ -1244,7 +1244,7 @@ export default function App() {
         tone: 'warning',
         title: '登录未成功',
         detail: `系统返回：${message}`,
-        recoveryHint: '请确认账号密码，若连续失败请联系管理员重置账号。',
+        recoveryHint: '账号密码错误时联系管理员重置。',
       })
       Toast.error(message)
     } finally {
@@ -1416,7 +1416,7 @@ export default function App() {
         tone: 'warning',
         title: '确认主题结构失败',
         detail: `系统返回：${message}`,
-        recoveryHint: '先保存命名修改，再确认当前数据集可访问。',
+        recoveryHint: '保存修改后再确认当前数据集可访问。',
         nextStep: { label: '返回整理主题', route: '/console/domains' },
       })
       Toast.error(message)
@@ -1434,7 +1434,7 @@ export default function App() {
       setTrustSignal({
         tone: 'info',
         title: '题目生成已开始',
-        detail: `${result.message}，当前阶段 ETA：${etaLabel('questions_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。你可以先切换到其他页面继续操作，后台会持续处理。`,
+        detail: `${result.message}，ETA：${etaLabel('questions_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。可先切换到其他页面。`,
         recoveryHint: '60~90 秒后刷新；等待任务多时可延后到 2~3 分钟。',
         nextStep: { label: '查看题目页', route: '/console/questions' },
       })
@@ -1464,7 +1464,7 @@ export default function App() {
       setTrustSignal({
         tone: 'info',
         title: '答案生成已开始',
-        detail: `${result.message}，当前阶段 ETA：${etaLabel('reasoning_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。你可以先切换到其他页面，后台会持续处理并保留进度。`,
+        detail: `${result.message}，ETA：${etaLabel('reasoning_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。可先切换到其他页面。`,
         recoveryHint: '60~90 秒后刷新；等待任务多时可延后到 2~3 分钟。',
         nextStep: { label: '查看推理页', route: '/console/reasoning' },
       })
@@ -1494,7 +1494,7 @@ export default function App() {
       setTrustSignal({
         tone: 'info',
         title: '质量评估已开始',
-        detail: `${result.message}，当前阶段 ETA：${etaLabel('rewards_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。你可以先切换到其他页面，后台会持续处理并保留进度。`,
+        detail: `${result.message}，ETA：${etaLabel('rewards_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。可先切换到其他页面。`,
         recoveryHint: '60~90 秒后刷新；等待任务多时可延后到 2~3 分钟。',
         nextStep: { label: '查看质量评估', route: '/console/rewards' },
       })
@@ -1524,7 +1524,7 @@ export default function App() {
       setTrustSignal({
         tone: 'info',
         title: '导出任务已开始',
-        detail: `${result.message}，当前阶段 ETA：${etaLabel('export_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。你可以先切换到其他页面，后台会持续处理并保留进度。`,
+        detail: `${result.message}，ETA：${etaLabel('export_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。可先切换到其他页面。`,
         recoveryHint: '60~90 秒后刷新；等待任务多时可延后到 2~3 分钟。',
         nextStep: { label: '前往结果交付', route: '/console/exports' },
       })
