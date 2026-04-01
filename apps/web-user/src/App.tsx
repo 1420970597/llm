@@ -3520,7 +3520,7 @@ export default function App() {
                     <Avatar color="blue" size="small">L</Avatar>
                     <div>
                       <div className="font-semibold">企业数据工厂</div>
-                      <div className="text-xs console-nav-caption">{visiblePages.find((page) => page.route === activeNav)?.caption ?? '围绕任务推进生产与交付'}</div>
+                      <div className="text-xs console-nav-caption">{visiblePages.find((page) => page.route === activeNav)?.caption ?? '任务推进与交付'}</div>
                     </div>
                   </div>
                   <div className="console-header-actions flex items-center gap-3">
@@ -3536,7 +3536,7 @@ export default function App() {
                   <div className="console-nav-shell h-full px-3 py-4">
                     <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
                       <Text strong>工作入口</Text>
-                      <Text className="mt-2 block console-caption">先从“新建任务”开始；已有任务在“我的任务”继续推进。</Text>
+                      <Text className="mt-2 block console-caption">先新建任务，或回到我的任务继续推进。</Text>
                       <Space className="mt-4" wrap>
                         <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
                         <Button onClick={() => navigate('/console/tasks')}>我的任务</Button>
@@ -3576,7 +3576,7 @@ export default function App() {
                             <div className="console-summary-grid">
                               <div className="console-summary-row"><span>任务总数</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
                               <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>当前建议</span><Text strong>{runtime?.datasetCount ? '继续我的任务' : '先新建任务'}</Text></div>
+                              <div className="console-summary-row"><span>当前建议</span><Text strong>{runtime?.datasetCount ? '回到我的任务' : '新建任务'}</Text></div>
                             </div>
                           </Card>
                         </div>
