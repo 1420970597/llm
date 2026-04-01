@@ -1080,7 +1080,7 @@ export default function App() {
         tone: 'warning',
         title: '登录状态已过期',
         detail: message,
-        recoveryHint: '请重新登录后继续操作；若反复过期，请联系管理员检查会话时长配置。',
+        recoveryHint: '重新登录后继续；若反复过期，请联系管理员。',
         nextStep: { label: '重新登录', route: '/login' },
       })
       Toast.error(message)
@@ -1095,7 +1095,7 @@ export default function App() {
         tone: 'warning',
         title: '权限不足，操作未执行',
         detail: message,
-        recoveryHint: '确认你当前账号角色；若需要高级权限，请联系管理员开通。',
+        recoveryHint: '确认当前角色；若需要更高权限，请联系管理员。',
         nextStep: { label: '查看恢复指南', route: '/console/help' },
       })
       Toast.warning(message)
@@ -1323,7 +1323,7 @@ export default function App() {
       setTrustSignal({
         tone: 'success',
         title: '任务创建成功',
-        detail: '你现在可以进入“整理主题”继续下一步。',
+        detail: '进入“整理主题”继续下一步。',
         recoveryHint: '如果页面未自动刷新，可点击右上角刷新按钮同步状态。',
         nextStep: { label: '进入整理主题', route: '/console/domains' },
       })
@@ -1336,7 +1336,7 @@ export default function App() {
         tone: 'warning',
         title: '创建任务失败',
         detail: `系统返回：${message}`,
-        recoveryHint: '请检查策略、AI 服务和存储配置是否可用，再重试。',
+        recoveryHint: '检查策略、AI 服务和存储配置后重试。',
         nextStep: { label: '查看配置', route: '/console/planning' },
       })
       Toast.error(message)
@@ -1416,7 +1416,7 @@ export default function App() {
         tone: 'warning',
         title: '确认主题结构失败',
         detail: `系统返回：${message}`,
-        recoveryHint: '请先保存命名修改，并确认当前数据集仍可访问后再重试。',
+        recoveryHint: '先保存命名修改，再确认当前数据集可访问。',
         nextStep: { label: '返回整理主题', route: '/console/domains' },
       })
       Toast.error(message)
@@ -1435,7 +1435,7 @@ export default function App() {
         tone: 'info',
         title: '题目生成已开始',
         detail: `${result.message}，当前阶段 ETA：${etaLabel('questions_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。你可以先切换到其他页面继续操作，后台会持续处理。`,
-        recoveryHint: '建议 60~90 秒后刷新一次；如果等待任务数较高，可改为 2~3 分钟再刷新。',
+        recoveryHint: '60~90 秒后刷新；等待任务多时可延后到 2~3 分钟。',
         nextStep: { label: '查看题目页', route: '/console/questions' },
       })
       Toast.success(result.message)
@@ -1465,7 +1465,7 @@ export default function App() {
         tone: 'info',
         title: '答案生成已开始',
         detail: `${result.message}，当前阶段 ETA：${etaLabel('reasoning_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。你可以先切换到其他页面，后台会持续处理并保留进度。`,
-        recoveryHint: '建议 60~90 秒后刷新一次；若等待任务数较高，可改为 2~3 分钟再刷新。',
+        recoveryHint: '60~90 秒后刷新；等待任务多时可延后到 2~3 分钟。',
         nextStep: { label: '查看推理页', route: '/console/reasoning' },
       })
       Toast.success(result.message)
@@ -1495,7 +1495,7 @@ export default function App() {
         tone: 'info',
         title: '质量评估已开始',
         detail: `${result.message}，当前阶段 ETA：${etaLabel('rewards_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。你可以先切换到其他页面，后台会持续处理并保留进度。`,
-        recoveryHint: '建议 60~90 秒后刷新一次；若等待任务数较高，可改为 2~3 分钟再刷新。',
+        recoveryHint: '60~90 秒后刷新；等待任务多时可延后到 2~3 分钟。',
         nextStep: { label: '查看质量评估', route: '/console/rewards' },
       })
       Toast.success(result.message)
@@ -1525,7 +1525,7 @@ export default function App() {
         tone: 'info',
         title: '导出任务已开始',
         detail: `${result.message}，当前阶段 ETA：${etaLabel('export_queued', runtime?.queueDepth ?? 0, result.acceptedAt)}。你可以先切换到其他页面，后台会持续处理并保留进度。`,
-        recoveryHint: '建议 60~90 秒后刷新一次；若等待任务数较高，可改为 2~3 分钟再刷新。',
+        recoveryHint: '60~90 秒后刷新；等待任务多时可延后到 2~3 分钟。',
         nextStep: { label: '前往结果交付', route: '/console/exports' },
       })
       Toast.success(result.message)
