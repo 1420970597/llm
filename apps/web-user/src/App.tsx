@@ -1983,10 +1983,10 @@ export default function App() {
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>
                 新建任务
               </Button>
+              <Button icon={<Target size={16} />} onClick={() => navigate('/console/tasks')}>查看我的任务</Button>
               <Button loading={bootstrapLoading} icon={<RefreshCw size={16} />} onClick={() => void loadBootstrap('工作台数据已刷新')}>
                 刷新工作台
               </Button>
-              <Button icon={<Target size={16} />} onClick={() => navigate('/console/tasks')}>查看我的任务</Button>
             </>
           }
         />
@@ -2062,8 +2062,8 @@ export default function App() {
             </div>
             <Space className="mt-5" wrap>
               <Button theme="solid" type="primary" onClick={() => navigate(nextRoute)}>{activeDataset ? nextActionLabel(activeDataset.status) : '新建任务'}</Button>
+              <Button onClick={() => navigate('/console/tasks')}>查看我的任务</Button>
               <Button onClick={() => navigate('/console/results')}>查看最近结果</Button>
-              <Button onClick={() => navigate('/console/help')}>查看恢复指引</Button>
             </Space>
           </Card>
         </div>
@@ -2101,8 +2101,8 @@ export default function App() {
           actions={
             <>
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
+              <Button icon={<RefreshCw size={16} />} loading={bootstrapLoading} onClick={() => void loadBootstrap('我的任务页已刷新')}>刷新列表</Button>
               <Button onClick={() => navigate('/console/results')}>查看数据资产</Button>
-              <Button icon={<RefreshCw size={16} />} loading={bootstrapLoading} onClick={() => void loadBootstrap('工作台已刷新')}>刷新工作台</Button>
             </>
           }
         />
