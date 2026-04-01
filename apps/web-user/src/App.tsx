@@ -192,11 +192,11 @@ function nextActionLabel(status: string) {
     case 'domains_confirmed':
       return '启动问题生成，补齐任务素材'
     case 'questions_queued':
-      return '等待问题生成完成后进入答案生成阶段'
+      return '等待问题完成后进入答案生成'
     case 'questions_generated':
       return '启动答案生成，形成可评审内容'
     case 'reasoning_queued':
-      return '等待答案生成完成后进入质量评分'
+      return '等待答案完成后进入质量评估'
     case 'reasoning_generated':
       return '启动质量评分，准备交付结论'
     case 'rewards_queued':
@@ -206,9 +206,9 @@ function nextActionLabel(status: string) {
     case 'export_queued':
       return '等待导出结果准备完成'
     case 'export_generated':
-      return '下载结果文件并继续下一步'
+      return '下载结果文件后进入下一步'
     default:
-      return '刷新任务状态后继续'
+      return '刷新状态后继续'
   }
 }
 
@@ -302,21 +302,21 @@ function waitingActionLabel(status: string) {
 
 function refreshExpectationLabel(status: string, queueDepth: number) {
   if (status.endsWith('_queued')) {
-    if (queueDepth > 3) return '建议 2~3 分钟后刷新一次；频繁刷新不会加速处理。'
-    return '建议 60~90 秒后刷新一次；频繁刷新不会更快。'
+    if (queueDepth > 3) return '建议 2~3 分钟后刷新；频繁刷新不会加速。'
+    return '建议 60~90 秒后刷新；频繁刷新不会更快。'
   }
   if (status === 'export_generated' || status.endsWith('_generated')) {
-    return '当前阶段已完成，可直接进入下一步。'
+    return '当前阶段已完成，可直接进入下一步'
   }
-  return '当前阶段无需频繁刷新，状态变化后再同步即可。'
+  return '当前阶段无需频繁刷新，状态变化后再同步。'
 }
 
 function trustMessageLabel(status: string) {
   if (status.endsWith('_queued')) {
-    return '任务已进入后台持续处理，可先切换到其他页面，进度不会丢失。'
+    return '任务已转入后台处理，可先切换到其他页面。'
   }
   if (status.endsWith('_generated') || status === 'export_generated') {
-    return '当前阶段结果已落库，可放心继续后续操作。'
+    return '当前阶段结果已落库，可继续后续操作。'
   }
   return '系统会自动保存当前任务上下文，可按节奏推进。'
 }
