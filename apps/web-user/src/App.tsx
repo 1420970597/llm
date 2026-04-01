@@ -192,11 +192,11 @@ function nextActionLabel(status: string) {
     case 'domains_confirmed':
       return '启动问题生成，补齐任务素材'
     case 'questions_queued':
-      return '等待问题完成后进入答案生成'
+      return '等待问题后进入答案生成'
     case 'questions_generated':
       return '启动答案生成，形成可评审内容'
     case 'reasoning_queued':
-      return '等待答案完成后进入质量评估'
+      return '等待答案后进入质量评估'
     case 'reasoning_generated':
       return '启动质量评分，准备交付结论'
     case 'rewards_queued':
@@ -206,7 +206,7 @@ function nextActionLabel(status: string) {
     case 'export_queued':
       return '等待导出结果准备完成'
     case 'export_generated':
-      return '下载结果文件后进入下一步'
+      return '下载结果后进入下一步'
     default:
       return '刷新状态后继续'
   }
@@ -276,7 +276,7 @@ function waitingActionLabel(status: string) {
     case 'reasoning_queued':
     case 'rewards_queued':
     case 'export_queued':
-      return '先处理其他步骤，再按刷新建议回看。'
+      return '先处理其他步骤，再按刷新建议回看'
     case 'questions_generated':
       return '前往“答案生成”，点击“开始生成答案”。'
     case 'questions_failed':
@@ -292,7 +292,7 @@ function waitingActionLabel(status: string) {
     case 'rewards_failed':
       return '请先回到“质量评分”排查失败原因，再重新评分。'
     case 'export_generated':
-      return '进入“结果交付”下载并确认交付。'
+      return '进入“结果交付”下载并确认'
     case 'export_failed':
       return '请重新发起导出，或先检查上游评分结果是否完整。'
     default:
