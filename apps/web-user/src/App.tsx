@@ -89,7 +89,7 @@ type NavPage = {
 const userPages: NavPage[] = [
   { label: '工作台', route: '/console/home', icon: LayoutDashboard, caption: '查看待办与进展' },
   { label: '新建任务', route: '/console/planning', icon: CirclePlus, caption: '创建新任务' },
-  { label: '我的任务', route: '/console/tasks', icon: Target, caption: '查看任务并继续处理' },
+  { label: '我的任务', route: '/console/tasks', icon: Target, caption: '查看任务' },
   { label: '数据资产', route: '/console/results', icon: HardDriveDownload, caption: '查看结果与交付文件' },
   { label: '账户与帮助', route: '/console/help', icon: Users, caption: '查看帮助与恢复路径' },
 ]
@@ -2357,7 +2357,7 @@ export default function App() {
 
           <div className="console-workbench-main">
             <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-              <Title heading={4} className="!mb-0">当前最该做什么</Title>
+              <Title heading={4} className="!mb-0">当前动作</Title>
               <Text className="mt-2 block console-caption">参考主流数据运营台做法，把动作、等待原因和风险提示固定在主工作区顶部。</Text>
               <div className="mt-5 console-summary-grid">
                 <div className="console-summary-row"><span>下一步动作</span><Text strong>{nextActionLabel(activeDataset.status)}</Text></div>
@@ -2785,7 +2785,7 @@ export default function App() {
     <div className="console-page-shell">
       <PageHeader
         badge="数据资产"
-        title="统一查看结果、质量状态与交付文件"
+        title="查看结果、评分与交付文件"
           description="只看结果、评分和交付文件"
         actions={
           <>
@@ -2947,7 +2947,7 @@ export default function App() {
       { term: '任务状态', description: '表示任务当前所处阶段。' },
       { term: '等待任务数', description: '表示当前排队中的任务数量。' },
       { term: '数据资产', description: '集中查看结果、评分和导出文件。' },
-      { term: '恢复建议', description: '表示当前最推荐的下一步动作。' },
+      { term: '恢复建议', description: '当前推荐动作。' },
     ]
 
     const recoveryChecklist = [
@@ -3028,7 +3028,7 @@ export default function App() {
     <div className="console-page-shell">
       <PageHeader
         badge="系统设置 / AI 服务"
-        title="管理 AI 服务配置"
+        title="管理 AI 服务"
         description="看服务列表后再编辑、取模型或测连通性。"
         actions={
           <Space wrap>
@@ -3171,7 +3171,7 @@ export default function App() {
     <div className="console-page-shell">
       <PageHeader
         badge="系统设置 / 结果存储"
-        title="管理结果存储位置"
+        title="管理结果存储"
         description="先看列表，再新增或编辑。"
         actions={
           <Space wrap>
@@ -3382,7 +3382,7 @@ export default function App() {
     <div className="console-page-shell">
       <PageHeader
         badge="系统设置 / 生成指令"
-        title="管理生成指令模板"
+        title="管理生成指令"
         description="支持搜索、新增与编辑。"
         actions={
           <Space wrap>
@@ -3459,7 +3459,7 @@ export default function App() {
 
   const renderAudit = () => (
     <div className="console-page-shell">
-      <PageHeader badge="系统设置 / 操作记录" title="查看配置变更记录" description="集中查看最近配置与操作变更。" />
+      <PageHeader badge="系统设置 / 操作记录" title="查看配置记录" description="集中查看最近配置与操作变更。" />
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">审计事件列表</Title>
