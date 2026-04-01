@@ -308,7 +308,7 @@ function refreshExpectationLabel(status: string, queueDepth: number) {
   if (status === 'export_generated' || status.endsWith('_generated')) {
     return '当前阶段已完成，可进入下一步'
   }
-  return '当前阶段无需频繁刷新，状态变化后再同步。'
+  return '阶段无需频繁刷新，状态变化后再同步。'
 }
 
 function trustMessageLabel(status: string) {
@@ -1080,7 +1080,7 @@ export default function App() {
         tone: 'warning',
         title: '登录状态已过期',
         detail: message,
-        recoveryHint: '登录后继续；若反复过期，请联系管理员。',
+        recoveryHint: '登录后继续；反复过期时联系管理员。',
         nextStep: { label: '重新登录', route: '/login' },
       })
       Toast.error(message)
@@ -1994,7 +1994,7 @@ export default function App() {
         <Banner
           type={hasHighRisk ? 'warning' : 'info'}
           icon={<Bell size={16} />}
-          description={hasHighRisk ? '先处理高优先级风险。' : '当前状态稳定，可继续推进。'}
+          description={hasHighRisk ? '先处理高风险。' : '当前状态稳定，可推进。'}
         />
 
         <div className="console-card-grid-2">
