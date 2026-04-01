@@ -1999,8 +1999,8 @@ export default function App() {
 
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-            <Title heading={4} className="!mb-0">我的任务</Title>
-            <Text className="mt-2 block console-caption">固定显示当前任务上下文，并支持从最近任务快速切换。</Text>
+            <Title heading={4} className="!mb-0">当前任务摘要</Title>
+            <Text className="mt-2 block console-caption">工作台只保留当前任务和最近动向；完整任务列表统一放到“我的任务”。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '尚未创建任务'}</Text></div>
               <div className="console-summary-row"><span>任务 ID</span><Text strong>{activeDataset?.id ?? '—'}</Text></div>
@@ -2009,28 +2009,10 @@ export default function App() {
               <div className="console-summary-row"><span>当前 ETA</span><Text strong>{activeEta}</Text></div>
               <div className="console-summary-row"><span>等待状态</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出状态已完成，正在确认交付文件，请稍后刷新' : waitingStateLabel(activeDataset.status, queueDepth)) : '创建任务后显示'}</Text></div>
             </div>
-            <div className="mt-5 console-stack">
-              <Text strong>最近任务</Text>
-              {recentDatasets.length > 0 ? (
-                recentDatasets.map((dataset) => (
-                  <div key={dataset.id} className="console-domain-item">
-                    <div className="flex items-center justify-between gap-3">
-                      <Space>
-                        <Tag color="blue">任务 #{dataset.id}</Tag>
-                        <Tag color="cyan">{statusLabel(dataset.status)}</Tag>
-                      </Space>
-                      <Button size="small" onClick={() => void loadDatasetWorkspace(dataset.id, `已切换到任务「${dataset.name}」`)}>切换</Button>
-                    </div>
-                    <Text className="mt-2 block" strong>{dataset.name}</Text>
-                    <Text className="mt-1 block console-caption">{dataset.rootKeyword} · 更新于 {formatTime(dataset.updatedAt)}</Text>
-                  </div>
-                ))
-              ) : (
-                <div className="console-stack">
-                  <Empty description="暂无任务" />
-                  <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
-                </div>
-              )}
+            <div className="mt-5 console-summary-grid">
+              <div className="console-summary-row"><span>最近活跃任务</span><Text strong>{recentDatasets[0]?.name ?? '暂无任务'}</Text></div>
+              <div className="console-summary-row"><span>最近更新时间</span><Text strong>{recentDatasets[0] ? formatTime(recentDatasets[0].updatedAt) : '—'}</Text></div>
+              <div className="console-summary-row"><span>下一步入口</span><Button size="small" onClick={() => navigate('/console/tasks')}>进入我的任务</Button></div>
             </div>
           </Card>
 
@@ -2130,9 +2112,9 @@ export default function App() {
     return (
       <div className="console-page-shell">
         <PageHeader
-          badge="工作台 / 我的任务"
-          title="先看当前待办，再决定新建任务或继续已有任务"
-          description="这里优先展示当前任务、推荐动作和最近进展；要创建新任务就直接进入“新建任务”，已有任务则从列表继续推进。"
+          badge="我的任务"
+          title="查看任务列表并继续推进具体任务"
+          description="这里专门负责任务列表、最近任务和继续处理动作；工作台只保留待办、风险和结果概览。"
           actions={
             <>
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
