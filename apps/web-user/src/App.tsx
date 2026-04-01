@@ -2000,16 +2000,13 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">当前任务摘要</Title>
-            <Text className="mt-2 block console-caption">工作台只保留当前任务和最近动向；完整任务列表统一放到“我的任务”。</Text>
+            <Text className="mt-2 block console-caption">工作台只保留当前任务、最近动向和下一步入口；完整任务列表统一放到“我的任务”。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '尚未创建任务'}</Text></div>
               <div className="console-summary-row"><span>任务 ID</span><Text strong>{activeDataset?.id ?? '—'}</Text></div>
               <div className="console-summary-row"><span>阶段状态</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出收尾中' : statusLabel(activeDataset.status)) : '—'}</Text></div>
               <div className="console-summary-row"><span>完成进度</span><Text strong>{activePipeline ? `${activePipeline.completionPercent}%` : activeDataset ? `${progressPercent(activeDataset.status)}%` : '—'}</Text></div>
               <div className="console-summary-row"><span>当前 ETA</span><Text strong>{activeEta}</Text></div>
-              <div className="console-summary-row"><span>等待状态</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出状态已完成，正在确认交付文件，请稍后刷新' : waitingStateLabel(activeDataset.status, queueDepth)) : '创建任务后显示'}</Text></div>
-            </div>
-            <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>最近活跃任务</span><Text strong>{recentDatasets[0]?.name ?? '暂无任务'}</Text></div>
               <div className="console-summary-row"><span>最近更新时间</span><Text strong>{recentDatasets[0] ? formatTime(recentDatasets[0].updatedAt) : '—'}</Text></div>
               <div className="console-summary-row"><span>下一步入口</span><Button size="small" onClick={() => navigate('/console/tasks')}>进入我的任务</Button></div>
@@ -2018,33 +2015,19 @@ export default function App() {
 
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">最近结果</Title>
-            <Text className="mt-2 block console-caption">查看最近结果和交付文件，避免遗漏可直接使用的成果。</Text>
+            <Text className="mt-2 block console-caption">工作台只展示结果规模和最新交付动向；完整资产明细统一在“数据资产”查看。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>题目结果</span><Text strong>{questions.length}</Text></div>
               <div className="console-summary-row"><span>答案结果</span><Text strong>{reasoning.length}</Text></div>
               <div className="console-summary-row"><span>评分结果</span><Text strong>{rewards.length}</Text></div>
               <div className="console-summary-row"><span>交付文件</span><Text strong>{artifacts.length}</Text></div>
+              <div className="console-summary-row"><span>最新产出</span><Text strong>{recentArtifacts[0] ? artifactDisplayName(recentArtifacts[0].objectKey) : '暂无导出结果'}</Text></div>
+              <div className="console-summary-row"><span>产出时间</span><Text strong>{recentArtifacts[0] ? formatTime(recentArtifacts[0].createdAt) : '—'}</Text></div>
             </div>
-            <div className="mt-5 console-stack">
-              <Text strong>最近产出文件</Text>
-              {recentArtifacts.length > 0 ? (
-                recentArtifacts.map((artifact) => (
-                  <div key={artifact.id ?? artifact.objectKey} className="console-domain-item">
-                    <div className="flex items-center justify-between gap-3">
-                      <Space>
-                        <Tag color="green">{artifactLabel(artifact.artifactType)}</Tag>
-                        <Tag color="grey">{artifactContentTypeLabel(artifact.contentType)}</Tag>
-                      </Space>
-                      <Button size="small" onClick={() => void downloadArtifact(artifact)}>下载</Button>
-                    </div>
-                    <Text className="mt-2 block" strong>{artifactDisplayName(artifact.objectKey)}</Text>
-                    <Text className="mt-1 block console-caption">{artifactUsageLabel(artifactUsageCategory(artifact))} · {formatTime(artifact.createdAt)}</Text>
-                  </div>
-                ))
-              ) : (
-                <Empty description="暂无导出结果" />
-              )}
-            </div>
+            <Space className="mt-5" wrap>
+              <Button theme="solid" type="primary" onClick={() => navigate('/console/results')}>进入数据资产</Button>
+              {recentArtifacts[0] ? <Button onClick={() => void downloadArtifact(recentArtifacts[0])}>下载最新产出</Button> : null}
+            </Space>
           </Card>
         </div>
 
