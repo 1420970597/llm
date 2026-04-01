@@ -1976,7 +1976,7 @@ export default function App() {
       <div className="console-page-shell">
         <PageHeader
           badge="工作台"
-          title="任务、风险与待办"
+          title="任务与待办"
           description="只看任务、风险、结果和待办"
           actions={
             <>
@@ -2015,7 +2015,7 @@ export default function App() {
 
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">最近结果</Title>
-            <Text className="mt-2 block console-caption">结果规模和最新交付动向。</Text>
+            <Text className="mt-2 block console-caption">结果规模与最新交付。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>题目结果</span><Text strong>{questions.length}</Text></div>
               <div className="console-summary-row"><span>答案结果</span><Text strong>{reasoning.length}</Text></div>
@@ -2069,7 +2069,7 @@ export default function App() {
         </div>
 
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">当前系统状态</Title>
+          title="系统信号"
           <Text className="mt-2 block console-caption">保留当前任务相关的轻量系统信号。</Text>
           <div className="mt-5 console-card-grid-4">
             {overviewCards.map((item) => <StatCard key={item.label} {...item} />)}
@@ -2110,7 +2110,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">任务列表概览</Title>
-            <Text className="mt-2 block console-caption">看任务列表并处理。</Text>
+            <Text className="mt-2 block console-caption">看任务列表与处理。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>任务总数</span><Text strong>{datasets.length}</Text></div>
               <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '暂无任务'}</Text></div>
