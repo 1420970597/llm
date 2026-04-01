@@ -302,8 +302,8 @@ function waitingActionLabel(status: string) {
 
 function refreshExpectationLabel(status: string, queueDepth: number) {
   if (status.endsWith('_queued')) {
-    if (queueDepth > 3) return '建议 2~3 分钟后刷新；频繁刷新不会加速。'
-    return '建议 60~90 秒后刷新；频繁刷新不会更快。'
+    if (queueDepth > 3) return '2~3 分钟后刷新；频繁刷新不会加速。'
+    return '60~90 秒后刷新；频繁刷新不会更快。'
   }
   if (status === 'export_generated' || status.endsWith('_generated')) {
     return '当前阶段已完成，可直接进入下一步'
@@ -499,15 +499,15 @@ function questionStatusLabel(status: string) {
 function reasoningQualityLabel(summary: string) {
   const length = summary.trim().length
   if (length >= 140) return { text: '完整', color: 'green' as const, note: '信息较完整，可直接用于评分。' }
-  if (length >= 70) return { text: '可用', color: 'blue' as const, note: '关键信息齐全，建议抽检。' }
-  return { text: '待补充', color: 'orange' as const, note: '摘要较短，建议重跑或复核。' }
+  if (length >= 70) return { text: '可用', color: 'blue' as const, note: '关键信息齐全，可抽检。' }
+  return { text: '待补充', color: 'orange' as const, note: '摘要较短，需重跑或复核。' }
 }
 
 function rewardQualityLabel(score: number) {
   if (score >= 0.85) return { text: '高质量', color: 'green' as const, note: '可以直接进入导出阶段。' }
-  if (score >= 0.7) return { text: '可交付', color: 'blue' as const, note: '建议抽样复核后导出。' }
-  if (score >= 0.5) return { text: '待优化', color: 'orange' as const, note: '建议补充推理后再评估。' }
-  return { text: '风险', color: 'red' as const, note: '不建议直接导出，请先回修。' }
+  if (score >= 0.7) return { text: '可交付', color: 'blue' as const, note: '可抽样复核后导出。' }
+  if (score >= 0.5) return { text: '待优化', color: 'orange' as const, note: '补充推理后再评估。' }
+  return { text: '风险', color: 'red' as const, note: '不宜直接导出，先回修。' }
 }
 
 function artifactDisplayName(objectKey: string) {
@@ -564,8 +564,8 @@ function artifactSourceVersionHint(artifact: Artifact) {
 function artifactDeliveryNote(artifact: Artifact) {
   const category = artifactUsageCategory(artifact)
   if (category === 'delivery') return '可直接作为标准交付包给下游训练或评测流程。'
-  if (category === 'review') return '建议先用于人工复核或验收，再决定是否进入正式交付。'
-  return '建议先确认格式兼容性与用途，再安排对外交付。'
+  if (category === 'review') return '先用于人工复核或验收，再决定是否正式交付。'
+  return '先确认格式兼容性与用途，再安排对外交付。'
 }
 
 function artifactDownloadDecisionHint(artifact: Artifact) {
