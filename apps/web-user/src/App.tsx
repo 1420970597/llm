@@ -2827,7 +2827,7 @@ export default function App() {
             <div className="console-summary-row"><span>导出交付</span><Text strong>{artifacts.length > 0 ? '已有交付文件可下载' : '等待生成交付文件'}</Text></div>
           </div>
           <Space className="mt-5" wrap>
-            <Button theme="solid" type="primary" onClick={() => navigate('/console/exports')}>进入导出交付</Button>
+            <Button theme="solid" type="primary" onClick={() => navigate('/console/exports')}>查看导出交付</Button>
             <Button onClick={() => navigate('/console/rewards')}>查看质量评估</Button>
             <Button onClick={() => navigate('/console/reasoning')}>查看答案内容</Button>
           </Space>
@@ -3292,7 +3292,7 @@ export default function App() {
         description="统一列表工作流：支持搜索、新增与编辑。"
         actions={
           <Space wrap>
-            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('生成策略已刷新')}>刷新策略</Button>
+            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('规则页已刷新')}>刷新列表</Button>
             <Button theme="solid" type="primary" onClick={() => openCreateStrategyModal()}>新增策略</Button>
           </Space>
         }
@@ -3386,7 +3386,7 @@ export default function App() {
         description="统一列表工作流：支持搜索、新增与编辑。"
         actions={
           <Space wrap>
-            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('生成指令模板已刷新')}>刷新模板</Button>
+            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('模板页已刷新')}>刷新列表</Button>
             <Button theme="solid" type="primary" onClick={() => openCreatePromptModal()}>新增模板</Button>
           </Space>
         }
