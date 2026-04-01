@@ -302,8 +302,8 @@ function waitingActionLabel(status: string) {
 
 function refreshExpectationLabel(status: string, queueDepth: number) {
   if (status.endsWith('_queued')) {
-    if (queueDepth > 3) return '2~3 分钟后刷新；频繁刷新不会加速。'
-    return '60~90 秒后刷新；频繁刷新不会更快。'
+    if (queueDepth > 3) return '2~3 分钟后刷新。'
+    return '60~90 秒后刷新。'
   }
   if (status === 'export_generated' || status.endsWith('_generated')) {
     return '当前阶段已完成，可直接进入下一步'
@@ -318,7 +318,7 @@ function trustMessageLabel(status: string) {
   if (status.endsWith('_generated') || status === 'export_generated') {
     return '当前阶段结果已落库，可继续后续操作。'
   }
-  return '系统会自动保存当前任务上下文，可按节奏推进。'
+  return '系统会自动保存当前任务上下文。'
 }
 
 type StageKey = 'questions' | 'reasoning' | 'rewards' | 'export'
@@ -2806,7 +2806,7 @@ export default function App() {
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">数据资产总览</Title>
-            <Text className="mt-2 block console-caption">结果总览和交付入口。</Text>
+          <Text className="mt-2 block console-caption">查看结果、评分和交付文件。</Text>
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
             <div className="console-summary-row"><span>题目结果</span><Text strong>{questions.length}</Text></div>
@@ -2907,7 +2907,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">最近任务活动</Title>
-            <Text className="mt-2 block console-caption">最近任务活动一目了然。</Text>
+            <Text className="mt-2 block console-caption">看任务活动与处理情况。</Text>
             <div className="mt-5 console-stack">
               {recentDatasets.length > 0 ? recentDatasets.map((dataset) => (
                 <div key={dataset.id} className="console-domain-item">
@@ -2982,7 +2982,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">失败恢复清单</Title>
-            <Text className="mt-2 block console-caption">按 4 步恢复：看提示、补前置结果、刷新状态、确认权限或重新登录。</Text>
+            <Text className="mt-2 block console-caption">按 4 步恢复：看提示、补前置结果、刷新、确认权限或重新登录。</Text>
             <div className="mt-4 console-next-step-list">
               {recoveryChecklist.map((item) => <Text key={item} className="console-caption">• {item}</Text>)}
             </div>
@@ -3536,7 +3536,7 @@ export default function App() {
                   <div className="console-nav-shell h-full px-3 py-4">
                     <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
                       <Text strong>工作入口</Text>
-                      <Text className="mt-2 block console-caption">先新建任务，或回到我的任务继续推进。</Text>
+                      <Text className="mt-2 block console-caption">先新建任务，或回到我的任务。</Text>
                       <Space className="mt-4" wrap>
                         <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
                         <Button onClick={() => navigate('/console/tasks')}>我的任务</Button>
