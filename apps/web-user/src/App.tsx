@@ -1994,7 +1994,7 @@ export default function App() {
         <Banner
           type={hasHighRisk ? 'warning' : 'info'}
           icon={<Bell size={16} />}
-          description={hasHighRisk ? '先处理高风险。' : '当前状态稳定，可推进。'}
+          description={hasHighRisk ? '先处理高风险。' : '状态稳定，可推进。'}
         />
 
         <div className="console-card-grid-2">
@@ -2097,7 +2097,7 @@ export default function App() {
         <PageHeader
           badge="我的任务"
           title="看任务列表并继续处理"
-          description="查看任务列表并继续处理。"
+          description="看任务列表并处理。"
           actions={
             <>
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
@@ -2110,7 +2110,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">任务列表概览</Title>
-            <Text className="mt-2 block console-caption">看任务列表并继续处理。</Text>
+            <Text className="mt-2 block console-caption">看任务列表并处理。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>任务总数</span><Text strong>{datasets.length}</Text></div>
               <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '暂无任务'}</Text></div>
