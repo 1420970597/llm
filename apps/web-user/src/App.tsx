@@ -1922,7 +1922,7 @@ export default function App() {
       riskItems.push({
         level: 'medium',
         title: '系统队列压力较高',
-        detail: `前方约 ${queueDepth} 个任务，建议降低刷新频率。`,
+        detail: '前方约 ${queueDepth} 个任务，先降低刷新频率。',
       })
     }
     if (exportDeliveryPending) {
@@ -2806,7 +2806,7 @@ export default function App() {
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">数据资产总览</Title>
-          <Text className="mt-2 block console-caption">这里主要回答“已经产出了什么、哪些结果可以继续处理或交付”。</Text>
+            <Text className="mt-2 block console-caption">结果总览和交付入口。</Text>
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
             <div className="console-summary-row"><span>题目结果</span><Text strong>{questions.length}</Text></div>
@@ -2907,7 +2907,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">最近任务活动</Title>
-            <Text className="mt-2 block console-caption">快速了解最近有哪些任务仍在推进，避免遗漏待处理项。</Text>
+            <Text className="mt-2 block console-caption">最近任务活动一目了然。</Text>
             <div className="mt-5 console-stack">
               {recentDatasets.length > 0 ? recentDatasets.map((dataset) => (
                 <div key={dataset.id} className="console-domain-item">
@@ -2930,7 +2930,7 @@ export default function App() {
 
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">最近操作</Title>
-            <Text className="mt-2 block console-caption">便于回看谁在何时修改了关键配置或执行了重要动作。</Text>
+            <Text className="mt-2 block console-caption">回看近期配置与操作变更。</Text>
             {recentAuditLogs.length > 0 ? (
               <Table columns={auditColumns} dataSource={recentAuditLogs} pagination={false} />
             ) : (
@@ -2982,7 +2982,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">失败恢复清单</Title>
-            <Text className="mt-2 block console-caption">优先按这 4 步恢复：看提示、补前置结果、刷新状态、确认权限或重新登录。</Text>
+            <Text className="mt-2 block console-caption">按 4 步恢复：看提示、补前置结果、刷新状态、确认权限或重新登录。</Text>
             <div className="mt-4 console-next-step-list">
               {recoveryChecklist.map((item) => <Text key={item} className="console-caption">• {item}</Text>)}
             </div>
