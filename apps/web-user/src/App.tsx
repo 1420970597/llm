@@ -2472,8 +2472,8 @@ export default function App() {
               <Title heading={5} className="!mb-0">交付判断</Title>
               <div className="mt-4 console-summary-grid">
                 <div className="console-summary-row"><span>默认交付视图</span><Text strong>{deliveryArtifactCount > 0 ? '先看最新交付包' : '等待导出产物'}</Text></div>
-                <div className="console-summary-row"><span>对外交付前</span><Text strong>{reviewArtifactCount > 0 ? '建议先完成内部复核' : '可直接以交付包为主继续推进'}</Text></div>
-                <div className="console-summary-row"><span>其他格式</span><Text strong>{otherArtifactCount > 0 ? `${otherArtifactCount} 个待确认格式` : '无额外格式风险'}</Text></div>
+                <div className="console-summary-row"><span>对外交付前</span><Text strong>{reviewArtifactCount > 0 ? '先完成内部复核' : '可直接继续交付'}</Text></div>
+                <div className="console-summary-row"><span>其他格式</span><Text strong>{otherArtifactCount > 0 ? `${otherArtifactCount} 个待确认` : '无额外风险'}</Text></div>
               </div>
             </Card>
           </div>
