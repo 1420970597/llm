@@ -269,7 +269,7 @@ function waitingReasonLabel(status: string, queueDepth: number) {
 function waitingActionLabel(status: string) {
   switch (status) {
     case 'draft':
-      return '前往“主题结构”后继续。'
+      return '前往“主题结构”后继续'
     case 'domains_confirmed':
       return '前往“问题生成”，点击“开始生成题目”。'
     case 'questions_queued':
@@ -296,7 +296,7 @@ function waitingActionLabel(status: string) {
     case 'export_failed':
       return '请重新发起导出，或先检查上游评分结果是否完整。'
     default:
-      return '点击刷新同步状态后继续。'
+      return '点击刷新同步状态后继续'
   }
 }
 
@@ -318,7 +318,7 @@ function trustMessageLabel(status: string) {
   if (status.endsWith('_generated') || status === 'export_generated') {
     return '当前阶段结果已落库，可继续后续操作。'
   }
-  return '系统会自动保存当前任务上下文。'
+  return '系统会自动保存当前任务上下文'
 }
 
 type StageKey = 'questions' | 'reasoning' | 'rewards' | 'export'
