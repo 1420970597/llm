@@ -2539,7 +2539,7 @@ export default function App() {
 
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">估算结果</Title>
-            <Text className="mt-2 block console-caption">先看方向数和题目量，再决定是否创建。</Text>
+            <Text className="mt-2 block console-caption">看方向数和题目量，再决定是否创建。</Text>
           {planningCards.length > 0 ? (
             <div className="console-card-grid-2 mt-5">
               {planningCards.map((item) => <StatCard key={item.label} {...item} />)}
@@ -2970,7 +2970,7 @@ export default function App() {
         <PageHeader
           badge="账户与帮助"
           title="自助排错、恢复流程与理解关键术语"
-          description="遇到异常时先按这里的恢复路径处理。"
+          description="发生异常时按这里的恢复路径处理。"
           actions={
             <Space>
               <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('帮助信息与任务状态已刷新')}>刷新数据</Button>
@@ -3029,7 +3029,7 @@ export default function App() {
       <PageHeader
         badge="系统设置 / AI 服务"
         title="管理 AI 服务配置"
-        description="先查看服务列表，再通过弹窗修改配置、获取模型列表并测试连接。"
+        description="看服务列表后再编辑、取模型或测连通性。"
         actions={
           <Space wrap>
             <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('系统配置已刷新')}>刷新配置</Button>
@@ -3184,7 +3184,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">结果存储列表</Title>
-            <Text className="mt-2 block console-caption">查看默认存储、搜索配置，或进入新增和编辑。</Text>
+            <Text className="mt-2 block console-caption">看默认存储、搜索配置，或进入新增和编辑。</Text>
           </div>
           <Input
             value={storageSearchKeyword}
