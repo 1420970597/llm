@@ -2886,12 +2886,12 @@ export default function App() {
 
           <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">运营建议</Title>
-            <Text className="mt-2 block console-caption">先看队列与配置健康，再决定是否继续大批量执行。</Text>
-            <div className="mt-5 console-next-step-list">
-              <Text className="console-caption">• 队列过高时，优先处理已产出资产，避免重复触发生成。</Text>
-              <Text className="console-caption">• 活跃 AI 服务不足时，先检查服务连通性与模型配置。</Text>
-              <Text className="console-caption">• 交付文件缺失时，优先检查存储配置与导出阶段状态。</Text>
-              <Text className="console-caption">• 发生异常后，先看最近审计与帮助页，再决定是否重试。</Text>
+            <Text className="mt-2 block console-caption">先看队列、服务和交付状态，再决定是否继续批量执行。</Text>
+            <div className="mt-5 console-summary-grid">
+              <div className="console-summary-row"><span>队列压力</span><Text strong>{queueDepth > 8 ? '偏高，先处理已产出资产' : '可继续推进'}</Text></div>
+              <div className="console-summary-row"><span>AI 服务</span><Text strong>{activeProviders.length > 0 ? '可用' : '需检查连通性'}</Text></div>
+              <div className="console-summary-row"><span>交付状态</span><Text strong>{runtime?.artifactCount ? '已有交付文件' : '优先检查导出与存储'}</Text></div>
+              <div className="console-summary-row"><span>异常处理</span><Text strong>先看审计与帮助页，再决定是否重试</Text></div>
             </div>
             <Card className="console-toolbar-card mt-4" bodyStyle={{ padding: 16 }}>
               <Text strong>快捷入口</Text>
@@ -2982,7 +2982,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">失败恢复清单</Title>
-            <Text className="mt-2 block console-caption">建议按顺序执行，通常可在 1-2 次操作内恢复流程。</Text>
+            <Text className="mt-2 block console-caption">优先按这 4 步恢复：看提示、补前置结果、刷新状态、确认权限或重新登录。</Text>
             <div className="mt-4 console-next-step-list">
               {recoveryChecklist.map((item) => <Text key={item} className="console-caption">• {item}</Text>)}
             </div>
@@ -2999,7 +2999,7 @@ export default function App() {
 
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">术语解释</Title>
-            <Text className="mt-2 block console-caption">减少系统术语理解成本，帮助你更快判断下一步。</Text>
+            <Text className="mt-2 block console-caption">只保留最常见的关键术语，减少扫描成本。</Text>
             <List
               className="mt-4"
               dataSource={glossary}
