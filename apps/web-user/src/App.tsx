@@ -2611,7 +2611,7 @@ export default function App() {
                     }
                   />
                 ) : (
-                  <Banner type="success" icon={<ShieldCheck size={16} />} description="当前方向结构没有明显异常，可以继续保存并确认。" />
+                  <Banner type="success" icon={<ShieldCheck size={16} />} description="当前结构无明显异常，可继续确认。" />
                 )}
                 <DirectionStructurePreview rootKeyword={graph.dataset.rootKeyword} domains={graph.domains} />
                 <Card className="console-toolbar-card" bodyStyle={{ padding: 16 }}>
@@ -2644,7 +2644,7 @@ export default function App() {
                 </Space>
               </div>
             ) : (
-              <EmptyCard title="尚未生成方向结构" description="先创建任务，再点击“生成方向结构”。" />
+              <EmptyCard title="尚未生成方向结构" description="先创建任务，再生成方向结构。" />
             )}
           </Card>
 
@@ -2750,7 +2750,7 @@ export default function App() {
       <div className="console-card-grid-2">
         <Card className="console-record-card" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">阶段结果预览</Title>
-          <Text className="mt-2 block console-caption">共 {records.length} 条结果，优先展示可直接决策的信息。</Text>
+            <Text className="mt-2 block console-caption">共 {records.length} 条结果，优先展示关键信息。</Text>
           {records.length > 0 ? <div className="console-record-list mt-5">{records.map(renderRecord)}</div> : <EmptyCard title={emptyTitle} description={emptyDescription} />}
         </Card>
         <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
@@ -2819,7 +2819,7 @@ export default function App() {
 
         <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">交付与复核入口</Title>
-          <Text className="mt-2 block console-caption">数据资产页主要保留结果总览和交付状态，具体处理入口压缩为摘要加跳转。</Text>
+          <Text className="mt-2 block console-caption">结果总览与交付入口。</Text>
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>问题生成</span><Text strong>{questions.length > 0 ? '可进入查看覆盖情况' : '暂无结果'}</Text></div>
             <div className="console-summary-row"><span>答案内容</span><Text strong>{reasoning.length > 0 ? '可进入查看完整性' : '暂无结果'}</Text></div>
