@@ -2738,7 +2738,7 @@ export default function App() {
         actions={
           <>
             <Button onClick={() => navigate(activeTaskDetailRoute)}>{activeTaskNavLabel}</Button>
-            {activeDataset ? <Button onClick={() => navigate('/console/tasks')}>返回任务列表</Button> : null}
+            {activeDataset ? <Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button> : null}
             <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void onRefresh()}>刷新结果</Button>
             <Button theme="solid" type="primary" loading={actionLoading} disabled={generateDisabled || actionLoading || workspaceLoading} onClick={() => void onGenerate()}>{actionLabel}</Button>
           </>
@@ -2749,7 +2749,7 @@ export default function App() {
       </div>
       <div className="console-card-grid-2">
         <Card className="console-record-card" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">数据资产预览</Title>
+          <Title heading={4} className="!mb-0">结果预览</Title>
           <Text className="mt-2 block console-caption">共 {records.length} 条可见结果，优先展示可直接决策的信息。</Text>
           {records.length > 0 ? <div className="console-record-list mt-5">{records.map(renderRecord)}</div> : <EmptyCard title={emptyTitle} description={emptyDescription} />}
         </Card>
@@ -2761,10 +2761,10 @@ export default function App() {
             <div className="console-summary-row"><span>阶段结果数</span><Text strong>{records.length}</Text></div>
             <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
             <div className="console-summary-row"><span>等待状态</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出状态已完成，正在确认交付文件，请稍后刷新' : waitingStateLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '请先创建任务'}</Text></div>
-            <div className="console-summary-row"><span>等待原因</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出结果正在写入交付存储。' : waitingReasonLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '创建任务后显示等待原因'}</Text></div>
-            <div className="console-summary-row"><span>建议操作</span><Text strong>{activeDataset ? (exportDeliveryPending ? '等待交付文件落盘后再下载。' : waitingActionLabel(activeDataset.status)) : '创建任务后显示可执行操作'}</Text></div>
+            <div className="console-summary-row"><span>等待原因</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出结果正在写入交付存储。' : waitingReasonLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '创建任务后显示'}</Text></div>
+            <div className="console-summary-row"><span>建议操作</span><Text strong>{activeDataset ? (exportDeliveryPending ? '等待交付文件落盘后再下载。' : waitingActionLabel(activeDataset.status)) : '创建任务后显示'}</Text></div>
             <div className="console-summary-row"><span>当前阶段 ETA</span><Text strong>{activeEta}</Text></div>
-            <div className="console-summary-row"><span>刷新建议</span><Text strong>{activeDataset ? (exportDeliveryPending ? '系统会自动刷新，检测到交付文件后可下载。' : refreshExpectationLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '创建任务后显示刷新建议'}</Text></div>
+            <div className="console-summary-row"><span>刷新建议</span><Text strong>{activeDataset ? (exportDeliveryPending ? '系统会自动刷新，检测到交付文件后可下载。' : refreshExpectationLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '创建任务后显示'}</Text></div>
           </div>
           <Card className="console-toolbar-card mt-4" bodyStyle={{ padding: 16 }}>
             <Text strong>异常说明</Text>
