@@ -2097,7 +2097,7 @@ export default function App() {
         <PageHeader
           badge="我的任务"
           title="查看任务列表并继续推进具体任务"
-          description="这里专门负责任务列表、最近任务和继续处理动作；工作台只保留待办、风险和结果概览。"
+          description="查看任务列表并继续处理。"
           actions={
             <>
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
@@ -2487,7 +2487,7 @@ export default function App() {
       <PageHeader
         badge="新建任务"
         title="先填主题和目标规模，立即创建新任务"
-        description="普通用户默认只需要任务主题和目标规模。高级配置继续保留，但不干扰首次创建路径。"
+        description="只填任务主题和目标规模即可。"
         actions={
           <>
             <Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>
@@ -3172,7 +3172,7 @@ export default function App() {
       <PageHeader
         badge="系统设置 / 结果存储"
         title="管理结果存储位置"
-        description="统一列表工作流：先查看列表，再新增或编辑。"
+        description="先看列表，再新增或编辑。"
         actions={
           <Space wrap>
             <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('存储配置已刷新')}>刷新配置</Button>
@@ -3289,7 +3289,7 @@ export default function App() {
       <PageHeader
         badge="系统设置 / 生成规则"
         title="管理生成规则"
-        description="统一列表工作流：支持搜索、新增与编辑。"
+        description="支持搜索、新增与编辑。"
         actions={
           <Space wrap>
             <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('规则页已刷新')}>刷新列表</Button>
@@ -3383,7 +3383,7 @@ export default function App() {
       <PageHeader
         badge="系统设置 / 生成指令"
         title="管理生成指令模板"
-        description="统一列表工作流：支持搜索、新增与编辑。"
+        description="支持搜索、新增与编辑。"
         actions={
           <Space wrap>
             <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('模板页已刷新')}>刷新列表</Button>
