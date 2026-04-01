@@ -2268,7 +2268,7 @@ export default function App() {
         <PageHeader
           badge={`我的任务 / 任务 #${activeDataset.id}`}
           title={activeDataset.name}
-          description="把任务推进、质量抽检与导出交付收口到单页工作台；先看当前待办，再按生命周期继续推进。"
+          description="把任务推进、质量抽检与导出交付收口到单页工作台。"
           actions={
             <>
               <Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>
@@ -2286,7 +2286,7 @@ export default function App() {
                 <Tag color="green">完成进度：{progressValue}%</Tag>
               </div>
               <Title heading={3} className="!mb-0 mt-4">当前任务工作台</Title>
-              <Text className="mt-2 block console-caption">先看整体状态和下一步动作，再按生命周期、抽检重点和交付资产推进；所有现有功能仍保留在当前任务页。</Text>
+              <Text className="mt-2 block console-caption">先看状态，再按生命周期、抽检和交付推进。</Text>
             </div>
             <div className="console-workbench-hero-actions">
               <Button theme="solid" type="primary" onClick={() => document.getElementById('stage-lifecycle')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{nextActionLabel(activeDataset.status)}</Button>
@@ -2345,7 +2345,7 @@ export default function App() {
               <Title heading={5} className="!mb-0">恢复与帮助</Title>
               <div className="mt-4 console-next-step-list">
                 <Text className="console-caption">• 先刷新当前任务，确认是否仍处于排队或处理中。</Text>
-                <Text className="console-caption">• 优先检查当前阶段输入是否完整，再决定是否重跑。</Text>
+                <Text className="console-caption">• 先检查当前阶段输入是否完整，再决定是否重跑。</Text>
                 <Text className="console-caption">• 连续异常时进入帮助页按恢复指引处理。</Text>
               </div>
               <Space className="mt-4" wrap>
@@ -2397,7 +2397,7 @@ export default function App() {
             <section id="stage-quality" className="console-card-grid-2">
               <Card className="console-panel" bodyStyle={{ padding: 20 }}>
                 <Title heading={4} className="!mb-0">质量抽检</Title>
-                <Text className="mt-2 block console-caption">把抽检入口和风险信号并排放在主工作区，减少阶段跳转成本。</Text>
+                <Text className="mt-2 block console-caption">把抽检入口和风险信号放在主工作区，减少阶段跳转。</Text>
                 <div className="mt-5 console-summary-grid">
                   <div className="console-summary-row"><span>问题抽检</span><Space><Tag color={warningQuestionCount > 0 ? 'orange' : 'green'}>{warningQuestionCount > 0 ? `${warningQuestionCount} 条待关注` : '状态正常'}</Tag><Button size="small" onClick={() => navigate('/console/questions')}>去审核</Button></Space></div>
                   <div className="console-summary-row"><span>答案抽检</span><Space><Tag color={missingReasoningCount > 0 ? 'orange' : 'green'}>{missingReasoningCount > 0 ? `${missingReasoningCount} 条缺少思考` : '结构完整'}</Tag><Button size="small" onClick={() => navigate('/console/reasoning')}>去审核</Button></Space></div>
@@ -2408,7 +2408,7 @@ export default function App() {
 
               <Card className="console-panel" bodyStyle={{ padding: 20 }}>
                 <Title heading={4} className="!mb-0">风险与恢复</Title>
-                <Text className="mt-2 block console-caption">把等待与恢复提示紧邻质量动作展示，符合运营台的处置路径。</Text>
+                <Text className="mt-2 block console-caption">把等待与恢复提示放在质量动作旁边。</Text>
                 <div className="mt-5 console-summary-grid">
                   <div className="console-summary-row"><span>等待任务数</span><Text strong>{queueDepth}</Text></div>
                   <div className="console-summary-row"><span>导出状态</span><Text strong>{exportDeliveryPending ? '导出落盘中' : '按当前阶段推进'}</Text></div>
@@ -2455,7 +2455,7 @@ export default function App() {
           <div className="console-workbench-delivery">
             <Card className="console-panel" bodyStyle={{ padding: 20 }}>
               <Title heading={5} className="!mb-0">最新交付</Title>
-              <Text className="mt-2 block console-caption">交付资产持续可见，但不打断当前阶段处理。</Text>
+              <Text className="mt-2 block console-caption">交付资产持续可见，但不打断当前处理。</Text>
               <div className="mt-4 console-summary-grid">
                 <div className="console-summary-row"><span>最新交付包</span><Text strong>{deliveryArtifactCount > 0 ? `${deliveryArtifactCount} 个可交付` : '暂无交付包'}</Text></div>
                 <div className="console-summary-row"><span>版本复核</span><Text strong>{reviewArtifactCount > 0 ? `${reviewArtifactCount} 个复核资产` : '暂无复核资产'}</Text></div>
@@ -2618,7 +2618,7 @@ export default function App() {
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                       <Text strong>高级模式</Text>
-                      <Text className="mt-1 block console-caption">仅在排查复杂结构时展开图形关系。</Text>
+                      <Text className="mt-1 block console-caption">排查复杂结构时再展开图形关系。</Text>
                     </div>
                     <Switch checked={showAdvancedGraphView} onChange={(checked) => setShowAdvancedGraphView(checked)} checkedText="已开启" uncheckedText="已关闭" />
                   </div>
@@ -2632,7 +2632,7 @@ export default function App() {
                         })}
                       </div>
                     ) : (
-                      <Text className="mt-4 block console-caption">当前没有额外图形关系，仅保留树状结构即可完成审核。</Text>
+                      <Text className="mt-4 block console-caption">没有额外图形关系，保留树状结构即可。</Text>
                     )
                   ) : null}
                 </Card>
@@ -2650,7 +2650,7 @@ export default function App() {
 
           <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">当前任务上下文</Title>
-            <Text className="mt-2 block console-caption">这里持续显示当前任务状态和复核压力。</Text>
+            <Text className="mt-2 block console-caption">持续显示当前任务状态和复核压力。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>数据集</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
               <div className="console-summary-row"><span>任务主题</span><Text strong>{activeDataset?.rootKeyword ?? '—'}</Text></div>
