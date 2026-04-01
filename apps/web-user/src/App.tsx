@@ -128,7 +128,7 @@ function statusLabel(status: string) {
     case 'draft':
       return '待确认主题结构'
     case 'domains_confirmed':
-      return '主题结构已确认，待生成问题'
+      return '结构已确认，待生成问题'
     case 'questions_queued':
       return '问题生成排队中'
     case 'questions_generated':
@@ -138,7 +138,7 @@ function statusLabel(status: string) {
     case 'reasoning_queued':
       return '答案生成排队中'
     case 'reasoning_generated':
-      return '答案已就绪，待质量评分'
+      return '答案已就绪，待质量评估'
     case 'reasoning_partial':
       return '答案部分生成，需复核'
     case 'reasoning_failed':
@@ -146,7 +146,7 @@ function statusLabel(status: string) {
     case 'rewards_queued':
       return '质量评分排队中'
     case 'rewards_generated':
-      return '评分完成，可导出交付'
+      return '评估完成，可导出交付'
     case 'rewards_partial':
       return '评分部分完成，需复核'
     case 'rewards_failed':
@@ -250,9 +250,9 @@ function waitingReasonLabel(status: string, queueDepth: number) {
   }
   switch (status) {
     case 'draft':
-      return '系统尚未开始生成，因为主题结构还未确认。'
+      return '结构未确认，尚未开始生成。'
     case 'domains_confirmed':
-      return '方向已确认，等待你手动启动问题生成。'
+      return '结构已确认，等待你启动问题生成。'
     case 'questions_generated':
       return '问题结果已准备好，等待你启动答案生成。'
     case 'reasoning_generated':
@@ -269,14 +269,14 @@ function waitingReasonLabel(status: string, queueDepth: number) {
 function waitingActionLabel(status: string) {
   switch (status) {
     case 'draft':
-      return '前往“主题结构”，确认后继续。'
+      return '前往“主题结构”后继续。'
     case 'domains_confirmed':
       return '前往“问题生成”，点击“开始生成题目”。'
     case 'questions_queued':
     case 'reasoning_queued':
     case 'rewards_queued':
     case 'export_queued':
-      return '无需停留本页，可先处理其他步骤，再按刷新建议回看。'
+      return '先处理其他步骤，再按刷新建议回看。'
     case 'questions_generated':
       return '前往“答案生成”，点击“开始生成答案”。'
     case 'questions_failed':
@@ -292,7 +292,7 @@ function waitingActionLabel(status: string) {
     case 'rewards_failed':
       return '请先回到“质量评分”排查失败原因，再重新评分。'
     case 'export_generated':
-      return '进入“结果交付”下载文件，并完成交付确认。'
+      return '进入“结果交付”下载文件并确认交付。'
     case 'export_failed':
       return '请重新发起导出，或先检查上游评分结果是否完整。'
     default:
