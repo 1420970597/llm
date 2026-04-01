@@ -2761,10 +2761,10 @@ export default function App() {
             <div className="console-summary-row"><span>阶段结果数</span><Text strong>{records.length}</Text></div>
             <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
             <div className="console-summary-row"><span>等待状态</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出状态已完成，正在确认交付文件，请稍后刷新' : waitingStateLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '请先创建任务'}</Text></div>
-            <div className="console-summary-row"><span>等待原因</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出计算已完成，系统正在将结果写入交付存储。' : waitingReasonLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '创建任务后显示等待原因'}</Text></div>
-            <div className="console-summary-row"><span>建议操作</span><Text strong>{activeDataset ? (exportDeliveryPending ? '暂时无需重复触发导出，等待交付文件落盘后再下载。' : waitingActionLabel(activeDataset.status)) : '创建任务后显示可执行操作'}</Text></div>
+            <div className="console-summary-row"><span>等待原因</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出结果正在写入交付存储。' : waitingReasonLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '创建任务后显示等待原因'}</Text></div>
+            <div className="console-summary-row"><span>建议操作</span><Text strong>{activeDataset ? (exportDeliveryPending ? '等待交付文件落盘后再下载。' : waitingActionLabel(activeDataset.status)) : '创建任务后显示可执行操作'}</Text></div>
             <div className="console-summary-row"><span>当前阶段 ETA</span><Text strong>{activeEta}</Text></div>
-            <div className="console-summary-row"><span>刷新建议</span><Text strong>{activeDataset ? (exportDeliveryPending ? '系统会每 20 秒自动刷新；检测到交付文件后将自动变为可下载。' : refreshExpectationLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '创建任务后显示刷新建议'}</Text></div>
+            <div className="console-summary-row"><span>刷新建议</span><Text strong>{activeDataset ? (exportDeliveryPending ? '系统会自动刷新，检测到交付文件后可下载。' : refreshExpectationLabel(activeDataset.status, runtime?.queueDepth ?? 0)) : '创建任务后显示刷新建议'}</Text></div>
           </div>
           <Card className="console-toolbar-card mt-4" bodyStyle={{ padding: 16 }}>
             <Text strong>异常说明</Text>
@@ -2773,7 +2773,7 @@ export default function App() {
           <Card className="console-toolbar-card mt-4" bodyStyle={{ padding: 16 }}>
             <Text strong>下一步建议</Text>
             <div className="console-next-step-list mt-3">
-              {nextStepTips.map((tip) => <Text key={tip} className="console-caption">• {tip}</Text>)}
+              {nextStepTips.slice(0, 3).map((tip) => <Text key={tip} className="console-caption">• {tip}</Text>)}
             </div>
           </Card>
         </Card>
