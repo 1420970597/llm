@@ -87,7 +87,7 @@ type NavPage = {
 }
 
 const userPages: NavPage[] = [
-  { label: '工作台', route: '/console/tasks', icon: LayoutDashboard, caption: '查看当前任务、待办动作与最近进展' },
+  { label: '工作台', route: '/console/home', icon: LayoutDashboard, caption: '查看当前任务、待办动作与最近进展' },
   { label: '新建任务', route: '/console/planning', icon: CirclePlus, caption: '快速创建任务，先填主题和目标规模' },
   { label: '我的任务', route: '/console/tasks', icon: Target, caption: '进入任务列表并继续推进具体任务' },
   { label: '数据资产', route: '/console/results', icon: HardDriveDownload, caption: '统一查看结果、质量状态与交付文件' },
@@ -1975,9 +1975,9 @@ export default function App() {
     return (
       <div className="console-page-shell">
         <PageHeader
-          badge="任务中心 / 辅助总览"
-          title="围绕任务、结果、风险与动作做日常推进"
-          description="首页聚合我的任务、最近结果、风险提醒与待办动作，帮助你快速判断今天先做什么。"
+          badge="工作台"
+          title="围绕当前任务、风险与待办做日常推进"
+          description="工作台聚合当前任务、最近结果、风险提醒与待办动作，帮助你快速判断现在先做什么。"
           actions={
             <>
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>
@@ -3627,8 +3627,8 @@ export default function App() {
                       </div>
                     ) : null}
                     <Routes>
-                      <Route path="/console/home" element={<Navigate to="/console/tasks" replace />} />
-                      <Route path="/console/overview" element={<Navigate to="/console/tasks" replace />} />
+                      <Route path="/console/home" element={renderOverview()} />
+                      <Route path="/console/overview" element={<Navigate to="/console/home" replace />} />
                       <Route path="/console/tasks" element={renderTaskIndex()} />
                       <Route path="/console/tasks/:taskId" element={renderTaskDetail()} />
                       <Route path="/console/planning" element={renderPlanning()} />
@@ -3645,7 +3645,7 @@ export default function App() {
                       {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
                       {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
                       {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
-                      <Route path="*" element={<Navigate to="/console/tasks" replace />} />
+                      <Route path="*" element={<Navigate to="/console/home" replace />} />
                     </Routes>
                   </Content>
                 </Layout>
