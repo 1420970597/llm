@@ -1994,13 +1994,13 @@ export default function App() {
         <Banner
           type={hasHighRisk ? 'warning' : 'info'}
           icon={<Bell size={16} />}
-          description={hasHighRisk ? '检测到高优先级风险，请先处理风险提醒区后再继续推进。' : '当前工作台状态稳定，可按待办动作继续执行。'}
+          description={hasHighRisk ? '先处理高优先级风险。' : '当前状态稳定，可继续推进。'}
         />
 
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">当前任务摘要</Title>
-            <Text className="mt-2 block console-caption">工作台只保留当前任务、最近动向和下一步入口；完整任务列表统一放到“我的任务”。</Text>
+            <Text className="mt-2 block console-caption">只保留当前任务、最近动向和下一步入口。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '尚未创建任务'}</Text></div>
               <div className="console-summary-row"><span>任务 ID</span><Text strong>{activeDataset?.id ?? '—'}</Text></div>
@@ -2015,7 +2015,7 @@ export default function App() {
 
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">最近结果</Title>
-            <Text className="mt-2 block console-caption">工作台只展示结果规模和最新交付动向；完整资产明细统一在“数据资产”查看。</Text>
+            <Text className="mt-2 block console-caption">只展示结果规模和最新交付动向。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>题目结果</span><Text strong>{questions.length}</Text></div>
               <div className="console-summary-row"><span>答案结果</span><Text strong>{reasoning.length}</Text></div>
@@ -2034,7 +2034,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">风险提醒</Title>
-            <Text className="mt-2 block console-caption">高风险优先处理，中低风险按节奏跟进。</Text>
+            <Text className="mt-2 block console-caption">高风险优先，中低风险按节奏处理。</Text>
             <div className="mt-5 console-stack">
               {riskItems.map((risk) => (
                 <div key={`${risk.level}-${risk.title}`} className="console-domain-item">
@@ -2052,7 +2052,7 @@ export default function App() {
 
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">待办动作</Title>
-            <Text className="mt-2 block console-caption">按推荐顺序执行，减少重复刷新与无效等待。</Text>
+            <Text className="mt-2 block console-caption">按顺序执行，减少无效刷新。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>下一步</span><Text strong>{activeDataset ? (exportDeliveryPending ? '等待交付文件出现后再下载结果' : nextActionLabel(activeDataset.status)) : '先点击“新建任务”'}</Text></div>
               <div className="console-summary-row"><span>等待原因</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出计算已完成，系统正在将结果写入交付存储。' : waitingReasonLabel(activeDataset.status, queueDepth)) : '创建任务后显示'}</Text></div>
@@ -2070,7 +2070,7 @@ export default function App() {
 
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">当前系统状态</Title>
-          <Text className="mt-2 block console-caption">仅保留与你当前任务相关的轻量系统信号，详细运行态请进入运营监控。</Text>
+          <Text className="mt-2 block console-caption">保留当前任务相关的轻量系统信号。</Text>
           <div className="mt-5 console-card-grid-4">
             {overviewCards.map((item) => <StatCard key={item.label} {...item} />)}
           </div>
