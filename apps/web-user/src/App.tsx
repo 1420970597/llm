@@ -238,7 +238,7 @@ function waitingStateLabel(status: string, queueDepth: number) {
     case 'export_generated':
       return '导出已完成，可下载交付'
     default:
-      return '等待状态同步中'
+      return '状态同步中'
   }
 }
 
@@ -498,13 +498,13 @@ function questionStatusLabel(status: string) {
 
 function reasoningQualityLabel(summary: string) {
   const length = summary.trim().length
-  if (length >= 140) return { text: '完整', color: 'green' as const, note: '可直接用于评分。' }
+  if (length >= 140) return { text: '完整', color: 'green' as const, note: '可用于评分。' }
   if (length >= 70) return { text: '可用', color: 'blue' as const, note: '关键信息齐全，可抽检。' }
   return { text: '待补充', color: 'orange' as const, note: '摘要较短，需重跑或复核。' }
 }
 
 function rewardQualityLabel(score: number) {
-  if (score >= 0.85) return { text: '高质量', color: 'green' as const, note: '可直接导出。' }
+  if (score >= 0.85) return { text: '高质量', color: 'green' as const, note: '可导出。' }
   if (score >= 0.7) return { text: '可交付', color: 'blue' as const, note: '抽样复核后导出。' }
   if (score >= 0.5) return { text: '待优化', color: 'orange' as const, note: '补充推理后再评估。' }
   return { text: '风险', color: 'red' as const, note: '不宜直接导出，先回修。' }
@@ -2934,7 +2934,7 @@ export default function App() {
             {recentAuditLogs.length > 0 ? (
               <Table columns={auditColumns} dataSource={recentAuditLogs} pagination={false} />
             ) : (
-              <EmptyCard title="暂无操作记录" description="发生配置变更后再查看这里。" />
+              <EmptyCard title="暂无操作记录" description="发生变更后再查看。" />
             )}
           </Card>
         </div>
@@ -3288,7 +3288,7 @@ export default function App() {
     <div className="console-page-shell">
       <PageHeader
         badge="系统设置 / 生成规则"
-        title="管理生成规则"
+        title="生成规则"
         description="支持搜索、新增与编辑。"
         actions={
           <Space wrap>
