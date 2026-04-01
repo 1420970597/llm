@@ -733,10 +733,10 @@ function LoginPage({
           </Text>
           <div className="console-card-grid-2 mt-6">
             {[
-              { icon: CirclePlus, title: '新建任务更靠前', text: '首次进入先看到主入口，不需要先理解内部阶段名词。' },
-              { icon: Target, title: '任务推进更清晰', text: '已有任务统一从“我的任务”进入，避免在首页混排全部流程。' },
-              { icon: HardDriveDownload, title: '结果集中查看', text: '交付文件、质量状态与复核资产都统一收敛到数据资产页。' },
-              { icon: ShieldCheck, title: '状态持续可见', text: '登录后可以继续上次进度，并在工作台看到当前待办。' },
+              { icon: CirclePlus, title: '新建任务更靠前', text: '首次进入先看到主入口。' },
+              { icon: Target, title: '任务推进更清晰', text: '已有任务从“我的任务”继续。' },
+              { icon: HardDriveDownload, title: '结果集中查看', text: '交付文件和复核资产统一收敛。' },
+              { icon: ShieldCheck, title: '状态持续可见', text: '登录后可继续上次进度。' },
             ].map((item) => (
               <Card key={item.title} className="console-quick-card" bodyStyle={{ padding: 18 }}>
                 <div className="feature-icon"><item.icon size={18} strokeWidth={1.9} /></div>
@@ -2797,10 +2797,10 @@ export default function App() {
       />
 
       <div className="console-card-grid-4">
-        <StatCard icon={Layers3} label="题目结果" value={questions.length} helper="查看题目覆盖情况与待关注项" />
-        <StatCard icon={BrainCircuit} label="答案结果" value={reasoning.length} helper="确认答案摘要是否完整可用" />
-        <StatCard icon={ShieldCheck} label="质量评分" value={rewards.length} helper="判断哪些内容已经可以交付" />
-        <StatCard icon={HardDriveDownload} label="导出文件" value={artifacts.length} helper="确认已生成可下载交付包" />
+        <StatCard icon={Layers3} label="题目结果" value={questions.length} helper="问题数量" />
+        <StatCard icon={BrainCircuit} label="答案结果" value={reasoning.length} helper="答案数量" />
+        <StatCard icon={ShieldCheck} label="质量评分" value={rewards.length} helper="评分数量" />
+        <StatCard icon={HardDriveDownload} label="导出文件" value={artifacts.length} helper="交付文件" />
       </div>
 
       <div className="console-card-grid-2">
@@ -2860,10 +2860,10 @@ export default function App() {
         />
 
         <div className="console-card-grid-4">
-          <StatCard icon={ServerCog} label="等待任务" value={queueDepth} helper="队列积压越高，阶段返回越慢" />
-          <StatCard icon={Database} label="活跃 AI 服务" value={activeProviders.length} helper="仅统计当前可用于生产的服务" />
-          <StatCard icon={FolderCog} label="可用存储" value={activeStorageCount} helper="可正常用于交付结果落盘的存储配置" />
-          <StatCard icon={Settings} label="最近审计数" value={recentAuditLogs.length} helper="便于巡检近期配置与操作变更" />
+          <StatCard icon={ServerCog} label="等待任务" value={queueDepth} helper="队列等待" />
+          <StatCard icon={Database} label="活跃 AI 服务" value={activeProviders.length} helper="可用服务" />
+          <StatCard icon={FolderCog} label="可用存储" value={activeStorageCount} helper="可用存储" />
+          <StatCard icon={Settings} label="最近审计数" value={recentAuditLogs.length} helper="最近变更" />
         </div>
 
         <div className="console-card-grid-2">
