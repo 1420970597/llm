@@ -2096,8 +2096,8 @@ export default function App() {
       <div className="console-page-shell">
         <PageHeader
           badge="我的任务"
-          title="看任务列表并处理"
-          description="看任务列表并处理。"
+          title="任务列表与处理"
+          description="看任务列表并处理"
           actions={
             <>
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
@@ -2583,7 +2583,7 @@ export default function App() {
         <PageHeader
           badge="我的任务 / 主题结构"
           title="生成主题结构并完成确认"
-          description="先看结构，再复核命名，最后确认进入下一步。"
+          description="先看结构，再复核命名，最后确认"
           actions={
             <>
               <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button>
@@ -2650,7 +2650,7 @@ export default function App() {
 
           <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">当前任务上下文</Title>
-            <Text className="mt-2 block console-caption">持续显示当前任务状态和复核压力。</Text>
+            <Text className="mt-2 block console-caption">持续显示任务状态和复核压力。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>数据集</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
               <div className="console-summary-row"><span>任务主题</span><Text strong>{activeDataset?.rootKeyword ?? '—'}</Text></div>
@@ -2819,7 +2819,7 @@ export default function App() {
 
         <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">交付与复核入口</Title>
-          <Text className="mt-2 block console-caption">结果总览与交付入口。</Text>
+          <Text className="mt-2 block console-caption">结果总览与交付入口</Text>
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>问题生成</span><Text strong>{questions.length > 0 ? '可进入查看覆盖情况' : '暂无结果'}</Text></div>
             <div className="console-summary-row"><span>答案内容</span><Text strong>{reasoning.length > 0 ? '可进入查看完整性' : '暂无结果'}</Text></div>
@@ -2886,7 +2886,7 @@ export default function App() {
 
           <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">运营建议</Title>
-            <Text className="mt-2 block console-caption">先看队列、服务和交付状态，再决定是否继续批量执行。</Text>
+            <Text className="mt-2 block console-caption">先看队列、服务和交付状态，再决定是否批量执行。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>队列压力</span><Text strong>{queueDepth > 8 ? '偏高，先处理已产出资产' : '可继续推进'}</Text></div>
               <div className="console-summary-row"><span>AI 服务</span><Text strong>{activeProviders.length > 0 ? '可用' : '需检查连通性'}</Text></div>
@@ -2982,7 +2982,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">失败恢复清单</Title>
-            <Text className="mt-2 block console-caption">按 4 步恢复：看提示、补前置结果、刷新、确认权限或重新登录。</Text>
+            <Text className="mt-2 block console-caption">按 4 步恢复：看提示、补前置结果、刷新、确认权限或重登。</Text>
             <div className="mt-4 console-next-step-list">
               {recoveryChecklist.map((item) => <Text key={item} className="console-caption">• {item}</Text>)}
             </div>
@@ -3301,7 +3301,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">生成规则列表</Title>
-            <Text className="mt-2 block console-caption">维护规则数量、问题量和模式。</Text>
+            <Text className="mt-2 block console-caption">维护规则数量、问题量和模式</Text>
           </div>
           <Input
             value={strategySearchKeyword}
@@ -3459,7 +3459,7 @@ export default function App() {
 
   const renderAudit = () => (
     <div className="console-page-shell">
-      <PageHeader badge="系统设置 / 操作记录" title="查看配置记录" description="集中查看最近配置与操作变更。" />
+      <PageHeader badge="系统设置 / 操作记录" title="配置记录" description="集中查看最近配置与操作变更。" />
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">审计事件列表</Title>
