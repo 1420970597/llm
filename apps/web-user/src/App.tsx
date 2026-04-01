@@ -1929,7 +1929,7 @@ export default function App() {
       riskItems.push({
         level: 'medium',
         title: '导出交付仍在落盘',
-        detail: '导出结果正在写入交付文件。',
+        detail: '结果正在写入交付文件。',
       })
     }
     if (activeDataset?.status === 'export_generated' && !exportDeliveryPending && artifacts.length === 0) {
@@ -1976,7 +1976,7 @@ export default function App() {
       <div className="console-page-shell">
         <PageHeader
           badge="工作台"
-          title="围绕当前任务、风险与待办做日常推进"
+          title="任务、风险与待办"
           description="只看任务、风险、结果和待办"
           actions={
             <>
@@ -2930,7 +2930,7 @@ export default function App() {
 
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">最近操作</Title>
-            <Text className="mt-2 block console-caption">回看近期配置与操作变更。</Text>
+            <Text className="mt-2 block console-caption">回看近期配置和操作变更。</Text>
             {recentAuditLogs.length > 0 ? (
               <Table columns={auditColumns} dataSource={recentAuditLogs} pagination={false} />
             ) : (
