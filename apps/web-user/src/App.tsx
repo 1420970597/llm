@@ -245,7 +245,7 @@ function waitingStateLabel(status: string, queueDepth: number) {
 function waitingReasonLabel(status: string, queueDepth: number) {
   if (status.endsWith('_queued')) {
     return queueDepth > 0
-      ? `该阶段已入队，当前前方约 ${queueDepth} 个任务，系统会按顺序执行。`
+      ? '结果已入队，系统会按顺序执行。'
       : '该阶段已入队，正在等待执行资源分配。'
   }
   switch (status) {
@@ -504,8 +504,8 @@ function reasoningQualityLabel(summary: string) {
 }
 
 function rewardQualityLabel(score: number) {
-  if (score >= 0.85) return { text: '高质量', color: 'green' as const, note: '可以直接进入导出阶段。' }
-  if (score >= 0.7) return { text: '可交付', color: 'blue' as const, note: '可抽样复核后导出。' }
+  if (score >= 0.85) return { text: '高质量', color: 'green' as const, note: '可直接导出。' }
+  if (score >= 0.7) return { text: '可交付', color: 'blue' as const, note: '抽样复核后导出。' }
   if (score >= 0.5) return { text: '待优化', color: 'orange' as const, note: '补充推理后再评估。' }
   return { text: '风险', color: 'red' as const, note: '不宜直接导出，先回修。' }
 }
@@ -2110,7 +2110,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">任务列表概览</Title>
-            <Text className="mt-2 block console-caption">这里专门用来浏览任务、识别当前任务并继续处理；首页不再承担完整列表职责。</Text>
+            <Text className="mt-2 block console-caption">看任务列表并继续处理。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>任务总数</span><Text strong>{datasets.length}</Text></div>
               <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '暂无任务'}</Text></div>
@@ -2125,7 +2125,7 @@ export default function App() {
 
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">任务列表</Title>
-            <Text className="mt-2 block console-caption">按最近更新时间查看任务，并从这里进入独立详情页继续处理。</Text>
+            <Text className="mt-2 block console-caption">按最近更新时间浏览任务并进入详情。</Text>
             <div className="mt-5 console-stack">
               {recentDatasets.length > 0 ? recentDatasets.map((dataset) => (
                 <div key={dataset.id} className="console-domain-item">
