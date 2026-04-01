@@ -2155,12 +2155,12 @@ export default function App() {
       return (
         <div className="console-page-shell">
           <PageHeader
-            badge="任务中心 / 任务详情"
+            badge="我的任务 / 任务详情"
             title="未找到任务详情"
-            description="请先从任务列表进入某个任务，或先创建新任务。"
-            actions={<Button onClick={() => navigate('/console/tasks')}>返回任务列表</Button>}
+            description="请先从“我的任务”页进入某个任务，或先创建新任务。"
+            actions={<Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>}
           />
-          <EmptyCard title="暂无任务详情" description="进入 /console/tasks 查看任务列表后，再打开具体任务。" />
+          <EmptyCard title="暂无任务详情" description="进入 /console/tasks 查看任务列表后，再打开具体任务继续处理。" />
         </div>
       )
     }
