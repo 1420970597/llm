@@ -367,7 +367,7 @@ function etaBaseWindow(status: string) {
 
 function etaLabel(status: string, queueDepth: number, acceptedAt?: string) {
   if (status === 'export_generated') return '已完成，可立即下载交付'
-  if (status.endsWith('_generated')) return '当前阶段已完成，可立即推进下一步'
+  if (status.endsWith('_generated')) return '阶段已完成，可进入下一步'
   if (status.endsWith('_queued')) {
     const base = etaBaseWindow(status)
     if (!base) return '预计处理中'
@@ -1080,7 +1080,7 @@ export default function App() {
         tone: 'warning',
         title: '登录状态已过期',
         detail: message,
-        recoveryHint: '重新登录后继续；若反复过期，请联系管理员。',
+        recoveryHint: '登录后继续；若反复过期，请联系管理员。',
         nextStep: { label: '重新登录', route: '/login' },
       })
       Toast.error(message)
@@ -1095,7 +1095,7 @@ export default function App() {
         tone: 'warning',
         title: '权限不足，操作未执行',
         detail: message,
-        recoveryHint: '确认当前角色；若需要更高权限，请联系管理员。',
+        recoveryHint: '确认当前角色；需要更高权限时联系管理员。',
         nextStep: { label: '查看恢复指南', route: '/console/help' },
       })
       Toast.warning(message)
