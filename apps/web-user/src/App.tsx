@@ -2215,7 +2215,7 @@ export default function App() {
         label: '第 2 步：问题生成',
         route: '/console/questions',
         state: questionsStage?.state ?? inferStageState('questions'),
-        summary: questionsStage?.summary ?? (datasetStatus === 'domains_confirmed' ? '主题结构已确认，下一步应开始生成问题。' : datasetStatus === 'questions_generated' ? '问题已经生成完成，可以继续生成答案内容。' : '进入本阶段查看问题生成结果与覆盖情况。'),
+        summary: questionsStage?.summary ?? (datasetStatus === 'domains_confirmed' ? '主题结构已确认，下一步生成问题。' : datasetStatus === 'questions_generated' ? '问题已生成，可继续答案内容。' : '查看问题结果与覆盖情况。'),
         count: questionsStage?.count ?? questions.length,
       },
       {
@@ -2223,7 +2223,7 @@ export default function App() {
         label: '第 3 步：答案内容',
         route: '/console/reasoning',
         state: reasoningStage?.state ?? inferStageState('reasoning'),
-        summary: reasoningStage?.summary ?? (datasetStatus === 'questions_generated' ? '问题已准备好，下一步应生成答案内容。' : datasetStatus === 'reasoning_generated' ? '答案内容已经生成完成，可以继续质量评估。' : '进入本阶段查看答案内容是否完整可用。'),
+        summary: reasoningStage?.summary ?? (datasetStatus === 'questions_generated' ? '问题已准备好，下一步生成答案内容。' : datasetStatus === 'reasoning_generated' ? '答案已生成，可继续质量评估。' : '查看答案内容是否完整可用。'),
         count: reasoningStage?.count ?? reasoning.length,
       },
       {
@@ -2231,7 +2231,7 @@ export default function App() {
         label: '第 4 步：质量评估',
         route: '/console/rewards',
         state: rewardsStage?.state ?? inferStageState('rewards'),
-        summary: rewardsStage?.summary ?? (datasetStatus === 'reasoning_generated' ? '答案内容已准备好，下一步应做质量评估。' : datasetStatus === 'rewards_generated' ? '质量评估已完成，可以进入导出交付。' : '进入本阶段查看质量评估结果与风险项。'),
+        summary: rewardsStage?.summary ?? (datasetStatus === 'reasoning_generated' ? '答案已准备好，下一步做质量评估。' : datasetStatus === 'rewards_generated' ? '质量评估已完成，可进入导出交付。' : '查看质量评估结果与风险项。'),
         count: rewardsStage?.count ?? rewards.length,
       },
       {
@@ -2241,7 +2241,7 @@ export default function App() {
         state: exportStage?.state ?? inferStageState('export'),
         summary: exportDeliveryPending
           ? '导出计算已完成，交付文件正在落盘。'
-          : exportStage?.summary ?? (datasetStatus === 'rewards_generated' ? '质量评估已完成，下一步应导出交付文件。' : datasetStatus === 'export_generated' ? '导出交付已完成，可以下载文件。' : '进入本阶段查看导出结果和交付文件。'),
+          : exportStage?.summary ?? (datasetStatus === 'rewards_generated' ? '质量评估已完成，下一步导出交付文件。' : datasetStatus === 'export_generated' ? '导出交付已完成，可下载文件。' : '查看导出结果和交付文件。'),
         count: exportStage?.count ?? artifacts.length,
       },
     ]
