@@ -2749,14 +2749,14 @@ export default function App() {
       </div>
       <div className="console-card-grid-2">
         <Card className="console-record-card" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">结果预览</Title>
-          <Text className="mt-2 block console-caption">共 {records.length} 条可见结果，优先展示可直接决策的信息。</Text>
+          <Title heading={4} className="!mb-0">阶段结果预览</Title>
+          <Text className="mt-2 block console-caption">共 {records.length} 条结果，优先展示可直接决策的信息。</Text>
           {records.length > 0 ? <div className="console-record-list mt-5">{records.map(renderRecord)}</div> : <EmptyCard title={emptyTitle} description={emptyDescription} />}
         </Card>
         <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">{summaryTitle}</Title>
           <div className="mt-5 console-summary-grid">
-            <div className="console-summary-row"><span>活动数据集</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
+            <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
             <div className="console-summary-row"><span>当前阶段</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出收尾中' : statusLabel(activeDataset.status)) : '未开始'}</Text></div>
             <div className="console-summary-row"><span>阶段结果数</span><Text strong>{records.length}</Text></div>
             <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
@@ -2805,7 +2805,7 @@ export default function App() {
 
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">结果总览</Title>
+          <Title heading={4} className="!mb-0">数据资产总览</Title>
           <Text className="mt-2 block console-caption">这里主要回答“已经产出了什么、哪些结果可以继续处理或交付”。</Text>
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
