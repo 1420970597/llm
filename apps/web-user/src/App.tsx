@@ -2806,7 +2806,7 @@ export default function App() {
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">数据资产总览</Title>
-          <Text className="mt-2 block console-caption">结果、评分和交付文件。</Text>
+          <Text className="mt-2 block console-caption">结果、评分与交付。</Text>
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
             <div className="console-summary-row"><span>题目结果</span><Text strong>{questions.length}</Text></div>
@@ -2849,7 +2849,7 @@ export default function App() {
       <div className="console-page-shell">
         <PageHeader
           badge="系统设置 / 运营监控"
-          title="集中查看队列、配置健康度与最近操作"
+        title="系统运行态"
           description="把运行态信息集中到管理员工作台。"
           actions={
             <>
@@ -2907,7 +2907,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">最近任务活动</Title>
-            <Text className="mt-2 block console-caption">看任务活动与处理情况。</Text>
+            <Text className="mt-2 block console-caption">看任务活动与处理。</Text>
             <div className="mt-5 console-stack">
               {recentDatasets.length > 0 ? recentDatasets.map((dataset) => (
                 <div key={dataset.id} className="console-domain-item">
@@ -2969,7 +2969,7 @@ export default function App() {
       <div className="console-page-shell">
         <PageHeader
           badge="账户与帮助"
-          title="自助排错与关键术语"
+          title="帮助与术语"
             description="异常时按这里的恢复路径处理"
           actions={
             <Space>
@@ -3475,7 +3475,7 @@ export default function App() {
             <div className="console-summary-row"><span>审计记录</span><Text strong>{dashboard?.auditLogCount ?? 0}</Text></div>
           </div>
           <div className="mt-6">
-            <Text className="console-caption">修改 AI 服务、存储、规则或模板后，回到这里复核记录。</Text>
+            <Text className="mt-2 block console-caption">修改后回到这里复核记录。</Text>
           </div>
         </Card>
       </div>
