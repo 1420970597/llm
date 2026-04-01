@@ -618,7 +618,7 @@ function DirectionStructurePreview({ rootKeyword, domains }: { rootKeyword: stri
           })}
         </div>
       ) : (
-        <EmptyCard title="尚未生成方向结构" description="点击“生成方向结构”后，这里会展示可复核的方向树。" />
+        <EmptyCard title="尚未生成方向结构" description="点击“生成方向结构”开始。" />
       )}
     </div>
   )
@@ -2160,7 +2160,7 @@ export default function App() {
             description="请先从“我的任务”页进入某个任务，或先创建新任务。"
             actions={<Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>}
           />
-          <EmptyCard title="暂无任务详情" description="进入 /console/tasks 查看任务列表后，再打开具体任务继续处理。" />
+          <EmptyCard title="暂无任务详情" description="先从“我的任务”进入具体任务。" />
         </div>
       )
     }
@@ -2690,7 +2690,7 @@ export default function App() {
               })}
             </div>
           ) : (
-            <EmptyCard title="暂无方向列表" description="生成方向结构后，这里会显示可编辑的方向列表。" />
+            <EmptyCard title="暂无方向列表" description="生成方向结构后再编辑。" />
           )}
         </Card>
       </div>
@@ -2934,7 +2934,7 @@ export default function App() {
             {recentAuditLogs.length > 0 ? (
               <Table columns={auditColumns} dataSource={recentAuditLogs} pagination={false} />
             ) : (
-              <EmptyCard title="暂无操作记录" description="产生配置变更或关键动作后，这里会显示最近记录。" />
+              <EmptyCard title="暂无操作记录" description="发生配置变更后再查看这里。" />
             )}
           </Card>
         </div>
