@@ -1977,7 +1977,7 @@ export default function App() {
         <PageHeader
           badge="工作台"
           title="围绕当前任务、风险与待办做日常推进"
-          description="只展示当前任务、风险、结果和待办。"
+          description="只看任务、风险、结果和待办"
           actions={
             <>
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>
@@ -2000,7 +2000,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">当前任务摘要</Title>
-            <Text className="mt-2 block console-caption">只保留当前任务、最近动向和下一步入口。</Text>
+            <Text className="mt-2 block console-caption">只保留任务、动向和入口。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '尚未创建任务'}</Text></div>
               <div className="console-summary-row"><span>任务 ID</span><Text strong>{activeDataset?.id ?? '—'}</Text></div>
@@ -2015,7 +2015,7 @@ export default function App() {
 
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">最近结果</Title>
-            <Text className="mt-2 block console-caption">只展示结果规模和最新交付动向。</Text>
+            <Text className="mt-2 block console-caption">结果规模和最新交付动向。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>题目结果</span><Text strong>{questions.length}</Text></div>
               <div className="console-summary-row"><span>答案结果</span><Text strong>{reasoning.length}</Text></div>
@@ -2096,7 +2096,7 @@ export default function App() {
       <div className="console-page-shell">
         <PageHeader
           badge="我的任务"
-          title="看任务列表并继续处理"
+          title="看任务列表并处理"
           description="看任务列表并处理。"
           actions={
             <>
@@ -2512,7 +2512,7 @@ export default function App() {
             <div>
               <Text className="mb-2 block font-medium">目标样本数（条）</Text>
               <InputNumber value={plannerForm.targetSize} onChange={(value) => setPlannerForm((current) => ({ ...current, targetSize: Number(value ?? 0) }))} min={1} style={{ width: '100%' }} />
-              <Text className="mt-2 block console-caption">建议先小规模验证，再逐步放大。</Text>
+              <Text className="mt-2 block console-caption">先小规模验证，再逐步放大。</Text>
             </div>
             {isAdmin || showAdvancedPlanning ? (
               <>
@@ -2806,7 +2806,7 @@ export default function App() {
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">数据资产总览</Title>
-          <Text className="mt-2 block console-caption">查看结果、评分和交付文件。</Text>
+          <Text className="mt-2 block console-caption">结果、评分和交付文件。</Text>
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
             <div className="console-summary-row"><span>题目结果</span><Text strong>{questions.length}</Text></div>
@@ -2970,7 +2970,7 @@ export default function App() {
         <PageHeader
           badge="账户与帮助"
           title="自助排错、恢复流程与理解关键术语"
-            description="发生异常时按这里的恢复路径处理"
+            description="异常时按这里的恢复路径处理"
           actions={
             <Space>
               <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('帮助信息与任务状态已刷新')}>刷新数据</Button>
@@ -3184,7 +3184,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">结果存储列表</Title>
-            <Text className="mt-2 block console-caption">看默认存储、搜索配置，或新增和编辑。</Text>
+            <Text className="mt-2 block console-caption">默认存储、搜索配置，以及新增和编辑。</Text>
           </div>
           <Input
             value={storageSearchKeyword}
@@ -3395,7 +3395,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">生成指令列表</Title>
-            <Text className="mt-2 block console-caption">维护各阶段模板与版本。</Text>
+            <Text className="mt-2 block console-caption">维护阶段模板与版本。</Text>
           </div>
           <Input
             value={promptSearchKeyword}
