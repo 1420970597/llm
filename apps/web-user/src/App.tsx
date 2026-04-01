@@ -2499,7 +2499,7 @@ export default function App() {
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">任务基础信息</Title>
-          <Text className="mt-2 block console-caption">先完成这 3 个核心字段即可创建任务；高级配置继续保留在下方，不打断主流程。</Text>
+          <Text className="mt-2 block console-caption">先填任务主题和目标规模，再决定是否估算或创建。</Text>
           <div className="console-card-grid-2 mt-5">
             <div>
               <Text className="mb-2 block font-medium">任务名称（可选）</Text>
@@ -2512,7 +2512,7 @@ export default function App() {
             <div>
               <Text className="mb-2 block font-medium">目标样本数（条）</Text>
               <InputNumber value={plannerForm.targetSize} onChange={(value) => setPlannerForm((current) => ({ ...current, targetSize: Number(value ?? 0) }))} min={1} style={{ width: '100%' }} />
-              <Text className="mt-2 block console-caption">建议先从小规模开始，确认质量后再扩大任务规模。</Text>
+              <Text className="mt-2 block console-caption">建议先小规模验证，再逐步放大。</Text>
             </div>
             {isAdmin || showAdvancedPlanning ? (
               <>
@@ -2539,13 +2539,13 @@ export default function App() {
 
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">估算结果</Title>
-          <Text className="mt-2 block console-caption">根据目标规模估算方向数量与题目数量，帮助你快速判断任务是否合理。</Text>
+          <Text className="mt-2 block console-caption">先看方向数和题目量，再决定是否创建任务。</Text>
           {planningCards.length > 0 ? (
             <div className="console-card-grid-2 mt-5">
               {planningCards.map((item) => <StatCard key={item.label} {...item} />)}
             </div>
           ) : (
-            <EmptyCard title="尚未生成估算" description="填写参数后点击“估算规模”，再决定是否创建任务。" />
+            <EmptyCard title="尚未生成估算" description="填写参数后点击“估算规模”。" />
           )}
         </Card>
       </div>
