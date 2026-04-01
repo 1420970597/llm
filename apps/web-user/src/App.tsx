@@ -238,7 +238,7 @@ function waitingStateLabel(status: string, queueDepth: number) {
     case 'export_generated':
       return '导出已完成，可下载交付'
     default:
-      return '等待状态同步'
+      return '等待状态同步中'
   }
 }
 
@@ -387,7 +387,7 @@ function etaLabel(status: string, queueDepth: number, acceptedAt?: string) {
     }
     return `预计还需 ${remainingMin}~${remainingMax} 分钟（已等待 ${elapsedMinutes} 分钟）`
   }
-  if (status === 'draft') return '确认方向结构后即可生成 ETA'
+  if (status === 'draft') return '确认方向结构后显示 ETA'
   if (status === 'domains_confirmed') return '启动问题生成后显示 ETA'
   return '刷新后更新 ETA'
 }
@@ -2034,7 +2034,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">风险提醒</Title>
-            <Text className="mt-2 block console-caption">高风险优先，中低风险按节奏处理。</Text>
+            <Text className="mt-2 block console-caption">风险优先，其他按节奏处理。</Text>
             <div className="mt-5 console-stack">
               {riskItems.map((risk) => (
                 <div key={`${risk.level}-${risk.title}`} className="console-domain-item">
@@ -2969,7 +2969,7 @@ export default function App() {
       <div className="console-page-shell">
         <PageHeader
           badge="账户与帮助"
-          title="自助排错、恢复流程与理解关键术语"
+          title="自助排错与关键术语"
             description="异常时按这里的恢复路径处理"
           actions={
             <Space>
