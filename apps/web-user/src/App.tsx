@@ -3041,7 +3041,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">AI 服务列表</Title>
-            <Text className="mt-2 block console-caption">先搜索，再编辑、测连通性或保存。</Text>
+            <Text className="mt-2 block console-caption">搜索、编辑、测连通性或保存。</Text>
           </div>
           <Input
             value={providerSearchKeyword}
@@ -3184,7 +3184,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">结果存储列表</Title>
-            <Text className="mt-2 block console-caption">查看默认存储、搜索配置，并进入新增或编辑。</Text>
+            <Text className="mt-2 block console-caption">查看默认存储、搜索配置，或进入新增和编辑。</Text>
           </div>
           <Input
             value={storageSearchKeyword}
@@ -3301,7 +3301,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">生成规则列表</Title>
-            <Text className="mt-2 block console-caption">在这里维护规则数量、问题量和规划模式。</Text>
+            <Text className="mt-2 block console-caption">维护规则数量、问题量和规划模式。</Text>
           </div>
           <Input
             value={strategySearchKeyword}
@@ -3395,7 +3395,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">生成指令列表</Title>
-            <Text className="mt-2 block console-caption">统一维护各阶段使用的模板与版本。</Text>
+            <Text className="mt-2 block console-caption">维护各阶段使用的模板与版本。</Text>
           </div>
           <Input
             value={promptSearchKeyword}
