@@ -200,7 +200,7 @@ function nextActionLabel(status: string) {
     case 'reasoning_generated':
       return '启动质量评分，准备交付结论'
     case 'rewards_queued':
-      return '等待质量评估后执行导出'
+      return '等待质量评估后导出'
     case 'rewards_generated':
       return '导出结果包并通知验收'
     case 'export_queued':
@@ -245,7 +245,7 @@ function waitingStateLabel(status: string, queueDepth: number) {
 function waitingReasonLabel(status: string, queueDepth: number) {
   if (status.endsWith('_queued')) {
     return queueDepth > 0
-      ? '结果已入队，系统会按顺序执行。'
+      ? '结果已入队，系统按顺序执行。'
       : '该阶段已入队，正在等待执行资源分配。'
   }
   switch (status) {
@@ -735,7 +735,7 @@ function LoginPage({
             {[
               { icon: CirclePlus, title: '新建任务前置', text: '主入口更醒目' },
               { icon: Target, title: '任务推进清晰', text: '已有任务从“我的任务”继续' },
-              { icon: HardDriveDownload, title: '结果集中看', text: '交付与复核统一收敛' },
+              { icon: HardDriveDownload, title: '结果集中看', text: '交付与复核集中收敛' },
               { icon: ShieldCheck, title: '状态持续可见', text: '登录后可接续上次进度' },
             ].map((item) => (
               <Card key={item.title} className="console-quick-card" bodyStyle={{ padding: 18 }}>
@@ -3041,7 +3041,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">AI 服务列表</Title>
-            <Text className="mt-2 block console-caption">搜索、编辑、测试或保存。</Text>
+            <Text className="mt-2 block console-caption">搜索、编辑、测试或保存</Text>
           </div>
           <Input
             value={providerSearchKeyword}
@@ -3395,7 +3395,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">生成指令列表</Title>
-            <Text className="mt-2 block console-caption">维护阶段模板与版本。</Text>
+            <Text className="mt-2 block console-caption">维护阶段模板与版本</Text>
           </div>
           <Input
             value={promptSearchKeyword}
