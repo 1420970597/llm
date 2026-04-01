@@ -3096,7 +3096,7 @@ export default function App() {
             </div>
             <div>
               <Text className="mb-2 block font-medium">模型名称</Text>
-              <Input value={providerDraft.model ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, model: value }))} placeholder="可先获取模型列表再选择" />
+              <Input value={providerDraft.model ?? ''} onChange={(value) => setProviderDraft((current) => ({ ...current, model: value }))} placeholder="例如 gpt-4o-mini" />
             </div>
           </div>
 
@@ -3256,7 +3256,7 @@ export default function App() {
 
           <div>
             <Text className="mb-2 block font-medium">Secret Access Key</Text>
-            <Input value={storageDraft.secretAccessKey ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, secretAccessKey: value }))} placeholder="留空则沿用已有密钥" mode="password" />
+            <Input value={storageDraft.secretAccessKey ?? ''} onChange={(value) => setStorageDraft((current) => ({ ...current, secretAccessKey: value }))} placeholder="留空则沿用当前密钥" mode="password" />
           </div>
 
           <div className="console-card-grid-3">
@@ -3345,7 +3345,7 @@ export default function App() {
           </div>
           <div>
             <Text className="mb-2 block font-medium">策略说明</Text>
-            <Input value={strategyDraft.description ?? ''} onChange={(value) => setStrategyDraft((current) => ({ ...current, description: value }))} placeholder="用于说明该策略的适用场景" />
+            <Input value={strategyDraft.description ?? ''} onChange={(value) => setStrategyDraft((current) => ({ ...current, description: value }))} placeholder="描述适用场景" />
           </div>
           <div className="console-card-grid-2">
             <div>
@@ -3429,7 +3429,7 @@ export default function App() {
             </div>
             <div>
               <Text className="mb-2 block font-medium">阶段</Text>
-              <Input value={promptDraft.stage} onChange={(value) => setPromptDraft((current) => ({ ...current, stage: value }))} placeholder="例如 domain-generation / question-generation" />
+              <Input value={promptDraft.stage} onChange={(value) => setPromptDraft((current) => ({ ...current, stage: value }))} placeholder="例如 question-generation" />
             </div>
           </div>
           <div className="console-card-grid-2">
@@ -3446,11 +3446,11 @@ export default function App() {
           </div>
           <div>
             <Text className="mb-2 block font-medium">系统指令</Text>
-            <TextArea rows={6} value={promptDraft.systemPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, systemPrompt: value }))} placeholder="系统指令" />
+            <TextArea rows={6} value={promptDraft.systemPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, systemPrompt: value }))} placeholder="填写系统指令" />
           </div>
           <div>
             <Text className="mb-2 block font-medium">用户指令</Text>
-            <TextArea rows={6} value={promptDraft.userPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, userPrompt: value }))} placeholder="用户指令" />
+            <TextArea rows={6} value={promptDraft.userPrompt} onChange={(value) => setPromptDraft((current) => ({ ...current, userPrompt: value }))} placeholder="填写用户指令" />
           </div>
         </div>
       </Modal>
