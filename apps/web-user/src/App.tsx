@@ -3046,7 +3046,7 @@ export default function App() {
           <Input
             value={providerSearchKeyword}
             onChange={setProviderSearchKeyword}
-            placeholder="搜索服务名称、地址、模型或思考强度"
+            placeholder="搜索服务 / 地址 / 模型"
             style={{ width: 360, maxWidth: '100%' }}
           />
         </div>
@@ -3189,7 +3189,7 @@ export default function App() {
           <Input
             value={storageSearchKeyword}
             onChange={setStorageSearchKeyword}
-            placeholder="搜索名称、提供方、端点、地域或存储桶"
+            placeholder="搜索名称 / 提供方 / 存储桶"
             style={{ width: 360, maxWidth: '100%' }}
           />
         </div>
@@ -3306,7 +3306,7 @@ export default function App() {
           <Input
             value={strategySearchKeyword}
             onChange={setStrategySearchKeyword}
-            placeholder="搜索策略名称、说明或规划模式"
+            placeholder="搜索策略 / 模式"
             style={{ width: 360, maxWidth: '100%' }}
           />
         </div>
@@ -3400,7 +3400,7 @@ export default function App() {
           <Input
             value={promptSearchKeyword}
             onChange={setPromptSearchKeyword}
-            placeholder="搜索模板名称、阶段或版本"
+            placeholder="搜索模板 / 阶段 / 版本"
             style={{ width: 360, maxWidth: '100%' }}
           />
         </div>
