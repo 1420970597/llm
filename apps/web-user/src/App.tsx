@@ -3041,7 +3041,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">AI 服务列表</Title>
-            <Text className="mt-2 block console-caption">你可以先搜索服务，再在弹窗内修改参数、获取可用模型并测试连接。</Text>
+            <Text className="mt-2 block console-caption">先搜索，再编辑、测连通性或保存。</Text>
           </div>
           <Input
             value={providerSearchKeyword}
@@ -3184,7 +3184,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">结果存储列表</Title>
-            <Text className="mt-2 block console-caption">已预置本地 MinIO 连接参数，也支持继续添加多个 S3 / MinIO / OSS 来源，并通过启用开关控制是否可用于计划编排。</Text>
+            <Text className="mt-2 block console-caption">查看默认存储、搜索配置，并进入新增或编辑。</Text>
           </div>
           <Input
             value={storageSearchKeyword}
@@ -3301,7 +3301,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">生成规则列表</Title>
-            <Text className="mt-2 block console-caption">用户在计划编排页消费这里的策略，管理员在这里维护策略数量、问题量和规划模式。</Text>
+            <Text className="mt-2 block console-caption">在这里维护规则数量、问题量和规划模式。</Text>
           </div>
           <Input
             value={strategySearchKeyword}
@@ -3395,7 +3395,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">生成指令列表</Title>
-            <Text className="mt-2 block console-caption">主题生成、题目生成、答案生成和质量评估用到的生成指令都在这里统一维护。</Text>
+            <Text className="mt-2 block console-caption">统一维护各阶段使用的模板与版本。</Text>
           </div>
           <Input
             value={promptSearchKeyword}
@@ -3459,7 +3459,7 @@ export default function App() {
 
   const renderAudit = () => (
     <div className="console-page-shell">
-      <PageHeader badge="系统设置 / 操作记录" title="查看配置变更记录" description="在同一界面查看配置变更记录，无需切换后台。" />
+      <PageHeader badge="系统设置 / 操作记录" title="查看配置变更记录" description="集中查看最近配置与操作变更。" />
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">审计事件列表</Title>
@@ -3475,7 +3475,7 @@ export default function App() {
             <div className="console-summary-row"><span>审计记录</span><Text strong>{dashboard?.auditLogCount ?? 0}</Text></div>
           </div>
           <div className="mt-6">
-            <Text className="console-caption">建议在修改 AI 服务、存储、规则或指令模板后，立即回到本页复核记录。</Text>
+            <Text className="console-caption">修改 AI 服务、存储、规则或模板后，回到这里复核记录。</Text>
           </div>
         </Card>
       </div>
