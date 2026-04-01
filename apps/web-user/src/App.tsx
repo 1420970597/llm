@@ -498,7 +498,7 @@ function questionStatusLabel(status: string) {
 
 function reasoningQualityLabel(summary: string) {
   const length = summary.trim().length
-  if (length >= 140) return { text: '完整', color: 'green' as const, note: '信息较完整，可直接用于评分。' }
+  if (length >= 140) return { text: '完整', color: 'green' as const, note: '可直接用于评分。' }
   if (length >= 70) return { text: '可用', color: 'blue' as const, note: '关键信息齐全，可抽检。' }
   return { text: '待补充', color: 'orange' as const, note: '摘要较短，需重跑或复核。' }
 }
@@ -530,7 +530,7 @@ function artifactContentTypeLabel(contentType: string) {
 function artifactContentTypeHint(contentType: string) {
   switch (contentType) {
     case 'application/jsonl':
-      return '可直接用于主流训练平台导入。'
+      return '可直接导入主流训练平台。'
     case 'application/x-ndjson':
       return '按行组织样本，适合流式处理任务。'
     case 'application/json':
@@ -558,19 +558,19 @@ function artifactUsageLabel(category: 'delivery' | 'review' | 'other') {
 }
 
 function artifactSourceVersionHint(artifact: Artifact) {
-  return `来源任务 #${artifact.datasetId} · 生成于 ${formatTime(artifact.createdAt)}；同一任务多次导出时，默认以最新时间作为交付版本。`
+  return `来源任务 #${artifact.datasetId} · 生成于 ${formatTime(artifact.createdAt)}；默认以最新时间为交付版本。`
 }
 
 function artifactDeliveryNote(artifact: Artifact) {
   const category = artifactUsageCategory(artifact)
-  if (category === 'delivery') return '可直接作为标准交付包给下游训练或评测流程。'
+  if (category === 'delivery') return '可直接作为标准交付包。'
   if (category === 'review') return '先用于人工复核或验收，再决定是否正式交付。'
   return '先确认格式兼容性与用途，再安排对外交付。'
 }
 
 function artifactDownloadDecisionHint(artifact: Artifact) {
   const category = artifactUsageCategory(artifact)
-  if (category === 'delivery') return '建议优先下载：可直接进入下游流程。'
+  if (category === 'delivery') return '优先下载：可直接进入下游流程。'
   if (category === 'review') return '按需下载：用于抽检、验收或问题排查。'
   return '谨慎下载：先确认接收方能处理该类型。'
 }
