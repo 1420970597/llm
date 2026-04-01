@@ -2583,7 +2583,7 @@ export default function App() {
         <PageHeader
           badge="我的任务 / 主题结构"
           title="生成主题结构并完成确认"
-          description="先按树状方式浏览方向分组，再逐项复核命名，最后确认进入题目生成。"
+          description="先看结构，再复核命名，最后确认进入下一步。"
           actions={
             <>
               <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button>
@@ -2597,7 +2597,7 @@ export default function App() {
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">方向结构预览</Title>
-            <Text className="mt-2 block console-caption">先确认方向是否覆盖完整，再批量校对命名，避免后续题目分布偏移。</Text>
+            <Text className="mt-2 block console-caption">先确认覆盖，再批量校对命名。</Text>
             {graph ? (
               <div className="mt-5 console-stack">
                 {structureWarnings.length > 0 ? (
@@ -2618,7 +2618,7 @@ export default function App() {
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                       <Text strong>高级模式</Text>
-                      <Text className="mt-1 block console-caption">图形关系视图默认隐藏，只有在排查复杂结构时才建议展开。</Text>
+                      <Text className="mt-1 block console-caption">仅在排查复杂结构时展开图形关系。</Text>
                     </div>
                     <Switch checked={showAdvancedGraphView} onChange={(checked) => setShowAdvancedGraphView(checked)} checkedText="已开启" uncheckedText="已关闭" />
                   </div>
@@ -2650,7 +2650,7 @@ export default function App() {
 
           <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">当前任务上下文</Title>
-            <Text className="mt-2 block console-caption">这里持续展示当前任务上下文，避免在不同步骤间丢失状态。</Text>
+            <Text className="mt-2 block console-caption">这里持续显示当前任务状态和复核压力。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>数据集</span><Text strong>{activeDataset?.name ?? '未选择'}</Text></div>
               <div className="console-summary-row"><span>任务主题</span><Text strong>{activeDataset?.rootKeyword ?? '—'}</Text></div>
@@ -2664,7 +2664,7 @@ export default function App() {
 
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">方向命名复核</Title>
-          <Text className="mt-2 block console-caption">按列表逐项修订方向名称并保存，再执行“确认方向结构”进入下一步。</Text>
+          <Text className="mt-2 block console-caption">按列表修订名称并保存，再确认方向结构。</Text>
           {graph ? (
             <div className="console-card-grid-2 mt-5">
               {graph.domains.map((domain) => {
