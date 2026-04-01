@@ -269,7 +269,7 @@ function waitingReasonLabel(status: string, queueDepth: number) {
 function waitingActionLabel(status: string) {
   switch (status) {
     case 'draft':
-      return '前往“主题结构”后继续'
+      return '前往“主题结构”'
     case 'domains_confirmed':
       return '前往“问题生成”，点击“开始生成题目”。'
     case 'questions_queued':
@@ -296,7 +296,7 @@ function waitingActionLabel(status: string) {
     case 'export_failed':
       return '请重新发起导出，或先检查上游评分结果是否完整。'
     default:
-      return '点击刷新同步状态后继续'
+      return '刷新后继续'
   }
 }
 
@@ -306,7 +306,7 @@ function refreshExpectationLabel(status: string, queueDepth: number) {
     return '60~90 秒后刷新。'
   }
   if (status === 'export_generated' || status.endsWith('_generated')) {
-    return '当前阶段已完成，可直接进入下一步'
+    return '当前阶段已完成，可进入下一步'
   }
   return '当前阶段无需频繁刷新，状态变化后再同步。'
 }
@@ -316,7 +316,7 @@ function trustMessageLabel(status: string) {
     return '任务已转入后台处理，可先切换到其他页面。'
   }
   if (status.endsWith('_generated') || status === 'export_generated') {
-    return '当前阶段结果已落库，可继续后续操作。'
+    return '结果已落库，可继续后续操作。'
   }
   return '系统会自动保存当前任务上下文'
 }
@@ -775,8 +775,8 @@ function LoginPage({
           </div>
           <div className="mt-6 console-summary-grid">
             <div className="console-summary-row"><span>登录后第一步</span><Text strong>先点击“新建任务”</Text></div>
-            <div className="console-summary-row"><span>已有任务</span><Text strong>从“我的任务”继续推进</Text></div>
-            <div className="console-summary-row"><span>交付完成后</span><Text strong>去“数据资产”查看结果和下载文件</Text></div>
+            <div className="console-summary-row"><span>已有任务</span><Text strong>从“我的任务”继续</Text></div>
+            <div className="console-summary-row"><span>交付完成后</span><Text strong>去“数据资产”查看和下载</Text></div>
           </div>
         </Card>
       </div>
