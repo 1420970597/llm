@@ -271,7 +271,7 @@ function waitingActionLabel(status: string) {
     case 'draft':
       return '前往“主题结构”'
     case 'domains_confirmed':
-      return '前往“问题生成”，点击“开始生成题目”。'
+      return '前往“问题生成”，开始生成题目。'
     case 'questions_queued':
     case 'reasoning_queued':
     case 'rewards_queued':
@@ -292,7 +292,7 @@ function waitingActionLabel(status: string) {
     case 'rewards_failed':
       return '请先回到“质量评分”排查失败原因，再重新评分。'
     case 'export_generated':
-      return '进入“结果交付”下载文件并确认交付。'
+      return '进入“结果交付”下载并确认交付。'
     case 'export_failed':
       return '请重新发起导出，或先检查上游评分结果是否完整。'
     default:
@@ -388,7 +388,7 @@ function etaLabel(status: string, queueDepth: number, acceptedAt?: string) {
     return `预计还需 ${remainingMin}~${remainingMax} 分钟（已等待 ${elapsedMinutes} 分钟）`
   }
   if (status === 'draft') return '确认方向结构后即可生成 ETA'
-  if (status === 'domains_confirmed') return '启动问题生成后即可看到 ETA'
+  if (status === 'domains_confirmed') return '启动问题生成后显示 ETA'
   return '刷新后更新 ETA'
 }
 
@@ -570,7 +570,7 @@ function artifactDeliveryNote(artifact: Artifact) {
 
 function artifactDownloadDecisionHint(artifact: Artifact) {
   const category = artifactUsageCategory(artifact)
-  if (category === 'delivery') return '优先下载：可直接进入下游流程。'
+  if (category === 'delivery') return '优先下载：可进入下游流程。'
   if (category === 'review') return '按需下载：用于抽检、验收或问题排查。'
   return '谨慎下载：先确认接收方能处理该类型。'
 }
