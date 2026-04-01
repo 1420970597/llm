@@ -728,8 +728,8 @@ function LoginPage({
           <span className="console-chip">企业数据工厂</span>
           <Title heading={1} className="!mb-0 mt-4">先创建任务，再持续推进交付。</Title>
           <Text className="mt-4 block console-page-subtitle">
-            现在的控制台按“工作台 → 新建任务 → 我的任务 → 数据资产”组织。
-            登录后先建立任务，再回到任务页持续推进生成、评估与导出。
+            控制台按“工作台 → 新建任务 → 我的任务 → 数据资产”组织。
+            登录后先创建任务，再继续推进和交付。
           </Text>
           <div className="console-card-grid-2 mt-6">
             {[
@@ -752,7 +752,7 @@ function LoginPage({
             <div className="feature-icon"><Users size={18} strokeWidth={1.9} /></div>
             <div>
               <Title heading={4} className="!mb-0">登录你的账号</Title>
-              <Text className="console-caption">登录后先进入工作台，再从新建任务或我的任务开始。</Text>
+              <Text className="console-caption">先进入工作台，再从新建任务或我的任务开始。</Text>
             </div>
           </div>
           {signal ? (
@@ -3536,7 +3536,7 @@ export default function App() {
                   <div className="console-nav-shell h-full px-3 py-4">
                     <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
                       <Text strong>工作入口</Text>
-                      <Text className="mt-2 block console-caption">优先从“新建任务”开始；已有任务统一在“我的任务”继续推进，交付结果进入“数据资产”查看。</Text>
+                      <Text className="mt-2 block console-caption">先从“新建任务”开始；已有任务在“我的任务”继续推进。</Text>
                       <Space className="mt-4" wrap>
                         <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
                         <Button onClick={() => navigate('/console/tasks')}>我的任务</Button>
