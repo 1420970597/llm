@@ -87,11 +87,11 @@ type NavPage = {
 }
 
 const userPages: NavPage[] = [
-  { label: '工作台', route: '/console/home', icon: LayoutDashboard, caption: '查看当前任务、待办动作与最近进展' },
-  { label: '新建任务', route: '/console/planning', icon: CirclePlus, caption: '快速创建任务，先填主题和目标规模' },
-  { label: '我的任务', route: '/console/tasks', icon: Target, caption: '进入任务列表并继续推进具体任务' },
-  { label: '数据资产', route: '/console/results', icon: HardDriveDownload, caption: '统一查看结果、质量状态与交付文件' },
-  { label: '账户与帮助', route: '/console/help', icon: Users, caption: '查看帮助、恢复指引与当前账号状态' },
+  { label: '工作台', route: '/console/home', icon: LayoutDashboard, caption: '查看待办与进展' },
+  { label: '新建任务', route: '/console/planning', icon: CirclePlus, caption: '创建新任务' },
+  { label: '我的任务', route: '/console/tasks', icon: Target, caption: '查看任务并继续处理' },
+  { label: '数据资产', route: '/console/results', icon: HardDriveDownload, caption: '查看结果与交付文件' },
+  { label: '账户与帮助', route: '/console/help', icon: Users, caption: '查看帮助与恢复路径' },
 ]
 
 const stageRouteNavMap: Record<string, string> = {
@@ -104,23 +104,23 @@ const stageRouteNavMap: Record<string, string> = {
 }
 
 const taskWorkbenchPages: NavPage[] = [
-  { label: '主题结构', route: '/console/domains', icon: GitBranch, caption: '生成主题结构并确认可执行层级' },
+  { label: '主题结构', route: '/console/domains', icon: GitBranch, caption: '生成并确认主题结构' },
 ]
 
 const resultWorkbenchPages: NavPage[] = [
-  { label: '问题生成', route: '/console/questions', icon: Layers3, caption: '批量生成问题并检查覆盖情况' },
-  { label: '答案内容', route: '/console/reasoning', icon: BrainCircuit, caption: '生成答案摘要并确认可读性' },
-  { label: '质量评估', route: '/console/rewards', icon: ShieldCheck, caption: '查看质量评估并判断是否可交付' },
-  { label: '导出交付', route: '/console/exports', icon: HardDriveDownload, caption: '导出最终产物并完成任务闭环' },
+  { label: '问题生成', route: '/console/questions', icon: Layers3, caption: '查看问题覆盖' },
+  { label: '答案内容', route: '/console/reasoning', icon: BrainCircuit, caption: '查看答案完整性' },
+  { label: '质量评估', route: '/console/rewards', icon: ShieldCheck, caption: '查看评分状态' },
+  { label: '导出交付', route: '/console/exports', icon: HardDriveDownload, caption: '查看导出与交付' },
 ]
 
 const adminPages: NavPage[] = [
-  { label: '运营监控', route: '/console/operations', icon: ServerCog, caption: '查看队列、配置健康度与最近操作', adminOnly: true },
-  { label: 'AI 服务', route: '/console/admin/providers', icon: Database, caption: '配置生成内容所用的 AI 服务', adminOnly: true },
-  { label: '结果存储', route: '/console/admin/storage', icon: FolderCog, caption: '配置结果保存位置（S3 / MinIO / OSS）', adminOnly: true },
-  { label: '生成规则', route: '/console/admin/strategies', icon: Workflow, caption: '设置主题数量、题目数量和评分样本数', adminOnly: true },
-  { label: '生成指令', route: '/console/admin/prompts', icon: Sparkles, caption: '设置各步骤使用的生成指令文本', adminOnly: true },
-  { label: '操作记录', route: '/console/admin/audit', icon: Settings, caption: '查看配置变更记录', adminOnly: true },
+  { label: '运营监控', route: '/console/operations', icon: ServerCog, caption: '查看队列与运行状态', adminOnly: true },
+  { label: 'AI 服务', route: '/console/admin/providers', icon: Database, caption: '管理 AI 服务', adminOnly: true },
+  { label: '结果存储', route: '/console/admin/storage', icon: FolderCog, caption: '管理结果存储', adminOnly: true },
+  { label: '生成规则', route: '/console/admin/strategies', icon: Workflow, caption: '管理生成规则', adminOnly: true },
+  { label: '生成指令', route: '/console/admin/prompts', icon: Sparkles, caption: '管理模板与版本', adminOnly: true },
+  { label: '操作记录', route: '/console/admin/audit', icon: Settings, caption: '查看变更记录', adminOnly: true },
 ]
 
 function statusLabel(status: string) {
