@@ -2944,10 +2944,10 @@ export default function App() {
 
   const renderHelp = () => {
     const glossary = [
-      { term: '任务状态', description: '表示任务所处阶段，例如“待确认方向”“问题生成排队中”。' },
-      { term: '等待任务数', description: '当前系统排队中的任务数量。数字越大，结果返回通常越慢。' },
-      { term: '数据资产', description: '集中查看题目、答案内容、质量评估和导出交付的页面。' },
-      { term: '恢复建议', description: '当任务失败或卡住时，页面给出的可执行下一步动作。' },
+      { term: '任务状态', description: '表示任务当前所处阶段。' },
+      { term: '等待任务数', description: '表示当前排队中的任务数量。' },
+      { term: '数据资产', description: '集中查看结果、评分和导出文件。' },
+      { term: '恢复建议', description: '表示当前最推荐的下一步动作。' },
     ]
 
     const recoveryChecklist = [
@@ -2959,10 +2959,10 @@ export default function App() {
     ]
 
     const highRiskActions = [
-      '重新生成答案或评分：可能覆盖你刚刚抽检过的结果，建议先记录当前结论。',
-      '再次触发导出：若文件仍在落盘，重复触发通常没有收益，先刷新确认。',
-      '切换 AI 服务或策略：会改变后续结果口径，建议在新任务中使用。',
-      '复制交付标识后立即通知下游：建议先确认导出时间和文件类型，避免发错版本。',
+      '重跑答案或评分前，先记录当前结论。',
+      '导出仍在落盘时，不要重复触发。',
+      '切换 AI 服务或策略前，优先新建任务。',
+      '通知下游前，先确认文件版本与时间。',
     ]
 
     return (
