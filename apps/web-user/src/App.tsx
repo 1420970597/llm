@@ -1798,18 +1798,18 @@ export default function App() {
   )
 
   const overviewCards = [
-    { icon: Database, label: '任务总数', value: runtime?.datasetCount ?? 0, helper: '当前正在跟进的任务数量' },
-    { icon: Layers3, label: '题目结果', value: runtime?.questionCount ?? 0, helper: '已经生成的题目数量' },
-    { icon: BrainCircuit, label: '答案结果', value: runtime?.reasoningCount ?? 0, helper: '已经生成的答案与思路数量' },
-    { icon: HardDriveDownload, label: '结果文件', value: runtime?.artifactCount ?? 0, helper: '已经准备好的导出结果文件' },
+    { icon: Database, label: '任务总数', value: runtime?.datasetCount ?? 0, helper: '当前任务数' },
+    { icon: Layers3, label: '题目结果', value: runtime?.questionCount ?? 0, helper: '已生成题目' },
+    { icon: BrainCircuit, label: '答案结果', value: runtime?.reasoningCount ?? 0, helper: '已生成答案' },
+    { icon: HardDriveDownload, label: '结果文件', value: runtime?.artifactCount ?? 0, helper: '已生成文件' },
   ]
 
   const planningCards = estimate
     ? [
-        { icon: Network, label: '领域数', value: estimate.domainCount, helper: '建议生成的一级领域数量' },
-        { icon: Layers3, label: '每领域问题数', value: estimate.questionsPerDomain, helper: '单领域建议问题量' },
-        { icon: BrainCircuit, label: '预计问题总量', value: estimate.estimatedQuestions, helper: '将被送入问题队列的数量' },
-        { icon: FileOutput, label: '预计样本总量', value: estimate.estimatedSamples, helper: '最终训练样本总规模' },
+        { icon: Network, label: '领域数', value: estimate.domainCount, helper: '建议领域数' },
+        { icon: Layers3, label: '每领域问题数', value: estimate.questionsPerDomain, helper: '单领域问题量' },
+        { icon: BrainCircuit, label: '预计问题总量', value: estimate.estimatedQuestions, helper: '待生成问题' },
+        { icon: FileOutput, label: '预计样本总量', value: estimate.estimatedSamples, helper: '最终样本规模' },
       ] 
     : []
 
@@ -2255,12 +2255,12 @@ export default function App() {
     const reviewArtifactCount = artifacts.filter((item) => artifactUsageCategory(item) === 'review').length
     const otherArtifactCount = artifacts.filter((item) => artifactUsageCategory(item) === 'other').length
     const workbenchStats = [
-      { label: '主题结构', value: graph?.domains.length ?? 0, helper: '当前任务主题节点' },
-      { label: '问题结果', value: questions.length, helper: '待进入答案阶段的问题数' },
-      { label: '答案内容', value: reasoning.length, helper: '含最终答案与思考过程' },
-      { label: '质量评估', value: rewards.length, helper: '已完成评分的记录数' },
-      { label: '导出文件', value: artifacts.length, helper: '可交付或可复核资产' },
-      { label: '等待任务', value: queueDepth, helper: '当前排队中的后台任务' },
+      { label: '主题结构', value: graph?.domains.length ?? 0, helper: '主题节点' },
+      { label: '问题结果', value: questions.length, helper: '问题数量' },
+      { label: '答案内容', value: reasoning.length, helper: '答案数量' },
+      { label: '质量评估', value: rewards.length, helper: '评分记录' },
+      { label: '导出文件', value: artifacts.length, helper: '交付或复核文件' },
+      { label: '等待任务', value: queueDepth, helper: '排队任务' },
     ]
 
     return (
