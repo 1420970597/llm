@@ -733,9 +733,9 @@ function LoginPage({
           </Text>
           <div className="console-card-grid-2 mt-6">
             {[
-              { icon: CirclePlus, title: '新建任务更靠前', text: '首次进入先看到主入口。' },
+              { icon: CirclePlus, title: '新建任务更靠前', text: '主入口更显眼。' },
               { icon: Target, title: '任务推进更清晰', text: '已有任务从“我的任务”继续。' },
-              { icon: HardDriveDownload, title: '结果集中查看', text: '交付文件和复核资产统一收敛。' },
+              { icon: HardDriveDownload, title: '结果集中查看', text: '交付和复核统一收敛。' },
               { icon: ShieldCheck, title: '状态持续可见', text: '登录后可继续上次进度。' },
             ].map((item) => (
               <Card key={item.title} className="console-quick-card" bodyStyle={{ padding: 18 }}>
@@ -2207,7 +2207,7 @@ export default function App() {
         label: '第 1 步：主题结构',
         route: '/console/domains',
         state: activeDataset.status === 'draft' ? 'in_progress' : 'completed',
-        summary: activeDataset.status === 'draft' ? '先确认主题结构，系统才能继续生成问题。' : '主题结构已确认，可以进入下一步。',
+        summary: activeDataset.status === 'draft' ? '先确认主题结构。' : '主题结构已确认。',
         count: graph?.domains.length ?? 0,
       },
       {
@@ -2539,7 +2539,7 @@ export default function App() {
 
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">估算结果</Title>
-          <Text className="mt-2 block console-caption">先看方向数和题目量，再决定是否创建任务。</Text>
+            <Text className="mt-2 block console-caption">先看方向数和题目量，再决定是否创建。</Text>
           {planningCards.length > 0 ? (
             <div className="console-card-grid-2 mt-5">
               {planningCards.map((item) => <StatCard key={item.label} {...item} />)}
