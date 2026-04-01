@@ -2491,7 +2491,7 @@ export default function App() {
         actions={
           <>
             <Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>
-            <Button icon={<RefreshCw size={16} />} loading={bootstrapLoading} onClick={() => void loadBootstrap('新建任务页已刷新')}>刷新配置</Button>
+            <Button icon={<RefreshCw size={16} />} loading={bootstrapLoading} onClick={() => void loadBootstrap('新建任务页已刷新')}>刷新</Button>
           </>
         }
       />
@@ -2588,7 +2588,7 @@ export default function App() {
             <>
               <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button>
               <Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>
-              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '方向结构已刷新')}>刷新方向结构</Button>
+              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '方向结构已刷新')}>刷新结构</Button>
               <Button theme="solid" type="primary" icon={<GitBranch size={16} />} loading={workspaceLoading} onClick={() => void generateDomains()}>生成方向结构</Button>
             </>
           }
@@ -2637,10 +2637,10 @@ export default function App() {
                   ) : null}
                 </Card>
                 <Space wrap>
-                  <Button onClick={() => markAllDomains('approved')}>批量标记为已确认</Button>
-                  <Button onClick={() => markAllDomains('pending')}>批量标记为待复核</Button>
-                  <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void saveGraph()}>保存编辑</Button>
-                  <Button theme="solid" type="primary" loading={workspaceLoading} onClick={() => void confirmDomains()}>确认方向结构</Button>
+                  <Button onClick={() => markAllDomains('approved')}>批量确认</Button>
+                  <Button onClick={() => markAllDomains('pending')}>批量待复核</Button>
+                  <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void saveGraph()}>保存</Button>
+                  <Button theme="solid" type="primary" loading={workspaceLoading} onClick={() => void confirmDomains()}>确认结构</Button>
                 </Space>
               </div>
             ) : (
