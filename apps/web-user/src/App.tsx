@@ -91,7 +91,7 @@ const userPages: NavPage[] = [
   { label: '新建任务', route: '/console/planning', icon: CirclePlus, caption: '创建新任务' },
   { label: '我的任务', route: '/console/tasks', icon: Target, caption: '查看任务' },
   { label: '数据资产', route: '/console/results', icon: HardDriveDownload, caption: '查看结果与交付文件' },
-  { label: '账户与帮助', route: '/console/help', icon: Users, caption: '查看帮助与恢复路径' },
+  { label: '账户与帮助', route: '/console/help', icon: Users, caption: '查看帮助与恢复' },
 ]
 
 const stageRouteNavMap: Record<string, string> = {
@@ -733,10 +733,10 @@ function LoginPage({
           </Text>
           <div className="console-card-grid-2 mt-6">
             {[
-              { icon: CirclePlus, title: '新建任务更靠前', text: '主入口更显眼' },
-              { icon: Target, title: '任务推进更清晰', text: '已有任务从“我的任务”继续' },
-              { icon: HardDriveDownload, title: '结果集中查看', text: '交付和复核统一收敛' },
-              { icon: ShieldCheck, title: '状态持续可见', text: '登录后可继续上次进度' },
+              { icon: CirclePlus, title: '新建任务前置', text: '主入口更醒目' },
+              { icon: Target, title: '任务推进清晰', text: '已有任务从“我的任务”继续' },
+              { icon: HardDriveDownload, title: '结果集中看', text: '交付与复核统一收敛' },
+              { icon: ShieldCheck, title: '状态持续可见', text: '登录后可接续上次进度' },
             ].map((item) => (
               <Card key={item.title} className="console-quick-card" bodyStyle={{ padding: 18 }}>
                 <div className="feature-icon"><item.icon size={18} strokeWidth={1.9} /></div>
@@ -2785,8 +2785,8 @@ export default function App() {
     <div className="console-page-shell">
       <PageHeader
         badge="数据资产"
-        title="查看结果、评分与交付文件"
-          description="只看结果、评分和交付文件"
+        title="查看结果与交付文件"
+        description="只看结果、评分和交付文件"
         actions={
           <>
             <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button>
