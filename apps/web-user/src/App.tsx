@@ -262,7 +262,7 @@ function waitingReasonLabel(status: string, queueDepth: number) {
     case 'export_generated':
       return '导出文件已生成，等待你下载并交付。'
     default:
-      return '系统正在同步阶段信息，请稍后刷新。'
+      return '系统同步中，请稍后刷新。'
   }
 }
 
@@ -1908,21 +1908,21 @@ export default function App() {
       riskItems.push({
         level: 'high',
         title: '低分样本需要回修',
-        detail: `当前有 ${lowScoreCount} 条评分低于 0.5，建议先回看答案阶段并重新评估。`,
+        detail: `当前有 ${lowScoreCount} 条评分低于 0.5，先回看答案阶段。`,
       })
     }
     if (activeDataset?.status.endsWith('_queued') && queuedMinutes !== null && queuedMinutes >= 15) {
       riskItems.push({
         level: 'high',
         title: '排队时长偏高',
-        detail: `当前阶段已等待 ${queuedMinutes} 分钟，建议刷新状态并检查上游配置。`,
+        detail: `当前阶段已等待 ${queuedMinutes} 分钟，建议刷新状态。`,
       })
     }
     if (queueDepth >= 8) {
       riskItems.push({
         level: 'medium',
         title: '系统队列压力较高',
-        detail: `前方约 ${queueDepth} 个任务，建议降低刷新频率并优先处理已产出内容。`,
+        detail: `前方约 ${queueDepth} 个任务，建议降低刷新频率。`,
       })
     }
     if (exportDeliveryPending) {
@@ -1936,7 +1936,7 @@ export default function App() {
       riskItems.push({
         level: 'high',
         title: '导出完成但未发现交付文件',
-        detail: '建议刷新导出页；若仍为空，请检查存储配置与权限。',
+        detail: '刷新导出页；若仍为空，请检查存储配置。',
       })
     }
     if (riskItems.length === 0) {
