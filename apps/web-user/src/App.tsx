@@ -87,11 +87,11 @@ type NavPage = {
 }
 
 const userPages: NavPage[] = [
-  { label: '工作台', route: '/console/home', icon: LayoutDashboard, caption: '查看待办与进展' },
+  { label: '工作台', route: '/console/home', icon: LayoutDashboard, caption: '待办与进展' },
   { label: '新建任务', route: '/console/planning', icon: CirclePlus, caption: '创建新任务' },
   { label: '我的任务', route: '/console/tasks', icon: Target, caption: '查看任务' },
-  { label: '数据资产', route: '/console/results', icon: HardDriveDownload, caption: '查看结果与交付文件' },
-  { label: '账户与帮助', route: '/console/help', icon: Users, caption: '查看帮助与恢复' },
+  { label: '数据资产', route: '/console/results', icon: HardDriveDownload, caption: '结果与交付文件' },
+  { label: '账户与帮助', route: '/console/help', icon: Users, caption: '帮助与恢复' },
 ]
 
 const stageRouteNavMap: Record<string, string> = {
@@ -549,7 +549,7 @@ function artifactUsageCategory(artifact: Artifact): 'delivery' | 'review' | 'oth
 function artifactUsageLabel(category: 'delivery' | 'review' | 'other') {
   switch (category) {
     case 'delivery':
-      return '交付优先'
+      return '交付'
     case 'review':
       return '复核资料'
     default:
@@ -735,8 +735,8 @@ function LoginPage({
             {[
               { icon: CirclePlus, title: '新建任务前置', text: '主入口更醒目' },
               { icon: Target, title: '任务推进清晰', text: '已有任务从“我的任务”继续' },
-              { icon: HardDriveDownload, title: '结果集中看', text: '交付与复核集中收敛' },
-              { icon: ShieldCheck, title: '状态持续可见', text: '登录后可接续上次进度' },
+              { icon: HardDriveDownload, title: '结果集中看', text: '交付与复核集中' },
+              { icon: ShieldCheck, title: '状态持续可见', text: '登录后可接续进度' },
             ].map((item) => (
               <Card key={item.title} className="console-quick-card" bodyStyle={{ padding: 18 }}>
                 <div className="feature-icon"><item.icon size={18} strokeWidth={1.9} /></div>
@@ -2819,7 +2819,7 @@ export default function App() {
 
         <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">交付与复核入口</Title>
-          <Text className="mt-2 block console-caption">结果总览与交付入口</Text>
+          <Text className="mt-2 block console-caption">总览与交付入口</Text>
           <div className="mt-5 console-summary-grid">
             <div className="console-summary-row"><span>问题生成</span><Text strong>{questions.length > 0 ? '可进入查看覆盖情况' : '暂无结果'}</Text></div>
             <div className="console-summary-row"><span>答案内容</span><Text strong>{reasoning.length > 0 ? '可进入查看完整性' : '暂无结果'}</Text></div>
@@ -2930,7 +2930,7 @@ export default function App() {
 
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">最近操作</Title>
-            <Text className="mt-2 block console-caption">回看近期配置和操作变更。</Text>
+            <Text className="mt-2 block console-caption">回看近期配置与操作。</Text>
             {recentAuditLogs.length > 0 ? (
               <Table columns={auditColumns} dataSource={recentAuditLogs} pagination={false} />
             ) : (
@@ -3029,7 +3029,7 @@ export default function App() {
       <PageHeader
         badge="系统设置 / AI 服务"
         title="管理 AI 服务"
-        description="看服务列表后再编辑、取模型或测连通性。"
+        description="看服务列表后再编辑、取模型或测试。"
         actions={
           <Space wrap>
             <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('系统配置已刷新')}>刷新配置</Button>
@@ -3171,7 +3171,7 @@ export default function App() {
     <div className="console-page-shell">
       <PageHeader
         badge="系统设置 / 结果存储"
-        title="管理结果存储"
+        title="结果存储"
         description="先看列表，再新增或编辑。"
         actions={
           <Space wrap>
@@ -3184,7 +3184,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">结果存储列表</Title>
-            <Text className="mt-2 block console-caption">默认存储、搜索配置，以及新增和编辑。</Text>
+            <Text className="mt-2 block console-caption">默认存储、搜索配置，以及新增与编辑。</Text>
           </div>
           <Input
             value={storageSearchKeyword}
@@ -3382,7 +3382,7 @@ export default function App() {
     <div className="console-page-shell">
       <PageHeader
         badge="系统设置 / 生成指令"
-        title="管理生成指令"
+        title="生成指令"
         description="支持搜索、新增与编辑。"
         actions={
           <Space wrap>
@@ -3459,7 +3459,7 @@ export default function App() {
 
   const renderAudit = () => (
     <div className="console-page-shell">
-      <PageHeader badge="系统设置 / 操作记录" title="配置记录" description="集中查看最近配置与操作变更。" />
+      <PageHeader badge="系统设置 / 操作记录" title="配置记录" description="最近配置与操作变更。" />
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">审计事件列表</Title>
