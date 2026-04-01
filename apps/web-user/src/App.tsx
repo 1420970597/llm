@@ -200,7 +200,7 @@ function nextActionLabel(status: string) {
     case 'reasoning_generated':
       return '启动质量评分，准备交付结论'
     case 'rewards_queued':
-      return '等待质量评分完成后执行导出'
+      return '等待质量评估完成后执行导出'
     case 'rewards_generated':
       return '导出结果包并通知验收'
     case 'export_queued':
