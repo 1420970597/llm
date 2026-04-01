@@ -733,10 +733,10 @@ function LoginPage({
           </Text>
           <div className="console-card-grid-2 mt-6">
             {[
-              { icon: CirclePlus, title: '新建任务更靠前', text: '主入口更显眼。' },
-              { icon: Target, title: '任务推进更清晰', text: '已有任务从“我的任务”继续。' },
-              { icon: HardDriveDownload, title: '结果集中查看', text: '交付和复核统一收敛。' },
-              { icon: ShieldCheck, title: '状态持续可见', text: '登录后可继续上次进度。' },
+              { icon: CirclePlus, title: '新建任务更靠前', text: '主入口更显眼' },
+              { icon: Target, title: '任务推进更清晰', text: '已有任务从“我的任务”继续' },
+              { icon: HardDriveDownload, title: '结果集中查看', text: '交付和复核统一收敛' },
+              { icon: ShieldCheck, title: '状态持续可见', text: '登录后可继续上次进度' },
             ].map((item) => (
               <Card key={item.title} className="console-quick-card" bodyStyle={{ padding: 18 }}>
                 <div className="feature-icon"><item.icon size={18} strokeWidth={1.9} /></div>
@@ -752,7 +752,7 @@ function LoginPage({
             <div className="feature-icon"><Users size={18} strokeWidth={1.9} /></div>
             <div>
               <Title heading={4} className="!mb-0">登录你的账号</Title>
-              <Text className="console-caption">先进入工作台，再从新建任务或我的任务开始。</Text>
+              <Text className="console-caption">先进入工作台，再从新建任务或我的任务开始</Text>
             </div>
           </div>
           {signal ? (
@@ -2786,7 +2786,7 @@ export default function App() {
       <PageHeader
         badge="数据资产"
         title="统一查看结果、质量状态与交付文件"
-        description="只看结果、评分和交付文件。"
+          description="只看结果、评分和交付文件"
         actions={
           <>
             <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button>
@@ -2970,7 +2970,7 @@ export default function App() {
         <PageHeader
           badge="账户与帮助"
           title="自助排错、恢复流程与理解关键术语"
-          description="发生异常时按这里的恢复路径处理。"
+            description="发生异常时按这里的恢复路径处理"
           actions={
             <Space>
               <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('帮助信息与任务状态已刷新')}>刷新数据</Button>
