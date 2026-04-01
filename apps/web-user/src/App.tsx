@@ -2096,7 +2096,7 @@ export default function App() {
       <div className="console-page-shell">
         <PageHeader
           badge="我的任务"
-          title="查看任务列表并继续推进具体任务"
+          title="看任务列表并继续处理"
           description="查看任务列表并继续处理。"
           actions={
             <>
@@ -2999,7 +2999,7 @@ export default function App() {
 
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">术语解释</Title>
-            <Text className="mt-2 block console-caption">只保留最常见的关键术语，减少扫描成本。</Text>
+            <Text className="mt-2 block console-caption">只保留关键术语。</Text>
             <List
               className="mt-4"
               dataSource={glossary}
@@ -3041,7 +3041,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">AI 服务列表</Title>
-            <Text className="mt-2 block console-caption">搜索、编辑、测连通性或保存。</Text>
+            <Text className="mt-2 block console-caption">搜索、编辑、测试或保存。</Text>
           </div>
           <Input
             value={providerSearchKeyword}
@@ -3184,7 +3184,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">结果存储列表</Title>
-            <Text className="mt-2 block console-caption">看默认存储、搜索配置，或进入新增和编辑。</Text>
+            <Text className="mt-2 block console-caption">看默认存储、搜索配置，或新增和编辑。</Text>
           </div>
           <Input
             value={storageSearchKeyword}
@@ -3301,7 +3301,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">生成规则列表</Title>
-            <Text className="mt-2 block console-caption">维护规则数量、问题量和规划模式。</Text>
+            <Text className="mt-2 block console-caption">维护规则数量、问题量和模式。</Text>
           </div>
           <Input
             value={strategySearchKeyword}
@@ -3395,7 +3395,7 @@ export default function App() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">生成指令列表</Title>
-            <Text className="mt-2 block console-caption">维护各阶段使用的模板与版本。</Text>
+            <Text className="mt-2 block console-caption">维护各阶段模板与版本。</Text>
           </div>
           <Input
             value={promptSearchKeyword}
