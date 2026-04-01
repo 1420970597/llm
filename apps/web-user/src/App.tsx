@@ -200,7 +200,7 @@ function nextActionLabel(status: string) {
     case 'reasoning_generated':
       return '启动质量评分，准备交付结论'
     case 'rewards_queued':
-      return '等待质量评估完成后执行导出'
+      return '等待质量评估后执行导出'
     case 'rewards_generated':
       return '导出结果包并通知验收'
     case 'export_queued':
@@ -318,7 +318,7 @@ function trustMessageLabel(status: string) {
   if (status.endsWith('_generated') || status === 'export_generated') {
     return '结果已落库，可继续后续操作。'
   }
-  return '系统会自动保存当前任务上下文'
+  return '系统会自动保存任务上下文'
 }
 
 type StageKey = 'questions' | 'reasoning' | 'rewards' | 'export'
@@ -1999,7 +1999,7 @@ export default function App() {
 
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-            <Title heading={4} className="!mb-0">当前任务摘要</Title>
+            <Title heading={4} className="!mb-0">任务摘要</Title>
             <Text className="mt-2 block console-caption">只保留任务、动向和入口。</Text>
             <div className="mt-5 console-summary-grid">
               <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '尚未创建任务'}</Text></div>
