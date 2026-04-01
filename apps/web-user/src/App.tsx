@@ -770,7 +770,7 @@ function LoginPage({
               <Input value={password} onChange={setPassword} mode="password" size="large" placeholder="请输入密码" />
             </div>
             <Button theme="solid" type="primary" size="large" loading={loading} onClick={() => void onSubmit(email, password)}>
-进入任务中心
+进入我的任务
             </Button>
           </div>
           <div className="mt-6 console-summary-grid">
@@ -899,7 +899,7 @@ export default function App() {
       : etaLabel(activeDataset.status, runtime?.queueDepth ?? 0, activeStageRun?.acceptedAt)
     : '请先创建任务'
   const activeTaskDetailRoute = activeDataset ? `/console/tasks/${activeDataset.id}` : '/console/tasks'
-  const activeTaskNavLabel = activeDataset ? '返回当前任务' : '返回任务列表'
+  const activeTaskNavLabel = activeDataset ? '返回当前任务' : '返回我的任务'
   const canGenerateQuestions = activeDataset?.status === 'domains_confirmed'
   const canGenerateReasoning = activeDataset?.status === 'questions_generated'
   const canGenerateRewards = activeDataset?.status === 'reasoning_generated' || activeDataset?.status === 'reasoning_partial'
@@ -2581,13 +2581,13 @@ export default function App() {
     return (
       <div className="console-page-shell">
         <PageHeader
-          badge="任务中心 / 主题结构"
+          badge="我的任务 / 主题结构"
           title="生成主题结构并完成确认"
           description="先按树状方式浏览方向分组，再逐项复核命名，最后确认进入题目生成。"
           actions={
             <>
               <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button>
-              <Button onClick={() => navigate('/console/tasks')}>返回任务列表</Button>
+              <Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>
               <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '方向结构已刷新')}>刷新方向结构</Button>
               <Button theme="solid" type="primary" icon={<GitBranch size={16} />} loading={workspaceLoading} onClick={() => void generateDomains()}>生成方向结构</Button>
             </>
@@ -2749,7 +2749,7 @@ export default function App() {
       </div>
       <div className="console-card-grid-2">
         <Card className="console-record-card" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">结果中心预览</Title>
+          <Title heading={4} className="!mb-0">数据资产预览</Title>
           <Text className="mt-2 block console-caption">共 {records.length} 条可见结果，优先展示可直接决策的信息。</Text>
           {records.length > 0 ? <div className="console-record-list mt-5">{records.map(renderRecord)}</div> : <EmptyCard title={emptyTitle} description={emptyDescription} />}
         </Card>
@@ -2813,7 +2813,7 @@ export default function App() {
             <div className="console-summary-row"><span>答案结果</span><Text strong>{reasoning.length}</Text></div>
             <div className="console-summary-row"><span>质量评估</span><Text strong>{rewards.length}</Text></div>
             <div className="console-summary-row"><span>导出文件</span><Text strong>{artifacts.length}</Text></div>
-            <div className="console-summary-row"><span>建议动作</span><Text strong>{activeDataset ? nextActionLabel(activeDataset.status) : '先前往任务中心创建任务'}</Text></div>
+            <div className="console-summary-row"><span>建议动作</span><Text strong>{activeDataset ? nextActionLabel(activeDataset.status) : '先前往新建任务创建任务'}</Text></div>
           </div>
         </Card>
 
@@ -2946,7 +2946,7 @@ export default function App() {
     const glossary = [
       { term: '任务状态', description: '表示任务所处阶段，例如“待确认方向”“问题生成排队中”。' },
       { term: '等待任务数', description: '当前系统排队中的任务数量。数字越大，结果返回通常越慢。' },
-      { term: '结果中心', description: '集中查看题目、答案内容、质量评估和导出交付的页面。' },
+      { term: '数据资产', description: '集中查看题目、答案内容、质量评估和导出交付的页面。' },
       { term: '恢复建议', description: '当任务失败或卡住时，页面给出的可执行下一步动作。' },
     ]
 
