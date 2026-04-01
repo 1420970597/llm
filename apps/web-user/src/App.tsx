@@ -1936,7 +1936,7 @@ export default function App() {
       riskItems.push({
         level: 'high',
         title: '导出完成但未发现交付文件',
-        detail: '刷新导出页；若仍为空，请检查存储配置。',
+        detail: '刷新导出页；若仍为空，检查存储配置。',
       })
     }
     if (riskItems.length === 0) {
