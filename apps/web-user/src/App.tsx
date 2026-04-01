@@ -2818,19 +2818,19 @@ export default function App() {
         </Card>
 
         <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
-          <Title heading={4} className="!mb-0">结果工作台</Title>
-          <Text className="mt-2 block console-caption">进入具体结果页处理异常、抽检内容、继续评分或导出交付。</Text>
-          <div className="console-card-grid-2 mt-5">
-            {resultWorkbenchPages.map((page) => (
-              <Card key={page.route} className="console-quick-card" bodyStyle={{ padding: 18 }}>
-                <div className="cursor-pointer" onClick={() => navigate(page.route)}>
-                  <div className="quick-page-icon"><page.icon size={18} strokeWidth={1.9} /></div>
-                  <Title heading={6} className="!mb-0 mt-4">{page.label}</Title>
-                  <Text className="mt-2 block console-caption">{page.caption}</Text>
-                </div>
-              </Card>
-            ))}
+          <Title heading={4} className="!mb-0">交付与复核入口</Title>
+          <Text className="mt-2 block console-caption">数据资产页主要保留结果总览和交付状态，具体处理入口压缩为摘要加跳转。</Text>
+          <div className="mt-5 console-summary-grid">
+            <div className="console-summary-row"><span>问题生成</span><Text strong>{questions.length > 0 ? '可进入查看覆盖情况' : '暂无结果'}</Text></div>
+            <div className="console-summary-row"><span>答案内容</span><Text strong>{reasoning.length > 0 ? '可进入查看完整性' : '暂无结果'}</Text></div>
+            <div className="console-summary-row"><span>质量评估</span><Text strong>{rewards.length > 0 ? '可进入查看评分状态' : '暂无结果'}</Text></div>
+            <div className="console-summary-row"><span>导出交付</span><Text strong>{artifacts.length > 0 ? '已有交付文件可下载' : '等待生成交付文件'}</Text></div>
           </div>
+          <Space className="mt-5" wrap>
+            <Button theme="solid" type="primary" onClick={() => navigate('/console/exports')}>进入导出交付</Button>
+            <Button onClick={() => navigate('/console/rewards')}>查看质量评估</Button>
+            <Button onClick={() => navigate('/console/reasoning')}>查看答案内容</Button>
+          </Space>
         </Card>
       </div>
     </div>
