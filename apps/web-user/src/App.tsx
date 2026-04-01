@@ -2126,13 +2126,13 @@ export default function App() {
 
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-            <Title heading={4} className="!mb-0">当前待办</Title>
-            <Text className="mt-2 block console-caption">把最常见的两个动作固定在这里：新建任务，或继续当前任务。</Text>
+            <Title heading={4} className="!mb-0">任务列表概览</Title>
+            <Text className="mt-2 block console-caption">这里专门用来浏览任务、识别当前任务并继续处理；首页不再承担完整列表职责。</Text>
             <div className="mt-5 console-summary-grid">
-              <div className="console-summary-row"><span>当前任务总数</span><Text strong>{datasets.length}</Text></div>
-              <div className="console-summary-row"><span>最近活跃任务</span><Text strong>{recentDatasets[0]?.name ?? '暂无任务'}</Text></div>
+              <div className="console-summary-row"><span>任务总数</span><Text strong>{datasets.length}</Text></div>
+              <div className="console-summary-row"><span>当前任务</span><Text strong>{activeDataset?.name ?? '暂无任务'}</Text></div>
+              <div className="console-summary-row"><span>最近活跃</span><Text strong>{recentDatasets[0]?.name ?? '暂无任务'}</Text></div>
               <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
-              <div className="console-summary-row"><span>推荐动作</span><Text strong>{recentDatasets.length > 0 ? '继续当前任务，或新建一个任务' : '先新建任务'}</Text></div>
             </div>
             <Space className="mt-5" wrap>
               <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
@@ -2142,7 +2142,7 @@ export default function App() {
 
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">任务列表</Title>
-            <Text className="mt-2 block console-caption">点击任意任务后进入它的独立详情页，避免同页来回滚动。</Text>
+            <Text className="mt-2 block console-caption">按最近更新时间查看任务，并从这里进入独立详情页继续处理。</Text>
             <div className="mt-5 console-stack">
               {recentDatasets.length > 0 ? recentDatasets.map((dataset) => (
                 <div key={dataset.id} className="console-domain-item">
