@@ -367,3 +367,123 @@ a {
     justify-content: flex-start;
   }
 }
+
+/* === Dify Layout - Top Navigation Platform Style === */
+.dify-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--semi-color-bg-0);
+}
+
+.dify-header {
+  display: flex;
+  align-items: center;
+  height: 56px;
+  padding: 0 20px;
+  background: var(--semi-color-bg-1);
+  border-bottom: 1px solid var(--semi-color-border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  gap: 16px;
+}
+
+.dify-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.dify-brand-text {
+  white-space: nowrap;
+}
+
+.dify-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  overflow-x: auto;
+  margin: 0 12px;
+}
+
+.dify-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--semi-color-text-2);
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.dify-nav-item:hover {
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-text-0);
+}
+
+.dify-nav-active {
+  background: var(--semi-color-primary-light-default);
+  color: var(--semi-color-primary);
+  font-weight: 600;
+}
+
+.dify-nav-admin {
+  opacity: 0.85;
+}
+
+.dify-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.dify-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: var(--semi-color-bg-1);
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.dify-action-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dify-action-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dify-stat-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 16px;
+  background: var(--semi-color-fill-0);
+  font-size: 13px;
+  color: var(--semi-color-text-2);
+}
+
+.dify-stat-chip span {
+  color: var(--semi-color-text-3);
+}
+
+.dify-content {
+  flex: 1;
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
