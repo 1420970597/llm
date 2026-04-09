@@ -270,30 +270,30 @@ function waitingReasonLabel(status: string, queueDepth: number) {
 function waitingActionLabel(status: string) {
   switch (status) {
     case 'draft':
-      return '前往“主题结构”'
+      return '前往「主题结构」'
     case 'domains_confirmed':
-      return '前往“问题生成”，开始生成题目。'
+      return '前往「问题生成」，开始生成题目。'
     case 'questions_queued':
     case 'reasoning_queued':
     case 'rewards_queued':
     case 'export_queued':
       return '先处理其他步骤，再按刷新建议回看'
     case 'questions_generated':
-      return '前往“答案生成”，点击“开始生成答案”。'
+      return '前往「答案生成」，点击「开始生成答案」。'
     case 'questions_failed':
-      return '请先回到“题目结果”排查失败原因，再重新生成。'
+      return '请先回到「题目结果」排查失败原因，再重新生成。'
     case 'reasoning_generated':
     case 'reasoning_partial':
-      return '前往“质量评分”，确认可用后再启动评分。'
+      return '前往「质量评分」，确认可用后再启动评分。'
     case 'reasoning_failed':
-      return '请先回到“答案结果”排查失败原因，再重新生成。'
+      return '请先回到「答案结果」排查失败原因，再重新生成。'
     case 'rewards_generated':
     case 'rewards_partial':
-      return '前往“结果交付”，确认可用后再导出。'
+      return '前往「结果交付」，确认可用后再导出。'
     case 'rewards_failed':
-      return '请先回到“质量评分”排查失败原因，再重新评分。'
+      return '请先回到「质量评分」排查失败原因，再重新评分。'
     case 'export_generated':
-      return '进入“结果交付”下载并确认'
+      return '进入「结果交付」下载并确认'
     case 'export_failed':
       return '请重新发起导出，或先检查上游评分结果是否完整。'
     default:
@@ -647,7 +647,7 @@ function DirectionStructurePreview({ rootKeyword, domains }: { rootKeyword: stri
           })}
         </div>
       ) : (
-        <EmptyCard title="尚未生成方向结构" description="点击“生成方向结构”开始。" />
+        <EmptyCard title="尚未生成方向结构" description="点击「生成方向结构」开始。" />
       )}
     </div>
   )
@@ -757,13 +757,13 @@ function LoginPage({
           <span className="console-chip">企业数据工厂</span>
           <Title heading={1} className="!mb-0 mt-4">先创建任务，再持续推进交付。</Title>
           <Text className="mt-4 block console-page-subtitle">
-            控制台按“工作台 → 新建任务 → 我的任务 → 数据资产”组织。
+            控制台按「工作台 → 新建任务 → 我的任务 → 数据资产」组织。
             登录后先创建任务，再继续推进和交付。
           </Text>
           <div className="console-card-grid-2 mt-6">
             {[
               { icon: CirclePlus, title: '新建任务前置', text: '主入口更醒目' },
-              { icon: Target, title: '任务推进清晰', text: '已有任务从“我的任务”继续' },
+              { icon: Target, title: '任务推进清晰', text: '已有任务从「我的任务」继续' },
               { icon: HardDriveDownload, title: '结果集中看', text: '交付与复核集中' },
               { icon: ShieldCheck, title: '状态持续可见', text: '登录后可接续进度' },
             ].map((item) => (
@@ -803,9 +803,9 @@ function LoginPage({
             </Button>
           </div>
           <div className="mt-6 console-summary-grid">
-            <div className="console-summary-row"><span>登录后第一步</span><Text strong>先点击“新建任务”</Text></div>
-            <div className="console-summary-row"><span>已有任务</span><Text strong>从“我的任务”继续</Text></div>
-            <div className="console-summary-row"><span>交付完成后</span><Text strong>去“数据资产”查看和下载</Text></div>
+            <div className="console-summary-row"><span>登录后第一步</span><Text strong>先点击「新建任务」</Text></div>
+            <div className="console-summary-row"><span>已有任务</span><Text strong>从「我的任务」继续</Text></div>
+            <div className="console-summary-row"><span>交付完成后</span><Text strong>去「数据资产」查看和下载</Text></div>
           </div>
         </Card>
       </div>
@@ -1373,7 +1373,7 @@ export default function App() {
         tone: 'warning',
         title: '创建前还有必填项',
         detail: '任务主题和目标规模是必填项。',
-        recoveryHint: '先补齐上述两项，再点击“创建任务”。',
+        recoveryHint: '先补齐上述两项，再点击「创建任务」。',
         nextStep: { label: '回到任务创建', route: '/console/planning' },
       })
       Toast.warning('请至少填写任务主题和目标规模')
@@ -1406,7 +1406,7 @@ export default function App() {
       setTrustSignal({
         tone: 'success',
         title: '任务创建成功',
-        detail: '进入“整理主题”继续下一步。',
+        detail: '进入「整理主题」继续下一步。',
         recoveryHint: '如果页面未自动刷新，可点击右上角刷新按钮同步状态。',
         nextStep: { label: '进入整理主题', route: '/console/domains' },
       })
@@ -1450,7 +1450,7 @@ export default function App() {
           title: 'AI 服务返回异常，方向未生成',
           detail: `系统返回：${message}`,
           recoveryHint: isAdmin
-            ? '请到“AI 服务”页切换模型（建议优先使用标准 chat/completions 兼容模型）后重试；也可先回到任务创建页缩小主题范围。'
+            ? '请到「AI 服务」页切换模型（建议优先使用标准 chat/completions 兼容模型）后重试；也可先回到任务创建页缩小主题范围。'
             : '请联系管理员切换模型后重试；你也可以先回到任务创建页缩小主题范围，再次发起生成。',
           nextStep: isAdmin
             ? { label: '去 AI 服务', route: '/console/admin/providers' }
@@ -2137,9 +2137,9 @@ export default function App() {
             <Title heading={4} className="!mb-0">待办动作</Title>
             <Text className="mt-2 block console-caption">按顺序执行，减少无效刷新。</Text>
             <div className="mt-5 console-summary-grid">
-              <div className="console-summary-row"><span>下一步</span><Text strong>{activeDataset ? (exportDeliveryPending ? '等待交付文件出现后再下载结果' : nextActionLabel(activeDataset.status)) : '先点击“新建任务”'}</Text></div>
+              <div className="console-summary-row"><span>下一步</span><Text strong>{activeDataset ? (exportDeliveryPending ? '等待交付文件出现后再下载结果' : nextActionLabel(activeDataset.status)) : '先点击「新建任务」'}</Text></div>
               <div className="console-summary-row"><span>等待原因</span><Text strong>{activeDataset ? (exportDeliveryPending ? '导出计算已完成，系统正在将结果写入交付存储。' : waitingReasonLabel(activeDataset.status, queueDepth)) : '创建任务后显示'}</Text></div>
-              <div className="console-summary-row"><span>建议动作</span><Text strong>{activeDataset ? (exportDeliveryPending ? '暂时无需重复触发导出，等待交付文件落盘后再下载。' : waitingActionLabel(activeDataset.status)) : '点击顶部“新建任务”开始'}</Text></div>
+              <div className="console-summary-row"><span>建议动作</span><Text strong>{activeDataset ? (exportDeliveryPending ? '暂时无需重复触发导出，等待交付文件落盘后再下载。' : waitingActionLabel(activeDataset.status)) : '点击顶部「新建任务」开始'}</Text></div>
               <div className="console-summary-row"><span>刷新节奏</span><Text strong>{activeDataset ? (exportDeliveryPending ? '系统会每 20 秒自动刷新；检测到交付文件后将自动变为可下载。' : refreshExpectationLabel(activeDataset.status, queueDepth)) : '创建任务后显示'}</Text></div>
               <div className="console-summary-row"><span>进度保障</span><Text strong>{activeDataset ? (exportDeliveryPending ? '任务已完成导出计算，正在落盘交付文件，请勿重复触发导出。' : trustMessageLabel(activeDataset.status)) : '创建任务后显示'}</Text></div>
             </div>
@@ -2240,10 +2240,10 @@ export default function App() {
           <PageHeader
             badge="我的任务 / 任务详情"
             title="未找到任务详情"
-            description="先从“我的任务”进入具体任务，或先创建任务。"
+            description="先从「我的任务」进入具体任务，或先创建任务。"
             actions={<Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>}
           />
-          <EmptyCard title="暂无任务详情" description="先从“我的任务”进入具体任务。" />
+          <EmptyCard title="暂无任务详情" description="先从「我的任务」进入具体任务。" />
         </div>
       )
     }
@@ -2347,7 +2347,7 @@ export default function App() {
     ]
 
     return (
-      <div className=”console-page-shell”>
+      <div className="console-page-shell">
         <PageHeader
           badge={`我的任务 / 任务 #${activeDataset.id}`}
           title={activeDataset.name}
@@ -2356,85 +2356,87 @@ export default function App() {
             <>
               <Button onClick={() => navigate('/console/tasks')}>返回列表</Button>
               <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务已刷新')}>刷新</Button>
-              <Button theme=”solid” type=”primary” onClick={() => navigate(statusToActionRoute(activeDataset.status))}>{nextActionLabel(activeDataset.status)}</Button>
+              <Button theme="solid" type="primary" onClick={() => navigate(statusToActionRoute(activeDataset.status))}>{nextActionLabel(activeDataset.status)}</Button>
             </>
           }
         />
 
-        <Card className=”console-panel” bodyStyle={{ padding: 20 }}>
-          <div className=”flex flex-wrap items-center gap-2”>
-            <Tag color=”blue”>{currentStageLabel}</Tag>
-            <Tag color=”cyan”>进度 {progressValue}%</Tag>
-            {queueDepth > 0 ? <Tag color=”orange”>排队 {queueDepth}</Tag> : null}
-            <Tag color=”grey”>ETA: {activeEta}</Tag>
-            <Tag color=”grey”>更新 {formatTime(activeDataset.updatedAt)}</Tag>
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Tag color="blue">{currentStageLabel}</Tag>
+            <Tag color="cyan">进度 {progressValue}%</Tag>
+            {queueDepth > 0 ? <Tag color="orange">排队 {queueDepth}</Tag> : null}
+            <Tag color="grey">ETA: {activeEta}</Tag>
+            <Tag color="grey">更新 {formatTime(activeDataset.updatedAt)}</Tag>
           </div>
-          <Progress percent={progressValue} showInfo={false} stroke=”#3b82f6” className=”mt-4” />
-          <Text className=”mt-3 block console-caption”>{waitingReasonLabel(activeDataset.status, queueDepth)}</Text>
+          <Progress percent={progressValue} showInfo={false} stroke="#3b82f6" className="mt-4" />
+          <Text className="mt-3 block console-caption">{waitingReasonLabel(activeDataset.status, queueDepth)}</Text>
         </Card>
 
-        <div className=”console-card-grid-2”>
+        <div className="console-card-grid-2">
           {stageCards.map((stage) => {
             const style = stageStateStyle(stage.state)
             return (
-              <Card
+              <div
                 key={stage.key}
-                className=”console-panel”
-                bodyStyle={{ padding: 18, cursor: 'pointer' }}
+                className="console-panel"
+                style={{ cursor: 'pointer', borderRadius: 20, border: '1px solid rgba(var(--semi-grey-2), 0.12)', background: 'color-mix(in srgb, var(--semi-color-bg-1) 86%, white 14%)' }}
                 onClick={() => navigate(stage.route)}
               >
-                <div className=”flex items-center justify-between gap-3”>
-                  <Text strong>{stage.label}</Text>
-                  <Tag color={style.color}>{style.label}</Tag>
+                <div style={{ padding: 18 }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <Text strong>{stage.label}</Text>
+                    <Tag color={style.color}>{style.label}</Tag>
+                  </div>
+                  <Progress percent={style.percent} showInfo={false} stroke="#3b82f6" className="mt-3" />
+                  <Text className="mt-3 block console-caption">{stage.summary}</Text>
+                  <Text className="mt-1 block console-caption">{stage.count} 条记录 · 点击进入</Text>
                 </div>
-                <Progress percent={style.percent} showInfo={false} stroke=”#3b82f6” className=”mt-3” />
-                <Text className=”mt-3 block console-caption”>{stage.summary}</Text>
-                <Text className=”mt-1 block console-caption”>{stage.count} 条记录 · 点击进入</Text>
-              </Card>
+              </div>
             )
           })}
         </div>
 
-        <Card className=”console-panel” bodyStyle={{ padding: 20 }}>
-          <Title heading={5} className=”!mb-0”>质量与交付</Title>
-          <div className=”console-card-grid-2 mt-4”>
-            <div className=”console-summary-grid”>
-              <div className=”console-summary-row”>
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={5} className="!mb-0">质量与交付</Title>
+          <div className="console-card-grid-2 mt-4">
+            <div className="console-summary-grid">
+              <div className="console-summary-row">
                 <span>问题</span>
                 <Space>
                   <Tag color={warningQuestionCount > 0 ? 'orange' : 'green'}>{warningQuestionCount > 0 ? `${warningQuestionCount} 待关注` : '正常'}</Tag>
-                  <Button size=”small” onClick={() => navigate('/console/questions')}>查看</Button>
+                  <Button size="small" onClick={() => navigate('/console/questions')}>查看</Button>
                 </Space>
               </div>
-              <div className=”console-summary-row”>
+              <div className="console-summary-row">
                 <span>答案</span>
                 <Space>
                   <Tag color={missingReasoningCount > 0 ? 'orange' : 'green'}>{missingReasoningCount > 0 ? `${missingReasoningCount} 缺失` : '完整'}</Tag>
-                  <Button size=”small” onClick={() => navigate('/console/reasoning')}>查看</Button>
+                  <Button size="small" onClick={() => navigate('/console/reasoning')}>查看</Button>
                 </Space>
               </div>
             </div>
-            <div className=”console-summary-grid”>
-              <div className=”console-summary-row”>
+            <div className="console-summary-grid">
+              <div className="console-summary-row">
                 <span>评分</span>
                 <Space>
                   <Tag color={lowRewardCount > 0 ? 'red' : 'green'}>{lowRewardCount > 0 ? `${lowRewardCount} 低分` : '稳定'}</Tag>
-                  <Button size=”small” onClick={() => navigate('/console/rewards')}>查看</Button>
+                  <Button size="small" onClick={() => navigate('/console/rewards')}>查看</Button>
                 </Space>
               </div>
-              <div className=”console-summary-row”>
+              <div className="console-summary-row">
                 <span>交付包</span>
                 <Space>
                   <Tag color={deliveryArtifactCount > 0 ? 'green' : 'grey'}>{deliveryArtifactCount > 0 ? `${deliveryArtifactCount} 个` : '待生成'}</Tag>
-                  <Button size=”small” onClick={() => navigate('/console/exports')}>查看</Button>
+                  <Button size="small" onClick={() => navigate('/console/exports')}>查看</Button>
                 </Space>
               </div>
             </div>
           </div>
-          <Space className=”mt-4” wrap>
+          <Space className="mt-4" wrap>
             <Button onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务状态已刷新')}>刷新状态</Button>
             <Button onClick={() => navigate('/console/help')}>恢复指引</Button>
-            {deliveryArtifactCount > 0 ? <Button theme=”solid” type=”primary” onClick={() => navigate('/console/exports')}>进入导出中心</Button> : null}
+            {deliveryArtifactCount > 0 ? <Button theme="solid" type="primary" onClick={() => navigate('/console/exports')}>进入导出中心</Button> : null}
           </Space>
         </Card>
       </div>
@@ -2504,7 +2506,7 @@ export default function App() {
               {planningCards.map((item) => <StatCard key={item.label} {...item} />)}
             </div>
           ) : (
-            <EmptyCard title="尚未生成估算" description="填写参数后点击“估算规模”。" />
+            <EmptyCard title="尚未生成估算" description="填写参数后点击「估算规模」。" />
           )}
         </Card>
       </div>
@@ -2527,7 +2529,7 @@ export default function App() {
       emptyNameCount > 0 ? `有 ${emptyNameCount} 个方向名称为空，建议先补齐再确认。` : null,
       duplicateCount > 0 ? `有 ${duplicateCount} 组方向名称重复，建议先合并或重命名。` : null,
       orphanCount > 0 ? `有 ${orphanCount} 个非一级方向缺少父级关系，建议先复核结构。` : null,
-      pendingDomains.length > 0 ? `还有 ${pendingDomains.length} 个方向未标记为“已确认”。` : null,
+      pendingDomains.length > 0 ? `还有 ${pendingDomains.length} 个方向未标记为「已确认」。` : null,
     ].filter(Boolean) as string[]
 
     const markAllDomains = (reviewStatus: string) => {
