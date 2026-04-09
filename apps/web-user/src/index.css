@@ -334,6 +334,243 @@ a {
   min-height: calc(100vh - 120px);
 }
 
+
+/* ===== vercel-commerce layout ===== */
+.vc-app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #fafafa;
+  color: #111;
+}
+
+.vc-navbar {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: #fff;
+  border-bottom: 1px solid #eaeaea;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  flex-shrink: 0;
+}
+
+.vc-navbar-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+}
+
+.vc-navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.vc-navbar-brand-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vc-navbar-brand-icon svg {
+  color: #fff;
+  width: 16px;
+  height: 16px;
+}
+
+.vc-navbar-brand-text {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111;
+  letter-spacing: -0.3px;
+}
+
+.vc-navbar-links {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.vc-navbar-link {
+  padding: 6px 12px;
+  font-size: 14px;
+  color: #666;
+  cursor: pointer;
+  transition: color 0.15s;
+  border-radius: 6px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.vc-navbar-link:hover {
+  color: #111;
+}
+
+.vc-navbar-link.active {
+  color: #111;
+  font-weight: 600;
+}
+
+.vc-navbar-center {
+  flex: 1;
+  max-width: 360px;
+  margin: 0 16px;
+}
+
+.vc-navbar-search {
+  width: 100%;
+  height: 36px;
+  border: 1px solid #eaeaea;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: #111;
+  background: #fafafa;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.vc-navbar-search::placeholder {
+  color: #999;
+}
+
+.vc-navbar-search:focus {
+  border-color: #111;
+  background: #fff;
+}
+
+.vc-navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.vc-navbar-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.15s;
+}
+
+.vc-navbar-btn:hover {
+  background: #f5f5f5;
+  color: #111;
+}
+
+.vc-navbar-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.vc-body {
+  display: flex;
+  flex: 1;
+  max-width: 1536px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.vc-sidebar {
+  width: 140px;
+  padding: 24px 0;
+  flex-shrink: 0;
+}
+
+.vc-sidebar-section {
+  margin-bottom: 20px;
+}
+
+.vc-sidebar-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #999;
+  text-transform: uppercase;
+  padding: 0 8px;
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+}
+
+.vc-sidebar-link {
+  display: block;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: #666;
+  cursor: pointer;
+  transition: color 0.12s;
+  border-radius: 4px;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vc-sidebar-link:hover {
+  color: #111;
+}
+
+.vc-sidebar-link.active {
+  color: #111;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.vc-main {
+  flex: 1;
+  min-height: calc(100vh - 56px);
+  padding: 24px 0 24px 24px;
+}
+
+.vc-filter {
+  width: 140px;
+  padding: 24px 0 24px 24px;
+  flex-shrink: 0;
+}
+
+.vc-filter-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #999;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.vc-filter-item {
+  display: block;
+  padding: 4px 0;
+  font-size: 13px;
+  color: #666;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+
+.vc-filter-item:hover {
+  color: #111;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+
 @media (max-width: 1200px) {
   .console-card-grid-4,
   .console-card-grid-3,
