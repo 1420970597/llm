@@ -334,6 +334,256 @@ a {
   min-height: calc(100vh - 120px);
 }
 
+
+/* ===== gradio layout ===== */
+.grd-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: #0b0f19;
+  color: #c5c8d6;
+}
+
+.grd-header {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: #0b0f19;
+  border-bottom: 1px solid #2e3240;
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.grd-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.grd-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.grd-header-brand-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #ff7c00 0%, #ff5500 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.grd-header-brand-icon svg {
+  color: #fff;
+  width: 16px;
+  height: 16px;
+}
+
+.grd-header-brand-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.grd-header-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 100%;
+}
+
+.grd-header-tab {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #8e92a4;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+}
+
+.grd-header-tab:hover {
+  color: #c5c8d6;
+}
+
+.grd-header-tab.active {
+  color: #ff7c00;
+  border-bottom-color: #ff7c00;
+}
+
+.grd-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.grd-header-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #8e92a4;
+  transition: all 0.15s;
+}
+
+.grd-header-btn:hover {
+  background: #1f2336;
+  color: #c5c8d6;
+}
+
+.grd-header-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.grd-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.grd-sidebar {
+  width: 220px;
+  background: #0e1525;
+  border-right: 1px solid #2e3240;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.2s ease;
+  flex-shrink: 0;
+}
+
+.grd-sidebar.collapsed {
+  width: 0;
+}
+
+.grd-sidebar-header {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-bottom: 1px solid #2e3240;
+  flex-shrink: 0;
+}
+
+.grd-sidebar-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8e92a4;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.grd-sidebar-toggle {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #8e92a4;
+  transition: all 0.1s;
+}
+
+.grd-sidebar-toggle:hover {
+  background: #2e3240;
+}
+
+.grd-sidebar-toggle svg {
+  width: 12px;
+  height: 12px;
+}
+
+.grd-sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.grd-sidebar-nav::-webkit-scrollbar {
+  width: 0;
+}
+
+.grd-sidebar-item {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 10px;
+  margin: 1px 0;
+  border-radius: 6px;
+  color: #8e92a4;
+  cursor: pointer;
+  transition: all 0.12s;
+  gap: 8px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.grd-sidebar-item:hover {
+  background: #1f2336;
+  color: #c5c8d6;
+}
+
+.grd-sidebar-item.active {
+  background: #1f2336;
+  color: #ff7c00;
+  font-weight: 600;
+}
+
+.grd-sidebar-item svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.grd-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  background: #0b0f19;
+}
+
+.grd-footer {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  background: #0e1525;
+  border-top: 1px solid #2e3240;
+  font-size: 11px;
+  color: #8e92a4;
+  flex-shrink: 0;
+}
+
+/* Override semi-ui for gradio dark theme */
+.grd-app .semi-card {
+  background: #131722;
+  border-color: #2e3240;
+  color: #c5c8d6;
+}
+
+.grd-app .semi-tag {
+  background: #2e3240;
+  color: #8e92a4;
+}
+
+
 @media (max-width: 1200px) {
   .console-card-grid-4,
   .console-card-grid-3,
