@@ -323,6 +323,62 @@ function trustMessageLabel(status: string) {
 
 type StageKey = 'questions' | 'reasoning' | 'rewards' | 'export'
 
+function statusToActionRoute(status: string): string {
+  switch (status) {
+    case 'draft':
+      return '/console/domains'
+    case 'domains_confirmed':
+    case 'questions_queued':
+    case 'questions_generated':
+    case 'questions_failed':
+      return '/console/questions'
+    case 'reasoning_queued':
+    case 'reasoning_generated':
+    case 'reasoning_partial':
+    case 'reasoning_failed':
+      return '/console/reasoning'
+    case 'rewards_queued':
+    case 'rewards_generated':
+    case 'rewards_partial':
+    case 'rewards_failed':
+      return '/console/rewards'
+    case 'export_queued':
+    case 'export_generated':
+    case 'export_failed':
+      return '/console/exports'
+    default:
+      return '/console/domains'
+  }
+}
+
+function statusToActionRoute(status: string): string {
+  switch (status) {
+    case 'draft':
+      return '/console/domains'
+    case 'domains_confirmed':
+    case 'questions_queued':
+    case 'questions_generated':
+    case 'questions_failed':
+      return '/console/questions'
+    case 'reasoning_queued':
+    case 'reasoning_generated':
+    case 'reasoning_partial':
+    case 'reasoning_failed':
+      return '/console/reasoning'
+    case 'rewards_queued':
+    case 'rewards_generated':
+    case 'rewards_partial':
+    case 'rewards_failed':
+      return '/console/rewards'
+    case 'export_queued':
+    case 'export_generated':
+    case 'export_failed':
+      return '/console/exports'
+    default:
+      return '/console/domains'
+  }
+}
+
 function statusStageKey(status: string): StageKey | null {
   switch (status) {
     case 'questions_queued':
@@ -1922,7 +1978,7 @@ export default function App() {
       riskItems.push({
         level: 'medium',
         title: '系统队列压力较高',
-        detail: '前方约 ${queueDepth} 个任务，先降低刷新频率。',
+        detail: `前方约 ${queueDepth} 个任务，先降低刷新频率。`,
       })
     }
     if (exportDeliveryPending) {
@@ -2069,7 +2125,7 @@ export default function App() {
         </div>
 
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          title="系统信号"
+          <Title heading={4} className="!mb-0">系统信号</Title>
           <Text className="mt-2 block console-caption">保留当前任务相关的轻量系统信号。</Text>
           <div className="mt-5 console-card-grid-4">
             {overviewCards.map((item) => <StatCard key={item.label} {...item} />)}
@@ -2264,220 +2320,96 @@ export default function App() {
     ]
 
     return (
-      <div className="console-page-shell">
+      <div className=”console-page-shell”>
         <PageHeader
           badge={`我的任务 / 任务 #${activeDataset.id}`}
           title={activeDataset.name}
-          description="把任务推进、质量抽检与导出交付收口到单页工作台。"
+          description={`主题：${activeDataset.rootKeyword} · ${currentStageLabel} · 进度 ${progressValue}%`}
           actions={
             <>
-              <Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>
-              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务工作台已刷新')}>刷新任务</Button>
+              <Button onClick={() => navigate('/console/tasks')}>返回列表</Button>
+              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务已刷新')}>刷新</Button>
+              <Button theme=”solid” type=”primary” onClick={() => navigate(statusToActionRoute(activeDataset.status))}>{nextActionLabel(activeDataset.status)}</Button>
             </>
           }
         />
 
-        <Card className="console-focus-card" bodyStyle={{ padding: 24 }}>
-          <div className="console-workbench-hero">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Tag color="blue">任务主题：{activeDataset.rootKeyword}</Tag>
-                <Tag color="cyan">当前阶段：{currentStageLabel}</Tag>
-                <Tag color="green">完成进度：{progressValue}%</Tag>
-              </div>
-              <Title heading={3} className="!mb-0 mt-4">当前任务工作台</Title>
-              <Text className="mt-2 block console-caption">先看状态，再按生命周期、抽检和交付推进。</Text>
-            </div>
-            <div className="console-workbench-hero-actions">
-              <Button theme="solid" type="primary" onClick={() => document.getElementById('stage-lifecycle')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{nextActionLabel(activeDataset.status)}</Button>
-              <Button onClick={() => document.getElementById('stage-quality')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>查看质量抽检</Button>
-              <Button onClick={() => document.getElementById('stage-assets')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>查看导出资产</Button>
-            </div>
+        <Card className=”console-panel” bodyStyle={{ padding: 20 }}>
+          <div className=”flex flex-wrap items-center gap-2”>
+            <Tag color=”blue”>{currentStageLabel}</Tag>
+            <Tag color=”cyan”>进度 {progressValue}%</Tag>
+            {queueDepth > 0 ? <Tag color=”orange”>排队 {queueDepth}</Tag> : null}
+            <Tag color=”grey”>ETA: {activeEta}</Tag>
+            <Tag color=”grey”>更新 {formatTime(activeDataset.updatedAt)}</Tag>
           </div>
-          <div className="console-workbench-stat-grid mt-5">
-            {workbenchStats.map((item) => (
-              <div key={item.label} className="console-workbench-stat-card">
-                <Text className="console-caption">{item.label}</Text>
-                <div className="console-stat-value mt-2">{item.value}</div>
-                <Text className="mt-2 block console-caption">{item.helper}</Text>
-              </div>
-            ))}
-          </div>
+          <Progress percent={progressValue} showInfo={false} stroke=”#3b82f6” className=”mt-4” />
+          <Text className=”mt-3 block console-caption”>{waitingReasonLabel(activeDataset.status, queueDepth)}</Text>
         </Card>
 
-        <div className="console-workbench-layout">
-          <div className="console-workbench-sidebar">
-            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-              <Title heading={5} className="!mb-0">任务上下文</Title>
-              <div className="mt-4 console-summary-grid">
-                <div className="console-summary-row"><span>任务 ID</span><Text strong>{activeDataset.id}</Text></div>
-                <div className="console-summary-row"><span>最新更新时间</span><Text strong>{formatTime(activeDataset.updatedAt)}</Text></div>
-                <div className="console-summary-row"><span>阶段 ETA</span><Text strong>{activeEta}</Text></div>
-                <div className="console-summary-row"><span>等待状态</span><Text strong>{waitingStateLabel(activeDataset.status, queueDepth)}</Text></div>
-              </div>
-            </Card>
-
-            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-              <Title heading={5} className="!mb-0">生命周期导航</Title>
-              <div className="mt-4 console-stack">
-                {stageCards.map((stage) => {
-                  const style = stageStateStyle(stage.state)
-                  return (
-                    <button
-                      key={stage.key}
-                      type="button"
-                      className={clsx('console-workbench-stage-nav', `is-${stage.state}`)}
-                      onClick={() => document.getElementById(`stage-${stage.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <Text strong>{stage.label}</Text>
-                        <Tag color={style.color}>{style.label}</Tag>
-                      </div>
-                      <Progress percent={style.percent} showInfo={false} stroke="#3b82f6" className="mt-3" />
-                      <Text className="mt-2 block console-caption">{stage.count} 条记录</Text>
-                    </button>
-                  )
-                })}
-              </div>
-            </Card>
-
-            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-              <Title heading={5} className="!mb-0">恢复与帮助</Title>
-              <div className="mt-4 console-next-step-list">
-                <Text className="console-caption">• 先刷新当前任务，确认是否仍处于排队或处理中。</Text>
-                <Text className="console-caption">• 先检查当前阶段输入是否完整，再决定是否重跑。</Text>
-                <Text className="console-caption">• 连续异常时进入帮助页按恢复指引处理。</Text>
-              </div>
-              <Space className="mt-4" wrap>
-                <Button onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务状态已刷新')}>立即刷新</Button>
-                <Button onClick={() => navigate('/console/help')}>恢复指引</Button>
-              </Space>
-            </Card>
-          </div>
-
-          <div className="console-workbench-main">
-            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-              <Title heading={4} className="!mb-0">当前动作</Title>
-              <Text className="mt-2 block console-caption">参考主流数据运营台做法，把动作、等待原因和风险提示固定在主工作区顶部。</Text>
-              <div className="mt-5 console-summary-grid">
-                <div className="console-summary-row"><span>下一步动作</span><Text strong>{nextActionLabel(activeDataset.status)}</Text></div>
-                <div className="console-summary-row"><span>等待说明</span><Text strong>{waitingReasonLabel(activeDataset.status, queueDepth)}</Text></div>
-                <div className="console-summary-row"><span>刷新建议</span><Text strong>{refreshExpectationLabel(activeDataset.status, queueDepth)}</Text></div>
-                <div className="console-summary-row"><span>进度保障</span><Text strong>{trustMessageLabel(activeDataset.status)}</Text></div>
-              </div>
-            </Card>
-
-            <section id="stage-lifecycle" className="console-stack">
-              <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
-                <Title heading={4} className="!mb-0">生命周期主轴</Title>
-                <Text className="mt-2 block console-caption">按“主题结构 → 问题 → 答案 → 评分 → 导出”串起整个任务，不删功能，只重排信息密度。</Text>
-                <div className="mt-5 console-stack">
-                  {stageCards.map((stage) => {
-                    const style = stageStateStyle(stage.state)
-                    return (
-                      <div key={stage.key} id={`stage-${stage.key}`} className="console-workbench-stage-card">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <Text strong>{stage.label}</Text>
-                            <Text className="mt-2 block console-caption">{stage.summary}</Text>
-                          </div>
-                          <Space>
-                            <Tag color={style.color}>{style.label}</Tag>
-                            <Tag color="blue">{stage.count} 条记录</Tag>
-                          </Space>
-                        </div>
-                        <Progress percent={style.percent} showInfo={false} stroke="#3b82f6" className="mt-4" />
-                      </div>
-                    )
-                  })}
+        <div className=”console-card-grid-2”>
+          {stageCards.map((stage) => {
+            const style = stageStateStyle(stage.state)
+            return (
+              <Card
+                key={stage.key}
+                className=”console-panel”
+                bodyStyle={{ padding: 18, cursor: 'pointer' }}
+                onClick={() => navigate(stage.route)}
+              >
+                <div className=”flex items-center justify-between gap-3”>
+                  <Text strong>{stage.label}</Text>
+                  <Tag color={style.color}>{style.label}</Tag>
                 </div>
+                <Progress percent={style.percent} showInfo={false} stroke=”#3b82f6” className=”mt-3” />
+                <Text className=”mt-3 block console-caption”>{stage.summary}</Text>
+                <Text className=”mt-1 block console-caption”>{stage.count} 条记录 · 点击进入</Text>
               </Card>
-            </section>
-
-            <section id="stage-quality" className="console-card-grid-2">
-              <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-                <Title heading={4} className="!mb-0">质量抽检</Title>
-                <Text className="mt-2 block console-caption">把抽检入口和风险信号放在主工作区，减少阶段跳转。</Text>
-                <div className="mt-5 console-summary-grid">
-                  <div className="console-summary-row"><span>问题抽检</span><Space><Tag color={warningQuestionCount > 0 ? 'orange' : 'green'}>{warningQuestionCount > 0 ? `${warningQuestionCount} 条待关注` : '状态正常'}</Tag><Button size="small" onClick={() => navigate('/console/questions')}>去审核</Button></Space></div>
-                  <div className="console-summary-row"><span>答案抽检</span><Space><Tag color={missingReasoningCount > 0 ? 'orange' : 'green'}>{missingReasoningCount > 0 ? `${missingReasoningCount} 条缺少思考` : '结构完整'}</Tag><Button size="small" onClick={() => navigate('/console/reasoning')}>去审核</Button></Space></div>
-                  <div className="console-summary-row"><span>评分复核</span><Space><Tag color={lowRewardCount > 0 ? 'red' : 'green'}>{lowRewardCount > 0 ? `${lowRewardCount} 条低分` : '评分稳定'}</Tag><Button size="small" onClick={() => navigate('/console/rewards')}>去审核</Button></Space></div>
-                  <div className="console-summary-row"><span>交付复核</span><Space><Tag color={deliveryArtifactCount > 0 ? 'green' : 'grey'}>{deliveryArtifactCount > 0 ? `${deliveryArtifactCount} 个可交付` : '暂无交付包'}</Tag><Button size="small" onClick={() => navigate('/console/exports')}>去审核</Button></Space></div>
-                </div>
-              </Card>
-
-              <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-                <Title heading={4} className="!mb-0">风险与恢复</Title>
-                <Text className="mt-2 block console-caption">把等待与恢复提示放在质量动作旁边。</Text>
-                <div className="mt-5 console-summary-grid">
-                  <div className="console-summary-row"><span>等待任务数</span><Text strong>{queueDepth}</Text></div>
-                  <div className="console-summary-row"><span>导出状态</span><Text strong>{exportDeliveryPending ? '导出落盘中' : '按当前阶段推进'}</Text></div>
-                  <div className="console-summary-row"><span>建议动作</span><Text strong>{nextActionLabel(activeDataset.status)}</Text></div>
-                  <div className="console-summary-row"><span>恢复入口</span><Button size="small" onClick={() => navigate('/console/help')}>查看帮助</Button></div>
-                </div>
-              </Card>
-            </section>
-
-            <section id="stage-assets">
-              <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-                <Title heading={4} className="!mb-0">导出与交付资产</Title>
-                <Text className="mt-2 block console-caption">保留原有导出功能，但在任务页中直接暴露交付状态与资产规模，符合数据资产平台常见布局。</Text>
-                <div className="mt-5 console-card-grid-3">
-                  <div className="console-workbench-stat-card">
-                    <Text className="console-caption">最新交付</Text>
-                    <div className="console-stat-value mt-2">{deliveryArtifactCount}</div>
-                    <Text className="mt-2 block console-caption">优先下载并交付下游</Text>
-                  </div>
-                  <div className="console-workbench-stat-card">
-                    <Text className="console-caption">版本复核</Text>
-                    <div className="console-stat-value mt-2">{reviewArtifactCount}</div>
-                    <Text className="mt-2 block console-caption">用于内部复核与抽样</Text>
-                  </div>
-                  <div className="console-workbench-stat-card">
-                    <Text className="console-caption">其他格式</Text>
-                    <div className="console-stat-value mt-2">{otherArtifactCount}</div>
-                    <Text className="mt-2 block console-caption">按需确认兼容性</Text>
-                  </div>
-                </div>
-                <div className="mt-5 console-summary-grid">
-                  <div className="console-summary-row"><span>默认交付视图</span><Text strong>{deliveryArtifactCount > 0 ? '优先显示最新交付包' : '等待生成交付包'}</Text></div>
-                  <div className="console-summary-row"><span>版本策略</span><Text strong>先看最新版本，再进入导出中心查看历史版本与文件详情</Text></div>
-                  <div className="console-summary-row"><span>交付说明</span><Text strong>{reviewArtifactCount > 0 ? '存在复核资料，建议先内部确认再对外交付' : '当前可直接以交付包为主继续推进'}</Text></div>
-                </div>
-                <Space className="mt-5" wrap>
-                  <Button theme="solid" type="primary" onClick={() => navigate('/console/exports')}>进入导出中心</Button>
-                  <Button onClick={() => document.getElementById('stage-lifecycle')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>返回生命周期</Button>
-                </Space>
-              </Card>
-            </section>
-          </div>
-
-          <div className="console-workbench-delivery">
-            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-              <Title heading={5} className="!mb-0">最新交付</Title>
-              <Text className="mt-2 block console-caption">交付资产持续可见，但不打断当前处理。</Text>
-              <div className="mt-4 console-summary-grid">
-                <div className="console-summary-row"><span>最新交付包</span><Text strong>{deliveryArtifactCount > 0 ? `${deliveryArtifactCount} 个可交付` : '暂无交付包'}</Text></div>
-                <div className="console-summary-row"><span>版本复核</span><Text strong>{reviewArtifactCount > 0 ? `${reviewArtifactCount} 个复核资产` : '暂无复核资产'}</Text></div>
-                <div className="console-summary-row"><span>导出状态</span><Text strong>{exportDeliveryPending ? '导出落盘中' : '可按当前阶段推进'}</Text></div>
-                <div className="console-summary-row"><span>版本策略</span><Text strong>优先最新版本</Text></div>
-              </div>
-              <Space className="mt-4" wrap>
-                <Button theme="solid" type="primary" onClick={() => navigate('/console/exports')}>进入导出中心</Button>
-                <Button onClick={() => document.getElementById('stage-assets')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>查看资产区</Button>
-              </Space>
-            </Card>
-
-            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-              <Title heading={5} className="!mb-0">交付判断</Title>
-              <div className="mt-4 console-summary-grid">
-                <div className="console-summary-row"><span>默认交付视图</span><Text strong>{deliveryArtifactCount > 0 ? '先看最新交付包' : '等待导出产物'}</Text></div>
-                <div className="console-summary-row"><span>对外交付前</span><Text strong>{reviewArtifactCount > 0 ? '先完成内部复核' : '可直接继续交付'}</Text></div>
-                <div className="console-summary-row"><span>其他格式</span><Text strong>{otherArtifactCount > 0 ? `${otherArtifactCount} 个待确认` : '无额外风险'}</Text></div>
-              </div>
-            </Card>
-          </div>
+            )
+          })}
         </div>
+
+        <Card className=”console-panel” bodyStyle={{ padding: 20 }}>
+          <Title heading={5} className=”!mb-0”>质量与交付</Title>
+          <div className=”console-card-grid-2 mt-4”>
+            <div className=”console-summary-grid”>
+              <div className=”console-summary-row”>
+                <span>问题</span>
+                <Space>
+                  <Tag color={warningQuestionCount > 0 ? 'orange' : 'green'}>{warningQuestionCount > 0 ? `${warningQuestionCount} 待关注` : '正常'}</Tag>
+                  <Button size=”small” onClick={() => navigate('/console/questions')}>查看</Button>
+                </Space>
+              </div>
+              <div className=”console-summary-row”>
+                <span>答案</span>
+                <Space>
+                  <Tag color={missingReasoningCount > 0 ? 'orange' : 'green'}>{missingReasoningCount > 0 ? `${missingReasoningCount} 缺失` : '完整'}</Tag>
+                  <Button size=”small” onClick={() => navigate('/console/reasoning')}>查看</Button>
+                </Space>
+              </div>
+            </div>
+            <div className=”console-summary-grid”>
+              <div className=”console-summary-row”>
+                <span>评分</span>
+                <Space>
+                  <Tag color={lowRewardCount > 0 ? 'red' : 'green'}>{lowRewardCount > 0 ? `${lowRewardCount} 低分` : '稳定'}</Tag>
+                  <Button size=”small” onClick={() => navigate('/console/rewards')}>查看</Button>
+                </Space>
+              </div>
+              <div className=”console-summary-row”>
+                <span>交付包</span>
+                <Space>
+                  <Tag color={deliveryArtifactCount > 0 ? 'green' : 'grey'}>{deliveryArtifactCount > 0 ? `${deliveryArtifactCount} 个` : '待生成'}</Tag>
+                  <Button size=”small” onClick={() => navigate('/console/exports')}>查看</Button>
+                </Space>
+              </div>
+            </div>
+          </div>
+          <Space className=”mt-4” wrap>
+            <Button onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务状态已刷新')}>刷新状态</Button>
+            <Button onClick={() => navigate('/console/help')}>恢复指引</Button>
+            {deliveryArtifactCount > 0 ? <Button theme=”solid” type=”primary” onClick={() => navigate('/console/exports')}>进入导出中心</Button> : null}
+          </Space>
+        </Card>
       </div>
     )
   }
@@ -3512,110 +3444,226 @@ export default function App() {
         path="/*"
         element={
           user ? (
-            <Layout className="app-layout">
-              <Header className="console-header-shell" style={{ padding: 0, position: 'fixed', inset: '0 0 auto 0', zIndex: 50 }}>
-                <div className="mx-auto flex h-16 items-center justify-between gap-4 px-4 lg:px-6">
-                  <div className="flex items-center gap-3">
-                    <Button icon={<LayoutDashboard size={16} />} theme="borderless" onClick={() => setSidebarCollapsed((current) => !current)} />
-                    <Avatar color="blue" size="small">L</Avatar>
-                    <div>
-                      <div className="font-semibold">企业数据工厂</div>
-                      <div className="text-xs console-nav-caption">{visiblePages.find((page) => page.route === activeNav)?.caption ?? '任务推进与交付'}</div>
-                    </div>
+            /* ── Appsmith IDE-style three-panel layout ── */
+            <div className="as-app-frame">
+              {/* Top header bar */}
+              <div className="as-header-bar">
+                <div className="flex items-center gap-3" style={{ minWidth: 0 }}>
+                  <div style={{ width: 20, height: 20, borderRadius: 5, background: '#f86a2b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>L</div>
+                  <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--as-text)', whiteSpace: 'nowrap' }}>企业数据工厂</span>
+                  <span style={{ color: 'var(--as-text2)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    / {visiblePages.find((page) => page.route === activeNav)?.label ?? '工作台'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Tag color={isAdmin ? 'green' : 'blue'} style={{ borderRadius: 3 }}>{isAdmin ? '管理员' : '普通用户'}</Tag>
+                  <Text style={{ fontSize: 12, color: 'var(--as-text2)' }}>{user.email}</Text>
+                  <Button size="small" icon={<RefreshCw size={13} />} loading={workspaceLoading} onClick={() => void loadBootstrap('控制台数据已刷新')} theme="borderless" style={{ color: 'var(--as-text2)' }} />
+                  <Button size="small" icon={<LogOut size={13} />} onClick={() => void handleLogout()} theme="borderless" style={{ color: 'var(--as-text2)' }}>退出</Button>
+                </div>
+              </div>
+
+              {/* Secondary toolbar with page tabs */}
+              <div className="as-toolbar-bar">
+                <Button size="small" icon={<LayoutDashboard size={13} />} theme="borderless" onClick={() => setSidebarCollapsed((c) => !c)} style={{ color: 'var(--as-text2)', padding: '0 6px' }} />
+                <div className="as-toolbar-sep" />
+                {visibleUserPages.map((page) => (
+                  <button
+                    key={page.route}
+                    className={`as-toolbar-tab${activeNav === page.route ? ' active' : ''}`}
+                    onClick={() => navigate(page.route)}
+                  >
+                    <page.icon size={13} />
+                    {page.label}
+                  </button>
+                ))}
+                {isAdmin && (
+                  <>
+                    <div className="as-toolbar-sep" />
+                    {adminPages.map((page) => (
+                      <button
+                        key={page.route}
+                        className={`as-toolbar-tab${activeNav === page.route ? ' active' : ''}`}
+                        onClick={() => navigate(page.route)}
+                      >
+                        <page.icon size={13} />
+                        {page.label}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+
+              {/* Three-panel body */}
+              <div className="as-panels">
+                {/* Left panel: task/stage tree */}
+                <div className={`as-left-panel${sidebarCollapsed ? ' collapsed' : ''}`}>
+                  <div className="as-panel-header">
+                    <span>任务列表</span>
+                    <span style={{ fontSize: 11, opacity: 0.7 }}>{runtime?.datasetCount ?? 0}</span>
                   </div>
-                  <div className="console-header-actions flex items-center gap-3">
-                    <Tag color={isAdmin ? 'green' : 'blue'}>{isAdmin ? '管理员' : '普通用户'}</Tag>
-                    <Text>{user.email}</Text>
-                    <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('控制台数据已刷新')} />
-                    <Button icon={<LogOut size={16} />} onClick={() => void handleLogout()}>退出</Button>
+                  <div className="as-panel-scroll">
+                    <div className="as-tree-section">
+                      <div className="as-tree-section-label">业务流程</div>
+                      {visibleUserPages.map((page) => (
+                        <div
+                          key={page.route}
+                          className={`as-tree-item${activeNav === page.route ? ' active' : ''}`}
+                          onClick={() => navigate(page.route)}
+                        >
+                          <page.icon size={14} className="flex-shrink-0" />
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{page.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {isAdmin && (
+                      <div className="as-tree-section">
+                        <div className="as-tree-section-label">系统设置</div>
+                        {adminPages.map((page) => (
+                          <div
+                            key={page.route}
+                            className={`as-tree-item${activeNav === page.route ? ' active' : ''}`}
+                            onClick={() => navigate(page.route)}
+                          >
+                            <page.icon size={14} className="flex-shrink-0" />
+                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{page.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="as-panel-footer">
+                    <button
+                      className="flex w-full items-center justify-center gap-2 rounded"
+                      style={{ height: 32, background: '#f86a2b', color: 'white', border: 'none', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}
+                      onClick={() => navigate('/console/planning')}
+                    >
+                      <CirclePlus size={13} /> 新建任务
+                    </button>
+                    <button
+                      className="flex w-full items-center justify-center gap-2 rounded"
+                      style={{ height: 28, background: 'rgba(255,255,255,0.06)', color: 'var(--as-text)', border: '1px solid var(--as-border)', fontSize: 12, cursor: 'pointer' }}
+                      onClick={() => navigate('/console/tasks')}
+                    >
+                      我的任务
+                    </button>
                   </div>
                 </div>
-              </Header>
-              <Layout style={{ paddingTop: 64 }}>
-                <Sider className="app-sider" style={{ position: 'fixed', top: 64, left: 0, border: 'none', width: 'var(--sidebar-current-width)', zIndex: 30 }}>
-                  <div className="console-nav-shell h-full px-3 py-4">
-                    <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
-                      <Text strong>工作入口</Text>
-                      <Text className="mt-2 block console-caption">先新建任务，或回到我的任务。</Text>
-                      <Space className="mt-4" wrap>
-                        <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
-                        <Button onClick={() => navigate('/console/tasks')}>我的任务</Button>
-                      </Space>
-                    </Card>
-                    <Nav
-                      bodyStyle={{ paddingBottom: 12 }}
-                      selectedKeys={[activeNav]}
-                      items={[
-                        {
-                          itemKey: 'primary-group',
-                          text: '业务导航',
-                          items: visibleUserPages.map((page) => ({
-                            itemKey: page.route,
-                            text: page.label,
-                            icon: <page.icon size={16} />,
-                          })),
-                        },
-                        ...(isAdmin
-                          ? [
-                              {
-                                itemKey: 'admin-group',
-                                text: '系统设置',
-                                items: adminPages.map((page) => ({
-                                  itemKey: page.route,
-                                  text: page.label,
-                                  icon: <page.icon size={16} />,
-                                })),
-                              },
-                            ]
-                          : []),
-                      ]}
-                      onSelect={(data) => navigate(String(data.itemKey))}
-                      footer={
-                        <div className="px-3 pb-3">
-                          <Card className="console-sidebar-card" bodyStyle={{ padding: 14 }}>
-                            <div className="console-summary-grid">
-                              <div className="console-summary-row"><span>任务总数</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>当前建议</span><Text strong>{runtime?.datasetCount ? '回到我的任务' : '新建任务'}</Text></div>
-                            </div>
-                          </Card>
-                        </div>
-                      }
-                    />
+
+                {/* Center canvas */}
+                <div className="as-canvas">
+                  {trustSignal ? (
+                    <div className="mb-4" style={{ background: 'rgba(245,200,66,0.08)', border: '1px solid rgba(245,200,66,0.25)', borderRadius: 5, padding: '10px 14px' }}>
+                      <TrustSignalCard signal={trustSignal} onDismiss={() => setTrustSignal(null)} onNavigate={(route) => navigate(route)} />
+                    </div>
+                  ) : null}
+                  <Routes>
+                    <Route path="/console/home" element={renderOverview()} />
+                    <Route path="/console/overview" element={<Navigate to="/console/home" replace />} />
+                    <Route path="/console/tasks" element={renderTaskIndex()} />
+                    <Route path="/console/tasks/:taskId" element={renderTaskDetail()} />
+                    <Route path="/console/planning" element={renderPlanning()} />
+                    <Route path="/console/results" element={renderResultsHub()} />
+                    {isAdmin ? <Route path="/console/operations" element={renderOperations()} /> : null}
+                    <Route path="/console/domains" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/questions" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/reasoning" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/rewards" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/exports" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/help" element={renderHelp()} />
+                    {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
+                    <Route path="*" element={<Navigate to="/console/home" replace />} />
+                  </Routes>
+                </div>
+
+                {/* Right properties panel: status/context */}
+                <div className="as-right-panel">
+                  <div className="as-panel-header">
+                    <span>状态 / 上下文</span>
                   </div>
-                </Sider>
-                <Layout style={{ marginLeft: 'var(--sidebar-current-width)' }}>
-                  <Content style={{ padding: 24 }}>
-                    {trustSignal ? (
-                      <div className="mb-4">
-                        <TrustSignalCard signal={trustSignal} onDismiss={() => setTrustSignal(null)} onNavigate={(route) => navigate(route)} />
+                  <div style={{ flex: 1, overflowY: 'auto' }}>
+                    <div className="as-prop-group">
+                      <div className="as-prop-group-header">系统状态</div>
+                      <div className="as-prop-group-body">
+                        <div className="as-prop-row">
+                          <span className="as-prop-label">任务总数</span>
+                          <span className="as-prop-value">{runtime?.datasetCount ?? 0}</span>
+                        </div>
+                        <div className="as-prop-row">
+                          <span className="as-prop-label">题目数</span>
+                          <span className="as-prop-value">{runtime?.questionCount ?? 0}</span>
+                        </div>
+                        <div className="as-prop-row">
+                          <span className="as-prop-label">答案数</span>
+                          <span className="as-prop-value">{runtime?.reasoningCount ?? 0}</span>
+                        </div>
+                        <div className="as-prop-row">
+                          <span className="as-prop-label">交付文件</span>
+                          <span className="as-prop-value">{runtime?.artifactCount ?? 0}</span>
+                        </div>
+                        <div className="as-prop-row">
+                          <span className="as-prop-label">队列深度</span>
+                          <span className="as-prop-value">{runtime?.queueDepth ?? 0}</span>
+                        </div>
                       </div>
-                    ) : null}
-                    <Routes>
-                      <Route path="/console/home" element={renderOverview()} />
-                      <Route path="/console/overview" element={<Navigate to="/console/home" replace />} />
-                      <Route path="/console/tasks" element={renderTaskIndex()} />
-                      <Route path="/console/tasks/:taskId" element={renderTaskDetail()} />
-                      <Route path="/console/planning" element={renderPlanning()} />
-                      <Route path="/console/results" element={renderResultsHub()} />
-                      {isAdmin ? <Route path="/console/operations" element={renderOperations()} /> : null}
-                      <Route path="/console/domains" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/questions" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/reasoning" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/rewards" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/exports" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/help" element={renderHelp()} />
-                      {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
-                      <Route path="*" element={<Navigate to="/console/home" replace />} />
-                    </Routes>
-                  </Content>
-                </Layout>
-              </Layout>
-            </Layout>
+                    </div>
+                    {activeDataset && (
+                      <div className="as-prop-group">
+                        <div className="as-prop-group-header">当前任务</div>
+                        <div className="as-prop-group-body">
+                          <div className="as-prop-row">
+                            <span className="as-prop-label">主题</span>
+                            <span className="as-prop-value" style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeDataset.keyword}</span>
+                          </div>
+                          <div className="as-prop-row">
+                            <span className="as-prop-label">状态</span>
+                            <span className={`as-status-badge ${activeDataset.status.endsWith('_generated') || activeDataset.status === 'export_generated' ? 'green' : activeDataset.status.endsWith('_queued') ? 'blue' : activeDataset.status.includes('failed') ? 'red' : 'grey'}`}>
+                              {statusLabel(activeDataset.status)}
+                            </span>
+                          </div>
+                          <div className="as-prop-row">
+                            <span className="as-prop-label">进度</span>
+                            <span className="as-prop-value">{progressPercent(activeDataset.status)}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div className="as-prop-group">
+                      <div className="as-prop-group-header">当前页面</div>
+                      <div className="as-prop-group-body">
+                        <div className="as-prop-row">
+                          <span className="as-prop-label">路由</span>
+                          <span className="as-prop-value" style={{ fontSize: 11, fontFamily: 'monospace' }}>{activeNav}</span>
+                        </div>
+                        <div className="as-prop-row">
+                          <span className="as-prop-label">说明</span>
+                          <span className="as-prop-value" style={{ maxWidth: 120, textAlign: 'right', fontSize: 11 }}>
+                            {visiblePages.find((p) => p.route === activeNav)?.caption ?? '—'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="as-prop-group">
+                      <div className="as-prop-group-header">账户</div>
+                      <div className="as-prop-group-body">
+                        <div className="as-prop-row">
+                          <span className="as-prop-label">邮箱</span>
+                          <span className="as-prop-value" style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 11 }}>{user.email}</span>
+                        </div>
+                        <div className="as-prop-row">
+                          <span className="as-prop-label">角色</span>
+                          <span className={`as-status-badge ${isAdmin ? 'green' : 'blue'}`}>{isAdmin ? '管理员' : '普通用户'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           ) : (
             <Navigate to="/login" replace />
           )
