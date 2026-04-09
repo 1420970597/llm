@@ -334,6 +334,236 @@ a {
   min-height: calc(100vh - 120px);
 }
 
+
+/* ===== material-dashboard-react layout ===== */
+.md-dashboard {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: #f0f2f5;
+}
+
+.md-sidenav {
+  width: 250px;
+  height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 100;
+  background: linear-gradient(195deg, #42424a 0%, #191919 100%);
+  border-radius: 0 16px 16px 0;
+  margin: 16px 0 16px 16px;
+  height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.md-sidenav.mini {
+  width: 72px;
+}
+
+.md-sidenav-brand {
+  display: flex;
+  align-items: center;
+  padding: 24px 20px 12px;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.md-sidenav-brand-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: linear-gradient(195deg, #49a3f1, #1A73E8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.md-sidenav-brand-icon svg {
+  color: #fff;
+  width: 20px;
+  height: 20px;
+}
+
+.md-sidenav-brand-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+}
+
+.md-sidenav.mini .md-sidenav-brand-text {
+  display: none;
+}
+
+.md-sidenav.mini .md-sidenav-brand {
+  justify-content: center;
+  padding: 24px 0 12px;
+}
+
+.md-sidenav-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+
+.md-sidenav-nav::-webkit-scrollbar {
+  width: 0;
+}
+
+.md-nav-item {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 16px;
+  margin: 3px 0;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.md-nav-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.md-nav-item.active {
+  background: linear-gradient(195deg, #49a3f1, #1A73E8);
+  color: #fff;
+  box-shadow: 0 4px 6px -1px rgba(26, 115, 232, 0.4);
+}
+
+.md-nav-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.md-nav-item.active .md-nav-item-icon {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.md-nav-item-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.md-sidenav.mini .md-nav-item {
+  padding: 0 8px;
+  justify-content: center;
+}
+
+.md-sidenav.mini .md-nav-item span {
+  display: none;
+}
+
+.md-main {
+  margin-left: 282px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 16px 16px 16px 0;
+  transition: margin-left 0.3s ease;
+}
+
+.md-sidenav.mini ~ .md-main {
+  margin-left: 104px;
+}
+
+.md-topnav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.md-topnav-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.md-topnav-breadcrumb {
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+.md-topnav-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--semi-color-text-0);
+  text-transform: capitalize;
+}
+
+.md-topnav-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.md-toggle-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--semi-color-text-1);
+  transition: background 0.2s;
+}
+
+.md-toggle-btn:hover {
+  background: rgba(0,0,0,0.04);
+}
+
+.md-toggle-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.md-content {
+  flex: 1;
+  overflow-y: auto;
+  border-radius: 12px;
+}
+
+.md-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+
 @media (max-width: 1200px) {
   .console-card-grid-4,
   .console-card-grid-3,
