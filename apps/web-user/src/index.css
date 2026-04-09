@@ -334,6 +334,285 @@ a {
   min-height: calc(100vh - 120px);
 }
 
+
+/* ===== vue-element-admin layout ===== */
+.vea-wrapper {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--semi-color-bg-0);
+}
+
+.vea-sidebar {
+  width: 210px;
+  height: 100vh;
+  background: #304156;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 100;
+  transition: width 0.28s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.vea-sidebar.collapsed {
+  width: 54px;
+}
+
+.vea-sidebar-logo {
+  height: 50px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  background: #263445;
+  gap: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.vea-sidebar-logo-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #409EFF 0%, #2b7de9 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.vea-sidebar-logo-icon svg {
+  color: #fff;
+  width: 18px;
+  height: 18px;
+}
+
+.vea-sidebar-logo-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.vea-sidebar.collapsed .vea-sidebar-logo-text {
+  display: none;
+}
+
+.vea-sidebar.collapsed .vea-sidebar-logo {
+  justify-content: center;
+  padding: 0;
+}
+
+.vea-sidebar-menu {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 0;
+}
+
+.vea-sidebar-menu::-webkit-scrollbar {
+  width: 0;
+}
+
+.vea-menu-item {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 20px;
+  margin: 2px 0;
+  color: #bfcbd9;
+  cursor: pointer;
+  transition: all 0.15s;
+  gap: 10px;
+  text-decoration: none;
+  font-size: 13px;
+  position: relative;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.vea-menu-item:hover {
+  background: #263445;
+  color: #fff;
+}
+
+.vea-menu-item.active {
+  background: #409EFF;
+  color: #fff;
+}
+
+.vea-menu-item svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.vea-sidebar.collapsed .vea-menu-item {
+  padding: 0 18px;
+  justify-content: center;
+}
+
+.vea-sidebar.collapsed .vea-menu-item span {
+  display: none;
+}
+
+.vea-main-container {
+  margin-left: 210px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  transition: margin-left 0.28s ease;
+  background: #f0f2f5;
+}
+
+.vea-sidebar.collapsed ~ .vea-main-container {
+  margin-left: 54px;
+}
+
+.vea-fixed-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+}
+
+.vea-navbar {
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.vea-navbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vea-hamburger {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  transition: background 0.2s;
+  color: var(--semi-color-text-0);
+}
+
+.vea-hamburger:hover {
+  background: #f5f5f5;
+}
+
+.vea-hamburger svg {
+  width: 18px;
+  height: 18px;
+}
+
+.vea-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--semi-color-text-2);
+}
+
+.vea-breadcrumb-item {
+  color: var(--semi-color-text-0);
+  font-weight: 500;
+}
+
+.vea-navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vea-tags-view {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 4px;
+  border-bottom: 1px solid #d8dce5;
+  background: #fff;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.vea-tags-view::-webkit-scrollbar {
+  height: 0;
+}
+
+.vea-tag-item {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  border: 1px solid #d8dce5;
+  border-radius: 2px;
+  color: #495060;
+  background: #fff;
+  cursor: pointer;
+  gap: 4px;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.vea-tag-item:hover {
+  color: #409EFF;
+}
+
+.vea-tag-item.active {
+  background: #409EFF;
+  border-color: #409EFF;
+  color: #fff;
+}
+
+.vea-tag-item.active::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+  margin-right: 2px;
+}
+
+.vea-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.vea-user-dropdown {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.vea-user-dropdown:hover {
+  background: #f5f5f5;
+}
+
+.vea-user-name {
+  font-size: 13px;
+  color: var(--semi-color-text-0);
+}
+
+
 @media (max-width: 1200px) {
   .console-card-grid-4,
   .console-card-grid-3,
