@@ -792,7 +792,7 @@ export default function App() {
   const [bootstrapLoading, setBootstrapLoading] = useState(false)
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed] = useState(false)
   const [user, setUser] = useState<User | null>(null)
 
   const [providers, setProviders] = useState<Provider[]>([])
@@ -3482,6 +3482,9 @@ export default function App() {
     </div>
   )
 
+  const [rightPanelOpen, setRightPanelOpen] = useState(true)
+  const activePage = visiblePages.find((page) => page.route === activeNav)
+
   if (sessionLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -3512,110 +3515,213 @@ export default function App() {
         path="/*"
         element={
           user ? (
-            <Layout className="app-layout">
-              <Header className="console-header-shell" style={{ padding: 0, position: 'fixed', inset: '0 0 auto 0', zIndex: 50 }}>
-                <div className="mx-auto flex h-16 items-center justify-between gap-4 px-4 lg:px-6">
-                  <div className="flex items-center gap-3">
-                    <Button icon={<LayoutDashboard size={16} />} theme="borderless" onClick={() => setSidebarCollapsed((current) => !current)} />
-                    <Avatar color="blue" size="small">L</Avatar>
-                    <div>
-                      <div className="font-semibold">企业数据工厂</div>
-                      <div className="text-xs console-nav-caption">{visiblePages.find((page) => page.route === activeNav)?.caption ?? '任务推进与交付'}</div>
-                    </div>
+            <div className="ld-shell">
+              {/* 左侧 48px 图标导航栏 */}
+              <nav className="ld-icon-nav">
+                <div className="ld-icon-nav-top">
+                  <div className="ld-logo-icon" title="企业数据工厂">
+                    <Avatar color="blue" size="extra-small">L</Avatar>
                   </div>
-                  <div className="console-header-actions flex items-center gap-3">
+                  <div className="ld-nav-divider" />
+                  {visibleUserPages.map((page) => (
+                    <button
+                      key={page.route}
+                      className={clsx('ld-nav-btn', activeNav === page.route && 'ld-nav-btn--active')}
+                      title={page.label}
+                      onClick={() => navigate(page.route)}
+                    >
+                      <page.icon size={18} strokeWidth={1.8} />
+                    </button>
+                  ))}
+                  {isAdmin && (
+                    <>
+                      <div className="ld-nav-divider" />
+                      {adminPages.map((page) => (
+                        <button
+                          key={page.route}
+                          className={clsx('ld-nav-btn', activeNav === page.route && 'ld-nav-btn--active')}
+                          title={page.label}
+                          onClick={() => navigate(page.route)}
+                        >
+                          <page.icon size={18} strokeWidth={1.8} />
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
+                <div className="ld-icon-nav-bottom">
+                  <button
+                    className="ld-nav-btn"
+                    title="刷新数据"
+                    onClick={() => void loadBootstrap('控制台数据已刷新')}
+                  >
+                    <RefreshCw size={18} strokeWidth={1.8} className={bootstrapLoading ? 'ld-spin' : ''} />
+                  </button>
+                  <button
+                    className={clsx('ld-nav-btn', rightPanelOpen && 'ld-nav-btn--active')}
+                    title="上下文面板"
+                    onClick={() => setRightPanelOpen((v) => !v)}
+                  >
+                    <Network size={18} strokeWidth={1.8} />
+                  </button>
+                  <button
+                    className="ld-nav-btn"
+                    title={`退出 ${user.email}`}
+                    onClick={() => void handleLogout()}
+                  >
+                    <LogOut size={18} strokeWidth={1.8} />
+                  </button>
+                </div>
+              </nav>
+
+              {/* 主内容区 */}
+              <main className="ld-main">
+                {/* 顶部固定操作栏 */}
+                <div className="ld-topbar">
+                  <div className="ld-topbar-left">
+                    <span className="ld-topbar-title">{activePage?.label ?? '企业数据工厂'}</span>
+                    <span className="ld-topbar-caption">{activePage?.caption ?? '任务推进与交付'}</span>
+                  </div>
+                  <div className="ld-topbar-right">
                     <Tag color={isAdmin ? 'green' : 'blue'}>{isAdmin ? '管理员' : '普通用户'}</Tag>
-                    <Text>{user.email}</Text>
-                    <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('控制台数据已刷新')} />
-                    <Button icon={<LogOut size={16} />} onClick={() => void handleLogout()}>退出</Button>
+                    <Button theme="solid" type="primary" size="small" icon={<CirclePlus size={14} />} onClick={() => navigate('/console/planning')}>
+                      新建任务
+                    </Button>
+                    <Button size="small" onClick={() => navigate('/console/tasks')}>我的任务</Button>
                   </div>
                 </div>
-              </Header>
-              <Layout style={{ paddingTop: 64 }}>
-                <Sider className="app-sider" style={{ position: 'fixed', top: 64, left: 0, border: 'none', width: 'var(--sidebar-current-width)', zIndex: 30 }}>
-                  <div className="console-nav-shell h-full px-3 py-4">
-                    <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
-                      <Text strong>工作入口</Text>
-                      <Text className="mt-2 block console-caption">先新建任务，或回到我的任务。</Text>
-                      <Space className="mt-4" wrap>
-                        <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
-                        <Button onClick={() => navigate('/console/tasks')}>我的任务</Button>
-                      </Space>
-                    </Card>
-                    <Nav
-                      bodyStyle={{ paddingBottom: 12 }}
-                      selectedKeys={[activeNav]}
-                      items={[
-                        {
-                          itemKey: 'primary-group',
-                          text: '业务导航',
-                          items: visibleUserPages.map((page) => ({
-                            itemKey: page.route,
-                            text: page.label,
-                            icon: <page.icon size={16} />,
-                          })),
-                        },
-                        ...(isAdmin
-                          ? [
-                              {
-                                itemKey: 'admin-group',
-                                text: '系统设置',
-                                items: adminPages.map((page) => ({
-                                  itemKey: page.route,
-                                  text: page.label,
-                                  icon: <page.icon size={16} />,
-                                })),
-                              },
-                            ]
-                          : []),
-                      ]}
-                      onSelect={(data) => navigate(String(data.itemKey))}
-                      footer={
-                        <div className="px-3 pb-3">
-                          <Card className="console-sidebar-card" bodyStyle={{ padding: 14 }}>
-                            <div className="console-summary-grid">
-                              <div className="console-summary-row"><span>任务总数</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>当前建议</span><Text strong>{runtime?.datasetCount ? '回到我的任务' : '新建任务'}</Text></div>
-                            </div>
-                          </Card>
-                        </div>
-                      }
-                    />
+
+                {/* 页面内容 */}
+                <div className="ld-content">
+                  {trustSignal ? (
+                    <div className="mb-4">
+                      <TrustSignalCard signal={trustSignal} onDismiss={() => setTrustSignal(null)} onNavigate={(route) => navigate(route)} />
+                    </div>
+                  ) : null}
+                  <Routes>
+                    <Route path="/console/home" element={renderOverview()} />
+                    <Route path="/console/overview" element={<Navigate to="/console/home" replace />} />
+                    <Route path="/console/tasks" element={renderTaskIndex()} />
+                    <Route path="/console/tasks/:taskId" element={renderTaskDetail()} />
+                    <Route path="/console/planning" element={renderPlanning()} />
+                    <Route path="/console/results" element={renderResultsHub()} />
+                    {isAdmin ? <Route path="/console/operations" element={renderOperations()} /> : null}
+                    <Route path="/console/domains" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/questions" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/reasoning" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/rewards" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/exports" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/help" element={renderHelp()} />
+                    {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
+                    <Route path="*" element={<Navigate to="/console/home" replace />} />
+                  </Routes>
+                </div>
+              </main>
+
+              {/* 右侧上下文面板 */}
+              {rightPanelOpen && (
+                <aside className="ld-right-panel">
+                  <div className="ld-rp-header">
+                    <span className="ld-rp-title">任务上下文</span>
+                    <button className="ld-rp-close" onClick={() => setRightPanelOpen(false)} title="收起面板">
+                      <Network size={14} strokeWidth={1.8} />
+                    </button>
                   </div>
-                </Sider>
-                <Layout style={{ marginLeft: 'var(--sidebar-current-width)' }}>
-                  <Content style={{ padding: 24 }}>
-                    {trustSignal ? (
-                      <div className="mb-4">
-                        <TrustSignalCard signal={trustSignal} onDismiss={() => setTrustSignal(null)} onNavigate={(route) => navigate(route)} />
-                      </div>
-                    ) : null}
-                    <Routes>
-                      <Route path="/console/home" element={renderOverview()} />
-                      <Route path="/console/overview" element={<Navigate to="/console/home" replace />} />
-                      <Route path="/console/tasks" element={renderTaskIndex()} />
-                      <Route path="/console/tasks/:taskId" element={renderTaskDetail()} />
-                      <Route path="/console/planning" element={renderPlanning()} />
-                      <Route path="/console/results" element={renderResultsHub()} />
-                      {isAdmin ? <Route path="/console/operations" element={renderOperations()} /> : null}
-                      <Route path="/console/domains" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/questions" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/reasoning" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/rewards" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/exports" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/help" element={renderHelp()} />
-                      {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
-                      <Route path="*" element={<Navigate to="/console/home" replace />} />
-                    </Routes>
-                  </Content>
-                </Layout>
-              </Layout>
-            </Layout>
+                  <div className="ld-rp-body">
+                    {activeDataset ? (
+                      <>
+                        <div className="ld-rp-row">
+                          <span className="ld-rp-label">当前任务</span>
+                          <span className="ld-rp-value">{activeDataset.name}</span>
+                        </div>
+                        <div className="ld-rp-row">
+                          <span className="ld-rp-label">任务 ID</span>
+                          <span className="ld-rp-value">#{activeDataset.id}</span>
+                        </div>
+                        <div className="ld-rp-row">
+                          <span className="ld-rp-label">阶段状态</span>
+                          <span className="ld-rp-value">{exportDeliveryPending ? '导出收尾中' : statusLabel(activeDataset.status)}</span>
+                        </div>
+                        <div className="ld-rp-progress">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="ld-rp-label">完成进度</span>
+                            <span className="ld-rp-value">
+                              {activePipeline ? `${activePipeline.completionPercent}%` : `${progressPercent(activeDataset.status)}%`}
+                            </span>
+                          </div>
+                          <Progress
+                            percent={activePipeline ? activePipeline.completionPercent : progressPercent(activeDataset.status)}
+                            size="small"
+                            showInfo={false}
+                          />
+                        </div>
+                        <div className="ld-rp-row">
+                          <span className="ld-rp-label">ETA</span>
+                          <span className="ld-rp-value ld-rp-value--sm">{activeEta}</span>
+                        </div>
+                        <div className="ld-rp-row">
+                          <span className="ld-rp-label">下一步</span>
+                          <span className="ld-rp-value ld-rp-value--sm">{nextActionLabel(activeDataset.status)}</span>
+                        </div>
+                        <div className="ld-rp-divider" />
+                        <div className="ld-rp-row">
+                          <span className="ld-rp-label">题目 / 答案 / 评分</span>
+                          <span className="ld-rp-value">{questions.length} / {reasoning.length} / {rewards.length}</span>
+                        </div>
+                        <div className="ld-rp-row">
+                          <span className="ld-rp-label">交付文件</span>
+                          <span className="ld-rp-value">{artifacts.length} 个</span>
+                        </div>
+                        <div className="ld-rp-divider" />
+                        <Button
+                          size="small"
+                          theme="solid"
+                          type="primary"
+                          block
+                          onClick={() => navigate(statusToActionRoute(activeDataset.status))}
+                        >
+                          继续推进
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="ld-rp-row">
+                          <span className="ld-rp-label">当前任务</span>
+                          <span className="ld-rp-value ld-rp-value--muted">尚未创建任务</span>
+                        </div>
+                        <div className="ld-rp-divider" />
+                        <Button
+                          size="small"
+                          theme="solid"
+                          type="primary"
+                          block
+                          onClick={() => navigate('/console/planning')}
+                        >
+                          新建第一个任务
+                        </Button>
+                      </>
+                    )}
+                    <div className="ld-rp-divider" />
+                    <div className="ld-rp-row">
+                      <span className="ld-rp-label">系统队列</span>
+                      <span className="ld-rp-value">{runtime?.queueDepth ?? 0} 个等待</span>
+                    </div>
+                    <div className="ld-rp-row">
+                      <span className="ld-rp-label">任务总数</span>
+                      <span className="ld-rp-value">{runtime?.datasetCount ?? 0}</span>
+                    </div>
+                    <div className="ld-rp-row">
+                      <span className="ld-rp-label">登录账号</span>
+                      <span className="ld-rp-value ld-rp-value--sm">{user.email}</span>
+                    </div>
+                  </div>
+                </aside>
+              )}
+            </div>
           ) : (
             <Navigate to="/login" replace />
           )
