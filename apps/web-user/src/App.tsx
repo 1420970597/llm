@@ -3512,110 +3512,112 @@ export default function App() {
         path="/*"
         element={
           user ? (
-            <Layout className="app-layout">
-              <Header className="console-header-shell" style={{ padding: 0, position: 'fixed', inset: '0 0 auto 0', zIndex: 50 }}>
-                <div className="mx-auto flex h-16 items-center justify-between gap-4 px-4 lg:px-6">
-                  <div className="flex items-center gap-3">
-                    <Button icon={<LayoutDashboard size={16} />} theme="borderless" onClick={() => setSidebarCollapsed((current) => !current)} />
-                    <Avatar color="blue" size="small">L</Avatar>
-                    <div>
-                      <div className="font-semibold">企业数据工厂</div>
-                      <div className="text-xs console-nav-caption">{visiblePages.find((page) => page.route === activeNav)?.caption ?? '任务推进与交付'}</div>
-                    </div>
-                  </div>
-                  <div className="console-header-actions flex items-center gap-3">
-                    <Tag color={isAdmin ? 'green' : 'blue'}>{isAdmin ? '管理员' : '普通用户'}</Tag>
-                    <Text>{user.email}</Text>
-                    <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('控制台数据已刷新')} />
-                    <Button icon={<LogOut size={16} />} onClick={() => void handleLogout()}>退出</Button>
+            <div className="tremor-layout">
+              {/* Tremor Header */}
+              <div className="tr-header">
+                <div className="tr-header-left">
+                  <Avatar color="blue" size="small">L</Avatar>
+                  <div>
+                    <Text strong style={{ fontSize: 16 }}>数据工厂</Text>
+                    <Text className="block console-caption" style={{ fontSize: 12 }}>{visiblePages.find((page) => page.route === activeNav)?.caption ?? '仪表板'}</Text>
                   </div>
                 </div>
-              </Header>
-              <Layout style={{ paddingTop: 64 }}>
-                <Sider className="app-sider" style={{ position: 'fixed', top: 64, left: 0, border: 'none', width: 'var(--sidebar-current-width)', zIndex: 30 }}>
-                  <div className="console-nav-shell h-full px-3 py-4">
-                    <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
-                      <Text strong>工作入口</Text>
-                      <Text className="mt-2 block console-caption">先新建任务，或回到我的任务。</Text>
-                      <Space className="mt-4" wrap>
-                        <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
-                        <Button onClick={() => navigate('/console/tasks')}>我的任务</Button>
-                      </Space>
-                    </Card>
-                    <Nav
-                      bodyStyle={{ paddingBottom: 12 }}
-                      selectedKeys={[activeNav]}
-                      items={[
-                        {
-                          itemKey: 'primary-group',
-                          text: '业务导航',
-                          items: visibleUserPages.map((page) => ({
-                            itemKey: page.route,
-                            text: page.label,
-                            icon: <page.icon size={16} />,
-                          })),
-                        },
-                        ...(isAdmin
-                          ? [
-                              {
-                                itemKey: 'admin-group',
-                                text: '系统设置',
-                                items: adminPages.map((page) => ({
-                                  itemKey: page.route,
-                                  text: page.label,
-                                  icon: <page.icon size={16} />,
-                                })),
-                              },
-                            ]
-                          : []),
-                      ]}
-                      onSelect={(data) => navigate(String(data.itemKey))}
-                      footer={
-                        <div className="px-3 pb-3">
-                          <Card className="console-sidebar-card" bodyStyle={{ padding: 14 }}>
-                            <div className="console-summary-grid">
-                              <div className="console-summary-row"><span>任务总数</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>当前建议</span><Text strong>{runtime?.datasetCount ? '回到我的任务' : '新建任务'}</Text></div>
-                            </div>
-                          </Card>
-                        </div>
-                      }
-                    />
+                <div className="tr-header-right">
+                  <Button icon={<LayoutDashboard size={16} />} theme="borderless" onClick={() => setSidebarCollapsed((c) => !c)} />
+                  <Button theme="solid" type="primary" size="small" icon={<CirclePlus size={14} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
+                  <Tag color={isAdmin ? 'green' : 'blue'}>{isAdmin ? '管理员' : '用户'}</Tag>
+                  <Text style={{ fontSize: 13 }}>{user.email}</Text>
+                  <Button icon={<RefreshCw size={16} />} theme="borderless" loading={workspaceLoading} onClick={() => void loadBootstrap('控制台数据已刷新')} />
+                  <Button icon={<LogOut size={16} />} theme="borderless" onClick={() => void handleLogout()} />
+                </div>
+              </div>
+              {/* Tab Navigation */}
+              <div className="tr-tab-nav">
+                {visibleUserPages.map((page) => (
+                  <button
+                    key={page.route}
+                    className={clsx('tr-tab', activeNav === page.route && 'active')}
+                    onClick={() => navigate(page.route)}
+                  >
+                    {page.label}
+                  </button>
+                ))}
+                {isAdmin ? adminPages.map((page) => (
+                  <button
+                    key={page.route}
+                    className={clsx('tr-tab', activeNav === page.route && 'active')}
+                    onClick={() => navigate(page.route)}
+                  >
+                    {page.label}
+                  </button>
+                )) : null}
+              </div>
+              {/* Body */}
+              <div className="tr-body">
+                <div className="tr-sidebar">
+                  <div className="tr-sidebar-actions">
+                    <Space wrap>
+                      <Button size="small" onClick={() => navigate('/console/tasks')}>我的任务</Button>
+                    </Space>
                   </div>
-                </Sider>
-                <Layout style={{ marginLeft: 'var(--sidebar-current-width)' }}>
-                  <Content style={{ padding: 24 }}>
-                    {trustSignal ? (
-                      <div className="mb-4">
-                        <TrustSignalCard signal={trustSignal} onDismiss={() => setTrustSignal(null)} onNavigate={(route) => navigate(route)} />
+                  <Nav
+                    bodyStyle={{ paddingBottom: 8 }}
+                    selectedKeys={[activeNav]}
+                    items={[
+                      {
+                        itemKey: 'nav-group',
+                        text: '导航',
+                        items: visibleUserPages.map((page) => ({
+                          itemKey: page.route,
+                          text: page.label,
+                          icon: <page.icon size={16} />,
+                        })),
+                      },
+                      ...(isAdmin
+                        ? [{ itemKey: 'admin-group', text: '管理', items: adminPages.map((page) => ({ itemKey: page.route, text: page.label, icon: <page.icon size={16} /> })) }]
+                        : []),
+                    ]}
+                    onSelect={(data) => navigate(String(data.itemKey))}
+                  />
+                  <div className="tr-sidebar-stats">
+                    <Card className="tr-sidebar-stats-card" bodyStyle={{ padding: 10 }}>
+                      <div className="console-summary-grid">
+                        <div className="console-summary-row"><span>任务</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
+                        <div className="console-summary-row"><span>队列</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
                       </div>
-                    ) : null}
-                    <Routes>
-                      <Route path="/console/home" element={renderOverview()} />
-                      <Route path="/console/overview" element={<Navigate to="/console/home" replace />} />
-                      <Route path="/console/tasks" element={renderTaskIndex()} />
-                      <Route path="/console/tasks/:taskId" element={renderTaskDetail()} />
-                      <Route path="/console/planning" element={renderPlanning()} />
-                      <Route path="/console/results" element={renderResultsHub()} />
-                      {isAdmin ? <Route path="/console/operations" element={renderOperations()} /> : null}
-                      <Route path="/console/domains" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/questions" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/reasoning" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/rewards" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/exports" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/help" element={renderHelp()} />
-                      {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
-                      <Route path="*" element={<Navigate to="/console/home" replace />} />
-                    </Routes>
-                  </Content>
-                </Layout>
-              </Layout>
-            </Layout>
+                    </Card>
+                  </div>
+                </div>
+                <div className="tr-main">
+                  {trustSignal ? (
+                    <div className="mb-4">
+                      <TrustSignalCard signal={trustSignal} onDismiss={() => setTrustSignal(null)} onNavigate={(route) => navigate(route)} />
+                    </div>
+                  ) : null}
+                  <Routes>
+                    <Route path="/console/home" element={renderOverview()} />
+                    <Route path="/console/overview" element={<Navigate to="/console/home" replace />} />
+                    <Route path="/console/tasks" element={renderTaskIndex()} />
+                    <Route path="/console/tasks/:taskId" element={renderTaskDetail()} />
+                    <Route path="/console/planning" element={renderPlanning()} />
+                    <Route path="/console/results" element={renderResultsHub()} />
+                    {isAdmin ? <Route path="/console/operations" element={renderOperations()} /> : null}
+                    <Route path="/console/domains" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/questions" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/reasoning" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/rewards" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/exports" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/help" element={renderHelp()} />
+                    {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
+                    <Route path="*" element={<Navigate to="/console/home" replace />} />
+                  </Routes>
+                </div>
+              </div>
+            </div>
           ) : (
             <Navigate to="/login" replace />
           )

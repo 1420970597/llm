@@ -334,6 +334,144 @@ a {
   min-height: calc(100vh - 120px);
 }
 
+
+/* ===== Tremor Layout ===== */
+.tremor-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.tr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px 0;
+  flex-shrink: 0;
+}
+
+.tr-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tr-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tr-tab-nav {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 24px;
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.10);
+  margin-top: 12px;
+}
+
+.tr-tab {
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--semi-color-text-2);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+
+.tr-tab:hover {
+  color: var(--semi-color-text-0);
+}
+
+.tr-tab.active {
+  color: var(--semi-color-primary);
+  border-bottom-color: var(--semi-color-primary);
+}
+
+.tr-body {
+  display: flex;
+  flex: 1;
+}
+
+.tr-sidebar {
+  width: 220px;
+  border-right: 1px solid rgba(var(--semi-grey-2), 0.06);
+  background: var(--semi-color-bg-1);
+  padding: 12px 8px;
+  overflow-y: auto;
+  flex-shrink: 0;
+  transition: width 0.2s ease;
+}
+
+body.sidebar-collapsed .tr-sidebar {
+  width: 0;
+  padding: 0;
+  overflow: hidden;
+  border-right: none;
+}
+
+.tr-sidebar .semi-navigation {
+  border-right: none;
+  background: transparent;
+}
+
+.tr-sidebar .semi-navigation-item {
+  border-radius: 8px;
+}
+
+.tr-sidebar .semi-navigation-item-selected {
+  background: rgba(var(--semi-blue-0), 0.12);
+}
+
+.tr-sidebar-actions {
+  padding: 0 8px 10px;
+}
+
+.tr-sidebar-stats {
+  padding: 8px;
+  margin-top: auto;
+}
+
+.tr-sidebar-stats-card {
+  border-radius: 10px;
+  border: 1px solid rgba(var(--semi-grey-2), 0.06);
+}
+
+.tr-sidebar-stats-card .semi-card-body { padding: 10px; }
+
+.tr-sidebar-stats-card .console-summary-row {
+  padding: 7px 10px;
+  border-radius: 8px;
+}
+
+.tr-main {
+  flex: 1;
+  padding: 20px 24px;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+/* Tremor dashboard: 3-col stat grid */
+.tremor-layout .console-workbench-stat-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tremor-layout .console-workbench-sidebar,
+.tremor-layout .console-workbench-delivery {
+  top: 76px;
+}
+
+@media (max-width: 992px) {
+  .tr-sidebar { display: none; }
+  .tr-tab-nav { overflow-x: auto; }
+}
+
 @media (max-width: 1200px) {
   .console-card-grid-4,
   .console-card-grid-3,
