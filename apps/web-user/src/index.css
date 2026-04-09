@@ -5,13 +5,8 @@
 @tailwind utilities;
 
 :root {
-  --sidebar-width: 218px;
-  --sidebar-width-collapsed: 68px;
-  --sidebar-current-width: var(--sidebar-width);
-}
-
-body.sidebar-collapsed {
-  --sidebar-current-width: var(--sidebar-width-collapsed);
+  --metabase-appbar-height: 56px;
+  --metabase-content-max-width: 1400px;
 }
 
 html,
@@ -365,5 +360,108 @@ a {
 
   .console-workbench-hero-actions {
     justify-content: flex-start;
+  }
+}
+
+/* ── Metabase-style layout ── */
+
+.metabase-appbar {
+  height: var(--metabase-appbar-height) !important;
+  background: var(--semi-color-bg-1) !important;
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.14);
+}
+
+.metabase-appbar-inner {
+  display: flex;
+  align-items: center;
+  height: var(--metabase-appbar-height);
+  padding: 0 20px;
+  gap: 0;
+}
+
+.metabase-brand {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  margin-right: 8px;
+  color: var(--semi-color-text-0);
+}
+
+/* Tab strip — grows to fill space between brand and user actions */
+.metabase-tabs {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  height: var(--metabase-appbar-height);
+  gap: 2px;
+  padding: 0 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.metabase-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.metabase-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 100%;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--semi-color-text-2);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.metabase-tab:hover {
+  color: var(--semi-color-text-0);
+  background: rgba(var(--semi-grey-0), 0.06);
+}
+
+.metabase-tab-active {
+  color: var(--semi-color-primary);
+  border-bottom-color: var(--semi-color-primary);
+  font-weight: 600;
+}
+
+.metabase-tab-admin {
+  opacity: 0.75;
+}
+
+.metabase-tab-admin.metabase-tab-active {
+  opacity: 1;
+}
+
+/* Full-width content area, no sidebar */
+.metabase-content {
+  max-width: var(--metabase-content-max-width);
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 32px;
+}
+
+@media (max-width: 1200px) {
+  .metabase-content {
+    padding: 20px 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .metabase-appbar-inner {
+    padding: 0 12px;
+  }
+  .metabase-brand {
+    display: none;
+  }
+  .metabase-content {
+    padding: 16px 12px;
   }
 }
