@@ -334,6 +334,120 @@ a {
   min-height: calc(100vh - 120px);
 }
 
+
+/* ===== OpenStatus Layout ===== */
+.openstatus-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+.os-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.08);
+  flex-shrink: 0;
+  z-index: 40;
+  position: sticky;
+  top: 0;
+  background: color-mix(in srgb, var(--semi-color-bg-0) 92%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.os-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.os-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.os-subnav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 24px;
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.06);
+  overflow-x: auto;
+}
+
+.os-subnav-item {
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--semi-color-text-2);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.os-subnav-item:hover {
+  color: var(--semi-color-text-0);
+}
+
+.os-subnav-item.active {
+  color: var(--semi-color-text-0);
+  border-bottom-color: var(--semi-color-text-0);
+}
+
+.os-main {
+  flex: 1;
+  max-width: 1024px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.os-footer {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(var(--semi-grey-2), 0.06);
+  text-align: center;
+  font-size: 11px;
+  color: var(--semi-color-text-3);
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* OpenStatus stat grid: 2 cols for mono feel */
+.openstatus-layout .console-workbench-stat-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.openstatus-layout .console-workbench-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+}
+
+.openstatus-layout .console-workbench-sidebar,
+.openstatus-layout .console-workbench-delivery {
+  top: 76px;
+}
+
+/* Mono stat cards */
+.openstatus-layout .console-stat-value {
+  font-family: inherit;
+  letter-spacing: -0.02em;
+}
+
+@media (max-width: 768px) {
+  .os-subnav { flex-wrap: wrap; }
+  .os-main { padding: 16px; }
+}
+
 @media (max-width: 1200px) {
   .console-card-grid-4,
   .console-card-grid-3,
