@@ -5,9 +5,17 @@
 @tailwind utilities;
 
 :root {
-  --sidebar-width: 218px;
-  --sidebar-width-collapsed: 68px;
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 56px;
   --sidebar-current-width: var(--sidebar-width);
+  --ph-sidebar-bg: #1d1f27;
+  --ph-sidebar-text: rgba(255,255,255,0.82);
+  --ph-sidebar-muted: rgba(255,255,255,0.45);
+  --ph-sidebar-hover: rgba(255,255,255,0.07);
+  --ph-sidebar-active: rgba(255,255,255,0.12);
+  --ph-sidebar-border: rgba(255,255,255,0.08);
+  --ph-content-bg: var(--semi-color-bg-0);
+  --ph-topbar-h: 44px;
 }
 
 body.sidebar-collapsed {
@@ -365,5 +373,331 @@ a {
 
   .console-workbench-hero-actions {
     justify-content: flex-start;
+  }
+}
+
+/* ============================================================
+   PostHog-style layout
+   Left sidebar (dark) + wide content area, card-less design
+   ============================================================ */
+
+/* App shell: sidebar + main side by side */
+.ph-app-shell {
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--ph-content-bg);
+}
+
+/* ---- Sidebar ---- */
+.ph-sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  background: var(--ph-sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  height: 100dvh;
+  z-index: 40;
+  transition: width 0.2s ease, min-width 0.2s ease;
+  overflow: hidden;
+}
+
+.ph-sidebar--collapsed {
+  width: var(--sidebar-width-collapsed);
+  min-width: var(--sidebar-width-collapsed);
+}
+
+/* Brand row */
+.ph-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 14px 12px;
+  border-bottom: 1px solid var(--ph-sidebar-border);
+  flex-shrink: 0;
+}
+
+.ph-sidebar-brand-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ph-sidebar-brand-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ph-sidebar-brand-sub {
+  font-size: 11px;
+  color: var(--ph-sidebar-muted);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ph-sidebar-collapse-btn {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--ph-sidebar-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ph-sidebar-collapse-btn:hover {
+  background: var(--ph-sidebar-hover);
+  color: rgba(255,255,255,0.85);
+}
+
+/* CTA button area */
+.ph-sidebar-cta {
+  padding: 12px 12px 8px;
+  flex-shrink: 0;
+}
+
+/* Nav */
+.ph-sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 8px;
+  scrollbar-width: none;
+}
+
+.ph-sidebar-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.ph-nav-section {
+  margin-bottom: 4px;
+}
+
+.ph-nav-section + .ph-nav-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ph-sidebar-border);
+}
+
+.ph-nav-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ph-sidebar-muted);
+  padding: 0 8px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ph-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--ph-sidebar-text);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.13s, color 0.13s;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 13.5px;
+}
+
+.ph-nav-item:hover {
+  background: var(--ph-sidebar-hover);
+  color: rgba(255,255,255,0.95);
+}
+
+.ph-nav-item--active {
+  background: var(--ph-sidebar-active);
+  color: #fff;
+  font-weight: 500;
+}
+
+.ph-nav-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sidebar footer */
+.ph-sidebar-footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--ph-sidebar-border);
+  padding: 12px;
+}
+
+.ph-sidebar-stats {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.ph-sidebar-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ph-sidebar-stat-label {
+  font-size: 10px;
+  color: var(--ph-sidebar-muted);
+  white-space: nowrap;
+}
+
+.ph-sidebar-stat-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.88);
+}
+
+.ph-sidebar-user {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ph-sidebar-user-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ph-sidebar-user-email {
+  font-size: 11px;
+  color: var(--ph-sidebar-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.ph-sidebar-user-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* ---- Main content ---- */
+.ph-main {
+  flex: 1;
+  min-width: 0;
+  margin-left: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  transition: margin-left 0.2s ease;
+}
+
+body.sidebar-collapsed .ph-main {
+  margin-left: var(--sidebar-width-collapsed);
+}
+
+/* Topbar - thin page context bar */
+.ph-topbar {
+  height: var(--ph-topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.1);
+  background: color-mix(in srgb, var(--semi-color-bg-0) 96%, transparent);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-shrink: 0;
+}
+
+.ph-topbar-breadcrumb {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
+
+.ph-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ph-topbar-caption {
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+
+/* Content area - wide, no max-width cap */
+.ph-content {
+  flex: 1;
+  padding: 28px;
+  min-width: 0;
+}
+
+.ph-trust-signal-wrap {
+  margin-bottom: 20px;
+}
+
+/* Override console-page-shell for wide data view */
+.ph-content .console-page-shell {
+  gap: 20px;
+}
+
+/* Wide content tables / charts get full width */
+.ph-content .semi-table-wrapper,
+.ph-content .console-graph {
+  width: 100%;
+}
+
+/* Section dividers instead of cards for top-level sections */
+.ph-content .console-panel,
+.ph-content .console-stat-card,
+.ph-content .console-focus-card,
+.ph-content .console-toolbar-card {
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(15,23,42,0.05);
+}
+
+/* Responsive: narrow sidebar on medium screens */
+@media (max-width: 1100px) {
+  :root {
+    --sidebar-width: 200px;
+  }
+}
+
+@media (max-width: 768px) {
+  .ph-sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .ph-main {
+    margin-left: 0 !important;
+  }
+
+  .ph-topbar {
+    padding: 0 16px;
+  }
+
+  .ph-content {
+    padding: 16px;
   }
 }
