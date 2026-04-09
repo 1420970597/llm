@@ -5,13 +5,9 @@
 @tailwind utilities;
 
 :root {
-  --sidebar-width: 218px;
-  --sidebar-width-collapsed: 68px;
-  --sidebar-current-width: var(--sidebar-width);
-}
-
-body.sidebar-collapsed {
-  --sidebar-current-width: var(--sidebar-width-collapsed);
+  --sc-header-height: 56px;
+  --sc-tabs-height: 42px;
+  --sidebar-current-width: 0px;
 }
 
 html,
@@ -51,10 +47,7 @@ a {
   min-height: 100dvh;
 }
 
-.app-sider {
-  height: calc(100vh - 64px);
-  height: calc(100dvh - 64px);
-}
+.app-sider { display: none; }
 
 .semi-layout::-webkit-scrollbar,
 .semi-layout-content::-webkit-scrollbar,
@@ -92,7 +85,7 @@ a {
 .console-record-card,
 .console-focus-card,
 .console-toolbar-card {
-  border-radius: 20px;
+  border-radius: 10px;
 }
 
 .console-page-shell {
@@ -226,7 +219,7 @@ a {
 
 .console-workbench-stat-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -254,7 +247,7 @@ a {
   display: grid;
   gap: 16px;
   position: sticky;
-  top: 88px;
+  top: calc(var(--sc-header-height) + var(--sc-tabs-height) + 16px);
 }
 
 .console-workbench-main {
@@ -367,3 +360,65 @@ a {
     justify-content: flex-start;
   }
 }
+
+/* ===== Shadcn-style: top nav + horizontal tabs, no sidebar ===== */
+.sc-header {
+  position: sticky; top: 0; z-index: 50;
+  height: var(--sc-header-height);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px;
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.1);
+  backdrop-filter: blur(16px);
+  background: color-mix(in srgb, var(--semi-color-bg-0) 88%, transparent);
+}
+.sc-header-left { display: flex; align-items: center; gap: 20px; }
+.sc-header-brand { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.sc-header-nav { display: flex; align-items: center; gap: 2px; }
+.sc-header-nav-item {
+  padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 500;
+  color: var(--semi-color-text-2); cursor: pointer; border: none; background: transparent;
+  transition: background 0.12s, color 0.12s;
+}
+.sc-header-nav-item:hover { background: rgba(var(--semi-grey-1), 0.08); color: var(--semi-color-text-0); }
+.sc-header-nav-item.active { background: rgba(var(--semi-blue-0), 0.1); color: var(--semi-color-primary); }
+.sc-header-right { display: flex; align-items: center; gap: 8px; }
+
+.sc-tabs-bar {
+  position: sticky; top: var(--sc-header-height); z-index: 40;
+  display: flex; align-items: center; gap: 0; padding: 0 24px;
+  height: var(--sc-tabs-height);
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.08);
+  background: color-mix(in srgb, var(--semi-color-bg-0) 92%, transparent);
+  backdrop-filter: blur(12px); overflow-x: auto; scrollbar-width: none;
+}
+.sc-tabs-bar::-webkit-scrollbar { display: none; }
+.sc-tab {
+  position: relative; padding: 8px 16px; font-size: 13px; font-weight: 500;
+  white-space: nowrap; color: var(--semi-color-text-2); cursor: pointer;
+  border: none; background: transparent; transition: color 0.12s;
+}
+.sc-tab:hover { color: var(--semi-color-text-0); }
+.sc-tab.active { color: var(--semi-color-text-0); font-weight: 600; }
+.sc-tab.active::after {
+  content: ''; position: absolute; left: 16px; right: 16px; bottom: 0;
+  height: 2px; background: var(--semi-color-primary); border-radius: 1px;
+}
+.sc-tab-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  margin-right: 6px; vertical-align: middle;
+}
+.sc-main { min-height: calc(100vh - var(--sc-header-height)); }
+.sc-content { padding: 20px 24px; max-width: 1280px; margin: 0 auto; }
+
+.shadcn-layout .console-panel,
+.shadcn-layout .console-stat-card,
+.shadcn-layout .console-sidebar-card,
+.shadcn-layout .console-quick-card,
+.shadcn-layout .console-record-card,
+.shadcn-layout .console-focus-card,
+.shadcn-layout .console-toolbar-card {
+  box-shadow: none; border: 1px solid rgba(var(--semi-grey-2), 0.14);
+}
+.shadcn-layout .console-workbench-stat-card,
+.shadcn-layout .console-workbench-stage-card,
+.shadcn-layout .console-workbench-stage-nav { border-radius: 12px; box-shadow: none; }
