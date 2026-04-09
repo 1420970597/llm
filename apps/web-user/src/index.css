@@ -367,3 +367,199 @@ a {
     justify-content: flex-start;
   }
 }
+
+/* ─── Mantis Layout ─── */
+.mantis-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.mantis-header {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 50;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: var(--semi-color-bg-1);
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.12);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.mantis-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mantis-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--semi-color-text-1);
+  cursor: pointer;
+  transition: background 0.14s;
+}
+.mantis-menu-btn:hover { background: rgba(var(--semi-grey-1), 0.12); }
+
+.mantis-brand {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--semi-color-text-0);
+}
+
+.mantis-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mantis-email {
+  font-size: 13px;
+  color: var(--semi-color-text-2);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mantis-body {
+  display: flex;
+  flex: 1;
+  padding-top: 56px;
+  min-height: calc(100vh - 56px);
+}
+
+.mantis-sidebar {
+  position: fixed;
+  top: 56px;
+  left: 0;
+  width: 260px;
+  height: calc(100vh - 56px);
+  overflow-y: auto;
+  background: var(--semi-color-bg-1);
+  border-right: 1px solid rgba(var(--semi-grey-2), 0.10);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 16px 12px;
+  transition: width 0.2s ease;
+  scrollbar-width: none;
+}
+.mantis-sidebar::-webkit-scrollbar { display: none; }
+
+.mantis-sidebar--collapsed {
+  width: 60px;
+  padding: 16px 8px;
+}
+
+.mantis-sidebar-action {
+  margin-bottom: 16px;
+}
+
+.mantis-nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 16px;
+}
+
+.mantis-nav-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--semi-color-text-2);
+  padding: 0 8px;
+  margin-bottom: 4px;
+}
+
+.mantis-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--semi-color-text-1);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 0.14s, color 0.14s;
+}
+.mantis-nav-item:hover {
+  background: rgba(var(--semi-blue-0), 0.08);
+  color: var(--semi-color-primary);
+}
+.mantis-nav-item--active {
+  background: rgba(var(--semi-blue-0), 0.12);
+  color: var(--semi-color-primary);
+  font-weight: 600;
+}
+
+.mantis-sidebar-footer {
+  margin-top: auto;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(var(--semi-grey-1), 0.06);
+  border: 1px solid rgba(var(--semi-grey-2), 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mantis-stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+}
+.mantis-stat-row strong {
+  color: var(--semi-color-text-0);
+  font-weight: 600;
+}
+
+.mantis-main {
+  flex: 1;
+  margin-left: 260px;
+  padding: 20px 24px;
+  min-height: calc(100vh - 56px);
+  transition: margin-left 0.2s ease;
+}
+
+.mantis-sidebar--collapsed ~ .mantis-main,
+.mantis-body:has(.mantis-sidebar--collapsed) .mantis-main {
+  margin-left: 60px;
+}
+
+.mantis-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  color: var(--semi-color-text-2);
+}
+.mantis-breadcrumb-root { color: var(--semi-color-text-2); }
+.mantis-breadcrumb-sep { color: var(--semi-color-text-2); }
+.mantis-breadcrumb-current {
+  color: var(--semi-color-text-0);
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .mantis-sidebar { width: 60px; padding: 16px 8px; }
+  .mantis-main { margin-left: 60px; }
+}
