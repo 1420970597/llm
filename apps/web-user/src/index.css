@@ -367,3 +367,145 @@ a {
     justify-content: flex-start;
   }
 }
+
+/* ===== DUB LAYOUT ===== */
+.dub-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.dub-topnav {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 50;
+  height: 52px;
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.1);
+  backdrop-filter: blur(16px);
+  background: color-mix(in srgb, var(--semi-color-bg-0) 88%, transparent);
+}
+
+.dub-topnav-inner {
+  height: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dub-topnav-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.dub-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dub-logo-name {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.dub-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.dub-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--semi-color-text-1);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.dub-nav-link:hover {
+  background: rgba(var(--semi-grey-1), 0.08);
+  color: var(--semi-color-text-0);
+}
+
+.dub-nav-link--active {
+  background: rgba(var(--semi-blue-0), 0.1);
+  color: var(--semi-color-primary);
+}
+
+.dub-nav-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: rgba(var(--semi-grey-2), 0.15);
+  margin: 0 6px;
+}
+
+.dub-topnav-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dub-user-email {
+  font-size: 13px;
+  color: var(--semi-color-text-1);
+}
+
+.dub-quick-bar {
+  position: fixed;
+  top: 52px;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  height: 44px;
+  background: color-mix(in srgb, var(--semi-color-bg-1) 95%, white 5%);
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.08);
+}
+
+.dub-quick-bar-inner {
+  height: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dub-quick-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--semi-color-text-2);
+  margin-right: 4px;
+}
+
+.dub-quick-stat {
+  font-size: 12px;
+  color: var(--semi-color-text-2);
+  margin-left: auto;
+}
+
+.dub-content {
+  flex: 1;
+  padding-top: 96px;
+  padding-bottom: 32px;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
