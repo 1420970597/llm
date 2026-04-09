@@ -3512,110 +3512,112 @@ export default function App() {
         path="/*"
         element={
           user ? (
-            <Layout className="app-layout">
-              <Header className="console-header-shell" style={{ padding: 0, position: 'fixed', inset: '0 0 auto 0', zIndex: 50 }}>
-                <div className="mx-auto flex h-16 items-center justify-between gap-4 px-4 lg:px-6">
-                  <div className="flex items-center gap-3">
-                    <Button icon={<LayoutDashboard size={16} />} theme="borderless" onClick={() => setSidebarCollapsed((current) => !current)} />
-                    <Avatar color="blue" size="small">L</Avatar>
-                    <div>
-                      <div className="font-semibold">企业数据工厂</div>
-                      <div className="text-xs console-nav-caption">{visiblePages.find((page) => page.route === activeNav)?.caption ?? '任务推进与交付'}</div>
-                    </div>
+            {/* open-webui layout */}
+            <div className="owui-app">
+              <div className={clsx("owui-sidebar", sidebarCollapsed && "collapsed")}>
+                <div className="owui-sidebar-top">
+                  <div className="owui-sidebar-new" onClick={() => navigate('/console/home')}>
+                    <CirclePlus size={16} />
+                    <span>New Task</span>
                   </div>
-                  <div className="console-header-actions flex items-center gap-3">
-                    <Tag color={isAdmin ? 'green' : 'blue'}>{isAdmin ? '管理员' : '普通用户'}</Tag>
-                    <Text>{user.email}</Text>
-                    <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('控制台数据已刷新')} />
-                    <Button icon={<LogOut size={16} />} onClick={() => void handleLogout()}>退出</Button>
+                  <div className="owui-sidebar-toggle" onClick={() => setSidebarCollapsed(true)}>
+                    <ChevronRight style={{ transform: 'rotate(180deg)' }} />
                   </div>
                 </div>
-              </Header>
-              <Layout style={{ paddingTop: 64 }}>
-                <Sider className="app-sider" style={{ position: 'fixed', top: 64, left: 0, border: 'none', width: 'var(--sidebar-current-width)', zIndex: 30 }}>
-                  <div className="console-nav-shell h-full px-3 py-4">
-                    <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
-                      <Text strong>工作入口</Text>
-                      <Text className="mt-2 block console-caption">先新建任务，或回到我的任务。</Text>
-                      <Space className="mt-4" wrap>
-                        <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
-                        <Button onClick={() => navigate('/console/tasks')}>我的任务</Button>
-                      </Space>
-                    </Card>
-                    <Nav
-                      bodyStyle={{ paddingBottom: 12 }}
-                      selectedKeys={[activeNav]}
-                      items={[
-                        {
-                          itemKey: 'primary-group',
-                          text: '业务导航',
-                          items: visibleUserPages.map((page) => ({
-                            itemKey: page.route,
-                            text: page.label,
-                            icon: <page.icon size={16} />,
-                          })),
-                        },
-                        ...(isAdmin
-                          ? [
-                              {
-                                itemKey: 'admin-group',
-                                text: '系统设置',
-                                items: adminPages.map((page) => ({
-                                  itemKey: page.route,
-                                  text: page.label,
-                                  icon: <page.icon size={16} />,
-                                })),
-                              },
-                            ]
-                          : []),
-                      ]}
-                      onSelect={(data) => navigate(String(data.itemKey))}
-                      footer={
-                        <div className="px-3 pb-3">
-                          <Card className="console-sidebar-card" bodyStyle={{ padding: 14 }}>
-                            <div className="console-summary-grid">
-                              <div className="console-summary-row"><span>任务总数</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>当前建议</span><Text strong>{runtime?.datasetCount ? '回到我的任务' : '新建任务'}</Text></div>
-                            </div>
-                          </Card>
+                <div className="owui-sidebar-search">
+                  <input placeholder="Search..." readOnly />
+                </div>
+                <div className="owui-sidebar-nav">
+                  <div className="owui-nav-section">
+                    <div className="owui-nav-section-label">Workspace</div>
+                    {(visiblePages || []).map((p: any) => {
+                      const key = p.path || p.key;
+                      const path = p.path || `/console/${p.key}`;
+                      return (
+                        <div key={key} className={clsx("owui-nav-item", activeNav === key && "active")} onClick={() => navigate(path)}>
+                          {p.icon || <LayoutDashboard size={16} />}
+                          <span>{p.label || p.name}</span>
                         </div>
-                      }
-                    />
+                      );
+                    })}
                   </div>
-                </Sider>
-                <Layout style={{ marginLeft: 'var(--sidebar-current-width)' }}>
-                  <Content style={{ padding: 24 }}>
-                    {trustSignal ? (
-                      <div className="mb-4">
-                        <TrustSignalCard signal={trustSignal} onDismiss={() => setTrustSignal(null)} onNavigate={(route) => navigate(route)} />
-                      </div>
-                    ) : null}
-                    <Routes>
-                      <Route path="/console/home" element={renderOverview()} />
-                      <Route path="/console/overview" element={<Navigate to="/console/home" replace />} />
-                      <Route path="/console/tasks" element={renderTaskIndex()} />
-                      <Route path="/console/tasks/:taskId" element={renderTaskDetail()} />
-                      <Route path="/console/planning" element={renderPlanning()} />
-                      <Route path="/console/results" element={renderResultsHub()} />
-                      {isAdmin ? <Route path="/console/operations" element={renderOperations()} /> : null}
-                      <Route path="/console/domains" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/questions" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/reasoning" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/rewards" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/exports" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/help" element={renderHelp()} />
-                      {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
-                      <Route path="*" element={<Navigate to="/console/home" replace />} />
-                    </Routes>
-                  </Content>
-                </Layout>
-              </Layout>
-            </Layout>
+                  <div className="owui-nav-section">
+                    <div className="owui-nav-section-label">Tools</div>
+                    {(visibleUserPages || []).map((p: any) => {
+                      const key = p.path || p.key;
+                      const path = p.path || `/console/${p.key}`;
+                      return (
+                        <div key={key} className={clsx("owui-nav-item", activeNav === key && "active")} onClick={() => navigate(path)}>
+                          {p.icon || <LayoutDashboard size={16} />}
+                          <span>{p.label || p.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {isAdmin && (adminPages || []).length > 0 && (
+                    <div className="owui-nav-section">
+                      <div className="owui-nav-section-label">Admin</div>
+                      {(adminPages || []).map((p: any) => {
+                        const key = p.path || p.key;
+                        const path = p.path || `/console/${p.key}`;
+                        return (
+                          <div key={key} className={clsx("owui-nav-item", activeNav === key && "active")} onClick={() => navigate(path)}>
+                            {p.icon || <LayoutDashboard size={16} />}
+                            <span>{p.label || p.name}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div className="owui-sidebar-user" onClick={() => { if (window.confirm('确认退出登录?')) handleLogout(); }}>
+                  <Avatar size="small" style={{ backgroundColor: '#525252' }}>
+                    {user?.username?.[0]?.toUpperCase() || 'U'}
+                  </Avatar>
+                  <span className="owui-sidebar-user-name">{user?.username || 'User'}</span>
+                </div>
+              </div>
+              <div className="owui-main" style={{ marginLeft: sidebarCollapsed ? 0 : 260 }}>
+                <div className="owui-topbar">
+                  <div className="owui-topbar-left">
+                    <div className="owui-topbar-toggle" onClick={() => setSidebarCollapsed(false)}>
+                      <ChevronRight />
+                    </div>
+                    <span className="owui-topbar-title">{activeNav || 'Home'}</span>
+                  </div>
+                  <div className="owui-topbar-right">
+                    <div className="owui-topbar-btn"><RefreshCw size={16} /></div>
+                  </div>
+                </div>
+                <div className="owui-content">
+                  <Routes>
+                    <Route path="/" element={<Navigate to="/console/home" replace />} />
+                    <Route path="/console" element={<Navigate to="/console/home" replace />} />
+                    <Route path="/console/home" element={renderPage('home')} />
+                    <Route path="/console/tasks" element={renderPage('tasks')} />
+                    <Route path="/console/planning" element={renderPage('planning')} />
+                    <Route path="/console/knowledge" element={renderPage('knowledge')} />
+                    <Route path="/console/templates" element={renderPage('templates')} />
+                    <Route path="/console/datasource" element={renderPage('datasource')} />
+                    <Route path="/console/schedules" element={renderPage('schedules')} />
+                    <Route path="/console/plugins" element={renderPage('plugins')} />
+                    <Route path="/console/quality" element={renderPage('quality')} />
+                    <Route path="/console/export" element={renderPage('export')} />
+                    <Route path="/console/models" element={renderPage('models')} />
+                    <Route path="/console/annotations" element={renderPage('annotations')} />
+                    <Route path="/console/workforce" element={renderPage('workforce')} />
+                    <Route path="/console/monitoring" element={renderPage('monitoring')} />
+                    <Route path="/console/settings" element={renderPage('settings')} />
+                    <Route path="/console/admin/*" element={renderPage('admin')} />
+                    <Route path="/console/task/:taskId" element={renderPage('task-detail')} />
+                    <Route path="/console/operator-task/:taskId" element={renderPage('operator-task')} />
+                    <Route path="/console/labeling/:taskId" element={renderPage('labeling')} />
+                    <Route path="/console/labeling/:taskId/:itemId" element={renderPage('labeling')} />
+                    <Route path="*" element={<Navigate to="/console/home" replace />} />
+                  </Routes>
+                </div>
+              </div>
+            </div>
           ) : (
             <Navigate to="/login" replace />
           )
