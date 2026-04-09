@@ -77,7 +77,7 @@ func (app *application) downloadArtifact(w http.ResponseWriter, r *http.Request)
   }
   artifactID := r.URL.Query().Get("artifactId")
   if artifactID == "" {
-    app.writeError(w, http.StatusBadRequest, http.ErrMissingFile)
+    app.writeError(w, http.StatusBadRequest, fmt.Errorf("missing required query parameter: artifactId"))
     return
   }
   items, err := app.artifacts.List(r.Context(), id)

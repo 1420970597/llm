@@ -75,6 +75,9 @@ func generateRewardForQuestion(ctx context.Context, provider ProviderConfig, dat
 		return rewardPayload{}, err
 	}
 
+	if len(decoded.Choices) == 0 {
+		return rewardPayload{}, fmt.Errorf("provider returned no choices")
+	}
 	var generated rewardPayload
 	if err := unmarshalStructuredContent(decoded.Choices[0].Message.Content, &generated); err != nil {
 		fallback := strings.TrimSpace(decoded.Choices[0].Message.Content)

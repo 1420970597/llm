@@ -140,8 +140,18 @@ func (app *application) generateDomains(w http.ResponseWriter, r *http.Request) 
 		app.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	persistedDomains, _ := app.datasets.ListDomains(operationCtx, id)
-	persistedEdges, _ := app.datasets.ListDomainEdges(operationCtx, id)
+	persistedDomains, err := app.datasets.ListDomains(operationCtx, id)
+	if err != nil {
+		log.Printf("domains.generate.list_domains_error dataset_id=%d err=%v", id, err)
+		app.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	persistedEdges, err := app.datasets.ListDomainEdges(operationCtx, id)
+	if err != nil {
+		log.Printf("domains.generate.list_edges_error dataset_id=%d err=%v", id, err)
+		app.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 	log.Printf("domains.generate.done dataset_id=%d domains=%d edges=%d", id, len(persistedDomains), len(persistedEdges))
 	app.writeJSON(w, http.StatusOK, model.DatasetGraph{Dataset: graph, Domains: persistedDomains, Edges: persistedEdges})
 }

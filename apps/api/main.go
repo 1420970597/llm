@@ -253,7 +253,12 @@ func (app *application) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *application) writeError(w http.ResponseWriter, status int, err error) {
-	app.writeJSON(w, status, map[string]string{"error": err.Error()})
+	msg := err.Error()
+	if status >= 500 {
+		log.Printf("internal error: %v", err)
+		msg = "internal server error"
+	}
+	app.writeJSON(w, status, map[string]string{"error": msg})
 }
 
 func (app *application) writeJSON(w http.ResponseWriter, status int, payload any) {

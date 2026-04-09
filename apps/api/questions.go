@@ -46,44 +46,29 @@ func (app *application) enqueueQuestionGeneration(w http.ResponseWriter, r *http
 }
 
 func (app *application) enqueueDatasetJob(ctx context.Context, jobType string, datasetID int64, queuedStatus string) (bool, error) {
-  queued, err := app.redis.LRange(ctx, app.cfg.QueueName, 0, -1).Result()
-  if err != nil {
-    return false, err
-  }
-  for _, raw := range queued {
-    var existing map[string]any
-    if err := json.Unmarshal([]byte(raw), &existing); err != nil {
-      continue
-    }
-    if existing["type"] == jobType && int64FromAny(existing["datasetId"]) == datasetID {
-      return false, nil
-    }
-  }
+	dedupKey := fmt.Sprintf("dedup:%s:%d", jobType, datasetID)
+	set, err := app.redis.SetNX(ctx, dedupKey, "1", 10*time.Minute).Result()
+	if err != nil {
+		return false, err
+	}
+	if !set {
+		return false, nil
+	}
 
-  payload, err := json.Marshal(map[string]any{"type": jobType, "datasetId": datasetID})
-  if err != nil {
-    return false, err
-  }
-  if err := app.redis.LPush(ctx, app.cfg.QueueName, payload).Err(); err != nil {
-    return false, err
-  }
-  if err := app.datasets.UpdateStatus(ctx, datasetID, queuedStatus); err != nil {
-    return false, err
-  }
-  return true, nil
-}
-
-func int64FromAny(value any) int64 {
-  switch typed := value.(type) {
-  case float64:
-    return int64(typed)
-  case int64:
-    return typed
-  case int:
-    return int64(typed)
-  default:
-    return 0
-  }
+	payload, err := json.Marshal(map[string]any{"type": jobType, "datasetId": datasetID})
+	if err != nil {
+		_ = app.redis.Del(ctx, dedupKey)
+		return false, err
+	}
+	if err := app.redis.LPush(ctx, app.cfg.QueueName, payload).Err(); err != nil {
+		_ = app.redis.Del(ctx, dedupKey)
+		return false, err
+	}
+	if err := app.datasets.UpdateStatus(ctx, datasetID, queuedStatus); err != nil {
+		_ = app.redis.Del(ctx, dedupKey)
+		return false, err
+	}
+	return true, nil
 }
 
 func queuedMessage(enqueued bool, created string, existing string) string {

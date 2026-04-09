@@ -60,6 +60,9 @@ func generateQuestionsForDomain(ctx context.Context, provider ProviderConfig, da
 		return nil, err
 	}
 
+	if len(decoded.Choices) == 0 {
+		return nil, fmt.Errorf("provider returned no choices")
+	}
 	var texts []string
 	if err := unmarshalStructuredContent(decoded.Choices[0].Message.Content, &texts); err != nil {
 		return nil, err

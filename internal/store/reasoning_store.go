@@ -11,9 +11,10 @@ import (
 )
 
 type ReasoningStore struct {
-	db              *pgxpool.Pool
-	schemaCheckOnce sync.Once
-	schemaCheckErr  error
+	db             *pgxpool.Pool
+	schemaMu       sync.Mutex
+	schemaReady    bool
+	schemaCheckErr error
 }
 
 func NewReasoningStore(db *pgxpool.Pool) *ReasoningStore {
@@ -109,13 +110,18 @@ func (s *ReasoningStore) List(ctx context.Context, datasetID int64) ([]model.Rea
 }
 
 func (s *ReasoningStore) EnsureSchemaReady(ctx context.Context) error {
-	s.schemaCheckOnce.Do(func() {
-		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
+	if s.schemaReady {
+		return nil
+	}
 
-		var tableExists bool
-		var reasoningColumnExists bool
-		err := s.db.QueryRow(checkCtx, `
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var tableExists bool
+	var reasoningColumnExists bool
+	err := s.db.QueryRow(checkCtx, `
       SELECT
         EXISTS(
           SELECT 1
@@ -127,18 +133,19 @@ func (s *ReasoningStore) EnsureSchemaReady(ctx context.Context) error {
           FROM information_schema.columns
           WHERE table_schema = 'public' AND table_name = 'reasoning_records' AND column_name = 'reasoning'
         )`).Scan(&tableExists, &reasoningColumnExists)
-		if err != nil {
-			s.schemaCheckErr = fmt.Errorf("verify reasoning schema readiness: %w", err)
-			return
-		}
-		if !tableExists {
-			s.schemaCheckErr = fmt.Errorf("reasoning schema not ready: missing table reasoning_records; run migrations")
-			return
-		}
-		if !reasoningColumnExists {
-			s.schemaCheckErr = fmt.Errorf("reasoning schema not ready: missing column reasoning_records.reasoning; run migration 0010_reasoning_detail.sql")
-			return
-		}
-	})
-	return s.schemaCheckErr
+	if err != nil {
+		s.schemaCheckErr = fmt.Errorf("verify reasoning schema readiness: %w", err)
+		return s.schemaCheckErr
+	}
+	if !tableExists {
+		s.schemaCheckErr = fmt.Errorf("reasoning schema not ready: missing table reasoning_records; run migrations")
+		return s.schemaCheckErr
+	}
+	if !reasoningColumnExists {
+		s.schemaCheckErr = fmt.Errorf("reasoning schema not ready: missing column reasoning_records.reasoning; run migration 0010_reasoning_detail.sql")
+		return s.schemaCheckErr
+	}
+	s.schemaReady = true
+	s.schemaCheckErr = nil
+	return nil
 }

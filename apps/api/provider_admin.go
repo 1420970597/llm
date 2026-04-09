@@ -65,7 +65,7 @@ func (app *application) resolveProviderDraft(r *http.Request) (model.ModelProvid
 	if input.ProviderType != "" {
 		persisted.ProviderType = input.ProviderType
 	}
-	if input.ReasoningEffort != "" || persisted.ReasoningEffort != "" {
+	if input.ReasoningEffort != "" {
 		persisted.ReasoningEffort = input.ReasoningEffort
 	}
 	if input.MaxConcurrency != 0 {
@@ -77,6 +77,6 @@ func (app *application) resolveProviderDraft(r *http.Request) (model.ModelProvid
 	if input.APIKey != "" {
 		persisted.APIKey = input.APIKey
 	}
-	persisted.IsActive = input.IsActive || persisted.IsActive
+	persisted.IsActive = input.IsActive
 	return persisted, nil
 }

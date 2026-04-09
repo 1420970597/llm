@@ -76,6 +76,9 @@ func generateReasoningForQuestion(ctx context.Context, provider ProviderConfig, 
 		return reasoningPayload{}, err
 	}
 
+	if len(decoded.Choices) == 0 {
+		return reasoningPayload{}, fmt.Errorf("provider returned no choices")
+	}
 	var generated reasoningPayload
 	if err := unmarshalStructuredContent(decoded.Choices[0].Message.Content, &generated); err != nil {
 		fallback := strings.TrimSpace(decoded.Choices[0].Message.Content)

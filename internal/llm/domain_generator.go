@@ -92,6 +92,9 @@ func generateDomainsInBatches(ctx context.Context, provider ProviderConfig, data
 			return nil, err
 		}
 
+		if len(decoded.Choices) == 0 {
+			return nil, fmt.Errorf("provider returned no choices")
+		}
 		var names []string
 		if err := unmarshalStructuredContent(decoded.Choices[0].Message.Content, &names); err != nil {
 			return nil, err

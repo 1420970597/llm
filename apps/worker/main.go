@@ -379,7 +379,10 @@ func handleExportGeneration(ctx context.Context, datasetID int64, datasets *stor
 			"reward_score":     reward.Score,
 			"reward_object":    reward.ObjectKey,
 		}
-		body, _ := json.Marshal(payload)
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("marshal export record dataset=%d question=%d: %w", datasetID, question.ID, err)
+		}
 		lines = append(lines, body...)
 		lines = append(lines, '\n')
 		exportedCount++

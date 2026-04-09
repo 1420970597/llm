@@ -109,14 +109,12 @@ func (app *application) routeRequiresAuth(path string) bool {
 	switch {
 	case strings.HasPrefix(path, "/api/v1/auth/"):
 		return false
+	case path == "/healthz", path == "/readyz":
+		return false
 	case path == "/api/v1/platform/overview":
 		return false
-	case strings.HasPrefix(path, "/api/v1/datasets"):
-		return true
-	case path == "/api/v1/platform/runtime":
-		return true
 	default:
-		return false
+		return true
 	}
 }
 
@@ -169,6 +167,7 @@ func (app *application) createSessionCookie(user model.User) (*http.Cookie, erro
 		Value:    sealed,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   app.cfg.Environment == "production",
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(24 * time.Hour),
 		MaxAge:   60 * 60 * 24,
