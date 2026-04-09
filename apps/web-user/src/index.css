@@ -367,3 +367,119 @@ a {
     justify-content: flex-start;
   }
 }
+
+/* === ToolJet Layout - IDE-style Sidebar + Canvas === */
+.tooljet-layout {
+  display: flex;
+  min-height: 100vh;
+  background: var(--semi-color-bg-0);
+}
+
+.tj-sidebar {
+  width: 232px;
+  background: var(--semi-color-bg-2);
+  border-right: 1px solid var(--semi-color-border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width 0.2s ease;
+  overflow-y: auto;
+}
+
+.tj-sidebar-collapsed {
+  width: 54px;
+}
+
+.tj-sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.tj-sidebar-actions {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-bottom: 1px solid var(--semi-color-fill-0);
+}
+
+.tj-sidebar-footer {
+  margin-top: auto;
+  padding: 12px;
+}
+
+.tj-collapsed-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+}
+
+.tj-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--semi-color-text-2);
+  transition: background 0.15s, color 0.15s;
+}
+
+.tj-icon-btn:hover {
+  background: var(--semi-color-fill-0);
+  color: var(--semi-color-text-0);
+}
+
+.tj-icon-active {
+  background: var(--semi-color-primary-light-default);
+  color: var(--semi-color-primary);
+}
+
+.tj-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tj-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 48px;
+  border-bottom: 1px solid var(--semi-color-border);
+  background: var(--semi-color-bg-1);
+  flex-shrink: 0;
+}
+
+.tj-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tj-breadcrumb {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
+
+.tj-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tj-canvas {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  background: var(--semi-color-bg-0);
+}
