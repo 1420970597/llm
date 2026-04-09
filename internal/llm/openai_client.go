@@ -71,7 +71,11 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 			lastErr = err
 			log.Printf("llm.chat.transport_error model=%s attempt=%d err=%v", provider.Model, attempt, err)
 			if shouldRetryTransportError(err) && attempt < maxAttempts {
-				time.Sleep(time.Duration(attempt) * time.Second)
+				select {
+				case <-time.After(time.Duration(attempt) * time.Second):
+				case <-ctx.Done():
+					return decoded, ctx.Err()
+				}
 				continue
 			}
 			return decoded, err
@@ -82,7 +86,11 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 			_ = res.Body.Close()
 			lastErr = fmt.Errorf("provider request failed: %s", message)
 			if retryable && attempt < maxAttempts {
-				time.Sleep(time.Duration(attempt) * time.Second)
+				select {
+				case <-time.After(time.Duration(attempt) * time.Second):
+				case <-ctx.Done():
+					return decoded, ctx.Err()
+				}
 				continue
 			}
 			return decoded, lastErr

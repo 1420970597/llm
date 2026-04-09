@@ -74,6 +74,9 @@ func generateRewardForQuestion(ctx context.Context, provider ProviderConfig, dat
 	if err != nil {
 		return rewardPayload{}, err
 	}
+	if len(decoded.Choices) == 0 {
+		return rewardPayload{}, fmt.Errorf("provider returned no choices")
+	}
 
 	if len(decoded.Choices) == 0 {
 		return rewardPayload{}, fmt.Errorf("provider returned no choices")

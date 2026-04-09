@@ -59,6 +59,9 @@ func generateQuestionsForDomain(ctx context.Context, provider ProviderConfig, da
 	if err != nil {
 		return nil, err
 	}
+	if len(decoded.Choices) == 0 {
+		return nil, fmt.Errorf("provider returned no choices")
+	}
 
 	if len(decoded.Choices) == 0 {
 		return nil, fmt.Errorf("provider returned no choices")

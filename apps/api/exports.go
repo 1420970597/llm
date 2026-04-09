@@ -122,8 +122,9 @@ func (app *application) downloadArtifact(w http.ResponseWriter, r *http.Request)
         app.writeError(w, http.StatusInternalServerError, err)
         return
       }
+      safeFileName := strings.NewReplacer("\"", "", "\r", "", "\n", "").Replace(fileName)
       w.Header().Set("Content-Type", item.ContentType)
-      w.Header().Set("Content-Disposition", "attachment; filename=\""+fileName+"\"")
+      w.Header().Set("Content-Disposition", "attachment; filename=\""+safeFileName+"\"")
       _, _ = w.Write(payload)
       return
     }

@@ -33,6 +33,9 @@ type application struct {
 
 func main() {
 	cfg := config.LoadAPIConfig()
+	if cfg.EncryptionKey == "phase1-dev-only-32-byte-secret!!!" {
+		log.Printf("WARNING: using default encryption key — set APP_ENCRYPTION_KEY in production")
+	}
 	ctx := context.Background()
 
 	pool, err := pgxpool.New(ctx, cfg.PostgresDSN)

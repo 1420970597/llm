@@ -75,6 +75,9 @@ func generateReasoningForQuestion(ctx context.Context, provider ProviderConfig, 
 	if err != nil {
 		return reasoningPayload{}, err
 	}
+	if len(decoded.Choices) == 0 {
+		return reasoningPayload{}, fmt.Errorf("provider returned no choices")
+	}
 
 	if len(decoded.Choices) == 0 {
 		return reasoningPayload{}, fmt.Errorf("provider returned no choices")

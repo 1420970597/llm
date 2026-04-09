@@ -91,6 +91,9 @@ func generateDomainsInBatches(ctx context.Context, provider ProviderConfig, data
 			}
 			return nil, err
 		}
+		if len(decoded.Choices) == 0 {
+			return nil, fmt.Errorf("provider returned no choices")
+		}
 
 		if len(decoded.Choices) == 0 {
 			return nil, fmt.Errorf("provider returned no choices")
