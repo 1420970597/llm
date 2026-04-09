@@ -334,6 +334,327 @@ a {
   min-height: calc(100vh - 120px);
 }
 
+
+/* ===== comfyui layout ===== */
+.cfy-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: #1e1e1e;
+  color: #ccc;
+}
+
+.cfy-menubar {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+  z-index: 100;
+  font-size: 12px;
+}
+
+.cfy-menubar-left {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.cfy-menu-item {
+  padding: 2px 10px;
+  border-radius: 3px;
+  color: #ccc;
+  cursor: pointer;
+  transition: background 0.1s;
+  font-size: 12px;
+}
+
+.cfy-menu-item:hover {
+  background: #3c3c3c;
+}
+
+.cfy-menu-item.active {
+  background: #094771;
+  color: #fff;
+}
+
+.cfy-menubar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cfy-menubar-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #ccc;
+  transition: background 0.1s;
+}
+
+.cfy-menubar-btn:hover {
+  background: #3c3c3c;
+}
+
+.cfy-menubar-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cfy-workspace {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.cfy-panel-left {
+  width: 240px;
+  background: #252526;
+  border-right: 1px solid #3c3c3c;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.15s ease;
+  flex-shrink: 0;
+}
+
+.cfy-panel-left.collapsed {
+  width: 0;
+}
+
+.cfy-panel-header {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.cfy-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ccc;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cfy-panel-close {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #888;
+  transition: all 0.1s;
+}
+
+.cfy-panel-close:hover {
+  background: #3c3c3c;
+  color: #ccc;
+}
+
+.cfy-panel-close svg {
+  width: 12px;
+  height: 12px;
+}
+
+.cfy-panel-search {
+  padding: 4px 8px;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.cfy-panel-search input {
+  width: 100%;
+  height: 24px;
+  border: 1px solid #3c3c3c;
+  border-radius: 3px;
+  background: #1e1e1e;
+  padding: 0 8px;
+  font-size: 11px;
+  color: #ccc;
+  outline: none;
+}
+
+.cfy-panel-search input:focus {
+  border-color: #094771;
+}
+
+.cfy-panel-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
+.cfy-panel-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.cfy-panel-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cfy-panel-nav::-webkit-scrollbar-thumb {
+  background: #3c3c3c;
+  border-radius: 3px;
+}
+
+.cfy-node-item {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  color: #ccc;
+  cursor: pointer;
+  transition: background 0.1s;
+  gap: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.cfy-node-item:hover {
+  background: #2a2d2e;
+}
+
+.cfy-node-item.active {
+  background: #094771;
+  color: #fff;
+}
+
+.cfy-node-item svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: #888;
+}
+
+.cfy-node-item.active svg {
+  color: #fff;
+}
+
+.cfy-canvas {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #1e1e1e;
+}
+
+.cfy-canvas-toolbar {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.cfy-canvas-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cfy-toolbar-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: #ccc;
+  font-size: 11px;
+  transition: background 0.1s;
+  border: 1px solid #3c3c3c;
+  background: #2d2d2d;
+}
+
+.cfy-toolbar-btn:hover {
+  background: #3c3c3c;
+}
+
+.cfy-toolbar-btn.primary {
+  background: #094771;
+  border-color: #094771;
+  color: #fff;
+}
+
+.cfy-toolbar-btn.primary:hover {
+  background: #0a5286;
+}
+
+.cfy-toolbar-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.cfy-canvas-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #ccc;
+  text-transform: capitalize;
+}
+
+.cfy-canvas-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.cfy-statusbar {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  background: #094771;
+  font-size: 11px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.cfy-statusbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cfy-statusbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Override semi-ui for dark theme */
+.cfy-app .semi-card {
+  background: #252526;
+  border-color: #3c3c3c;
+  color: #ccc;
+}
+
+.cfy-app .semi-tag {
+  background: #3c3c3c;
+  color: #ccc;
+}
+
+
 @media (max-width: 1200px) {
   .console-card-grid-4,
   .console-card-grid-3,
