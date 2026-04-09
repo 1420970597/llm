@@ -334,6 +334,136 @@ a {
   min-height: calc(100vh - 120px);
 }
 
+
+/* ===== React Admin Layout ===== */
+.react-admin-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.ra-appbar {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: var(--semi-color-primary);
+  color: #fff;
+  flex-shrink: 0;
+  z-index: 40;
+  position: sticky;
+  top: 0;
+}
+
+.ra-appbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ra-appbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ra-body {
+  display: flex;
+  flex: 1;
+}
+
+.ra-drawer {
+  width: 240px;
+  background: var(--semi-color-bg-1);
+  border-right: 1px solid rgba(var(--semi-grey-2), 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  flex-shrink: 0;
+  transition: width 0.2s ease;
+}
+
+body.sidebar-collapsed .ra-drawer {
+  width: 56px;
+}
+
+body.sidebar-collapsed .ra-drawer .ra-drawer-text,
+body.sidebar-collapsed .ra-drawer .ra-drawer-entry,
+body.sidebar-collapsed .ra-drawer .ra-drawer-footer-card {
+  display: none;
+}
+
+.ra-drawer-nav {
+  flex: 1;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.ra-drawer-nav .semi-navigation {
+  border-right: none;
+  background: transparent;
+}
+
+.ra-drawer-nav .semi-navigation-item {
+  border-radius: 6px;
+}
+
+.ra-drawer-nav .semi-navigation-item-selected {
+  background: rgba(var(--semi-blue-0), 0.12);
+}
+
+.ra-drawer-entry {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.06);
+}
+
+.ra-drawer-footer {
+  padding: 10px 12px;
+  border-top: 1px solid rgba(var(--semi-grey-2), 0.06);
+}
+
+.ra-drawer-footer-card {
+  border-radius: 10px;
+  border: 1px solid rgba(var(--semi-grey-2), 0.06);
+}
+
+.ra-drawer-footer-card .semi-card-body { padding: 10px; }
+
+.ra-drawer-footer-card .console-summary-row {
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+
+.ra-content {
+  flex: 1;
+  padding: 20px 24px;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.react-admin-layout .console-workbench-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.react-admin-layout .console-workbench-sidebar,
+.react-admin-layout .console-workbench-delivery {
+  top: 80px;
+}
+
+@media (max-width: 900px) {
+  .ra-drawer {
+    position: fixed;
+    left: -240px;
+    top: 56px;
+    height: calc(100vh - 56px);
+    z-index: 50;
+    transition: left 0.25s ease;
+  }
+  body.sidebar-expanded .ra-drawer { left: 0; }
+}
+
 @media (max-width: 1200px) {
   .console-card-grid-4,
   .console-card-grid-3,
