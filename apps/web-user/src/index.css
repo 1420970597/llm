@@ -334,6 +334,159 @@ a {
   min-height: calc(100vh - 120px);
 }
 
+
+/* ===== Cal.com Layout ===== */
+.calcom-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.cc-shell-header {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.10);
+  background: var(--semi-color-bg-0);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  flex-shrink: 0;
+}
+
+.cc-shell-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.cc-shell-nav {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.cc-shell-nav-item {
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--semi-color-text-2);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  border: none;
+  background: transparent;
+  white-space: nowrap;
+}
+
+.cc-shell-nav-item:hover {
+  background: rgba(var(--semi-grey-2), 0.08);
+  color: var(--semi-color-text-0);
+}
+
+.cc-shell-nav-item.active {
+  background: rgba(var(--semi-grey-2), 0.12);
+  color: var(--semi-color-text-0);
+  font-weight: 600;
+}
+
+.cc-shell-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cc-body {
+  display: flex;
+  flex: 1;
+}
+
+.cc-sidebar {
+  width: 240px;
+  border-right: 1px solid rgba(var(--semi-grey-2), 0.06);
+  background: var(--semi-color-bg-1);
+  padding: 16px 10px;
+  position: sticky;
+  top: 56px;
+  height: calc(100vh - 56px);
+  height: calc(100dvh - 56px);
+  overflow-y: auto;
+  flex-shrink: 0;
+  transition: width 0.2s ease;
+}
+
+body.sidebar-collapsed .cc-sidebar {
+  width: 0;
+  padding: 0;
+  overflow: hidden;
+  border-right: none;
+}
+
+.cc-sidebar .semi-navigation {
+  border-right: none;
+  background: transparent;
+}
+
+.cc-sidebar .semi-navigation-item {
+  border-radius: 8px;
+}
+
+.cc-sidebar .semi-navigation-item-selected {
+  background: rgba(var(--semi-grey-2), 0.12);
+}
+
+.cc-sidebar-actions {
+  padding: 0 8px 12px;
+}
+
+.cc-sidebar-footer {
+  padding: 8px;
+  margin-top: auto;
+}
+
+.cc-sidebar-stats {
+  border-radius: 10px;
+  border: 1px solid rgba(var(--semi-grey-2), 0.08);
+  background: color-mix(in srgb, var(--semi-color-bg-1) 92%, white 8%);
+}
+
+.cc-sidebar-stats .semi-card-body {
+  padding: 10px;
+}
+
+.cc-sidebar-stats .console-summary-row {
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.cc-main {
+  flex: 1;
+  padding: 24px;
+  min-width: 0;
+}
+
+/* Cal.com stat grid */
+.calcom-layout .console-workbench-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.calcom-layout .console-workbench-sidebar,
+.calcom-layout .console-workbench-delivery {
+  top: 80px;
+}
+
+@media (max-width: 992px) {
+  .cc-sidebar {
+    display: none;
+  }
+  .cc-shell-nav {
+    display: none;
+  }
+}
+
 @media (max-width: 1200px) {
   .console-card-grid-4,
   .console-card-grid-3,
