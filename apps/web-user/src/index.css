@@ -334,6 +334,265 @@ a {
   min-height: calc(100vh - 120px);
 }
 
+
+/* ===== mlflow layout ===== */
+.mlf-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: #fff;
+}
+
+.mlf-header {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: #1b2a4a;
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.mlf-header-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.mlf-header-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.mlf-header-logo-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  background: #0194e2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mlf-header-logo-icon svg {
+  color: #fff;
+  width: 16px;
+  height: 16px;
+}
+
+.mlf-header-logo-text {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.mlf-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 100%;
+}
+
+.mlf-header-nav-item {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.mlf-header-nav-item:hover {
+  color: #fff;
+}
+
+.mlf-header-nav-item.active {
+  color: #fff;
+  border-bottom-color: #0194e2;
+}
+
+.mlf-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mlf-header-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: rgba(255,255,255,0.7);
+  transition: all 0.15s;
+}
+
+.mlf-header-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+}
+
+.mlf-header-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mlf-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.mlf-sidebar {
+  width: 240px;
+  border-right: 1px solid #e8e8e8;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.2s ease;
+  flex-shrink: 0;
+}
+
+.mlf-sidebar.collapsed {
+  width: 0;
+}
+
+.mlf-sidebar-header {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-bottom: 1px solid #e8e8e8;
+  flex-shrink: 0;
+}
+
+.mlf-sidebar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.mlf-sidebar-toggle {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #8c8c8c;
+  transition: all 0.15s;
+}
+
+.mlf-sidebar-toggle:hover {
+  background: #e8e8e8;
+}
+
+.mlf-sidebar-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+.mlf-sidebar-search {
+  padding: 8px;
+  border-bottom: 1px solid #e8e8e8;
+  flex-shrink: 0;
+}
+
+.mlf-sidebar-search input {
+  width: 100%;
+  height: 30px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 12px;
+  outline: none;
+  background: #fff;
+}
+
+.mlf-sidebar-search input:focus {
+  border-color: #0194e2;
+}
+
+.mlf-sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.mlf-sidebar-nav::-webkit-scrollbar {
+  width: 0;
+}
+
+.mlf-sidebar-item {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 10px;
+  margin: 1px 0;
+  border-radius: 4px;
+  color: #595959;
+  cursor: pointer;
+  transition: all 0.12s;
+  gap: 8px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.mlf-sidebar-item:hover {
+  background: #e6f7ff;
+  color: #0194e2;
+}
+
+.mlf-sidebar-item.active {
+  background: #e6f7ff;
+  color: #0194e2;
+  font-weight: 600;
+}
+
+.mlf-sidebar-item svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.mlf-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  background: #fff;
+}
+
+.mlf-content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.mlf-content-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #262626;
+  text-transform: capitalize;
+}
+
+
 @media (max-width: 1200px) {
   .console-card-grid-4,
   .console-card-grid-3,
