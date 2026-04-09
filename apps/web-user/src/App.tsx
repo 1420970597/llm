@@ -44,6 +44,9 @@ import {
   Target,
   Users,
   Workflow,
+  ChevronLeft,
+  ChevronRight,
+  Home,
   type LucideIcon,
 } from 'lucide-react'
 import clsx from 'clsx'
@@ -635,14 +638,27 @@ function PageHeader({
   badge?: string
   actions?: React.ReactNode
 }) {
+  const breadcrumbs = badge ? badge.split(' / ') : []
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-      <div className="console-route-banner">
-        {badge ? <span className="console-chip">{badge}</span> : null}
-        <Title heading={2} className="!mb-0 console-page-title">{title}</Title>
-        <Text className="console-page-subtitle">{description}</Text>
+    <div className="pro-page-header" style={{ margin: '-24px -24px 0', marginBottom: 0 }}>
+      {breadcrumbs.length > 0 ? (
+        <div className="pro-breadcrumb">
+          <span className="pro-breadcrumb-link"><Home size={13} /></span>
+          {breadcrumbs.map((crumb, idx) => (
+            <span key={crumb} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span className="pro-breadcrumb-sep">/</span>
+              <span className={idx === breadcrumbs.length - 1 ? 'pro-breadcrumb-current' : 'pro-breadcrumb-link'}>{crumb}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div className="pro-page-header-heading">
+        <div>
+          <h3 className="pro-page-header-title">{title}</h3>
+          <div className="pro-page-header-desc">{description}</div>
+        </div>
+        {actions ? <div className="pro-page-header-actions">{actions}</div> : null}
       </div>
-      {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
     </div>
   )
 }
@@ -916,6 +932,47 @@ export default function App() {
     () => visiblePages.find((page) => location.pathname === page.route || location.pathname.startsWith(`${page.route}/`))?.route ?? stageRouteNavMap[location.pathname] ?? '/console/tasks',
     [location.pathname, visiblePages],
   )
+
+  const currentSection = useMemo(() => {
+    if (location.pathname.startsWith('/console/admin/') || location.pathname === '/console/operations') return 'admin'
+    if (location.pathname.match(/^\/console\/tasks\/\d+/)) return 'task-detail'
+    return 'main'
+  }, [location.pathname])
+
+  const contextSidebarItems = useMemo(() => {
+    if (currentSection === 'task-detail') {
+      return [
+        { itemKey: activeTaskDetailRoute, text: '任务总览', icon: <Target size={16} /> },
+        { itemKey: '/console/domains', text: '主题结构', icon: <GitBranch size={16} /> },
+        { itemKey: '/console/questions', text: '问题生成', icon: <Layers3 size={16} /> },
+        { itemKey: '/console/reasoning', text: '答案内容', icon: <BrainCircuit size={16} /> },
+        { itemKey: '/console/rewards', text: '质量评估', icon: <ShieldCheck size={16} /> },
+        { itemKey: '/console/exports', text: '导出交付', icon: <HardDriveDownload size={16} /> },
+      ]
+    }
+    if (currentSection === 'admin') {
+      return adminPages.map((page) => ({ itemKey: page.route, text: page.label, icon: <page.icon size={16} /> }))
+    }
+    return []
+  }, [currentSection, activeTaskDetailRoute])
+
+  const breadcrumbSegments = useMemo(() => {
+    const segments: Array<{ label: string; route?: string }> = [{ label: '控制台', route: '/console/home' }]
+    if (location.pathname.match(/^\/console\/tasks\/\d+/)) {
+      segments.push({ label: '我的任务', route: '/console/tasks' })
+      if (activeDataset) segments.push({ label: activeDataset.name })
+    } else if (location.pathname.startsWith('/console/admin/') || location.pathname === '/console/operations') {
+      segments.push({ label: '系统设置' })
+      const adminPage = adminPages.find((p) => p.route === location.pathname)
+      if (adminPage) segments.push({ label: adminPage.label })
+    } else {
+      const currentPage = visiblePages.find((p) => location.pathname === p.route)
+      if (currentPage) segments.push({ label: currentPage.label })
+    }
+    return segments
+  }, [location.pathname, visiblePages, activeDataset])
+
+  const hasSidebar = contextSidebarItems.length > 0
 
   useEffect(() => {
     document.body.classList.toggle('sidebar-collapsed', sidebarCollapsed)
@@ -3512,110 +3569,114 @@ export default function App() {
         path="/*"
         element={
           user ? (
-            <Layout className="app-layout">
-              <Header className="console-header-shell" style={{ padding: 0, position: 'fixed', inset: '0 0 auto 0', zIndex: 50 }}>
-                <div className="mx-auto flex h-16 items-center justify-between gap-4 px-4 lg:px-6">
-                  <div className="flex items-center gap-3">
-                    <Button icon={<LayoutDashboard size={16} />} theme="borderless" onClick={() => setSidebarCollapsed((current) => !current)} />
-                    <Avatar color="blue" size="small">L</Avatar>
-                    <div>
-                      <div className="font-semibold">企业数据工厂</div>
-                      <div className="text-xs console-nav-caption">{visiblePages.find((page) => page.route === activeNav)?.caption ?? '任务推进与交付'}</div>
+            <div className="app-layout">
+              {/* === Ant Design Pro: Dark Header (56px) === */}
+              <div className="pro-header">
+                <div className="pro-header-logo">
+                  <div className="pro-header-logo-icon">L</div>
+                  <span className="pro-header-logo-text">企业数据工厂</span>
+                </div>
+                <div className="pro-header-menu">
+                  {[
+                    { label: '工作台', route: '/console/home' },
+                    { label: '任务管理', route: '/console/tasks' },
+                    { label: '数据资产', route: '/console/results' },
+                    ...(isAdmin ? [{ label: '系统设置', route: '/console/operations' }] : []),
+                  ].map((item) => (
+                    <div
+                      key={item.route}
+                      className={clsx('pro-header-menu-item', activeNav.startsWith(item.route) && 'active')}
+                      onClick={() => navigate(item.route)}
+                    >
+                      {item.label}
+                    </div>
+                  ))}
+                </div>
+                <div className="pro-header-actions">
+                  <Tag color={isAdmin ? 'green' : 'blue'}>{isAdmin ? '管理员' : '用户'}</Tag>
+                  <div className="pro-header-user">
+                    <Avatar color="blue" size="extra-small">{user.email[0]?.toUpperCase()}</Avatar>
+                    <span className="pro-header-user-name">{user.email}</span>
+                  </div>
+                  <Button theme="borderless" icon={<RefreshCw size={14} />} loading={workspaceLoading} onClick={() => void loadBootstrap('数据已刷新')} />
+                  <Button theme="borderless" icon={<LogOut size={14} />} onClick={() => void handleLogout()} />
+                </div>
+              </div>
+
+              {/* === Ant Design Pro: Dark Sider (208px / 48px collapsed) === */}
+              <div className="pro-sider">
+                <div className="pro-sider-inner">
+                  <div className="pro-sider-section">
+                    <div className="pro-sider-section-title">业务导航</div>
+                    {visibleUserPages.map((page) => (
+                      <div
+                        key={page.route}
+                        className={clsx('pro-menu-item', activeNav === page.route && 'active')}
+                        onClick={() => navigate(page.route)}
+                        title={page.label}
+                      >
+                        <span className="pro-menu-item-icon"><page.icon size={16} /></span>
+                        <span className="pro-menu-item-label">{page.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {isAdmin ? (
+                    <div className="pro-sider-section">
+                      <div className="pro-sider-section-title">系统设置</div>
+                      {adminPages.map((page) => (
+                        <div
+                          key={page.route}
+                          className={clsx('pro-menu-item', activeNav === page.route && 'active')}
+                          onClick={() => navigate(page.route)}
+                          title={page.label}
+                        >
+                          <span className="pro-menu-item-icon"><page.icon size={16} /></span>
+                          <span className="pro-menu-item-label">{page.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="pro-sider-footer">
+                    <div className="pro-sider-collapse-btn" onClick={() => setSidebarCollapsed((c) => !c)}>
+                      {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+                      <span>收起菜单</span>
                     </div>
                   </div>
-                  <div className="console-header-actions flex items-center gap-3">
-                    <Tag color={isAdmin ? 'green' : 'blue'}>{isAdmin ? '管理员' : '普通用户'}</Tag>
-                    <Text>{user.email}</Text>
-                    <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('控制台数据已刷新')} />
-                    <Button icon={<LogOut size={16} />} onClick={() => void handleLogout()}>退出</Button>
-                  </div>
                 </div>
-              </Header>
-              <Layout style={{ paddingTop: 64 }}>
-                <Sider className="app-sider" style={{ position: 'fixed', top: 64, left: 0, border: 'none', width: 'var(--sidebar-current-width)', zIndex: 30 }}>
-                  <div className="console-nav-shell h-full px-3 py-4">
-                    <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
-                      <Text strong>工作入口</Text>
-                      <Text className="mt-2 block console-caption">先新建任务，或回到我的任务。</Text>
-                      <Space className="mt-4" wrap>
-                        <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
-                        <Button onClick={() => navigate('/console/tasks')}>我的任务</Button>
-                      </Space>
-                    </Card>
-                    <Nav
-                      bodyStyle={{ paddingBottom: 12 }}
-                      selectedKeys={[activeNav]}
-                      items={[
-                        {
-                          itemKey: 'primary-group',
-                          text: '业务导航',
-                          items: visibleUserPages.map((page) => ({
-                            itemKey: page.route,
-                            text: page.label,
-                            icon: <page.icon size={16} />,
-                          })),
-                        },
-                        ...(isAdmin
-                          ? [
-                              {
-                                itemKey: 'admin-group',
-                                text: '系统设置',
-                                items: adminPages.map((page) => ({
-                                  itemKey: page.route,
-                                  text: page.label,
-                                  icon: <page.icon size={16} />,
-                                })),
-                              },
-                            ]
-                          : []),
-                      ]}
-                      onSelect={(data) => navigate(String(data.itemKey))}
-                      footer={
-                        <div className="px-3 pb-3">
-                          <Card className="console-sidebar-card" bodyStyle={{ padding: 14 }}>
-                            <div className="console-summary-grid">
-                              <div className="console-summary-row"><span>任务总数</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>当前建议</span><Text strong>{runtime?.datasetCount ? '回到我的任务' : '新建任务'}</Text></div>
-                            </div>
-                          </Card>
-                        </div>
-                      }
-                    />
-                  </div>
-                </Sider>
-                <Layout style={{ marginLeft: 'var(--sidebar-current-width)' }}>
-                  <Content style={{ padding: 24 }}>
-                    {trustSignal ? (
-                      <div className="mb-4">
-                        <TrustSignalCard signal={trustSignal} onDismiss={() => setTrustSignal(null)} onNavigate={(route) => navigate(route)} />
-                      </div>
-                    ) : null}
-                    <Routes>
-                      <Route path="/console/home" element={renderOverview()} />
-                      <Route path="/console/overview" element={<Navigate to="/console/home" replace />} />
-                      <Route path="/console/tasks" element={renderTaskIndex()} />
-                      <Route path="/console/tasks/:taskId" element={renderTaskDetail()} />
-                      <Route path="/console/planning" element={renderPlanning()} />
-                      <Route path="/console/results" element={renderResultsHub()} />
-                      {isAdmin ? <Route path="/console/operations" element={renderOperations()} /> : null}
-                      <Route path="/console/domains" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/questions" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/reasoning" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/rewards" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/exports" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/help" element={renderHelp()} />
-                      {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
-                      {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
-                      <Route path="*" element={<Navigate to="/console/home" replace />} />
-                    </Routes>
-                  </Content>
-                </Layout>
-              </Layout>
-            </Layout>
+              </div>
+
+              {/* === Content Area === */}
+              <div className="pro-content-area">
+                <div style={{ padding: 24 }}>
+                  {trustSignal ? (
+                    <div className="mb-4">
+                      <TrustSignalCard signal={trustSignal} onDismiss={() => setTrustSignal(null)} onNavigate={(route) => navigate(route)} />
+                    </div>
+                  ) : null}
+                  <Routes>
+                    <Route path="/console/home" element={renderOverview()} />
+                    <Route path="/console/overview" element={<Navigate to="/console/home" replace />} />
+                    <Route path="/console/tasks" element={renderTaskIndex()} />
+                    <Route path="/console/tasks/:taskId" element={renderTaskDetail()} />
+                    <Route path="/console/planning" element={renderPlanning()} />
+                    <Route path="/console/results" element={renderResultsHub()} />
+                    {isAdmin ? <Route path="/console/operations" element={renderOperations()} /> : null}
+                    <Route path="/console/domains" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/questions" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/reasoning" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/rewards" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/exports" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                    <Route path="/console/help" element={renderHelp()} />
+                    {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
+                    {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
+                    <Route path="*" element={<Navigate to="/console/home" replace />} />
+                  </Routes>
+                </div>
+              </div>
+            </div>
           ) : (
             <Navigate to="/login" replace />
           )
