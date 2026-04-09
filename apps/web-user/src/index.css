@@ -334,6 +334,141 @@ a {
   min-height: calc(100vh - 120px);
 }
 
+
+/* ===== Tabler Layout ===== */
+.tabler-layout {
+  display: flex;
+  flex-direction: row;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.tb-sidebar {
+  width: 240px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  border-right: 1px solid rgba(var(--semi-grey-2), 0.10);
+  background: color-mix(in srgb, var(--semi-color-bg-0) 96%, white 4%);
+  display: flex;
+  flex-direction: column;
+  z-index: 30;
+  transition: width 0.2s ease;
+}
+
+body.sidebar-collapsed .tb-sidebar {
+  width: 68px;
+}
+
+body.sidebar-collapsed .tb-sidebar .tb-sidebar-brand-text,
+body.sidebar-collapsed .tb-sidebar .tb-sidebar-entry,
+body.sidebar-collapsed .tb-sidebar .console-sidebar-card,
+body.sidebar-collapsed .tb-sidebar .tb-sidebar-footer {
+  display: none;
+}
+
+.tb-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.08);
+}
+
+.tb-sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px;
+}
+
+.tb-sidebar-entry {
+  padding: 0 10px 12px;
+}
+
+.tb-sidebar-footer {
+  padding: 10px 14px;
+  border-top: 1px solid rgba(var(--semi-grey-2), 0.08);
+}
+
+.tb-page-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tb-header {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.08);
+  backdrop-filter: blur(18px);
+  background: color-mix(in srgb, var(--semi-color-bg-0) 82%, transparent);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.tb-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tb-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tb-page-body {
+  flex: 1;
+  padding: 24px;
+  max-width: 1320px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.tb-page-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--semi-color-text-2);
+  margin-bottom: 16px;
+}
+
+.tb-page-breadcrumb .tb-bc-sep {
+  color: var(--semi-color-text-3);
+}
+
+/* Override stat grid for tabler: 3 cols */
+.tabler-layout .console-workbench-stat-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Override workbench sidebar sticky offset */
+.tabler-layout .console-workbench-sidebar,
+.tabler-layout .console-workbench-delivery {
+  top: 80px;
+}
+
+@media (max-width: 992px) {
+  .tb-sidebar {
+    position: fixed;
+    left: -240px;
+    z-index: 50;
+    transition: left 0.25s ease;
+  }
+  body.sidebar-expanded .tb-sidebar {
+    left: 0;
+  }
+}
+
 @media (max-width: 1200px) {
   .console-card-grid-4,
   .console-card-grid-3,
