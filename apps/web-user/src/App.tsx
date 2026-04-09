@@ -8,7 +8,6 @@ import {
   Empty,
   Input,
   InputNumber,
-  Layout,
   List,
   Modal,
   Nav,
@@ -26,6 +25,7 @@ import {
 import {
   Bell,
   BrainCircuit,
+  ChevronRight,
   CirclePlus,
   Database,
   FileOutput,
@@ -36,6 +36,8 @@ import {
   Layers3,
   LogOut,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   ServerCog,
   Settings,
@@ -72,7 +74,6 @@ import {
   type User,
 } from './lib/api'
 
-const { Header, Sider, Content } = Layout
 const { Title, Text } = Typography
 
 type ProviderDraft = Partial<Provider> & { apiKey?: string }
@@ -322,6 +323,34 @@ function trustMessageLabel(status: string) {
 }
 
 type StageKey = 'questions' | 'reasoning' | 'rewards' | 'export'
+
+function statusToActionRoute(status: string): string {
+  switch (status) {
+    case 'draft':
+      return '/console/domains'
+    case 'domains_confirmed':
+    case 'questions_queued':
+    case 'questions_generated':
+    case 'questions_failed':
+      return '/console/questions'
+    case 'reasoning_queued':
+    case 'reasoning_generated':
+    case 'reasoning_partial':
+    case 'reasoning_failed':
+      return '/console/reasoning'
+    case 'rewards_queued':
+    case 'rewards_generated':
+    case 'rewards_partial':
+    case 'rewards_failed':
+      return '/console/rewards'
+    case 'export_queued':
+    case 'export_generated':
+    case 'export_failed':
+      return '/console/exports'
+    default:
+      return '/console/domains'
+  }
+}
 
 function statusStageKey(status: string): StageKey | null {
   switch (status) {
@@ -793,6 +822,8 @@ export default function App() {
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(260)
+  const sidebarResizing = useRef(false)
   const [user, setUser] = useState<User | null>(null)
 
   const [providers, setProviders] = useState<Provider[]>([])
@@ -919,8 +950,60 @@ export default function App() {
 
   useEffect(() => {
     document.body.classList.toggle('sidebar-collapsed', sidebarCollapsed)
+    const currentWidth = sidebarCollapsed ? 48 : sidebarWidth
+    document.documentElement.style.setProperty('--sidebar-current-width', `${currentWidth}px`)
     return () => document.body.classList.remove('sidebar-collapsed')
-  }, [sidebarCollapsed])
+  }, [sidebarCollapsed, sidebarWidth])
+
+  const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    sidebarResizing.current = true
+    const onMove = (ev: MouseEvent) => {
+      if (!sidebarResizing.current) return
+      const newWidth = Math.min(400, Math.max(200, ev.clientX))
+      setSidebarWidth(newWidth)
+      document.documentElement.style.setProperty('--sidebar-current-width', `${newWidth}px`)
+    }
+    const onUp = () => {
+      sidebarResizing.current = false
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [])
+
+  const breadcrumbLabel = useMemo(() => {
+    const currentPage = visiblePages.find(
+      (page) => location.pathname === page.route || location.pathname.startsWith(`${page.route}/`),
+    )
+    if (currentPage) return currentPage.label
+    const taskDetailMatch = location.pathname.match(/^\/console\/tasks\/(\d+)/)
+    if (taskDetailMatch) return `任务 #${taskDetailMatch[1]}`
+    const stagePages = [...taskWorkbenchPages, ...resultWorkbenchPages]
+    const stagePage = stagePages.find((p) => location.pathname === p.route)
+    if (stagePage) return stagePage.label
+    return '控制台'
+  }, [location.pathname, visiblePages])
+
+  const breadcrumbParent = useMemo(() => {
+    if (location.pathname.startsWith('/console/admin/')) return '系统设置'
+    if (location.pathname.match(/^\/console\/tasks\/\d+/)) return '我的任务'
+    return null
+  }, [location.pathname])
+
+  const pipelineStages = useMemo(() => {
+    if (!activePipeline) return null
+    return activePipeline.stages.map((stage) => ({
+      key: stage.key,
+      label: stageKeyLabel(stage.key),
+      state: stage.state,
+    }))
+  }, [activePipeline])
 
   const makeEmptyProviderDraft = useCallback((): ProviderDraft => ({
     name: '',
@@ -1922,7 +2005,7 @@ export default function App() {
       riskItems.push({
         level: 'medium',
         title: '系统队列压力较高',
-        detail: '前方约 ${queueDepth} 个任务，先降低刷新频率。',
+        detail: `前方约 ${queueDepth} 个任务，先降低刷新频率。`,
       })
     }
     if (exportDeliveryPending) {
@@ -2069,7 +2152,7 @@ export default function App() {
         </div>
 
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          title="系统信号"
+          <Title heading={4} className="!mb-0">系统信号</Title>
           <Text className="mt-2 block console-caption">保留当前任务相关的轻量系统信号。</Text>
           <div className="mt-5 console-card-grid-4">
             {overviewCards.map((item) => <StatCard key={item.label} {...item} />)}
@@ -2264,220 +2347,96 @@ export default function App() {
     ]
 
     return (
-      <div className="console-page-shell">
+      <div className=”console-page-shell”>
         <PageHeader
           badge={`我的任务 / 任务 #${activeDataset.id}`}
           title={activeDataset.name}
-          description="把任务推进、质量抽检与导出交付收口到单页工作台。"
+          description={`主题：${activeDataset.rootKeyword} · ${currentStageLabel} · 进度 ${progressValue}%`}
           actions={
             <>
-              <Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>
-              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务工作台已刷新')}>刷新任务</Button>
+              <Button onClick={() => navigate('/console/tasks')}>返回列表</Button>
+              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务已刷新')}>刷新</Button>
+              <Button theme=”solid” type=”primary” onClick={() => navigate(statusToActionRoute(activeDataset.status))}>{nextActionLabel(activeDataset.status)}</Button>
             </>
           }
         />
 
-        <Card className="console-focus-card" bodyStyle={{ padding: 24 }}>
-          <div className="console-workbench-hero">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Tag color="blue">任务主题：{activeDataset.rootKeyword}</Tag>
-                <Tag color="cyan">当前阶段：{currentStageLabel}</Tag>
-                <Tag color="green">完成进度：{progressValue}%</Tag>
-              </div>
-              <Title heading={3} className="!mb-0 mt-4">当前任务工作台</Title>
-              <Text className="mt-2 block console-caption">先看状态，再按生命周期、抽检和交付推进。</Text>
-            </div>
-            <div className="console-workbench-hero-actions">
-              <Button theme="solid" type="primary" onClick={() => document.getElementById('stage-lifecycle')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{nextActionLabel(activeDataset.status)}</Button>
-              <Button onClick={() => document.getElementById('stage-quality')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>查看质量抽检</Button>
-              <Button onClick={() => document.getElementById('stage-assets')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>查看导出资产</Button>
-            </div>
+        <Card className=”console-panel” bodyStyle={{ padding: 20 }}>
+          <div className=”flex flex-wrap items-center gap-2”>
+            <Tag color=”blue”>{currentStageLabel}</Tag>
+            <Tag color=”cyan”>进度 {progressValue}%</Tag>
+            {queueDepth > 0 ? <Tag color=”orange”>排队 {queueDepth}</Tag> : null}
+            <Tag color=”grey”>ETA: {activeEta}</Tag>
+            <Tag color=”grey”>更新 {formatTime(activeDataset.updatedAt)}</Tag>
           </div>
-          <div className="console-workbench-stat-grid mt-5">
-            {workbenchStats.map((item) => (
-              <div key={item.label} className="console-workbench-stat-card">
-                <Text className="console-caption">{item.label}</Text>
-                <div className="console-stat-value mt-2">{item.value}</div>
-                <Text className="mt-2 block console-caption">{item.helper}</Text>
-              </div>
-            ))}
-          </div>
+          <Progress percent={progressValue} showInfo={false} stroke=”#3b82f6” className=”mt-4” />
+          <Text className=”mt-3 block console-caption”>{waitingReasonLabel(activeDataset.status, queueDepth)}</Text>
         </Card>
 
-        <div className="console-workbench-layout">
-          <div className="console-workbench-sidebar">
-            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-              <Title heading={5} className="!mb-0">任务上下文</Title>
-              <div className="mt-4 console-summary-grid">
-                <div className="console-summary-row"><span>任务 ID</span><Text strong>{activeDataset.id}</Text></div>
-                <div className="console-summary-row"><span>最新更新时间</span><Text strong>{formatTime(activeDataset.updatedAt)}</Text></div>
-                <div className="console-summary-row"><span>阶段 ETA</span><Text strong>{activeEta}</Text></div>
-                <div className="console-summary-row"><span>等待状态</span><Text strong>{waitingStateLabel(activeDataset.status, queueDepth)}</Text></div>
-              </div>
-            </Card>
-
-            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-              <Title heading={5} className="!mb-0">生命周期导航</Title>
-              <div className="mt-4 console-stack">
-                {stageCards.map((stage) => {
-                  const style = stageStateStyle(stage.state)
-                  return (
-                    <button
-                      key={stage.key}
-                      type="button"
-                      className={clsx('console-workbench-stage-nav', `is-${stage.state}`)}
-                      onClick={() => document.getElementById(`stage-${stage.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <Text strong>{stage.label}</Text>
-                        <Tag color={style.color}>{style.label}</Tag>
-                      </div>
-                      <Progress percent={style.percent} showInfo={false} stroke="#3b82f6" className="mt-3" />
-                      <Text className="mt-2 block console-caption">{stage.count} 条记录</Text>
-                    </button>
-                  )
-                })}
-              </div>
-            </Card>
-
-            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-              <Title heading={5} className="!mb-0">恢复与帮助</Title>
-              <div className="mt-4 console-next-step-list">
-                <Text className="console-caption">• 先刷新当前任务，确认是否仍处于排队或处理中。</Text>
-                <Text className="console-caption">• 先检查当前阶段输入是否完整，再决定是否重跑。</Text>
-                <Text className="console-caption">• 连续异常时进入帮助页按恢复指引处理。</Text>
-              </div>
-              <Space className="mt-4" wrap>
-                <Button onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务状态已刷新')}>立即刷新</Button>
-                <Button onClick={() => navigate('/console/help')}>恢复指引</Button>
-              </Space>
-            </Card>
-          </div>
-
-          <div className="console-workbench-main">
-            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-              <Title heading={4} className="!mb-0">当前动作</Title>
-              <Text className="mt-2 block console-caption">参考主流数据运营台做法，把动作、等待原因和风险提示固定在主工作区顶部。</Text>
-              <div className="mt-5 console-summary-grid">
-                <div className="console-summary-row"><span>下一步动作</span><Text strong>{nextActionLabel(activeDataset.status)}</Text></div>
-                <div className="console-summary-row"><span>等待说明</span><Text strong>{waitingReasonLabel(activeDataset.status, queueDepth)}</Text></div>
-                <div className="console-summary-row"><span>刷新建议</span><Text strong>{refreshExpectationLabel(activeDataset.status, queueDepth)}</Text></div>
-                <div className="console-summary-row"><span>进度保障</span><Text strong>{trustMessageLabel(activeDataset.status)}</Text></div>
-              </div>
-            </Card>
-
-            <section id="stage-lifecycle" className="console-stack">
-              <Card className="console-focus-card" bodyStyle={{ padding: 20 }}>
-                <Title heading={4} className="!mb-0">生命周期主轴</Title>
-                <Text className="mt-2 block console-caption">按“主题结构 → 问题 → 答案 → 评分 → 导出”串起整个任务，不删功能，只重排信息密度。</Text>
-                <div className="mt-5 console-stack">
-                  {stageCards.map((stage) => {
-                    const style = stageStateStyle(stage.state)
-                    return (
-                      <div key={stage.key} id={`stage-${stage.key}`} className="console-workbench-stage-card">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <Text strong>{stage.label}</Text>
-                            <Text className="mt-2 block console-caption">{stage.summary}</Text>
-                          </div>
-                          <Space>
-                            <Tag color={style.color}>{style.label}</Tag>
-                            <Tag color="blue">{stage.count} 条记录</Tag>
-                          </Space>
-                        </div>
-                        <Progress percent={style.percent} showInfo={false} stroke="#3b82f6" className="mt-4" />
-                      </div>
-                    )
-                  })}
+        <div className=”console-card-grid-2”>
+          {stageCards.map((stage) => {
+            const style = stageStateStyle(stage.state)
+            return (
+              <Card
+                key={stage.key}
+                className=”console-panel”
+                bodyStyle={{ padding: 18, cursor: 'pointer' }}
+                onClick={() => navigate(stage.route)}
+              >
+                <div className=”flex items-center justify-between gap-3”>
+                  <Text strong>{stage.label}</Text>
+                  <Tag color={style.color}>{style.label}</Tag>
                 </div>
+                <Progress percent={style.percent} showInfo={false} stroke=”#3b82f6” className=”mt-3” />
+                <Text className=”mt-3 block console-caption”>{stage.summary}</Text>
+                <Text className=”mt-1 block console-caption”>{stage.count} 条记录 · 点击进入</Text>
               </Card>
-            </section>
-
-            <section id="stage-quality" className="console-card-grid-2">
-              <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-                <Title heading={4} className="!mb-0">质量抽检</Title>
-                <Text className="mt-2 block console-caption">把抽检入口和风险信号放在主工作区，减少阶段跳转。</Text>
-                <div className="mt-5 console-summary-grid">
-                  <div className="console-summary-row"><span>问题抽检</span><Space><Tag color={warningQuestionCount > 0 ? 'orange' : 'green'}>{warningQuestionCount > 0 ? `${warningQuestionCount} 条待关注` : '状态正常'}</Tag><Button size="small" onClick={() => navigate('/console/questions')}>去审核</Button></Space></div>
-                  <div className="console-summary-row"><span>答案抽检</span><Space><Tag color={missingReasoningCount > 0 ? 'orange' : 'green'}>{missingReasoningCount > 0 ? `${missingReasoningCount} 条缺少思考` : '结构完整'}</Tag><Button size="small" onClick={() => navigate('/console/reasoning')}>去审核</Button></Space></div>
-                  <div className="console-summary-row"><span>评分复核</span><Space><Tag color={lowRewardCount > 0 ? 'red' : 'green'}>{lowRewardCount > 0 ? `${lowRewardCount} 条低分` : '评分稳定'}</Tag><Button size="small" onClick={() => navigate('/console/rewards')}>去审核</Button></Space></div>
-                  <div className="console-summary-row"><span>交付复核</span><Space><Tag color={deliveryArtifactCount > 0 ? 'green' : 'grey'}>{deliveryArtifactCount > 0 ? `${deliveryArtifactCount} 个可交付` : '暂无交付包'}</Tag><Button size="small" onClick={() => navigate('/console/exports')}>去审核</Button></Space></div>
-                </div>
-              </Card>
-
-              <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-                <Title heading={4} className="!mb-0">风险与恢复</Title>
-                <Text className="mt-2 block console-caption">把等待与恢复提示放在质量动作旁边。</Text>
-                <div className="mt-5 console-summary-grid">
-                  <div className="console-summary-row"><span>等待任务数</span><Text strong>{queueDepth}</Text></div>
-                  <div className="console-summary-row"><span>导出状态</span><Text strong>{exportDeliveryPending ? '导出落盘中' : '按当前阶段推进'}</Text></div>
-                  <div className="console-summary-row"><span>建议动作</span><Text strong>{nextActionLabel(activeDataset.status)}</Text></div>
-                  <div className="console-summary-row"><span>恢复入口</span><Button size="small" onClick={() => navigate('/console/help')}>查看帮助</Button></div>
-                </div>
-              </Card>
-            </section>
-
-            <section id="stage-assets">
-              <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-                <Title heading={4} className="!mb-0">导出与交付资产</Title>
-                <Text className="mt-2 block console-caption">保留原有导出功能，但在任务页中直接暴露交付状态与资产规模，符合数据资产平台常见布局。</Text>
-                <div className="mt-5 console-card-grid-3">
-                  <div className="console-workbench-stat-card">
-                    <Text className="console-caption">最新交付</Text>
-                    <div className="console-stat-value mt-2">{deliveryArtifactCount}</div>
-                    <Text className="mt-2 block console-caption">优先下载并交付下游</Text>
-                  </div>
-                  <div className="console-workbench-stat-card">
-                    <Text className="console-caption">版本复核</Text>
-                    <div className="console-stat-value mt-2">{reviewArtifactCount}</div>
-                    <Text className="mt-2 block console-caption">用于内部复核与抽样</Text>
-                  </div>
-                  <div className="console-workbench-stat-card">
-                    <Text className="console-caption">其他格式</Text>
-                    <div className="console-stat-value mt-2">{otherArtifactCount}</div>
-                    <Text className="mt-2 block console-caption">按需确认兼容性</Text>
-                  </div>
-                </div>
-                <div className="mt-5 console-summary-grid">
-                  <div className="console-summary-row"><span>默认交付视图</span><Text strong>{deliveryArtifactCount > 0 ? '优先显示最新交付包' : '等待生成交付包'}</Text></div>
-                  <div className="console-summary-row"><span>版本策略</span><Text strong>先看最新版本，再进入导出中心查看历史版本与文件详情</Text></div>
-                  <div className="console-summary-row"><span>交付说明</span><Text strong>{reviewArtifactCount > 0 ? '存在复核资料，建议先内部确认再对外交付' : '当前可直接以交付包为主继续推进'}</Text></div>
-                </div>
-                <Space className="mt-5" wrap>
-                  <Button theme="solid" type="primary" onClick={() => navigate('/console/exports')}>进入导出中心</Button>
-                  <Button onClick={() => document.getElementById('stage-lifecycle')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>返回生命周期</Button>
-                </Space>
-              </Card>
-            </section>
-          </div>
-
-          <div className="console-workbench-delivery">
-            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-              <Title heading={5} className="!mb-0">最新交付</Title>
-              <Text className="mt-2 block console-caption">交付资产持续可见，但不打断当前处理。</Text>
-              <div className="mt-4 console-summary-grid">
-                <div className="console-summary-row"><span>最新交付包</span><Text strong>{deliveryArtifactCount > 0 ? `${deliveryArtifactCount} 个可交付` : '暂无交付包'}</Text></div>
-                <div className="console-summary-row"><span>版本复核</span><Text strong>{reviewArtifactCount > 0 ? `${reviewArtifactCount} 个复核资产` : '暂无复核资产'}</Text></div>
-                <div className="console-summary-row"><span>导出状态</span><Text strong>{exportDeliveryPending ? '导出落盘中' : '可按当前阶段推进'}</Text></div>
-                <div className="console-summary-row"><span>版本策略</span><Text strong>优先最新版本</Text></div>
-              </div>
-              <Space className="mt-4" wrap>
-                <Button theme="solid" type="primary" onClick={() => navigate('/console/exports')}>进入导出中心</Button>
-                <Button onClick={() => document.getElementById('stage-assets')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>查看资产区</Button>
-              </Space>
-            </Card>
-
-            <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-              <Title heading={5} className="!mb-0">交付判断</Title>
-              <div className="mt-4 console-summary-grid">
-                <div className="console-summary-row"><span>默认交付视图</span><Text strong>{deliveryArtifactCount > 0 ? '先看最新交付包' : '等待导出产物'}</Text></div>
-                <div className="console-summary-row"><span>对外交付前</span><Text strong>{reviewArtifactCount > 0 ? '先完成内部复核' : '可直接继续交付'}</Text></div>
-                <div className="console-summary-row"><span>其他格式</span><Text strong>{otherArtifactCount > 0 ? `${otherArtifactCount} 个待确认` : '无额外风险'}</Text></div>
-              </div>
-            </Card>
-          </div>
+            )
+          })}
         </div>
+
+        <Card className=”console-panel” bodyStyle={{ padding: 20 }}>
+          <Title heading={5} className=”!mb-0”>质量与交付</Title>
+          <div className=”console-card-grid-2 mt-4”>
+            <div className=”console-summary-grid”>
+              <div className=”console-summary-row”>
+                <span>问题</span>
+                <Space>
+                  <Tag color={warningQuestionCount > 0 ? 'orange' : 'green'}>{warningQuestionCount > 0 ? `${warningQuestionCount} 待关注` : '正常'}</Tag>
+                  <Button size=”small” onClick={() => navigate('/console/questions')}>查看</Button>
+                </Space>
+              </div>
+              <div className=”console-summary-row”>
+                <span>答案</span>
+                <Space>
+                  <Tag color={missingReasoningCount > 0 ? 'orange' : 'green'}>{missingReasoningCount > 0 ? `${missingReasoningCount} 缺失` : '完整'}</Tag>
+                  <Button size=”small” onClick={() => navigate('/console/reasoning')}>查看</Button>
+                </Space>
+              </div>
+            </div>
+            <div className=”console-summary-grid”>
+              <div className=”console-summary-row”>
+                <span>评分</span>
+                <Space>
+                  <Tag color={lowRewardCount > 0 ? 'red' : 'green'}>{lowRewardCount > 0 ? `${lowRewardCount} 低分` : '稳定'}</Tag>
+                  <Button size=”small” onClick={() => navigate('/console/rewards')}>查看</Button>
+                </Space>
+              </div>
+              <div className=”console-summary-row”>
+                <span>交付包</span>
+                <Space>
+                  <Tag color={deliveryArtifactCount > 0 ? 'green' : 'grey'}>{deliveryArtifactCount > 0 ? `${deliveryArtifactCount} 个` : '待生成'}</Tag>
+                  <Button size=”small” onClick={() => navigate('/console/exports')}>查看</Button>
+                </Space>
+              </div>
+            </div>
+          </div>
+          <Space className=”mt-4” wrap>
+            <Button onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务状态已刷新')}>刷新状态</Button>
+            <Button onClick={() => navigate('/console/help')}>恢复指引</Button>
+            {deliveryArtifactCount > 0 ? <Button theme=”solid” type=”primary” onClick={() => navigate('/console/exports')}>进入导出中心</Button> : null}
+          </Space>
+        </Card>
       </div>
     )
   }
@@ -3512,80 +3471,157 @@ export default function App() {
         path="/*"
         element={
           user ? (
-            <Layout className="app-layout">
-              <Header className="console-header-shell" style={{ padding: 0, position: 'fixed', inset: '0 0 auto 0', zIndex: 50 }}>
-                <div className="mx-auto flex h-16 items-center justify-between gap-4 px-4 lg:px-6">
-                  <div className="flex items-center gap-3">
-                    <Button icon={<LayoutDashboard size={16} />} theme="borderless" onClick={() => setSidebarCollapsed((current) => !current)} />
-                    <Avatar color="blue" size="small">L</Avatar>
-                    <div>
-                      <div className="font-semibold">企业数据工厂</div>
-                      <div className="text-xs console-nav-caption">{visiblePages.find((page) => page.route === activeNav)?.caption ?? '任务推进与交付'}</div>
+            <div className="app-layout">
+              <div className="app-layout__banners">
+                {trustSignal ? (
+                  <Banner
+                    type={trustSignal.tone === 'success' ? 'success' : trustSignal.tone === 'warning' ? 'warning' : 'info'}
+                    description={trustSignal.title}
+                    closeIcon={null}
+                  />
+                ) : null}
+              </div>
+              <div className="app-layout__sidebar" style={{ width: sidebarCollapsed ? 48 : sidebarWidth, position: 'relative' }}>
+                {!sidebarCollapsed ? (
+                  <>
+                    <div className="sidebar-workspace-header">
+                      <Avatar color="blue" size="small">L</Avatar>
+                      <div className="sidebar-workspace-info">
+                        <div className="sidebar-workspace-name">企业数据工厂</div>
+                        <div className="sidebar-workspace-plan">{isAdmin ? '管理员' : '普通用户'}</div>
+                      </div>
+                    </div>
+                    <div className="sidebar-nav-section">
+                      <Card className="console-sidebar-card mb-3" bodyStyle={{ padding: 12 }}>
+                        <Space wrap>
+                          <Button theme="solid" type="primary" size="small" icon={<CirclePlus size={14} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
+                          <Button size="small" onClick={() => navigate('/console/tasks')}>我的任务</Button>
+                        </Space>
+                      </Card>
+                      <Nav
+                        bodyStyle={{ paddingBottom: 12 }}
+                        selectedKeys={[activeNav]}
+                        items={[
+                          {
+                            itemKey: 'primary-group',
+                            text: '业务导航',
+                            items: visibleUserPages.map((page) => ({
+                              itemKey: page.route,
+                              text: page.label,
+                              icon: <page.icon size={16} />,
+                            })),
+                          },
+                          ...(isAdmin
+                            ? [
+                                {
+                                  itemKey: 'admin-group',
+                                  text: '系统设置',
+                                  items: adminPages.map((page) => ({
+                                    itemKey: page.route,
+                                    text: page.label,
+                                    icon: <page.icon size={16} />,
+                                  })),
+                                },
+                              ]
+                            : []),
+                        ]}
+                        onSelect={(data) => navigate(String(data.itemKey))}
+                      />
+                    </div>
+                    <div className="sidebar-user-area">
+                      <div className="sidebar-stats-card">
+                        <div className="console-summary-row"><span>任务</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
+                        <div className="console-summary-row"><span>队列</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
+                      </div>
+                      <div className="sidebar-user-info">
+                        <Avatar color="blue" size="extra-small">{user.email?.[0]?.toUpperCase() ?? 'U'}</Avatar>
+                        <Text className="sidebar-user-email">{user.email}</Text>
+                        <Button size="small" icon={<LogOut size={14} />} theme="borderless" onClick={() => void handleLogout()} />
+                      </div>
+                    </div>
+                    <div className="sidebar-resize-handle" onMouseDown={handleSidebarResizeStart} />
+                  </>
+                ) : (
+                  <div className="sidebar-collapsed-content">
+                    <Button
+                      icon={<PanelLeftOpen size={18} />}
+                      theme="borderless"
+                      className="sidebar-toggle-btn"
+                      onClick={() => setSidebarCollapsed(false)}
+                    />
+                    <div className="sidebar-collapsed-icons">
+                      {visibleUserPages.map((page) => (
+                        <Button
+                          key={page.route}
+                          icon={<page.icon size={18} />}
+                          theme={activeNav === page.route ? 'light' : 'borderless'}
+                          type={activeNav === page.route ? 'primary' : 'tertiary'}
+                          onClick={() => navigate(page.route)}
+                        />
+                      ))}
+                      {isAdmin ? (
+                        <>
+                          <div className="sidebar-collapsed-divider" />
+                          {adminPages.map((page) => (
+                            <Button
+                              key={page.route}
+                              icon={<page.icon size={18} />}
+                              theme={activeNav === page.route ? 'light' : 'borderless'}
+                              type={activeNav === page.route ? 'primary' : 'tertiary'}
+                              onClick={() => navigate(page.route)}
+                            />
+                          ))}
+                        </>
+                      ) : null}
+                    </div>
+                    <div className="sidebar-collapsed-bottom">
+                      <Button
+                        icon={<LogOut size={18} />}
+                        theme="borderless"
+                        type="tertiary"
+                        onClick={() => void handleLogout()}
+                      />
                     </div>
                   </div>
-                  <div className="console-header-actions flex items-center gap-3">
-                    <Tag color={isAdmin ? 'green' : 'blue'}>{isAdmin ? '管理员' : '普通用户'}</Tag>
-                    <Text>{user.email}</Text>
-                    <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('控制台数据已刷新')} />
-                    <Button icon={<LogOut size={16} />} onClick={() => void handleLogout()}>退出</Button>
-                  </div>
+                )}
+              </div>
+              <div className="app-layout__header">
+                <Button
+                  icon={sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+                  theme="borderless"
+                  type="tertiary"
+                  onClick={() => setSidebarCollapsed((current) => !current)}
+                />
+                <div className="app-header-breadcrumb">
+                  {breadcrumbParent ? (
+                    <>
+                      <span>{breadcrumbParent}</span>
+                      <ChevronRight size={12} />
+                    </>
+                  ) : null}
+                  <span className="current">{breadcrumbLabel}</span>
                 </div>
-              </Header>
-              <Layout style={{ paddingTop: 64 }}>
-                <Sider className="app-sider" style={{ position: 'fixed', top: 64, left: 0, border: 'none', width: 'var(--sidebar-current-width)', zIndex: 30 }}>
-                  <div className="console-nav-shell h-full px-3 py-4">
-                    <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
-                      <Text strong>工作入口</Text>
-                      <Text className="mt-2 block console-caption">先新建任务，或回到我的任务。</Text>
-                      <Space className="mt-4" wrap>
-                        <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
-                        <Button onClick={() => navigate('/console/tasks')}>我的任务</Button>
-                      </Space>
-                    </Card>
-                    <Nav
-                      bodyStyle={{ paddingBottom: 12 }}
-                      selectedKeys={[activeNav]}
-                      items={[
-                        {
-                          itemKey: 'primary-group',
-                          text: '业务导航',
-                          items: visibleUserPages.map((page) => ({
-                            itemKey: page.route,
-                            text: page.label,
-                            icon: <page.icon size={16} />,
-                          })),
-                        },
-                        ...(isAdmin
-                          ? [
-                              {
-                                itemKey: 'admin-group',
-                                text: '系统设置',
-                                items: adminPages.map((page) => ({
-                                  itemKey: page.route,
-                                  text: page.label,
-                                  icon: <page.icon size={16} />,
-                                })),
-                              },
-                            ]
-                          : []),
-                      ]}
-                      onSelect={(data) => navigate(String(data.itemKey))}
-                      footer={
-                        <div className="px-3 pb-3">
-                          <Card className="console-sidebar-card" bodyStyle={{ padding: 14 }}>
-                            <div className="console-summary-grid">
-                              <div className="console-summary-row"><span>任务总数</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>当前建议</span><Text strong>{runtime?.datasetCount ? '回到我的任务' : '新建任务'}</Text></div>
-                            </div>
-                          </Card>
-                        </div>
-                      }
-                    />
+                {pipelineStages && location.pathname.match(/^\/console\/tasks\/\d+/) ? (
+                  <div className="pipeline-stage-bar">
+                    {pipelineStages.map((stage) => (
+                      <div
+                        key={stage.key}
+                        className={clsx('pipeline-stage-item', {
+                          active: stage.state === 'in_progress' || stage.state === 'queued',
+                          done: stage.state === 'completed',
+                        })}
+                      >
+                        {stage.state === 'completed' ? <ShieldCheck size={12} /> : null}
+                        {stage.label}
+                      </div>
+                    ))}
                   </div>
-                </Sider>
-                <Layout style={{ marginLeft: 'var(--sidebar-current-width)' }}>
-                  <Content style={{ padding: 24 }}>
+                ) : null}
+                <div className="app-header-actions">
+                  <Button icon={<RefreshCw size={14} />} theme="borderless" type="tertiary" loading={workspaceLoading} onClick={() => void loadBootstrap('控制台数据已刷新')} />
+                </div>
+              </div>
+              <div className="app-layout__content">
                     {trustSignal ? (
                       <div className="mb-4">
                         <TrustSignalCard signal={trustSignal} onDismiss={() => setTrustSignal(null)} onNavigate={(route) => navigate(route)} />
@@ -3612,10 +3648,9 @@ export default function App() {
                       {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
                       <Route path="*" element={<Navigate to="/console/home" replace />} />
                     </Routes>
-                  </Content>
-                </Layout>
-              </Layout>
-            </Layout>
+              </div>
+              <div className="app-layout__aside" />
+            </div>
           ) : (
             <Navigate to="/login" replace />
           )
