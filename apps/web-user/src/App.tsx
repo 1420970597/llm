@@ -3513,42 +3513,68 @@ export default function App() {
         element={
           user ? (
             <Layout className="app-layout">
-              <Header className="console-header-shell" style={{ padding: 0, position: 'fixed', inset: '0 0 auto 0', zIndex: 50 }}>
-                <div className="mx-auto flex h-16 items-center justify-between gap-4 px-4 lg:px-6">
-                  <div className="flex items-center gap-3">
-                    <Button icon={<LayoutDashboard size={16} />} theme="borderless" onClick={() => setSidebarCollapsed((current) => !current)} />
-                    <Avatar color="blue" size="small">L</Avatar>
-                    <div>
-                      <div className="font-semibold">企业数据工厂</div>
-                      <div className="text-xs console-nav-caption">{visiblePages.find((page) => page.route === activeNav)?.caption ?? '任务推进与交付'}</div>
+              {/* Superset-style dark top navbar */}
+              <Header className="superset-topbar" style={{ padding: 0, position: 'fixed', inset: '0 0 auto 0', zIndex: 50 }}>
+                <div className="superset-topbar-inner">
+                  <div className="superset-topbar-left">
+                    <div className="superset-logo">
+                      <Avatar color="blue" size="small" style={{ flexShrink: 0 }}>L</Avatar>
+                      <span className="superset-logo-text">企业数据工厂</span>
                     </div>
+                    <nav className="superset-topnav">
+                      {visibleUserPages.map((page) => (
+                        <button
+                          key={page.route}
+                          className={clsx('superset-topnav-item', activeNav === page.route && 'superset-topnav-item--active')}
+                          onClick={() => navigate(page.route)}
+                        >
+                          <page.icon size={14} />
+                          <span>{page.label}</span>
+                        </button>
+                      ))}
+                      {isAdmin && (
+                        <button
+                          className={clsx('superset-topnav-item', adminPages.some((p) => p.route === activeNav) && 'superset-topnav-item--active')}
+                          onClick={() => navigate('/console/operations')}
+                        >
+                          <Settings size={14} />
+                          <span>系统设置</span>
+                        </button>
+                      )}
+                    </nav>
                   </div>
-                  <div className="console-header-actions flex items-center gap-3">
-                    <Tag color={isAdmin ? 'green' : 'blue'}>{isAdmin ? '管理员' : '普通用户'}</Tag>
-                    <Text>{user.email}</Text>
-                    <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadBootstrap('控制台数据已刷新')} />
-                    <Button icon={<LogOut size={16} />} onClick={() => void handleLogout()}>退出</Button>
+                  <div className="superset-topbar-right">
+                    <Tag color={isAdmin ? 'green' : 'blue'} style={{ fontSize: 11 }}>{isAdmin ? '管理员' : '普通用户'}</Tag>
+                    <Button size="small" icon={<RefreshCw size={14} />} loading={workspaceLoading} theme="borderless" style={{ color: 'rgba(255,255,255,0.7)' }} onClick={() => void loadBootstrap('控制台数据已刷新')} />
+                    <div className="superset-topbar-user">
+                      <Avatar color="indigo" size="extra-small">{user.email[0]?.toUpperCase()}</Avatar>
+                      <span className="superset-topbar-email">{user.email}</span>
+                    </div>
+                    <Button size="small" icon={<LogOut size={14} />} theme="borderless" style={{ color: 'rgba(255,255,255,0.7)' }} onClick={() => void handleLogout()} />
                   </div>
                 </div>
               </Header>
-              <Layout style={{ paddingTop: 64 }}>
-                <Sider className="app-sider" style={{ position: 'fixed', top: 64, left: 0, border: 'none', width: 'var(--sidebar-current-width)', zIndex: 30 }}>
-                  <div className="console-nav-shell h-full px-3 py-4">
-                    <Card className="console-sidebar-card mb-4" bodyStyle={{ padding: 16 }}>
-                      <Text strong>工作入口</Text>
-                      <Text className="mt-2 block console-caption">先新建任务，或回到我的任务。</Text>
-                      <Space className="mt-4" wrap>
-                        <Button theme="solid" type="primary" icon={<CirclePlus size={16} />} onClick={() => navigate('/console/planning')}>新建任务</Button>
-                        <Button onClick={() => navigate('/console/tasks')}>我的任务</Button>
-                      </Space>
-                    </Card>
+              <Layout style={{ paddingTop: 48 }}>
+                {/* Superset-style collapsible left sidebar */}
+                <Sider className="app-sider superset-sider" style={{ position: 'fixed', top: 48, left: 0, border: 'none', width: 'var(--sidebar-current-width)', zIndex: 30 }}>
+                  <div className="superset-sider-inner h-full">
+                    <div className="superset-sider-toggle">
+                      <button className="superset-collapse-btn" onClick={() => setSidebarCollapsed((current) => !current)}>
+                        <LayoutDashboard size={16} />
+                      </button>
+                    </div>
+                    <div className="superset-sider-actions">
+                      <Button theme="solid" type="primary" size="small" icon={<CirclePlus size={14} />} onClick={() => navigate('/console/planning')} style={{ width: '100%', borderRadius: 6, justifyContent: 'flex-start' }}>
+                        {!sidebarCollapsed && '新建任务'}
+                      </Button>
+                    </div>
                     <Nav
                       bodyStyle={{ paddingBottom: 12 }}
                       selectedKeys={[activeNav]}
                       items={[
                         {
                           itemKey: 'primary-group',
-                          text: '业务导航',
+                          text: !sidebarCollapsed ? '业务导航' : '',
                           items: visibleUserPages.map((page) => ({
                             itemKey: page.route,
                             text: page.label,
@@ -3559,7 +3585,7 @@ export default function App() {
                           ? [
                               {
                                 itemKey: 'admin-group',
-                                text: '系统设置',
+                                text: !sidebarCollapsed ? '系统设置' : '',
                                 items: adminPages.map((page) => ({
                                   itemKey: page.route,
                                   text: page.label,
@@ -3571,20 +3597,24 @@ export default function App() {
                       ]}
                       onSelect={(data) => navigate(String(data.itemKey))}
                       footer={
-                        <div className="px-3 pb-3">
-                          <Card className="console-sidebar-card" bodyStyle={{ padding: 14 }}>
-                            <div className="console-summary-grid">
-                              <div className="console-summary-row"><span>任务总数</span><Text strong>{runtime?.datasetCount ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>等待任务数</span><Text strong>{runtime?.queueDepth ?? 0}</Text></div>
-                              <div className="console-summary-row"><span>当前建议</span><Text strong>{runtime?.datasetCount ? '回到我的任务' : '新建任务'}</Text></div>
+                        !sidebarCollapsed ? (
+                          <div className="px-3 pb-3">
+                            <div className="superset-sider-stats">
+                              <div className="superset-sider-stat-row"><span>任务总数</span><strong>{runtime?.datasetCount ?? 0}</strong></div>
+                              <div className="superset-sider-stat-row"><span>队列深度</span><strong>{runtime?.queueDepth ?? 0}</strong></div>
                             </div>
-                          </Card>
-                        </div>
+                          </div>
+                        ) : null
                       }
                     />
                   </div>
                 </Sider>
                 <Layout style={{ marginLeft: 'var(--sidebar-current-width)' }}>
+                  <div className="superset-breadcrumb-bar">
+                    <span className="superset-breadcrumb-home">数据工厂</span>
+                    <span className="superset-breadcrumb-sep">/</span>
+                    <span className="superset-breadcrumb-current">{visiblePages.find((page) => page.route === activeNav)?.label ?? '工作台'}</span>
+                  </div>
                   <Content style={{ padding: 24 }}>
                     {trustSignal ? (
                       <div className="mb-4">
