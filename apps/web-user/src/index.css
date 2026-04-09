@@ -367,3 +367,41 @@ a {
     justify-content: flex-start;
   }
 }
+
+/* ========== DIRECTUS LAYOUT ========== */
+body { background: var(--semi-color-bg-0) !important; }
+body::before { display: none; }
+
+.dtus-shell { display: flex; height: 100vh; overflow: hidden; background: var(--semi-color-bg-0); }
+
+.dtus-module-bar { width: 56px; flex-shrink: 0; background: color-mix(in srgb, var(--semi-color-bg-1) 95%, black 5%); border-right: 1px solid rgba(var(--semi-grey-2), 0.12); display: flex; flex-direction: column; align-items: center; z-index: 50; }
+.dtus-module-logo { height: 56px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid rgba(var(--semi-grey-2), 0.1); width: 100%; }
+.dtus-module-nav { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; overflow-y: auto; scrollbar-width: none; }
+.dtus-module-nav::-webkit-scrollbar { display: none; }
+.dtus-module-footer { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; border-top: 1px solid rgba(var(--semi-grey-2), 0.1); width: 100%; }
+.dtus-module-btn { width: 36px; height: 36px; border-radius: 8px; border: none; background: transparent; color: var(--semi-color-text-2); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.15s, color 0.15s; margin: 1px auto; }
+.dtus-module-btn:hover { background: rgba(var(--semi-blue-0), 0.12); color: var(--semi-color-primary); }
+.dtus-module-btn--active { background: var(--semi-color-primary) !important; color: #fff !important; }
+.dtus-module-divider { width: 24px; height: 1px; background: rgba(var(--semi-grey-2), 0.15); margin: 6px auto; }
+
+.dtus-nav-drawer { width: 220px; flex-shrink: 0; background: var(--semi-color-bg-1); border-right: 1px solid rgba(var(--semi-grey-2), 0.1); display: flex; flex-direction: column; overflow: hidden; transition: width 0.18s ease; }
+.dtus-nav-drawer--collapsed { width: 0; border-right: none; }
+.dtus-nav-header { height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px 0 16px; border-bottom: 1px solid rgba(var(--semi-grey-2), 0.08); flex-shrink: 0; }
+.dtus-nav-title { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.dtus-nav-section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--semi-color-text-2); padding: 12px 16px 4px; flex-shrink: 0; }
+.dtus-nav-list { display: flex; flex-direction: column; gap: 1px; padding: 0 8px; }
+.dtus-nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; border: none; background: transparent; color: var(--semi-color-text-1); font-size: 13px; cursor: pointer; text-align: left; white-space: nowrap; transition: background 0.13s, color 0.13s; width: 100%; }
+.dtus-nav-item:hover { background: color-mix(in srgb, var(--semi-color-bg-0) 70%, transparent); color: var(--semi-color-text-0); }
+.dtus-nav-item--active { background: rgba(var(--semi-blue-0), 0.1) !important; color: var(--semi-color-primary) !important; font-weight: 500; }
+.dtus-nav-stats { margin-top: auto; padding: 12px 16px; border-top: 1px solid rgba(var(--semi-grey-2), 0.08); display: flex; flex-direction: column; gap: 6px; }
+.dtus-stat-row { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--semi-color-text-2); }
+.dtus-stat-row strong { color: var(--semi-color-text-0); font-weight: 600; }
+
+.dtus-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.dtus-header { height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid rgba(var(--semi-grey-2), 0.08); background: color-mix(in srgb, var(--semi-color-bg-1) 90%, transparent); }
+.dtus-breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.dtus-breadcrumb-root { color: var(--semi-color-text-2); }
+.dtus-breadcrumb-sep { color: var(--semi-color-text-2); }
+.dtus-breadcrumb-current { font-weight: 600; color: var(--semi-color-text-0); }
+.dtus-header-actions { display: flex; align-items: center; gap: 10px; }
+.dtus-content { flex: 1; overflow-y: auto; padding: 24px; scrollbar-width: thin; }
