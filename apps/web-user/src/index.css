@@ -334,6 +334,177 @@ a {
   min-height: calc(100vh - 120px);
 }
 
+
+/* ===== Gitea Layout ===== */
+.gitea-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.gt-topnav {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: #2d333b;
+  color: rgba(255,255,255,0.87);
+  flex-shrink: 0;
+  z-index: 40;
+}
+
+.gt-topnav-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.gt-topnav-links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.gt-topnav-link {
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.65);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: background 0.12s, color 0.12s;
+}
+
+.gt-topnav-link:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+}
+
+.gt-topnav-link.active {
+  color: #fff;
+  background: rgba(255,255,255,0.12);
+}
+
+.gt-topnav-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gt-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(var(--semi-grey-2), 0.10);
+  background: var(--semi-color-bg-0);
+}
+
+.gt-tab {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--semi-color-text-2);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.gt-tab:hover {
+  color: var(--semi-color-text-0);
+}
+
+.gt-tab.active {
+  color: var(--semi-color-primary);
+  border-bottom-color: var(--semi-color-primary);
+}
+
+.gt-body {
+  display: flex;
+  flex: 1;
+}
+
+.gt-sidebar {
+  width: 220px;
+  border-right: 1px solid rgba(var(--semi-grey-2), 0.06);
+  background: var(--semi-color-bg-1);
+  padding: 12px 8px;
+  overflow-y: auto;
+  flex-shrink: 0;
+  transition: width 0.2s ease;
+}
+
+body.sidebar-collapsed .gt-sidebar {
+  width: 0;
+  padding: 0;
+  overflow: hidden;
+  border-right: none;
+}
+
+.gt-sidebar .semi-navigation {
+  border-right: none;
+  background: transparent;
+}
+
+.gt-sidebar .semi-navigation-item {
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.gt-sidebar .semi-navigation-item-selected {
+  background: rgba(var(--semi-grey-2), 0.12);
+}
+
+.gt-sidebar-actions {
+  padding: 0 8px 10px;
+}
+
+.gt-sidebar-stats {
+  padding: 8px;
+  margin-top: 8px;
+}
+
+.gt-sidebar-stats-card {
+  border-radius: 8px;
+  border: 1px solid rgba(var(--semi-grey-2), 0.06);
+  background: color-mix(in srgb, var(--semi-color-bg-1) 94%, white 6%);
+}
+
+.gt-sidebar-stats-card .semi-card-body { padding: 10px; }
+
+.gt-sidebar-stats-card .console-summary-row {
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.gt-main {
+  flex: 1;
+  padding: 20px 24px;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.gitea-layout .console-workbench-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.gitea-layout .console-workbench-sidebar,
+.gitea-layout .console-workbench-delivery {
+  top: 76px;
+}
+
+@media (max-width: 992px) {
+  .gt-sidebar { display: none; }
+  .gt-topnav-links { display: none; }
+}
+
 @media (max-width: 1200px) {
   .console-card-grid-4,
   .console-card-grid-3,
