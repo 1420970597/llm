@@ -49,6 +49,13 @@ type AggregateNotes struct {
 	// 结论的分数档位判断用它，因为不同维度的量纲可能不同，直接比原始分没有意义。
 	NormalizedOverall float64
 
+	// HasNormalizedOverall 表示 NormalizedOverall 是否可用。
+	//
+	// 不能用 NormalizedOverall > 0 代替：0 是合法取值（所有维度都打量表最低分），
+	// 与「没有可归一化的维度」是两回事。混为一谈会把「整体质量偏低」的结论
+	// 说成「本次评估没有可用的量表区间」，即在最差数据集上给出与事实相反的归因。
+	HasNormalizedOverall bool
+
 	// NormalizedJudgeMeans 每个裁判的均分，同样归一化到 0~1。
 	// 用于识别「某个裁判系统性打分偏高/偏低」。
 	NormalizedJudgeMeans map[int64]float64
@@ -159,7 +166,7 @@ func Aggregate(in AggregateInput) (model.EvalReport, AggregateNotes) {
 	if weightTotal > 0 {
 		report.OverallScore = weightedSum / weightTotal
 	}
-	notes.NormalizedOverall, _ = normalizedMean(report.Dimensions, dimensions)
+	notes.NormalizedOverall, notes.HasNormalizedOverall = normalizedMean(report.Dimensions, dimensions)
 
 	// 每个裁判的统计。传入裁判名单，让「一条分都没打」的裁判也出现在报告里。
 	report.Judges = buildJudgeStats(valid, in.Judges, items, dimensions)

@@ -103,7 +103,11 @@ func BuildConclusions(report model.EvalReport, notes AggregateNotes, status stri
 // overallConclusion 给出整体质量档位判断。
 func overallConclusion(report model.EvalReport, notes AggregateNotes) string {
 	// 优先用归一化分：不同维度的量表区间可能不同，直接比原始分没有可比性。
-	if notes.NormalizedOverall > 0 {
+	//
+	// 判据是 HasNormalizedOverall 而不是 > 0：归一化分恰为 0 是合法结果
+	// （所有维度都打了各自量表的最低分），此时必须走档位分支得出
+	// 「整体质量偏低」，而不是谎称「没有可用的量表区间」。
+	if notes.HasNormalizedOverall {
 		switch {
 		case notes.NormalizedOverall >= qualityExcellent:
 			return fmt.Sprintf("整体质量优秀（归一化得分 %.0f/100）。该数据集可以直接用于训练。",

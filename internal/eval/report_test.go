@@ -431,6 +431,41 @@ func TestWeakestDimensionDoesNotClaimBelowOverall(t *testing.T) {
 	}
 }
 
+// TestConclusionsAllLowestScoresIsNotReportedAsNoScale 全打量表最低分时不能说「无法归一化」。
+//
+// 归一化总分恰为 0 是合法结果（所有维度都打了各自量表的最低分），与
+// 「没有可归一化的维度」是两回事。旧代码用 `NormalizedOverall > 0` 当判据，
+// 在最差数据集上给出与事实相反的归因，并丢失「整体质量偏低」这个最该出现的结论。
+func TestConclusionsAllLowestScoresIsNotReportedAsNoScale(t *testing.T) {
+	report, notes := Aggregate(AggregateInput{
+		Run:        model.EvalRun{ID: 1, Status: "completed", TotalItems: 2, ScoredItems: 2},
+		Items:      []model.EvalItem{item(1, 0), item(2, 1)},
+		Dimensions: testDimensions(),
+		Scores: []model.EvalItemScore{
+			score(1, 100, "long_chain_depth", 0),
+			score(2, 100, "long_chain_depth", 0),
+			score(1, 100, "answer_accuracy", 0),
+			score(2, 100, "answer_accuracy", 0),
+		},
+		Judges: []model.EvalRunJudge{{ProviderID: 100, ProviderName: "裁判甲"}},
+	})
+
+	if !notes.HasNormalizedOverall {
+		t.Fatalf("量表 0~10 合法，应可归一化（NormalizedOverall=%.2f）", notes.NormalizedOverall)
+	}
+	if notes.NormalizedOverall != 0 {
+		t.Fatalf("全部维度打最低分时归一化总分应为 0，实际 %.4f", notes.NormalizedOverall)
+	}
+
+	conclusions := joined(BuildConclusions(report, notes, "completed"))
+	if !strings.Contains(conclusions, "整体质量偏低") {
+		t.Errorf("归一化得分 0 应落入「偏低」档，实际：\n%s", conclusions)
+	}
+	if strings.Contains(conclusions, "没有可用的量表区间") {
+		t.Errorf("量表区间合法时不得声称无法归一化，实际：\n%s", conclusions)
+	}
+}
+
 // TestExcludedJudgeNotReportedAsCallFailure 被剔除的裁判不能同时被说成「调用失败」。
 //
 // 剔除是主动决策（禁止生成者自评），调用失败是异常。两者都导致 sampleCount=0，
