@@ -18,9 +18,9 @@ type RuleDraft = Partial<CleaningRule>
  * 清洗规则面板（L14 独占）。
  *
  * 规则语义来自 internal/cleaning/keywords.go 的 EvaluateRules：
- * 过滤出「已启用且阶段范围覆盖当前阶段」的规则，按 priority 升序（数字小的先判），
- * 取第一条满足「命中数 >= minHits」的规则作为最终动作；都没命中则保留样本。
- * 阶段范围留空表示全部阶段生效。
+ * 过滤出「已启用且阶段范围覆盖当前阶段」的规则，按 priority **降序**（数字大的先判），
+ * 取第一条满足「命中数 >= minHits」的规则作为最终动作；都没命中则按 flag 处理。
+ * 顺序依据是运行时路径 internal/cleaning/scanner.go 的 decideAction。
  */
 export function CleaningRulePanel({
   rules,
@@ -131,8 +131,8 @@ export function CleaningRulePanel({
         <div>
           <Title heading={4} className="!mb-0">清洗规则</Title>
           <Text className="mt-2 block console-caption">
-            规则回答「命中多少词之后该怎么处理」。判定顺序：先按优先级从小到大逐条看，第一条满足
-            「命中次数 ≥ 最少命中数」的规则生效；一条都不满足时样本会被保留。停用的规则不参与判定。
+            规则回答「命中多少词之后该怎么处理」。判定顺序：先按优先级从大到小逐条看，第一条满足
+            「命中次数 ≥ 最少命中数」的规则生效；一条都不满足时样本会被标记为待复查。停用的规则不参与判定。
           </Text>
         </div>
         <Space>
@@ -175,7 +175,7 @@ export function CleaningRulePanel({
             </div>
             <div className="console-card-grid-2">
               <div>
-                <Text className="mb-2 block font-medium">优先级（数字越小越先判定）</Text>
+                <Text className="mb-2 block font-medium">优先级（数字越大越先判定）</Text>
                 <InputNumber value={draft.priority ?? 100} min={1} onChange={(value) => setDraft({ ...draft, priority: Number(value ?? 100) })} style={{ width: '100%' }} />
               </div>
               <div>

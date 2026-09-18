@@ -205,9 +205,21 @@ export function deriveCategoryHits(keywords: CleaningKeyword[], findings: Cleani
     .sort((left, right) => right.hits - left.hits)
 }
 
-/** 把规则按优先级升序排列，与 cleaning.EvaluateRules 的判定顺序一致。 */
+/**
+ * 按 worker 实际判定顺序排列规则：priority 数字**大的先判定**，同级按名称。
+ *
+ * 依据是运行时路径 cleaning.Scan → decideAction（internal/cleaning/scanner.go），
+ * 它对 priority 做降序排序；worker 加载规则也是 ORDER BY priority DESC
+ * （apps/worker/job_cleaning.go）。
+ *
+ * 注意：internal/cleaning/keywords.go 里的 EvaluateRules 是升序（数字小的先判），
+ * 但它在生产路径上没有任何调用方，只有单测在用，因此不作为界面依据。
+ * 该不一致已作为未修复项上报，不在本 lane 的文件归属范围内。
+ */
 export function sortRulesByPriority(rules: CleaningRule[]): CleaningRule[] {
-  return [...rules].sort((left, right) => left.priority - right.priority || left.id - right.id)
+  return [...rules].sort(
+    (left, right) => right.priority - left.priority || left.name.localeCompare(right.name) || left.id - right.id,
+  )
 }
 
 /**
