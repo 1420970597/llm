@@ -222,6 +222,16 @@ lane L15，即 `docs/architecture/phase-8-eval-and-cleaning.md`（本文）与 `
 
 `scanner.go` 刻意**不引用** L11 的任何符号，命中结果由 `apps/worker/job_cleaning.go` 里的适配器逐字段拷贝成 `ScannerMatch`；这样两条 lane 可以并行开发，`Scan` 也能注入 fake matcher 独立单测。
 
+**两个需要注意的实现现状**（读代码时别被名字误导）：
+
+1. `severity`（`block` / `warn`）只写入命中明细，**不参与动作判定**。`decideAction`（`scanner.go`）只看规则：按 `priority` 降序取第一条 `minHits` 满足的规则，其 `action` 即结果；没有规则命中则返回 `ActionFlag`。`normalizeAction` 对无法识别的动作也一律回退到 `ActionFlag`，即**默认永不误删**。
+2. `cleaning_rules` 表**没有内置数据**（迁移里没有 INSERT，也没有 Seed 函数），因此开箱默认状态下命中只会被标记为 `flagged`，不会有任何数据被 `drop`。要真正剔除，必须由用户配一条 `action=drop` 的规则。
+3. **两条 lane 各有一套规则判定函数，且优先级排序方向相反**（已知问题，待父代理统一）：
+   - 生产路径走 L12 的 `scanner.decideAction`，按 `priority` **降序**（数值大的先匹配，先命中者决定动作）；
+   - L11 的 `keywords.EvaluateRules` 按 `priority` **升序**（数值小的先匹配），且它**目前只被单测调用，不在生产路径上**。
+
+   本文与使用说明描述的都是生产路径（`decideAction`）的行为。两处语义不一致属于潜在陷阱，已在第 12 节列为待处理项。
+
 ### 4.3 `internal/store` —— 存储层
 
 | 文件 | lane | 关键方法 |
@@ -723,6 +733,8 @@ func init() {
 | L10 待合并 | `internal/eval/aggregate.go`、`internal/eval/report.go`、`internal/store/eval_store_summary.go`、`apps/api/routes_eval_report.go` 同上；`EvalReport` 相关前端类型已冻结在 `apps/web-user/src/lib/api.ts`，但后端接口尚未落地。 |
 | L13 / L14 未合并 | `apps/web-user/src/views/EvaluationView.tsx` 与 `apps/web-user/src/views/CleaningView.tsx` 目前仍是 foundation 的占位实现（仅渲染数据集数量），真实 UI 在各自 lane 分支上。因此使用说明中「前端怎么点」的部分，凡涉及这两个页面的具体交互，均以契约（`docs/plans/eval-and-cleaning-plan.md` 第 4 节）为准，并标注「待 L13/L14 合并」。 |
 | 全仓库测试基线 | `go test ./...` 在 Phase 8 之前长期为空跑；本阶段各 lane 已配套新增单测与 `test/test_l*.py` 接口测试，但端到端（前端 + 后端 + worker + LLM）仍需按各 lane 的接口测试脚本单独执行。 |
+| `priority` 语义在两条 lane 里相反 | `internal/cleaning/scanner.go` 的 `decideAction` 按 `priority` 降序匹配，`internal/cleaning/keywords.go` 的 `EvaluateRules` 按升序匹配。两者名字相近、语义相反，而后者当前**只被单测调用、不在生产路径上**（worker 用的是 `Scan` → `decideAction`）。建议由父代理裁定保留哪一个、删掉另一个，否则后续维护者很容易改错一处。 |
+| `job_cleaning.go` 里有临时匹配器 | `apps/worker/job_cleaning.go` 的 `newKeywordMatcher` / `keywordMatcher` 带 `ponytail:` 注释，写明它是 L11 落地前的临时实现，应换成 `cleaning.MatchKeywords` + `cleaning.Snippet`（以复用全角半角归一化）。当前生产路径用的仍是临时匹配器，与 L11 的单测覆盖的 `MatchKeywords` 不是同一份代码。已合并但**接线未完成**，属于真实缺口。 |
 
 ---
 
