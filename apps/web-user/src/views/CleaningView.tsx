@@ -142,11 +142,12 @@ export function CleaningView({ datasets }: { datasets: Dataset[] }) {
     void loadRuns(datasetId)
   }, [datasetId, loadRuns])
 
-  const unfinished = useMemo(() => {
-    const runUnfinished = runs.some((run) => run.status === 'queued' || run.status === 'running')
-    const reportUnfinished = report !== null && (report.run.status === 'queued' || report.run.status === 'running')
-    return runUnfinished || reportUnfinished
-  }, [runs, report])
+  // 只看运行列表：报告里的 run 是 worker 写入快照（status 恒为 queued），
+  // 用它判断会导致轮询永不停止。列表在同一轮询里被刷新，是权威来源。
+  const unfinished = useMemo(
+    () => runs.some((run) => run.status === 'queued' || run.status === 'running'),
+    [runs],
+  )
 
   // 清洗是异步任务：有未完成的运行时每 5 秒轮询一次，卸载或完成时清掉定时器。
   useEffect(() => {
