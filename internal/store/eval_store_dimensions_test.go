@@ -1,4 +1,4 @@
-package store
+package store_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/1420970597/llm/internal/eval"
 	"github.com/1420970597/llm/internal/model"
+	"github.com/1420970597/llm/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -44,7 +45,7 @@ func TestEvalDimensionStoreIntegration(t *testing.T) {
 	cleanup()
 	defer cleanup()
 
-	dimStore := NewEvalDimensionStore(pool)
+	dimStore := store.NewEvalDimensionStore(pool)
 
 	// 第 1 步：内置目录 seed 幂等。
 	//
@@ -218,8 +219,8 @@ func TestEvalDimensionStoreIntegration(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT id FROM eval_dimensions WHERE key = 'lc_step_sufficiency'`).Scan(&builtinID); err != nil {
 		t.Fatalf("lookup builtin id: %v", err)
 	}
-	if err := dimStore.Delete(ctx, builtinID); !errors.Is(err, ErrBuiltinDimensionProtected) {
-		t.Fatalf("删除内置维度必须返回 ErrBuiltinDimensionProtected，实际 %v", err)
+	if err := dimStore.Delete(ctx, builtinID); !errors.Is(err, store.ErrBuiltinDimensionProtected) {
+		t.Fatalf("删除内置维度必须返回 store.ErrBuiltinDimensionProtected，实际 %v", err)
 	}
 	if _, err := dimStore.Get(ctx, builtinID); err != nil {
 		t.Fatalf("被拒绝删除的内置维度必须仍然存在：%v", err)
@@ -251,7 +252,7 @@ func TestEvalDimensionStoreRejectsInvalidInputIntegration(t *testing.T) {
 	}
 	defer pool.Close()
 
-	dimStore := NewEvalDimensionStore(pool)
+	dimStore := store.NewEvalDimensionStore(pool)
 
 	cases := []struct {
 		name  string
@@ -292,7 +293,7 @@ func TestEvalDimensionStoreListByKeysEmptyIntegration(t *testing.T) {
 	}
 	defer pool.Close()
 
-	items, err := NewEvalDimensionStore(pool).ListByKeys(ctx, nil)
+	items, err := store.NewEvalDimensionStore(pool).ListByKeys(ctx, nil)
 	if err != nil {
 		t.Fatalf("ListByKeys(nil): %v", err)
 	}
