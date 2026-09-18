@@ -223,6 +223,31 @@ export function sortRulesByPriority(rules: CleaningRule[]): CleaningRule[] {
 }
 
 /**
+ * 构造关键词保存的请求体。
+ *
+ * 新建（无 id）时提交草稿全量字段。
+ *
+ * 编辑（有 id）时后端走 CleaningKeywordStore.Upsert 的 UPDATE 分支，它只写
+ * match_mode / severity / is_active / note，且 WHERE id = $1 AND pattern = $2：
+ * category 改了不会生效，pattern 改了直接查不到记录（404）。所以编辑态只提交
+ * 真正会被写入的字段，pattern 原样带上用于定位记录。界面上对应的输入框同时置为
+ * 只读，否则用户会看到「保存成功」但值没变。
+ */
+export function buildKeywordSavePayload(draft: Partial<CleaningKeyword>): Partial<CleaningKeyword> {
+  if (!draft.id) {
+    return draft
+  }
+  return {
+    id: draft.id,
+    pattern: draft.pattern,
+    matchMode: draft.matchMode,
+    severity: draft.severity,
+    isActive: draft.isActive,
+    note: draft.note,
+  }
+}
+
+/**
  * 用运行列表里的最新值覆盖报告自带的 run 快照。
  *
  * 原因：报告接口里的 run 是 worker 在 MarkDone 之前写入的，status 恒为 queued、

@@ -17,7 +17,7 @@ import {
 } from '@douyinfe/semi-ui'
 import { Pencil, RefreshCw, Trash2, Upload } from 'lucide-react'
 import { consoleApi, type CleaningKeyword } from '../../lib/api'
-import { categoryLabel, matchModeLabel, severityLabel } from './cleaningMeta'
+import { buildKeywordSavePayload, categoryLabel, matchModeLabel, severityLabel } from './cleaningMeta'
 
 const { Text, Title } = Typography
 
@@ -57,6 +57,8 @@ export function CleaningKeywordPanel({
   const [draft, setDraft] = useState<KeywordDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
+  // 后端 UPDATE 分支按 id + pattern 定位，且不写 category（见 buildKeywordSavePayload 注释）。
+  const editing = Boolean(draft?.id)
 
   const [importText, setImportText] = useState('')
   const [importCategory, setImportCategory] = useState('refusal')
@@ -91,7 +93,7 @@ export function CleaningKeywordPanel({
     }
     setSaving(true)
     try {
-      await consoleApi.saveCleaningKeyword({ ...draft, pattern })
+      await consoleApi.saveCleaningKeyword(buildKeywordSavePayload({ ...draft, pattern }))
       setDraft(null)
       await onRefresh()
       Toast.success('关键词已保存')
@@ -301,7 +303,7 @@ export function CleaningKeywordPanel({
       </Card>
 
       <Modal
-        title={draft?.id ? '编辑关键词' : '新增关键词'}
+        title={editing ? '编辑关键词' : '新增关键词'}
         visible={draft !== null}
         onCancel={() => setDraft(null)}
         onOk={() => void saveKeyword()}
@@ -316,12 +318,29 @@ export function CleaningKeywordPanel({
             ) : null}
             <div>
               <Text className="mb-2 block font-medium">关键词内容</Text>
-              <Input value={draft.pattern ?? ''} placeholder="例如 对不起" onChange={(value) => setDraft({ ...draft, pattern: value })} />
+              <Input
+                value={draft.pattern ?? ''}
+                placeholder="例如 对不起"
+                disabled={editing}
+                onChange={(value) => setDraft({ ...draft, pattern: value })}
+              />
+              {editing ? (
+                <Text className="mt-2 block console-caption">
+                  关键词内容创建后不可修改。需要改词请删除后重新新增（内置词可停用）。
+                </Text>
+              ) : null}
             </div>
             <div className="console-card-grid-2">
               <div>
                 <Text className="mb-2 block font-medium">分类</Text>
-                <Select value={draft.category ?? 'refusal'} optionList={CATEGORY_OPTIONS} onChange={(value) => setDraft({ ...draft, category: String(value) })} style={{ width: '100%' }} />
+                {editing ? (
+                  <>
+                    <Input value={categoryLabel(draft.category ?? '')} disabled />
+                    <Text className="mt-2 block console-caption">分类创建后不可修改。</Text>
+                  </>
+                ) : (
+                  <Select value={draft.category ?? 'refusal'} optionList={CATEGORY_OPTIONS} onChange={(value) => setDraft({ ...draft, category: String(value) })} style={{ width: '100%' }} />
+                )}
               </div>
               <div>
                 <Text className="mb-2 block font-medium">匹配方式</Text>

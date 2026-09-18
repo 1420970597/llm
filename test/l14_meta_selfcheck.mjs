@@ -6,7 +6,9 @@
  *      否则界面显示「排队中 · 检查 0 条」且轮询永不停止；
  *   2. deriveSeverityDistribution：findings.keywordId 与关键词库 severity 的 join；
  *   3. sortRulesByPriority：必须与运行时 cleaning.Scan → decideAction 的判定顺序一致
- *      （priority 数字大的先判；注意内部 EvaluateRules 是升序但无生产调用方）。
+ *      （priority 数字大的先判；注意内部 EvaluateRules 是升序但无生产调用方）；
+ *   4. buildKeywordSavePayload：编辑态不得把后端 UPDATE 分支不写的字段（category）
+ *      发给接口，否则界面提示「已保存」而值没变（假成功）。
  *
  * 运行：
  *   node test/l14_meta_selfcheck.mjs
@@ -35,7 +37,7 @@ esbuild.buildSync({
   logLevel: 'warning',
 })
 
-const { mergeReportRun, deriveSeverityDistribution, sortRulesByPriority } = createRequire(import.meta.url)(outfile)
+const { mergeReportRun, deriveSeverityDistribution, sortRulesByPriority, buildKeywordSavePayload } = createRequire(import.meta.url)(outfile)
 
 let failures = 0
 function check(name, ok, detail) {
@@ -99,6 +101,21 @@ try {
     'sortRulesByPriority 优先级降序（数字大的先判）、同级按名称',
     ordered.join(',') === '2,3,1',
     `顺序=${ordered.join(',')}（期望 2,3,1：priority 50 的两条在前，同级按名称 b<c）`,
+  )
+
+  // --- buildKeywordSavePayload：编辑态不得提交后端不会写入的字段 ---
+  const createPayload = buildKeywordSavePayload({ pattern: '对不起', category: 'safety', matchMode: 'contains', severity: 'warn', isActive: true, note: 'n' })
+  check(
+    'buildKeywordSavePayload 新建态保留全量字段',
+    createPayload.category === 'safety' && createPayload.pattern === '对不起',
+    `category=${createPayload.category} pattern=${createPayload.pattern}`,
+  )
+  const editPayload = buildKeywordSavePayload({ id: 27, pattern: 'I cannot', category: 'placeholder', matchMode: 'prefix', severity: 'warn', isActive: false, note: 'n' })
+  check(
+    'buildKeywordSavePayload 编辑态不提交 category（后端 UPDATE 分支不写该列）',
+    editPayload.id === 27 && editPayload.pattern === 'I cannot' && !('category' in editPayload)
+      && editPayload.severity === 'warn' && editPayload.isActive === false,
+    `keys=${Object.keys(editPayload).join(',')}（category 必须缺席）`,
   )
 } finally {
   rmSync(workDir, { recursive: true, force: true })
