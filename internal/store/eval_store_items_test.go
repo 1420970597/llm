@@ -171,22 +171,38 @@ func TestEvalRunStoreIntegration(t *testing.T) {
 		t.Errorf("dimension filter for an unused key must return nothing, got %d rows", len(filtered))
 	}
 
-	// 进度回写：空 errorSummary 不能清掉已记录的失败原因。
+	// 进度回写（running 是进度态）：空 errorSummary 不能清掉已记录的失败原因。
 	if err := store.UpdateRunStatus(ctx, run.ID, "running", 2, 1, "裁判 2 超时"); err != nil {
 		t.Fatalf("UpdateRunStatus: %v", err)
 	}
-	if err := store.UpdateRunStatus(ctx, run.ID, "completed", 2, 2, ""); err != nil {
+	if err := store.UpdateRunStatus(ctx, run.ID, "running", 2, 2, ""); err != nil {
 		t.Fatalf("UpdateRunStatus (progress): %v", err)
 	}
 	updated, err := store.GetRun(ctx, run.ID)
 	if err != nil {
 		t.Fatalf("GetRun: %v", err)
 	}
-	if updated.Status != "completed" || updated.TotalItems != 2 || updated.ScoredItems != 2 {
+	if updated.Status != "running" || updated.TotalItems != 2 || updated.ScoredItems != 2 {
 		t.Errorf("progress fields not persisted: %+v", updated)
 	}
 	if updated.ErrorSummary != "裁判 2 超时" {
 		t.Errorf("a blank errorSummary must not erase the recorded failure, got %q", updated.ErrorSummary)
+	}
+
+	// 终态写入空摘要必须清掉旧错误：
+	// 一次失败后重启并成功完成的运行不该继续展示上一轮的错误横幅。
+	if err := store.UpdateRunStatus(ctx, run.ID, "completed", 2, 2, ""); err != nil {
+		t.Fatalf("UpdateRunStatus (terminal): %v", err)
+	}
+	updated, err = store.GetRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetRun (terminal): %v", err)
+	}
+	if updated.Status != "completed" || updated.ScoredItems != 2 {
+		t.Errorf("terminal fields not persisted: %+v", updated)
+	}
+	if updated.ErrorSummary != "" {
+		t.Errorf("a terminal status must clear a stale error summary, got %q", updated.ErrorSummary)
 	}
 
 	// 不存在时返回哨兵错误，供 HTTP 层稳定映射 404。

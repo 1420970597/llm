@@ -146,15 +146,20 @@ func (s *EvalRunStore) ListRuns(ctx context.Context, datasetID int64) ([]model.E
 
 // UpdateRunStatus 更新运行状态与进度。
 //
-// 空字符串的 errorSummary 不清空已有摘要（用 COALESCE 语义）：
+// 空字符串的 errorSummary 只在**进度态**（queued/running）保留旧摘要：
 // 进度回写很频繁，若每次把 errorSummary 传空就覆盖，之前记录的失败原因会丢。
+// 终态（completed/partial_failed/failed）则以本次写入为准——
+// 否则一次失败后重新启动并成功完成的运行会永久带着上一轮的错误横幅，
+// 用户会以为结果不完整。
 func (s *EvalRunStore) UpdateRunStatus(ctx context.Context, runID int64, status string, totalItems, scoredItems int, errorSummary string) error {
 	_, err := s.db.Exec(ctx, `
     UPDATE eval_runs
     SET status = $2,
         total_items = $3,
         scored_items = $4,
-        error_summary = CASE WHEN $5 = '' THEN error_summary ELSE $5 END,
+        error_summary = CASE WHEN $5 <> '' THEN $5
+                             WHEN $2 IN ('queued', 'running') THEN error_summary
+                             ELSE '' END,
         updated_at = NOW()
     WHERE id = $1`,
 		runID, status, totalItems, scoredItems, errorSummary)
