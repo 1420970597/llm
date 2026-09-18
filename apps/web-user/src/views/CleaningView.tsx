@@ -16,7 +16,6 @@ import { CleaningKeywordPanel } from './cleaning/CleaningKeywordPanel'
 import { CleaningReportPanel } from './cleaning/CleaningReportPanel'
 import { CleaningRulePanel } from './cleaning/CleaningRulePanel'
 import { CleaningRunPanel } from './cleaning/CleaningRunPanel'
-import { useCleaningStyles } from './cleaning/cleaningStyles'
 import { datasetStatusLabel, runStatusColor, runStatusLabel } from './cleaning/cleaningMeta'
 
 const { Text, Title } = Typography
@@ -40,7 +39,6 @@ const POLL_INTERVAL_MS = 5000
  */
 export function CleaningView({ datasets }: { datasets: Dataset[] }) {
   const navigate = useNavigate()
-  useCleaningStyles()
 
   const [keywords, setKeywords] = useState<CleaningKeyword[]>([])
   const [keywordsLoading, setKeywordsLoading] = useState(false)
@@ -223,7 +221,7 @@ export function CleaningView({ datasets }: { datasets: Dataset[] }) {
 
   return (
     <div className="console-page-shell">
-      <div className="cleaning-page-head">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="console-route-banner">
           <span className="console-chip">数据清洗</span>
           <Title heading={2} className="!mb-0 console-page-title">拦截拒答与异常样本</Title>
@@ -242,7 +240,7 @@ export function CleaningView({ datasets }: { datasets: Dataset[] }) {
       <CleaningFlowSteps onNavigate={(route) => navigate(route)} />
 
       <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-        <div className="cleaning-dataset-bar">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <Text className="mb-2 block font-medium">当前查看的任务</Text>
             <Select
@@ -252,7 +250,7 @@ export function CleaningView({ datasets }: { datasets: Dataset[] }) {
               style={{ minWidth: 280 }}
             />
           </div>
-          <div className="console-summary-grid cleaning-dataset-summary">
+          <div className="console-summary-grid flex-1 min-w-[320px]">
             <div className="console-summary-row"><span>任务状态</span><Text strong>{activeDataset ? datasetStatusLabel(activeDataset.status) : '—'}</Text></div>
             <div className="console-summary-row"><span>清洗记录</span><Text strong>{runs.length} 次</Text></div>
             <div className="console-summary-row">

@@ -127,7 +127,7 @@ export function CleaningRulePanel({
 
   return (
     <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-      <div className="cleaning-panel-head">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <Title heading={4} className="!mb-0">清洗规则</Title>
           <Text className="mt-2 block console-caption">
