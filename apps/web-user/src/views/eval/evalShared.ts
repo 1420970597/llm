@@ -68,8 +68,9 @@ export const AGREEMENT_WARNING_THRESHOLD = 0.7
 /** 一致性低于该阈值视为严重不一致。 */
 export const AGREEMENT_CRITICAL_THRESHOLD = 0.5
 
-export function agreementLevel(value: number): 'high' | 'medium' | 'low' {
-  if (!Number.isFinite(value)) return 'low'
+export function agreementLevel(value: number): 'high' | 'medium' | 'low' | 'not_applicable' {
+  // 负值表示后端「不适用」哨兵（样本不足，一致性无从计算），不能当成低一致性报警。
+  if (!Number.isFinite(value) || value < 0) return 'not_applicable'
   if (value >= AGREEMENT_WARNING_THRESHOLD) return 'high'
   if (value >= AGREEMENT_CRITICAL_THRESHOLD) return 'medium'
   return 'low'

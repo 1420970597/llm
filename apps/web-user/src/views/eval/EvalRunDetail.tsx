@@ -90,7 +90,7 @@ export function EvalRunDetail({ runId }: { runId: number }) {
   const run = detail.run
   const meta = runStatusMeta(run.status)
   const percent = run.totalItems > 0 ? Math.min(100, Math.round((run.scoredItems / run.totalItems) * 100)) : 0
-  const level = report ? agreementLevel(report.judgeAgreement) : 'low'
+  const level = report ? agreementLevel(report.judgeAgreement) : 'not_applicable'
 
   return (
     <div className="console-stack">
@@ -184,7 +184,13 @@ export function EvalRunDetail({ runId }: { runId: number }) {
               </Card>
             </div>
 
-            {level !== 'high' ? (
+            {level === 'not_applicable' ? (
+              <div className="mt-4">
+                <Text className="console-caption">
+                  一致性不适用（后端返回 {report.judgeAgreement}）：样本不足或尚未产出打分，暂不评判裁判分歧。
+                </Text>
+              </div>
+            ) : level !== 'high' ? (
               <div className="mt-4">
                 <Banner
                   type={level === 'low' ? 'danger' : 'warning'}
