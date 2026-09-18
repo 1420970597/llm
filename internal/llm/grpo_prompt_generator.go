@@ -196,14 +196,22 @@ func buildJudgePrompt(input GrpoPromptInput, levels []string, rubrics []model.Gr
 	builder.WriteString("\n")
 
 	builder.WriteString("## 四、结合具体场景的判断要求\n")
-	builder.WriteString("- 必须结合问题中给出的具体场景要素（位置、单位、约束条件、突发情况）作出判断，不得只给抽象评价。\n")
-	builder.WriteString("- 必须指出候选回答在上述思考框架的哪一步骤上偏离或缺失，并引用该步骤序号。\n")
+	if hasScenarioClues(input.Question) {
+		builder.WriteString("- 必须结合问题中给出的具体场景要素（位置、单位、约束条件、突发情况）作出判断，不得只给抽象评价。\n")
+	} else {
+		builder.WriteString("- 该问题为抽象概念题，不含具体场景要素。不得凭空编造场景细节，应针对问题本身的概念边界与要素关系作出判断。\n")
+	}
+	if len(input.ChainSteps) > 0 {
+		builder.WriteString("- 必须指出候选回答在上述思考框架的哪一步骤上偏离或缺失，并引用该步骤序号。\n")
+	} else {
+		builder.WriteString("- 本方向无标准步骤可对照，不得编造步骤序号；必须直接指出回答在哪些关键推理环节上缺失或错误。\n")
+	}
 	builder.WriteString("- 必须说明该偏离为什么落在你所选的档次，而不是相邻档次。\n\n")
 
 	builder.WriteString("## 五、输出格式（强制）\n")
 	builder.WriteString("只输出一个 JSON 对象。不要输出任何解释文字，不要使用 Markdown 代码块，不要添加额外字段：\n")
-	fmt.Fprintf(&builder, "{\"level\":\"<%s>\",\"rationale\":\"<不少于 50 字的评判理由，须引用具体场景要素与对应步骤序号>\"}\n",
-		strings.Join(levels, "|"))
+	fmt.Fprintf(&builder, "{\"level\":\"<%s>\",\"rationale\":\"<不少于 50 字的评判理由%s>\"}\n",
+		strings.Join(levels, "|"), rationaleRequirement(input))
 
 	return builder.String()
 }
@@ -216,12 +224,45 @@ func frameworkReference(input GrpoPromptInput) string {
 	return fmt.Sprintf("%s · %d 步标准步骤", direction, len(input.ChainSteps))
 }
 
+// rationaleRequirement 按实际情况生成 rationale 的内容要求，
+// 避免在无场景要素或无标准步骤时给出不可能满足的指令。
+func rationaleRequirement(input GrpoPromptInput) string {
+	parts := []string{"须说明所判档次与相邻档次的区别"}
+	if hasScenarioClues(input.Question) {
+		parts = append(parts, "须引用问题中的具体场景要素")
+	}
+	if len(input.ChainSteps) > 0 {
+		parts = append(parts, "须引用对应步骤序号")
+	}
+	return "，" + strings.Join(parts, "，")
+}
+
 func fallbackText(value, fallback string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return fallback
 	}
 	return trimmed
+}
+
+// scenarioClues 是判断问题是否含具体场景要素的线索词。
+// 需求原文的问题形如「在某某位置有某某单位巡逻，遇到 xxxx，请做出规划」，
+// 这类问题必须结合场景判断；而「现代作战体系由哪些要素构成」是抽象概念题，
+// 对它要求「结合位置/单位/突发情况」会逼教师模型凭空编造场景。
+var scenarioClues = []string{
+	"遇到", "突发", "紧急", "请做出规划", "请规划", "如何处置", "如何应对",
+	"在某某", "某海域", "某区域", "某地", "单位", "编队", "部队", "兵力",
+	"巡逻", "部署", "行动方案", "态势", "请求支援", "遭到", "发现不明",
+}
+
+// hasScenarioClues 判断问题文本是否描述了具体场景。
+func hasScenarioClues(question string) bool {
+	for _, clue := range scenarioClues {
+		if strings.Contains(question, clue) {
+			return true
+		}
+	}
+	return false
 }
 
 const grpoRubricSystemPrompt = "你是长链思考数据集的评判标准设计专家。" +
@@ -233,6 +274,9 @@ func buildRubricUserPrompt(input GrpoPromptInput, levels []string) string {
 	fmt.Fprintf(&builder, "主题：%s\n", fallbackText(input.RootKeyword, "（未提供）"))
 	fmt.Fprintf(&builder, "方向：%s\n", fallbackText(input.DirectionName, "（未提供）"))
 	fmt.Fprintf(&builder, "问题：%s\n\n", strings.TrimSpace(input.Question))
+	if !hasScenarioClues(input.Question) {
+		builder.WriteString("注意：该问题是抽象概念题，不含具体场景要素。acceptCase 与 rejectCase 应围绕概念边界与要素关系举例，不要凭空编造场景。\n\n")
+	}
 
 	if len(input.ChainSteps) > 0 {
 		builder.WriteString("该方向的长链思维标准步骤（判据必须针对这些步骤设计）：\n")

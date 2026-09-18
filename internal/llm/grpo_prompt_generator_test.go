@@ -145,11 +145,64 @@ func TestBuildJudgePromptContainsAllMandatorySections(t *testing.T) {
 	}
 }
 
+// 场景题（含「遇到/规划」等线索）必须要求结合场景要素。
+func TestBuildJudgePromptRequiresScenarioElementsForScenarioQuestion(t *testing.T) {
+	input := GrpoPromptInput{
+		RootKeyword:   "军事",
+		DirectionName: "海上巡逻",
+		Question:      "在A海域有巡逻编队，遇到不明船只，请做出规划。",
+		ChainSteps:    []model.ChainStep{{Index: 1, Title: "态势研判"}},
+		Levels:        []string{"-1", "1"},
+	}
+	rubrics := []model.GrpoLevelRubric{{Level: "-1", Criteria: "判据"}, {Level: "1", Criteria: "判据"}}
+
+	prompt := buildJudgePrompt(input, input.Levels, rubrics)
+
+	if !strings.Contains(prompt, "必须结合问题中给出的具体场景要素") {
+		t.Fatal("scenario question must require scenario-grounded judgement")
+	}
+	if !strings.Contains(prompt, "引用该步骤序号") {
+		t.Fatal("prompt with chain steps must require citing step numbers")
+	}
+	if strings.Contains(prompt, "不得凭空编造场景细节") {
+		t.Fatal("scenario question must not carry the abstract-question warning")
+	}
+}
+
+// 抽象概念题（无场景线索）不得要求「结合位置/单位/突发情况」，
+// 否则会逼教师模型凭空编造场景。
+func TestBuildJudgePromptSuppressesScenarioDemandForAbstractQuestion(t *testing.T) {
+	input := GrpoPromptInput{
+		RootKeyword:   "军事",
+		DirectionName: "作战体系",
+		Question:      "现代作战体系通常由哪些核心要素构成？",
+		Levels:        []string{"-1", "0", "1"},
+	}
+	rubrics := []model.GrpoLevelRubric{
+		{Level: "-1", Criteria: "判据"}, {Level: "0", Criteria: "判据"}, {Level: "1", Criteria: "判据"},
+	}
+
+	prompt := buildJudgePrompt(input, input.Levels, rubrics)
+
+	if strings.Contains(prompt, "必须结合问题中给出的具体场景要素") {
+		t.Fatal("abstract question must not demand scenario elements it does not have")
+	}
+	if !strings.Contains(prompt, "不得凭空编造场景细节") {
+		t.Fatal("abstract question must carry the no-fabrication instruction")
+	}
+	if strings.Contains(prompt, "引用该步骤序号") {
+		t.Fatal("prompt without chain steps must not demand step numbers")
+	}
+	if !strings.Contains(prompt, "不得编造步骤序号") {
+		t.Fatal("prompt without chain steps must forbid inventing step numbers")
+	}
+}
+
 func TestBuildJudgePromptDeclaresMissingFrameworkWhenNoChainSteps(t *testing.T) {
 	input := GrpoPromptInput{
 		RootKeyword:   "军事",
 		DirectionName: "海上巡逻",
-		Question:      "问题",
+		Question:      "在A海域有巡逻编队，遇到不明船只，请做出规划。",
 		Levels:        []string{"-1", "1"},
 	}
 	rubrics := []model.GrpoLevelRubric{
@@ -164,6 +217,56 @@ func TestBuildJudgePromptDeclaresMissingFrameworkWhenNoChainSteps(t *testing.T) 
 	}
 	if !strings.Contains(prompt, "从严评判其推理完整性") {
 		t.Fatal("prompt must instruct stricter judging when framework is absent")
+	}
+}
+
+func TestRationaleRequirementAdaptsToInput(t *testing.T) {
+	scenarioWithSteps := rationaleRequirement(GrpoPromptInput{
+		Question:   "在A海域遇到不明船只，请规划。",
+		ChainSteps: []model.ChainStep{{Index: 1}},
+	})
+	if !strings.Contains(scenarioWithSteps, "具体场景要素") {
+		t.Fatalf("scenario question must require scenario elements: %q", scenarioWithSteps)
+	}
+	if !strings.Contains(scenarioWithSteps, "步骤序号") {
+		t.Fatalf("with chain steps must require step numbers: %q", scenarioWithSteps)
+	}
+
+	abstractNoSteps := rationaleRequirement(GrpoPromptInput{
+		Question: "现代作战体系由哪些要素构成？",
+	})
+	if strings.Contains(abstractNoSteps, "具体场景要素") {
+		t.Fatalf("abstract question must not require scenario elements: %q", abstractNoSteps)
+	}
+	if strings.Contains(abstractNoSteps, "步骤序号") {
+		t.Fatalf("no chain steps must not require step numbers: %q", abstractNoSteps)
+	}
+	if !strings.Contains(abstractNoSteps, "相邻档次") {
+		t.Fatalf("must always require adjacent-level distinction: %q", abstractNoSteps)
+	}
+}
+
+func TestHasScenarioClues(t *testing.T) {
+	scenarioQuestions := []string{
+		"在A海域有巡逻编队，遇到不明船只，请做出规划。",
+		"某区域发生突发情况，如何处置？",
+		"我方部队遭到袭击，请求支援方案。",
+	}
+	for _, question := range scenarioQuestions {
+		if !hasScenarioClues(question) {
+			t.Fatalf("should be detected as scenario question: %q", question)
+		}
+	}
+
+	abstractQuestions := []string{
+		"现代作战体系通常由哪些核心要素构成？",
+		"请解释《孙子兵法》的核心思想。",
+		"比较克劳塞维茨与孙子在战争本质认识上的主要差异。",
+	}
+	for _, question := range abstractQuestions {
+		if hasScenarioClues(question) {
+			t.Fatalf("should be detected as abstract question: %q", question)
+		}
 	}
 }
 
