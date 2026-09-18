@@ -12,6 +12,7 @@
   T8  非法抽样参数被拒（ratio=0、count=0、未知模式）
   T9  不存在的运行返回 404
   T10 不存在的 datasetId 返回 404
+  T12 裁判 id 非法时返回 400 且不留下 draft 运行（失败请求无副作用）
 
   T11 端到端评估（真实 LLM）：count 抽样 1 条 + ratio 抽样 2 条，
       逐条验证 start -> worker -> LLM 打分 -> 落库，并断言未选定的裁判未参与打分
@@ -364,6 +365,23 @@ def main():
     check("T9 不存在运行的 items 返回 404", status == 404, f"status={status} body={body}")
     status, body = client.post("/api/v1/eval/runs", {"datasetId": 999999999, "name": "L9-接口测试-坏数据集"})
     check("T10 不存在的 datasetId 返回 404", status == 404, f"status={status} body={body}")
+
+    # ---- T12 裁判 id 非法时不得留下 draft 运行 ----
+    # 失败请求不能有副作用：客户端拿不到 run id，库里却多出一条用户不知情的运行。
+    print("T12 非法裁判 id 不留副作用")
+    before_runs = sql_scalar(
+        f"SELECT count(*) FROM eval_runs WHERE dataset_id = {dataset_id} AND name = 'L9-接口测试-坏裁判';")
+    status, body = client.post("/api/v1/eval/runs", {
+        "datasetId": dataset_id,
+        "name": "L9-接口测试-坏裁判",
+        "judgeProviderIds": [999999999],
+    })
+    check("T12 非法裁判 id 返回 400", status == 400, f"status={status} body={body}")
+    after_runs = sql_scalar(
+        f"SELECT count(*) FROM eval_runs WHERE dataset_id = {dataset_id} AND name = 'L9-接口测试-坏裁判';")
+    check("T12 失败请求未落库 draft 运行",
+          (before_runs or "0") == (after_runs or "0") and (after_runs or "0") == "0",
+          f"before={before_runs} after={after_runs}")
 
     # ---- T5 入队（必须在清掉去重键之后） ----
     print("T5 启动评估运行")
