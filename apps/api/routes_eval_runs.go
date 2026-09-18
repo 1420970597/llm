@@ -85,7 +85,8 @@ func (app *application) createEvalRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if _, err := app.datasets.GetDataset(ctx, input.DatasetID); err != nil {
+	dataset, err := app.datasets.GetDataset(ctx, input.DatasetID)
+	if err != nil {
 		app.writeError(w, http.StatusNotFound, errors.New("dataset not found"))
 		return
 	}
@@ -100,9 +101,7 @@ func (app *application) createEvalRun(w http.ResponseWriter, r *http.Request) {
 	// 生成者 provider 默认取数据集自己的生成模型，供 worker 剔除自评。
 	// 用户显式传了就以用户的为准（评估历史数据时可能想换基准）。
 	if input.GeneratorProvider == 0 {
-		if dataset, err := app.datasets.GetDataset(ctx, input.DatasetID); err == nil {
-			input.GeneratorProvider = dataset.ProviderID
-		}
+		input.GeneratorProvider = dataset.ProviderID
 	}
 
 	if len(input.DimensionKeys) == 0 {
@@ -121,17 +120,28 @@ func (app *application) createEvalRun(w http.ResponseWriter, r *http.Request) {
 		input.DimensionKeys = keys
 	}
 
+	// 裁判在落库前先解析校验：id 非法要返回 400，但此时不能已经写出一条 draft run——
+	// 否则客户端拿到失败、库里却留下一条用户不知情的运行，重试几次就积累垃圾行。
+	// 解析只需要生成者 id，创建前就能算出来，与创建后 PUT 裁判走同一套剔除判定。
+	var runJudges []model.EvalRunJudge
+	if len(input.JudgeProviderIDs) > 0 {
+		runJudges, err = app.resolveRunJudges(ctx, input.GeneratorProvider, input.JudgeProviderIDs)
+		if err != nil {
+			app.writeError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
+
 	run, err := app.evalRuns().CreateRun(ctx, input)
 	if err != nil {
 		app.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	if len(input.JudgeProviderIDs) > 0 {
-		// 用户在创建时一并给了裁判，就顺手落库并做剔除判定，
-		// 免得多调一次 PUT /eval/runs/{id}/judges。
-		if err := app.applyRunJudges(ctx, run.ID, input.JudgeProviderIDs); err != nil {
-			app.writeError(w, http.StatusBadRequest, err)
+	if len(runJudges) > 0 {
+		// 用户在创建时一并给了裁判，就顺手落库，免得多调一次 PUT /eval/runs/{id}/judges。
+		if _, err := app.evalJudgeStore().UpsertRunJudges(ctx, run.ID, runJudges); err != nil {
+			app.writeError(w, http.StatusInternalServerError, err)
 			return
 		}
 	}
@@ -161,26 +171,20 @@ func validateSampling(mode string, ratio float64, size int) error {
 	return err
 }
 
-// applyRunJudges 落库裁判选择并返回可用的裁判数量。
+// resolveRunJudges 解析裁判选择并返回待落库的记录（不写库）。
 //
 // 与 L7 的 PUT 接口共用同一套剔除判定（eval.ResolveJudges），
 // 保证「创建时指定裁判」与「创建后设置裁判」行为完全一致。
-func (app *application) applyRunJudges(ctx context.Context, runID int64, providerIDs []int64) error {
-	judgeStore := app.evalJudgeStore()
-
-	generatorProviderID, err := judgeStore.GeneratorProviderID(ctx, runID)
-	if err != nil {
-		return err
-	}
-
+// 拆成「解析」与「落库」两步，是为了在创建 run 之前就能校验 id 合法性。
+func (app *application) resolveRunJudges(ctx context.Context, generatorProviderID int64, providerIDs []int64) ([]model.EvalRunJudge, error) {
 	providers, err := app.store.ListProviders(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	_, records, err := eval.ResolveJudges(ctx, providers, generatorProviderID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	wanted := make(map[int64]struct{}, len(providerIDs))
@@ -205,11 +209,10 @@ func (app *application) applyRunJudges(ctx context.Context, runID int64, provide
 		}
 	}
 	if len(missing) > 0 {
-		return errors.New("unknown provider ids: " + strings.Join(missing, ","))
+		return nil, errors.New("unknown provider ids: " + strings.Join(missing, ","))
 	}
 
-	_, err = judgeStore.UpsertRunJudges(ctx, runID, selected)
-	return err
+	return selected, nil
 }
 
 // listEvalRuns 列出评估运行，可按 datasetId 过滤。
