@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 640" width="1180" height="640" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">
+  <title>58 个内置长链思考评估维度 · 7 分类结构</title>
+  <rect x="0" y="0" width="1180" height="640" fill="#ffffff"/>
+  <text x="590" y="30" text-anchor="middle" font-size="21" font-weight="bold" fill="#111827">58 个内置评估维度 · 7 个分类（internal/eval/catalog.go）</text>
+  <text x="590" y="52" text-anchor="middle" font-size="12" fill="#6b7280">统一 1~5 分制；每个维度带 rubric 判据；用户可另建自定义维度（is_builtin=false）</text>
+
+  <!-- root -->
+  <rect x="490" y="66" width="200" height="40" rx="20" fill="#111827"/>
+  <text x="590" y="92" text-anchor="middle" font-size="14" font-weight="bold" fill="#ffffff">eval_dimensions（58）</text>
+  <line x1="590" y1="106" x2="590" y2="124" stroke="#9ca3af" stroke-width="2"/>
+  <line x1="95" y1="124" x2="1085" y2="124" stroke="#9ca3af" stroke-width="2"/>
+
+  <!-- 7 categories -->
+  <g font-size="11" fill="#374151">
+    <!-- 1 long_chain -->
+    <line x1="95" y1="124" x2="95" y2="146" stroke="#9ca3af" stroke-width="2"/>
+    <rect x="20" y="146" width="150" height="34" rx="6" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+    <text x="95" y="168" text-anchor="middle" font-size="12" font-weight="bold" fill="#1d4ed8">long_chain（12）</text>
+    <text x="95" y="196" text-anchor="middle">lc_step_sufficiency</text>
+    <text x="95" y="212" text-anchor="middle">lc_step_coherence</text>
+    <text x="95" y="228" text-anchor="middle">lc_intermediate_validity</text>
+    <text x="95" y="244" text-anchor="middle">lc_self_correction</text>
+    <text x="95" y="260" text-anchor="middle">lc_assumption_explicit</text>
+    <text x="95" y="276" text-anchor="middle">lc_branch_justification</text>
+    <text x="95" y="292" text-anchor="middle">lc_constraint_satisfaction</text>
+    <text x="95" y="308" text-anchor="middle">lc_convergence</text>
+    <text x="95" y="324" text-anchor="middle">lc_redundancy_control</text>
+    <text x="95" y="340" text-anchor="middle">lc_causal_chain</text>
+    <text x="95" y="356" text-anchor="middle">lc_step_ordering</text>
+    <text x="95" y="372" text-anchor="middle">lc_alternative_exploration</text>
+
+    <!-- 2 faithfulness -->
+    <line x1="265" y1="124" x2="265" y2="146" stroke="#9ca3af" stroke-width="2"/>
+    <rect x="190" y="146" width="150" height="34" rx="6" fill="#dcfce7" stroke="#22c55e" stroke-width="2"/>
+    <text x="265" y="168" text-anchor="middle" font-size="12" font-weight="bold" fill="#15803d">faithfulness（9）</text>
+    <text x="265" y="196" text-anchor="middle">fa_fact_consistency</text>
+    <text x="265" y="212" text-anchor="middle">fa_hallucination_control</text>
+    <text x="265" y="228" text-anchor="middle">fa_citation_traceability</text>
+    <text x="265" y="244" text-anchor="middle">fa_premise_no_fabrication</text>
+    <text x="265" y="260" text-anchor="middle">fa_numeric_unit</text>
+    <text x="265" y="276" text-anchor="middle">fa_temporal_consistency</text>
+    <text x="265" y="292" text-anchor="middle">fa_source_attribution</text>
+    <text x="265" y="308" text-anchor="middle">fa_scope_bounded</text>
+    <text x="265" y="324" text-anchor="middle">fa_internal_consistency</text>
+
+    <!-- 3 instruction -->
+    <line x1="435" y1="124" x2="435" y2="146" stroke="#9ca3af" stroke-width="2"/>
+    <rect x="360" y="146" width="150" height="34" rx="6" fill="#fef9c3" stroke="#eab308" stroke-width="2"/>
+    <text x="435" y="168" text-anchor="middle" font-size="12" font-weight="bold" fill="#a16207">instruction（7）</text>
+    <text x="435" y="196" text-anchor="middle">in_question_understanding</text>
+    <text x="435" y="212" text-anchor="middle">in_constraint_compliance</text>
+    <text x="435" y="228" text-anchor="middle">in_format_compliance</text>
+    <text x="435" y="244" text-anchor="middle">in_boundary_handling</text>
+    <text x="435" y="260" text-anchor="middle">in_ambiguity_clarification</text>
+    <text x="435" y="276" text-anchor="middle">in_completeness_all_parts</text>
+    <text x="435" y="292" text-anchor="middle">in_persona_role</text>
+
+    <!-- 4 domain_fit -->
+    <line x1="605" y1="124" x2="605" y2="146" stroke="#9ca3af" stroke-width="2"/>
+    <rect x="530" y="146" width="150" height="34" rx="6" fill="#fce7f3" stroke="#ec4899" stroke-width="2"/>
+    <text x="605" y="168" text-anchor="middle" font-size="12" font-weight="bold" fill="#be185d">domain_fit（8）</text>
+    <text x="605" y="196" text-anchor="middle">df_terminology</text>
+    <text x="605" y="212" text-anchor="middle">df_scenario_fit</text>
+    <text x="605" y="228" text-anchor="middle">df_common_sense</text>
+    <text x="605" y="244" text-anchor="middle">df_feasibility</text>
+    <text x="605" y="260" text-anchor="middle">df_regulation</text>
+    <text x="605" y="276" text-anchor="middle">df_resource_constraint</text>
+    <text x="605" y="292" text-anchor="middle">df_environment_context</text>
+    <text x="605" y="308" text-anchor="middle">df_stakeholder</text>
+
+    <!-- 5 answer_quality -->
+    <line x1="775" y1="124" x2="775" y2="146" stroke="#9ca3af" stroke-width="2"/>
+    <rect x="700" y="146" width="150" height="34" rx="6" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
+    <text x="775" y="168" text-anchor="middle" font-size="12" font-weight="bold" fill="#6d28d9">answer_quality（8）</text>
+    <text x="775" y="196" text-anchor="middle">aq_conclusion_clarity</text>
+    <text x="775" y="212" text-anchor="middle">aq_completeness</text>
+    <text x="775" y="228" text-anchor="middle">aq_actionability</text>
+    <text x="775" y="244" text-anchor="middle">aq_risk_disclosure</text>
+    <text x="775" y="260" text-anchor="middle">aq_prioritization</text>
+    <text x="775" y="276" text-anchor="middle">aq_contingency</text>
+    <text x="775" y="292" text-anchor="middle">aq_metric_definition</text>
+    <text x="775" y="308" text-anchor="middle">aq_concision</text>
+
+    <!-- 6 robustness -->
+    <line x1="945" y1="124" x2="945" y2="146" stroke="#9ca3af" stroke-width="2"/>
+    <rect x="870" y="146" width="150" height="34" rx="6" fill="#fee2e2" stroke="#ef4444" stroke-width="2"/>
+    <text x="945" y="168" text-anchor="middle" font-size="12" font-weight="bold" fill="#b91c1c">robustness（8）</text>
+    <text x="945" y="196" text-anchor="middle">rb_anti_induction</text>
+    <text x="945" y="212" text-anchor="middle">rb_refusal_handling</text>
+    <text x="945" y="228" text-anchor="middle">rb_safety_compliance</text>
+    <text x="945" y="244" text-anchor="middle">rb_uncertainty_expression</text>
+    <text x="945" y="260" text-anchor="middle">rb_edge_case_resilience</text>
+    <text x="945" y="276" text-anchor="middle">rb_consistency_across_runs</text>
+    <text x="945" y="292" text-anchor="middle">rb_bias_control</text>
+    <text x="945" y="308" text-anchor="middle">rb_data_sensitivity</text>
+
+    <!-- 7 efficiency -->
+    <line x1="1115" y1="124" x2="1115" y2="146" stroke="#9ca3af" stroke-width="2"/>
+    <rect x="1040" y="146" width="130" height="34" rx="6" fill="#cffafe" stroke="#06b6d4" stroke-width="2"/>
+    <text x="1105" y="168" text-anchor="middle" font-size="12" font-weight="bold" fill="#0e7490">efficiency（6）</text>
+    <text x="1105" y="196" text-anchor="middle">ef_token_efficiency</text>
+    <text x="1105" y="212" text-anchor="middle">ef_thought_density</text>
+    <text x="1105" y="228" text-anchor="middle">ef_key_info_ratio</text>
+    <text x="1105" y="244" text-anchor="middle">ef_no_padding</text>
+    <text x="1105" y="260" text-anchor="middle">ef_parallel_structure</text>
+    <text x="1105" y="276" text-anchor="middle">ef_early_termination</text>
+  </g>
+
+  <!-- footer note -->
+  <rect x="20" y="400" width="1140" height="216" rx="10" fill="#f9fafb" stroke="#d1d5db"/>
+  <text x="40" y="426" font-size="13" font-weight="bold" fill="#111827">分类含义（对应 catalog.go 里的 Category* 常量）</text>
+  <text x="40" y="452" font-size="12" fill="#374151">long_chain　推理链本身的结构质量：步数是否够、步骤是否衔接、是否有自我纠错与分支论证。</text>
+  <text x="40" y="476" font-size="12" fill="#374151">faithfulness　内容是否忠于输入与事实：幻觉、引用可追溯、数值单位、前提是否臆造。</text>
+  <text x="40" y="500" font-size="12" fill="#374151">instruction　是否听懂并遵守了提问：约束遵守、格式合规、边界处理、歧义澄清、子问题全覆盖。</text>
+  <text x="40" y="524" font-size="12" fill="#374151">domain_fit　是否贴合具体领域场景：术语、场景、法规、资源约束、相关方视角。</text>
+  <text x="40" y="548" font-size="12" fill="#374151">answer_quality　最终答案是否可用：结论明确、可执行、有风险提示与备选方案、成功标准可度量。</text>
+  <text x="40" y="572" font-size="12" fill="#374151">robustness　面对诱导与极端输入是否稳：抗诱导、拒答处理、安全合规、偏见控制、跨次一致性。</text>
+  <text x="40" y="596" font-size="12" fill="#374151">efficiency　思考是否高效：Token 效率、思考密度、无套话填充、适时收敛。</text>
+</svg>

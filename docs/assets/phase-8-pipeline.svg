@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 620" width="1040" height="620" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">
+  <title>Phase 8 数据流水线：关键词 → n 领域 → m 方向 → 长链标准 → x 问题 → GRPO/SFT → 导出</title>
+  <rect x="0" y="0" width="1040" height="620" fill="#ffffff"/>
+  <text x="520" y="34" text-anchor="middle" font-size="22" font-weight="bold" fill="#111827">数据流水线（R1 → R6）与各阶段落点</text>
+  <text x="520" y="58" text-anchor="middle" font-size="13" fill="#6b7280">jobType 为 worker 注册表键名；HTTP 为入队接口；表名为真实迁移表名</text>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+
+  <!-- Stage 0 -->
+  <rect x="40" y="86" width="200" height="86" rx="10" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2"/>
+  <text x="140" y="112" text-anchor="middle" font-size="14" font-weight="bold" fill="#111827">用户关键词</text>
+  <text x="140" y="134" text-anchor="middle" font-size="11" fill="#4b5563">如「军事」</text>
+  <text x="140" y="154" text-anchor="middle" font-size="11" fill="#6b7280">datasets.keyword</text>
+
+  <line x1="240" y1="129" x2="286" y2="129" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Stage 1: n domains -->
+  <rect x="290" y="86" width="210" height="86" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+  <text x="395" y="110" text-anchor="middle" font-size="14" font-weight="bold" fill="#1d4ed8">n 个领域（L1）</text>
+  <text x="395" y="132" text-anchor="middle" font-size="11" fill="#374151">job: directions.generate</text>
+  <text x="395" y="150" text-anchor="middle" font-size="11" fill="#6b7280">domains.level=1</text>
+  <text x="395" y="166" text-anchor="middle" font-size="11" fill="#6b7280">datasets.domain_count</text>
+
+  <line x1="500" y1="129" x2="546" y2="129" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Stage 2: m directions -->
+  <rect x="550" y="86" width="210" height="86" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+  <text x="655" y="110" text-anchor="middle" font-size="14" font-weight="bold" fill="#1d4ed8">m 个方向（L1）</text>
+  <text x="655" y="132" text-anchor="middle" font-size="11" fill="#374151">同上 job，逐领域续跑</text>
+  <text x="655" y="150" text-anchor="middle" font-size="11" fill="#6b7280">domains.level=2</text>
+  <text x="655" y="166" text-anchor="middle" font-size="11" fill="#6b7280">datasets.direction_count</text>
+
+  <line x1="760" y1="129" x2="806" y2="129" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Stage 3: chain standards -->
+  <rect x="810" y="86" width="200" height="86" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="2"/>
+  <text x="910" y="110" text-anchor="middle" font-size="14" font-weight="bold" fill="#047857">长链标准步骤（L2）</text>
+  <text x="910" y="132" text-anchor="middle" font-size="11" fill="#374151">chain-standards.generate</text>
+  <text x="910" y="150" text-anchor="middle" font-size="11" fill="#6b7280">chain_standards</text>
+  <text x="910" y="166" text-anchor="middle" font-size="11" fill="#6b7280">chain_standard_versions</text>
+
+  <!-- down to stage 4 -->
+  <line x1="910" y1="172" x2="910" y2="228" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="910" y1="228" x2="560" y2="228" stroke="#6b7280" stroke-width="2"/>
+  <line x1="560" y1="228" x2="560" y2="252" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Stage 4: x questions -->
+  <rect x="340" y="256" width="440" height="92" rx="10" fill="#fefce8" stroke="#eab308" stroke-width="2"/>
+  <text x="560" y="282" text-anchor="middle" font-size="14" font-weight="bold" fill="#a16207">x 个具体问题 / 方向（L3）</text>
+  <text x="560" y="304" text-anchor="middle" font-size="11" fill="#374151">job: questions.generate　HTTP: POST /datasets/{id}/questions/generate</text>
+  <text x="560" y="322" text-anchor="middle" font-size="11" fill="#6b7280">难度分层 difficultyMix → questions.difficulty / difficulty_score</text>
+  <text x="560" y="340" text-anchor="middle" font-size="11" fill="#6b7280">去重 DedupeKey → questions.dedupe_key（UNIQUE 语义由 store 保证）</text>
+
+  <!-- branch -->
+  <line x1="470" y1="348" x2="470" y2="388" stroke="#6b7280" stroke-width="2"/>
+  <line x1="650" y1="348" x2="650" y2="388" stroke="#6b7280" stroke-width="2"/>
+  <line x1="470" y1="388" x2="650" y2="388" stroke="#6b7280" stroke-width="2"/>
+  <line x1="300" y1="388" x2="740" y2="388" stroke="#6b7280" stroke-width="2"/>
+  <line x1="300" y1="388" x2="300" y2="412" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="740" y1="388" x2="740" y2="412" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="560" y="382" text-anchor="middle" font-size="11" fill="#6b7280">按 datasets.target_kind 分流</text>
+
+  <!-- GRPO branch -->
+  <rect x="120" y="416" width="360" height="92" rx="10" fill="#fdf2f8" stroke="#ec4899" stroke-width="2"/>
+  <text x="300" y="442" text-anchor="middle" font-size="14" font-weight="bold" fill="#be185d">GRPO 分支（L4）：教师模型评判提示词</text>
+  <text x="300" y="464" text-anchor="middle" font-size="11" fill="#374151">job: grpo.generate　HTTP: POST /datasets/{id}/grpo/generate</text>
+  <text x="300" y="482" text-anchor="middle" font-size="11" fill="#6b7280">用户给档次（如 -1 / 0 / 1）→ LLM 生成每档评判提示词</text>
+  <text x="300" y="500" text-anchor="middle" font-size="11" fill="#6b7280">落 grpo_prompts（levels / judge_prompt / level_rubrics）</text>
+
+  <!-- SFT branch -->
+  <rect x="560" y="416" width="360" height="92" rx="10" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="740" y="442" text-anchor="middle" font-size="14" font-weight="bold" fill="#6d28d9">SFT 分支（L5）：思维链 + 答案</text>
+  <text x="740" y="464" text-anchor="middle" font-size="11" fill="#374151">job: sft.generate　HTTP: POST /datasets/{id}/sft/generate</text>
+  <text x="740" y="482" text-anchor="middle" font-size="11" fill="#6b7280">对齐 L2 长链标准步骤 → chain_steps 覆盖度</text>
+  <text x="740" y="500" text-anchor="middle" font-size="11" fill="#6b7280">落 sft_records（chain_of_thought / answer / chain_steps）</text>
+
+  <!-- converge to export -->
+  <line x1="300" y1="508" x2="300" y2="540" stroke="#6b7280" stroke-width="2"/>
+  <line x1="740" y1="508" x2="740" y2="540" stroke="#6b7280" stroke-width="2"/>
+  <line x1="300" y1="540" x2="740" y2="540" stroke="#6b7280" stroke-width="2"/>
+  <line x1="520" y1="540" x2="520" y2="562" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Export -->
+  <rect x="180" y="566" width="680" height="44" rx="10" fill="#fff7ed" stroke="#f97316" stroke-width="2"/>
+  <text x="520" y="588" text-anchor="middle" font-size="13" font-weight="bold" fill="#c2410c">导出（L6）：jsonl / csv / parquet / alpaca / sharegpt，字段映射可配 export_mappings</text>
+  <text x="520" y="604" text-anchor="middle" font-size="11" fill="#6b7280">job: export.generate　HTTP: POST /datasets/{id}/export</text>
+
+  <!-- side rails: eval & cleaning -->
+  <rect x="40" y="230" width="270" height="118" rx="10" fill="#fef2f2" stroke="#ef4444" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="175" y="254" text-anchor="middle" font-size="13" font-weight="bold" fill="#b91c1c">评估（L7~L10）横向挂载</text>
+  <text x="175" y="276" text-anchor="middle" font-size="11" fill="#374151">对已生成数据抽样/全量逐条多维打分</text>
+  <text x="175" y="294" text-anchor="middle" font-size="11" fill="#374151">多 LLM 互评，剔除生成者自评</text>
+  <text x="175" y="312" text-anchor="middle" font-size="11" fill="#6b7280">eval_runs / eval_items / eval_item_scores</text>
+  <text x="175" y="330" text-anchor="middle" font-size="11" fill="#6b7280">eval_summaries → 报告（L10）</text>
+
+  <rect x="790" y="230" width="220" height="118" rx="10" fill="#f0fdfa" stroke="#14b8a6" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="900" y="254" text-anchor="middle" font-size="13" font-weight="bold" fill="#0f766e">清洗（L11/L12）横向挂载</text>
+  <text x="900" y="276" text-anchor="middle" font-size="11" fill="#374151">问题 / 思维链 / 答案 三阶段</text>
+  <text x="900" y="294" text-anchor="middle" font-size="11" fill="#374151">拒答关键词匹配 → 拦截/告警</text>
+  <text x="900" y="312" text-anchor="middle" font-size="11" fill="#6b7280">cleaning_runs / cleaning_findings</text>
+  <text x="900" y="330" text-anchor="middle" font-size="11" fill="#6b7280">写回 questions.cleaning_status</text>
+</svg>
