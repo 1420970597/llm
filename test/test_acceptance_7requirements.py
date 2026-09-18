@@ -168,6 +168,10 @@ def main():
             "providerId": 1,
             "targetKind": "sft",
             "directionCount": 2,
+            # 必须显式给 estimate：前端「创建任务」会先调 /plans/estimate 再把它带进来。
+            # 缺省时 domain_generator 会回退到硬编码 100 个领域，验收会跑成几小时。
+            "estimate": {"domainCount": 2, "questionsPerDomain": 2,
+                         "answerVariants": 1, "rewardVariants": 1},
         })
         if code not in (200, 201):
             record("前置：创建数据集", False, f"HTTP {code} {str(body)[:200]}")
