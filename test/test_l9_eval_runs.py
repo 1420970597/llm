@@ -13,6 +13,9 @@
   T9  不存在的运行返回 404
   T10 不存在的 datasetId 返回 404
 
+  T11 端到端评估（真实 LLM）：count 抽样 1 条 + ratio 抽样 2 条，
+      逐条验证 start -> worker -> LLM 打分 -> 落库，并断言未选定的裁判未参与打分
+
 可重入性（父代理踩过的坑）：所有入队接口走 http_util.go 的 enqueueJob，
 用 dedup:<jobType>:<datasetID> 做 SetNX，TTL 10 分钟。10 分钟内重跑同一个
 (jobType, datasetID) 不会 LPush，但接口仍返回 202 + state=queued，只是 message
@@ -120,13 +123,16 @@ def check(name, condition, detail=""):
         print(f"  FAIL  {name}  {detail}")
 
 
-def run_e2e(client, dataset_id, generator_provider_id):
-    """T11 端到端：start -> worker -> 真实 LLM 打分 -> 落库。
+def run_e2e(client, dataset_id, generator_provider_id, tag, sampling, expected_items):
+    """端到端：start -> worker -> 真实 LLM 打分 -> 落库。
+
+    tag / sampling 用于跑多种抽样模式（count 与 ratio 各一次），
+    expected_items 是期望落库的条目数，直接断言抽样真的按配置生效。
 
     需要自己的 worker 容器（lane-l9-worker）在跑，且与 API 共用
     WORKER_QUEUE_NAME=lane-l9-queue；否则任务会被主栈 worker 抢走。
     """
-    print("T11 端到端评估（真实 LLM 打分）")
+    print(f"T11/{tag} 端到端评估（真实 LLM 打分，{sampling}）")
 
     if not generator_provider_id:
         print("  输入缺失: 数据集未设置 provider_id，无法构造裁判夹具")
@@ -168,38 +174,37 @@ def run_e2e(client, dataset_id, generator_provider_id):
     try:
         status, body = client.post("/api/v1/eval/runs", {
             "datasetId": dataset_id,
-            "name": "L9-接口测试-e2e",
-            "samplingMode": "count",
-            "sampleSize": 1,
+            "name": f"L9-接口测试-e2e-{tag}",
             "dimensionKeys": [dimension_key],
             "judgeProviderIds": [judge_id],
+            **sampling,
         })
-        check("T11 创建 e2e 运行", status == 200 and isinstance(body, dict), f"status={status} body={body}")
+        check(f"T11/{tag} 创建 e2e 运行", status == 200 and isinstance(body, dict), f"status={status} body={body}")
         if status != 200:
             return
         run_id = body.get("id")
-        check("T11 运行选定裁判落库",
+        check(f"T11/{tag} 运行选定裁判落库",
               isinstance(body.get("judgeProviderIds"), list) and judge_id in body["judgeProviderIds"],
               f"judgeProviderIds={body.get('judgeProviderIds')}")
 
         status, detail = client.get(f"/api/v1/eval/runs/{run_id}")
         judges = detail.get("judges", []) if isinstance(detail, dict) else []
         mine = next((j for j in judges if j.get("providerId") == judge_id), None)
-        check("T11 裁判未被剔除", mine is not None and mine.get("excluded") is False,
+        check(f"T11/{tag} 裁判未被剔除", mine is not None and mine.get("excluded") is False,
               f"judges={judges}")
 
         clear_dedup("eval.run", dataset_id)
         status, body = client.post(f"/api/v1/eval/runs/{run_id}/start")
-        check("T11 start 返回 202", status == 202, f"status={status} body={body}")
-        check("T11 start 含已入队消息",
+        check(f"T11/{tag} start 返回 202", status == 202, f"status={status} body={body}")
+        check(f"T11/{tag} start 含已入队消息",
               isinstance(body, dict) and "已入队" in body.get("message", ""),
               f"message={body.get('message') if isinstance(body, dict) else body}")
         if status != 202:
             return
 
-        # 轮询到终态。真实推理模型单次响应 30~120 秒，1 条 × 1 维度留 600 秒余量。
+        # 轮询到终态。真实推理模型单次响应 30~120 秒，逐条打分，留足余量。
         final = None
-        deadline = time.time() + 600
+        deadline = time.time() + 900
         while time.time() < deadline:
             _, detail = client.get(f"/api/v1/eval/runs/{run_id}")
             final = detail.get("run", {}) if isinstance(detail, dict) else {}
@@ -207,15 +212,17 @@ def run_e2e(client, dataset_id, generator_provider_id):
                 break
             time.sleep(5)
 
-        print(f"  运行终态: status={final.get('status')} totalItems={final.get('totalItems')} "
+        print(f"  [{tag}] 运行终态: status={final.get('status')} totalItems={final.get('totalItems')} "
               f"scoredItems={final.get('scoredItems')} errorSummary={final.get('errorSummary')}")
-        check("T11 抽样落库 1 条", final.get("totalItems") == 1, f"totalItems={final.get('totalItems')}")
-        check("T11 进度真实递增到 1", final.get("scoredItems") == 1, f"scoredItems={final.get('scoredItems')}")
-        check("T11 终态为 completed", final.get("status") == "completed", f"status={final.get('status')}")
+        check(f"T11/{tag} 抽样落库 {expected_items} 条",
+              final.get("totalItems") == expected_items, f"totalItems={final.get('totalItems')}")
+        check(f"T11/{tag} 进度真实递增到 {expected_items}",
+              final.get("scoredItems") == expected_items, f"scoredItems={final.get('scoredItems')}")
+        check(f"T11/{tag} 终态为 completed", final.get("status") == "completed", f"status={final.get('status')}")
 
         status, items = client.get(f"/api/v1/eval/runs/{run_id}/items")
         payload = items[0].get("payload", {}) if isinstance(items, list) and items else {}
-        check("T11 item payload 含被评数据",
+        check(f"T11/{tag} item payload 含被评数据",
               bool(payload.get("question")) and "reasoning" in payload and "answer" in payload,
               f"payload keys={list(payload.keys())}")
 
@@ -223,38 +230,39 @@ def run_e2e(client, dataset_id, generator_provider_id):
         raw = sql(
             "SELECT count(*) || '|' || min(score) || '|' || max(score) || '|' || min(status) "
             f"|| '|' || min(length(rationale)) FROM eval_item_scores WHERE eval_run_id = {run_id};")
-        print(f"  eval_item_scores: {raw}")
+        print(f"  [{tag}] eval_item_scores: {raw}")
         sample = sql(
             "SELECT dimension_key || ' <- ' || left(replace(rationale, E'\\n', ' '), 160) "
             f"FROM eval_item_scores WHERE eval_run_id = {run_id} ORDER BY id LIMIT 1;")
-        print(f"  样例评分: {sample}")
+        print(f"  [{tag}] 样例评分: {sample}")
         parts = raw.split("|") if raw else []
-        check("T11 分数已落库且状态为 scored",
-              len(parts) == 5 and int(parts[0]) >= 1 and parts[3] == "scored", f"raw={raw}")
+        check(f"T11/{tag} 每条都有评分且状态为 scored",
+              len(parts) == 5 and parts[0] == str(expected_items) and parts[3] == "scored",
+              f"raw={raw}")
 
         # 核心回归断言：未选定的裁判一个分数都不应该有。
         stray = sql(
             "SELECT count(*) FROM eval_item_scores "
             f"WHERE eval_run_id = {run_id} AND judge_provider_id <> {judge_id};")
-        check("T11 未选定的裁判未参与打分",
-              len(parts) == 5 and int(parts[0]) == 1 and stray == "0",
+        check(f"T11/{tag} 未选定的裁判未参与打分",
+              len(parts) == 5 and parts[0] == str(expected_items) and stray == "0",
               f"rows={parts[0] if parts else '?'} stray={stray} unselected={unselected_id}")
         chosen = sql(
             "SELECT DISTINCT judge_provider_id FROM eval_item_scores "
             f"WHERE eval_run_id = {run_id};")
-        check("T11 分数只来自选定裁判", chosen == str(judge_id),
+        check(f"T11/{tag} 分数只来自选定裁判", chosen == str(judge_id),
               f"chosen={chosen} expected={judge_id}")
         if len(parts) == 5 and parts[0] != "0":
             low, high = float(parts[1]), float(parts[2])
-            check("T11 分数落在维度 scale 区间内（越界已夹紧）",
+            check(f"T11/{tag} 分数落在维度 scale 区间内（越界已夹紧）",
                   0 <= low <= 10 and 0 <= high <= 10, f"min={low} max={high}")
-            check("T11 评分理由非空", int(parts[4]) > 0, f"rationale_len={parts[4]}")
+            check(f"T11/{tag} 评分理由非空", int(parts[4]) > 0, f"rationale_len={parts[4]}")
     finally:
         # 清理夹具：删 run 会级联删掉 items/scores/judges。
         if run_id:
             sql(f"DELETE FROM eval_runs WHERE id = {run_id};")
         sql(f"DELETE FROM model_providers WHERE id IN ({judge_id}, {unselected_id});")
-        print(f"  夹具已清理（run={run_id} judge_provider={judge_id} unselected={unselected_id}）")
+        print(f"  [{tag}] 夹具已清理（run={run_id} judge_provider={judge_id} unselected={unselected_id}）")
 
 
 def main():
@@ -391,9 +399,24 @@ def main():
     status, body = client.get(f"/api/v1/eval/runs/{run_id}/items?limit=abc")
     check("T6 非法 limit 返回 400", status == 400, f"status={status}")
 
-    # ---- T11 端到端（真实 LLM） ----
+    # ---- T11 端到端（真实 LLM）：count 与 ratio 两种抽样各跑一遍 ----
     generator_provider_id = sql_scalar(f"SELECT provider_id FROM datasets WHERE id = {dataset_id};")
-    run_e2e(client, dataset_id, int(generator_provider_id) if generator_provider_id else 0)
+    generator_provider_id = int(generator_provider_id) if generator_provider_id else 0
+
+    run_e2e(client, dataset_id, generator_provider_id,
+            tag="count", sampling={"samplingMode": "count", "sampleSize": 1}, expected_items=1)
+
+    # ratio 的期望条数必须由数据集实际规模反推，否则测试会随数据集增长而失效：
+    # 抽样用 math.Round(total*ratio) 且至少 1 条，因此把 ratio 定成 2/total 就稳定得到 2 条。
+    total_questions = sql_scalar(
+        f"SELECT count(*) FROM questions WHERE dataset_id = {dataset_id} AND cleaning_status <> 'dropped';")
+    total_questions = int(total_questions) if total_questions else 0
+    if total_questions >= 2:
+        ratio = round(2 / total_questions, 6)
+        run_e2e(client, dataset_id, generator_provider_id,
+                tag="ratio", sampling={"samplingMode": "ratio", "sampleRatio": ratio}, expected_items=2)
+    else:
+        print(f"  输入缺失: 数据集只有 {total_questions} 条可评估数据，无法验证 ratio 抽样")
 
     # ---- 清理 ----
     sql(f"DELETE FROM eval_runs WHERE name LIKE 'L9-接口测试%';")
