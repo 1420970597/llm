@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  COMPOSE_FILE: deployments/compose/docker-compose.yml
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (go build + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: gofmt
+        run: |
+          fmt_out=$(gofmt -l apps internal)
+          if [ -n "$fmt_out" ]; then
+            echo "::error::gofmt found unformatted files:"
+            echo "$fmt_out"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: go build
+        run: go build ./...
+      - name: go test
+        run: go test ./...
+
+  frontend:
+    name: Frontend (tsc + vite build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w apps/web-user
+
+  stack:
+    name: Stack (compose up + migrate + healthz)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: compose config
+        run: docker compose config >/dev/null
+      - name: Boot stack
+        run: docker compose up -d --build
+      - name: Wait for api + worker health
+        run: |
+          for i in $(seq 1 60); do
+            if docker compose exec -T api \
+              wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1
+            then
+              echo "api healthy"
+              docker compose exec -T worker \
+                wget -qO- http://127.0.0.1:8081/healthz >/dev/null
+              echo "worker healthy"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::api did not become healthy"
+          docker compose logs --tail=200
+          exit 1
+      - name: Verify migrations applied
+        run: |
+          docker compose exec -T postgres \
+            psql -U llm_factory -d llm_factory -c '\dt'
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail=300
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
