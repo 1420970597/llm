@@ -281,7 +281,8 @@ func decodeChatCompletionBody(raw []byte, target *chatCompletionResponse) error 
 
 func decodeChatCompletionSSE(raw []byte) (string, error) {
 	lines := strings.Split(string(raw), "\n")
-	var builder strings.Builder
+	var contentBuilder strings.Builder
+	var reasoningBuilder strings.Builder
 	eventPayload := make([]string, 0, 4)
 	sawNonContentEvent := false
 
@@ -294,8 +295,9 @@ func decodeChatCompletionSSE(raw []byte) (string, error) {
 		if payload == "" || payload == "[DONE]" {
 			return
 		}
-		if text, ok := extractSSEPayloadText(payload); ok && text != "" {
-			builder.WriteString(text)
+		if content, reasoning, ok := extractSSEPayloadText(payload); ok && (content != "" || reasoning != "") {
+			contentBuilder.WriteString(content)
+			reasoningBuilder.WriteString(reasoning)
 			return
 		}
 		if isSSEMetadataOnlyPayload(payload) {
@@ -321,10 +323,11 @@ func decodeChatCompletionSSE(raw []byte) (string, error) {
 			continue
 		}
 
-		if text, ok := extractSSEPayloadText(payload); ok {
+		if content, reasoning, ok := extractSSEPayloadText(payload); ok {
 			flushEvent()
-			if text != "" {
-				builder.WriteString(text)
+			if content != "" || reasoning != "" {
+				contentBuilder.WriteString(content)
+				reasoningBuilder.WriteString(reasoning)
 			} else if isSSEMetadataOnlyPayload(payload) {
 				sawNonContentEvent = true
 			}
@@ -339,18 +342,24 @@ func decodeChatCompletionSSE(raw []byte) (string, error) {
 	}
 	flushEvent()
 
-	if builder.Len() == 0 {
-		if fallback, sawMetadata := extractEmbeddedSSEContent(string(raw)); strings.TrimSpace(fallback) != "" {
-			return fallback, nil
-		} else if sawMetadata {
-			sawNonContentEvent = true
-		}
-		if sawNonContentEvent {
-			return "", fmt.Errorf("sse stream contained metadata chunks but no content")
-		}
-		return "", fmt.Errorf("no sse content")
+	// 正文优先：推理型模型会先流式输出 reasoning_content，再输出 content。
+	// 二者必须分开累计，否则思考过程会被当成正文返回。
+	if strings.TrimSpace(contentBuilder.String()) != "" {
+		return contentBuilder.String(), nil
 	}
-	return builder.String(), nil
+	if strings.TrimSpace(reasoningBuilder.String()) != "" {
+		return reasoningBuilder.String(), nil
+	}
+
+	if fallback, sawMetadata := extractEmbeddedSSEContent(string(raw)); strings.TrimSpace(fallback) != "" {
+		return fallback, nil
+	} else if sawMetadata {
+		sawNonContentEvent = true
+	}
+	if sawNonContentEvent {
+		return "", fmt.Errorf("sse stream contained metadata chunks but no content")
+	}
+	return "", fmt.Errorf("no sse content")
 }
 
 func extractEmbeddedSSEContent(raw string) (string, bool) {
@@ -359,22 +368,27 @@ func extractEmbeddedSSEContent(raw string) (string, bool) {
 		return "", false
 	}
 
-	var builder strings.Builder
+	var contentBuilder strings.Builder
+	var reasoningBuilder strings.Builder
 	sawMetadata := false
 	for _, payload := range payloads {
-		text, ok := extractSSEPayloadText(payload)
+		content, reasoning, ok := extractSSEPayloadText(payload)
 		if !ok {
 			continue
 		}
-		if strings.TrimSpace(text) != "" {
-			builder.WriteString(text)
+		contentBuilder.WriteString(content)
+		reasoningBuilder.WriteString(reasoning)
+		if content != "" || reasoning != "" {
 			continue
 		}
 		if isSSEMetadataOnlyPayload(payload) {
 			sawMetadata = true
 		}
 	}
-	return builder.String(), sawMetadata
+	if strings.TrimSpace(contentBuilder.String()) != "" {
+		return contentBuilder.String(), sawMetadata
+	}
+	return reasoningBuilder.String(), sawMetadata
 }
 
 func extractJSONObjectPayloads(raw string) []string {
@@ -428,33 +442,78 @@ func extractJSONObjectPayloads(raw string) []string {
 	return payloads
 }
 
-func extractSSEPayloadText(payload string) (string, bool) {
+// extractSSEPayloadText 分别返回正文与思考过程。
+//
+// 推理型模型（如 deepseek 系）会在流式响应中先发 reasoning_content 增量，
+// 再发 content 增量。两者必须分开累计，否则思考过程会被误当成正文，
+// 导致下游 JSON 解析失败。
+func extractSSEPayloadText(payload string) (content string, reasoning string, ok bool) {
 	var chunk chatCompletionStreamChunk
 	if err := json.Unmarshal([]byte(payload), &chunk); err == nil {
-		var builder strings.Builder
+		var contentBuilder strings.Builder
+		var reasoningBuilder strings.Builder
 		for _, choice := range chunk.Choices {
-			text := firstNonEmpty(
+			contentBuilder.WriteString(firstNonEmpty(
 				choice.Message.Content,
-				choice.Message.ReasoningContent,
-				choice.Delta.ReasoningContent,
 				choice.Message.Text,
 				choice.Delta.Content,
 				choice.Delta.Text,
-			)
-			if text != "" {
-				builder.WriteString(text)
-			}
+			))
+			reasoningBuilder.WriteString(firstNonEmpty(
+				choice.Message.ReasoningContent,
+				choice.Delta.ReasoningContent,
+			))
 		}
-		if builder.Len() > 0 {
-			return builder.String(), true
+		if contentBuilder.Len() > 0 || reasoningBuilder.Len() > 0 {
+			return contentBuilder.String(), reasoningBuilder.String(), true
 		}
 	}
 
 	var generic map[string]any
 	if err := json.Unmarshal([]byte(payload), &generic); err != nil {
-		return "", false
+		return "", "", false
 	}
-	return strings.Join(extractKnownText(generic), ""), true
+	return joinGenericText(generic, contentKeys), joinGenericText(generic, reasoningKeys), true
+}
+
+// 正文类字段与思考类字段必须分开处理，避免把思考过程混入正文。
+var contentKeys = map[string]struct{}{
+	"content": {}, "text": {}, "output_text": {},
+}
+
+var reasoningKeys = map[string]struct{}{
+	"reasoning_content": {}, "reasoning": {},
+}
+
+func joinGenericText(value any, wanted map[string]struct{}) string {
+	return strings.Join(extractTextByKeys(value, wanted), "")
+}
+
+func extractTextByKeys(value any, wanted map[string]struct{}) []string {
+	switch typed := value.(type) {
+	case map[string]any:
+		collected := []string{}
+		for key, nested := range typed {
+			if _, match := wanted[key]; match {
+				if text, ok := nested.(string); ok {
+					if strings.TrimSpace(text) != "" {
+						collected = append(collected, text)
+					}
+					continue
+				}
+			}
+			collected = append(collected, extractTextByKeys(nested, wanted)...)
+		}
+		return collected
+	case []any:
+		collected := []string{}
+		for _, nested := range typed {
+			collected = append(collected, extractTextByKeys(nested, wanted)...)
+		}
+		return collected
+	default:
+		return nil
+	}
 }
 
 func isSSEMetadataOnlyPayload(payload string) bool {

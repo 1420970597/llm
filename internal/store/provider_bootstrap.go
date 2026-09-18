@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/1420970597/llm/internal/model"
 	appcrypto "github.com/1420970597/llm/internal/crypto"
+	"github.com/1420970597/llm/internal/model"
 	"github.com/jackc/pgx/v5"
 )
 
