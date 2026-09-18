@@ -14,7 +14,8 @@ services:
       context: ../..
       dockerfile: deployments/docker/api.Dockerfile
     env_file:
-      - ../../.env
+      - path: ../../.env
+        required: false
     environment:
       APP_ENV: ${APP_ENV:-development}
       APP_ALLOWED_ORIGIN: ${APP_ALLOWED_ORIGIN:-*}
@@ -58,7 +59,8 @@ services:
       context: ../..
       dockerfile: deployments/docker/worker.Dockerfile
     env_file:
-      - ../../.env
+      - path: ../../.env
+        required: false
     environment:
       APP_ENV: ${APP_ENV:-development}
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-phase1-dev-only-32-byte-secret!!!}
