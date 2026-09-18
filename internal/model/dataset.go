@@ -12,17 +12,22 @@ type PlanEstimate struct {
 }
 
 type Dataset struct {
-	ID               int64        `json:"id"`
-	Name             string       `json:"name"`
-	RootKeyword      string       `json:"rootKeyword"`
-	TargetSize       int          `json:"targetSize"`
-	Status           string       `json:"status"`
-	StrategyID       int64        `json:"strategyId"`
-	ProviderID       int64        `json:"providerId"`
-	StorageProfileID int64        `json:"storageProfileId"`
-	Estimate         PlanEstimate `json:"estimate"`
-	CreatedAt        time.Time    `json:"createdAt"`
-	UpdatedAt        time.Time    `json:"updatedAt"`
+	ID                 int64        `json:"id"`
+	Name               string       `json:"name"`
+	RootKeyword        string       `json:"rootKeyword"`
+	TargetSize         int          `json:"targetSize"`
+	Status             string       `json:"status"`
+	StrategyID         int64        `json:"strategyId"`
+	ProviderID         int64        `json:"providerId"`
+	StorageProfileID   int64        `json:"storageProfileId"`
+	TargetKind         string       `json:"targetKind"`
+	DirectionCount     int          `json:"directionCount"`
+	QuestionsPerDirect int          `json:"questionsPerDirection"`
+	RewardLevels       []string     `json:"rewardLevels"`
+	CleaningEnabled    bool         `json:"cleaningEnabled"`
+	Estimate           PlanEstimate `json:"estimate"`
+	CreatedAt          time.Time    `json:"createdAt"`
+	UpdatedAt          time.Time    `json:"updatedAt"`
 }
 
 type Domain struct {

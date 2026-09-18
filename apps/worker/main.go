@@ -56,8 +56,21 @@ func main() {
 	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisHost + ":" + cfg.RedisPort})
 	promptStore := store.NewAdminStore(pool, box)
 	artifactStore := store.NewArtifactStore(pool, redisClient, cfg.QueueName)
+	generationRunStore := store.NewGenerationRunStore(pool)
 
-	go consumeJobs(ctx, cfg.QueueName, redisClient, datasets, pipeline, promptStore, reasoningStore, rewardStore, artifactStore)
+	jobCtx := &jobContext{
+		queue:          cfg.QueueName,
+		redis:          redisClient,
+		datasets:       datasets,
+		pipeline:       pipeline,
+		prompts:        promptStore,
+		reasoning:      reasoningStore,
+		rewards:        rewardStore,
+		artifacts:      artifactStore,
+		generationRuns: generationRunStore,
+	}
+
+	go consumeJobs(ctx, jobCtx)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -77,9 +90,9 @@ func main() {
 	}
 }
 
-func consumeJobs(ctx context.Context, queue string, redisClient *redis.Client, datasets *store.DatasetStore, pipeline *store.PipelineStore, promptStore *store.AdminStore, reasoningStore *store.ReasoningStore, rewardStore *store.RewardStore, artifactStore *store.ArtifactStore) {
+func consumeJobs(ctx context.Context, jc *jobContext) {
 	for {
-		result, err := redisClient.BRPop(ctx, 5*time.Second, queue).Result()
+		result, err := jc.redis.BRPop(ctx, 5*time.Second, jc.queue).Result()
 		if err != nil {
 			if err == redis.Nil {
 				continue
@@ -98,47 +111,66 @@ func consumeJobs(ctx context.Context, queue string, redisClient *redis.Client, d
 			continue
 		}
 
-		switch job.Type {
-		case "questions.generate":
-			if err := handleQuestionGeneration(ctx, job.DatasetID, datasets, pipeline, promptStore); err != nil {
-				_ = datasets.UpdateStatus(ctx, job.DatasetID, "questions_failed")
-				log.Printf("question generation failed dataset=%d err=%v", job.DatasetID, err)
-			}
-		case "reasoning.generate":
-			if err := handleReasoningGeneration(ctx, job.DatasetID, datasets, pipeline, promptStore, reasoningStore); err != nil {
+		// 先查注册表（lane 新增的 job 类型），未命中再走 legacy 分支。
+		if handler, found := lookupJobHandler(job.Type); found {
+			if err := handler(ctx, jc, job); err != nil {
 				if shouldRetryJob(err) && job.Retry < 2 {
 					next := job
 					next.Retry++
-					if requeueErr := requeueJob(ctx, redisClient, queue, next); requeueErr != nil {
-						_ = datasets.UpdateStatus(ctx, job.DatasetID, "reasoning_failed")
+					if requeueErr := requeueJob(ctx, jc.redis, jc.queue, next); requeueErr != nil {
+						log.Printf("job failed dataset=%d type=%s retry=%d err=%v requeue_err=%v", job.DatasetID, job.Type, job.Retry, err, requeueErr)
+						continue
+					}
+					log.Printf("job retrying dataset=%d type=%s next_retry=%d err=%v", job.DatasetID, job.Type, next.Retry, err)
+					continue
+				}
+				_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, job.Type+"_failed")
+				log.Printf("job failed dataset=%d type=%s retry=%d err=%v", job.DatasetID, job.Type, job.Retry, err)
+			}
+			continue
+		}
+
+		switch job.Type {
+		case "questions.generate":
+			if err := handleQuestionGeneration(ctx, job.DatasetID, jc.datasets, jc.pipeline, jc.prompts); err != nil {
+				_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, "questions_failed")
+				log.Printf("question generation failed dataset=%d err=%v", job.DatasetID, err)
+			}
+		case "reasoning.generate":
+			if err := handleReasoningGeneration(ctx, job.DatasetID, jc.datasets, jc.pipeline, jc.prompts, jc.reasoning); err != nil {
+				if shouldRetryJob(err) && job.Retry < 2 {
+					next := job
+					next.Retry++
+					if requeueErr := requeueJob(ctx, jc.redis, jc.queue, next); requeueErr != nil {
+						_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, "reasoning_failed")
 						log.Printf("reasoning generation failed dataset=%d retry=%d err=%v requeue_err=%v", job.DatasetID, job.Retry, err, requeueErr)
 						continue
 					}
 					log.Printf("reasoning generation retrying dataset=%d next_retry=%d err=%v", job.DatasetID, next.Retry, err)
 					continue
 				}
-				_ = datasets.UpdateStatus(ctx, job.DatasetID, "reasoning_failed")
+				_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, "reasoning_failed")
 				log.Printf("reasoning generation failed dataset=%d retry=%d err=%v", job.DatasetID, job.Retry, err)
 			}
 		case "rewards.generate":
-			if err := handleRewardGeneration(ctx, job.DatasetID, datasets, pipeline, promptStore, rewardStore); err != nil {
+			if err := handleRewardGeneration(ctx, job.DatasetID, jc.datasets, jc.pipeline, jc.prompts, jc.rewards); err != nil {
 				if shouldRetryJob(err) && job.Retry < 2 {
 					next := job
 					next.Retry++
-					if requeueErr := requeueJob(ctx, redisClient, queue, next); requeueErr != nil {
-						_ = datasets.UpdateStatus(ctx, job.DatasetID, "rewards_failed")
+					if requeueErr := requeueJob(ctx, jc.redis, jc.queue, next); requeueErr != nil {
+						_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, "rewards_failed")
 						log.Printf("reward generation failed dataset=%d retry=%d err=%v requeue_err=%v", job.DatasetID, job.Retry, err, requeueErr)
 						continue
 					}
 					log.Printf("reward generation retrying dataset=%d next_retry=%d err=%v", job.DatasetID, next.Retry, err)
 					continue
 				}
-				_ = datasets.UpdateStatus(ctx, job.DatasetID, "rewards_failed")
+				_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, "rewards_failed")
 				log.Printf("reward generation failed dataset=%d retry=%d err=%v", job.DatasetID, job.Retry, err)
 			}
 		case "export.generate":
-			if err := handleExportGeneration(ctx, job.DatasetID, datasets, pipeline, reasoningStore, rewardStore, artifactStore); err != nil {
-				_ = datasets.UpdateStatus(ctx, job.DatasetID, "export_failed")
+			if err := handleExportGeneration(ctx, job.DatasetID, jc.datasets, jc.pipeline, jc.reasoning, jc.rewards, jc.artifacts); err != nil {
+				_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, "export_failed")
 				log.Printf("export generation failed dataset=%d err=%v", job.DatasetID, err)
 			}
 		default:

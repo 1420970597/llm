@@ -19,16 +19,17 @@ import (
 )
 
 type application struct {
-	cfg       config.APIConfig
-	box       *appcrypto.SecretBox
-	auth      *store.AuthStore
-	store     *store.AdminStore
-	datasets  *store.DatasetStore
-	pipeline  *store.PipelineStore
-	reasoning *store.ReasoningStore
-	rewards   *store.RewardStore
-	artifacts *store.ArtifactStore
-	redis     *redis.Client
+	cfg            config.APIConfig
+	box            *appcrypto.SecretBox
+	auth           *store.AuthStore
+	store          *store.AdminStore
+	datasets       *store.DatasetStore
+	pipeline       *store.PipelineStore
+	reasoning      *store.ReasoningStore
+	rewards        *store.RewardStore
+	artifacts      *store.ArtifactStore
+	generationRuns *store.GenerationRunStore
+	redis          *redis.Client
 }
 
 func main() {
@@ -58,16 +59,17 @@ func main() {
 	})
 
 	app := &application{
-		cfg:       cfg,
-		box:       box,
-		auth:      store.NewAuthStore(pool),
-		store:     store.NewAdminStore(pool, box),
-		datasets:  store.NewDatasetStore(pool, box),
-		pipeline:  store.NewPipelineStore(pool),
-		reasoning: store.NewReasoningStore(pool),
-		rewards:   store.NewRewardStore(pool),
-		artifacts: store.NewArtifactStore(pool, redisClient, cfg.QueueName),
-		redis:     redisClient,
+		cfg:            cfg,
+		box:            box,
+		auth:           store.NewAuthStore(pool),
+		store:          store.NewAdminStore(pool, box),
+		datasets:       store.NewDatasetStore(pool, box),
+		pipeline:       store.NewPipelineStore(pool),
+		reasoning:      store.NewReasoningStore(pool),
+		rewards:        store.NewRewardStore(pool),
+		artifacts:      store.NewArtifactStore(pool, redisClient, cfg.QueueName),
+		generationRuns: store.NewGenerationRunStore(pool),
+		redis:          redisClient,
 	}
 
 	if err := app.reasoning.EnsureSchemaReady(ctx); err != nil {
@@ -110,6 +112,9 @@ func main() {
 	mux.HandleFunc("POST /api/v1/datasets", app.createDataset)
 	mux.HandleFunc("GET /api/v1/datasets/", app.routeDatasetGet)
 	mux.HandleFunc("POST /api/v1/datasets/", app.routeDatasetActions)
+
+	// 应用各 lane 通过 init() 注册的新前缀路由（见 apps/api/routes.go）。
+	applyRouteRegistrars(mux, app)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -271,6 +276,10 @@ func (app *application) writeJSON(w http.ResponseWriter, status int, payload any
 }
 
 func (app *application) routeDatasetActions(w http.ResponseWriter, r *http.Request) {
+	// 优先走注册表（lane 新增的数据集子路由），命中则不再进入 legacy 分支。
+	if tryDatasetRouter(w, r) {
+		return
+	}
 	switch {
 	case strings.HasSuffix(r.URL.Path, "/domains/generate"):
 		app.generateDomains(w, r)
@@ -292,6 +301,10 @@ func (app *application) routeDatasetActions(w http.ResponseWriter, r *http.Reque
 }
 
 func (app *application) routeDatasetGet(w http.ResponseWriter, r *http.Request) {
+	// 优先走注册表（lane 新增的数据集子路由），命中则不再进入 legacy 分支。
+	if tryDatasetRouter(w, r) {
+		return
+	}
 	switch {
 	case strings.HasSuffix(r.URL.Path, "/questions"):
 		app.listQuestions(w, r)

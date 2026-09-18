@@ -72,14 +72,21 @@ func generateQuestionsForDomain(ctx context.Context, provider ProviderConfig, da
 	}
 
 	questions := make([]model.Question, 0, len(texts))
-	for _, text := range texts {
+	for index, text := range texts {
+		level, score := AssignDifficulty(index, len(texts))
+		content := strings.TrimSpace(text)
 		questions = append(questions, model.Question{
-			DatasetID:     dataset.ID,
-			DomainID:      domain.ID,
-			DomainName:    domain.Name,
-			Content:       strings.TrimSpace(text),
-			CanonicalHash: store.CanonicalHash(text),
-			Status:        "generated",
+			DatasetID:         dataset.ID,
+			DomainID:          domain.ID,
+			DomainName:        domain.Name,
+			DirectionDomainID: domain.ID,
+			Content:           content,
+			CanonicalHash:     store.CanonicalHash(content),
+			DedupeKey:         store.CanonicalHash(content),
+			Difficulty:        level,
+			DifficultyScore:   score,
+			Source:            "ai",
+			Status:            "generated",
 		})
 	}
 	return questions, nil
