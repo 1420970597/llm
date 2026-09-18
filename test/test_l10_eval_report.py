@@ -41,6 +41,8 @@ T19 一个分都没打出来的裁判仍出现在报告里，且结论点名说�
 T20 被剔除的裁判（生成者自评）在结论里点名并带剔除原因
 T21 内置维度分类在结论里显示中文名（不泄漏英文 category key）
 T22 跨量表归一化：两个不同量表区间的维度，归一化总分正确（不被单一区间夹紧到 100）
+T23 全维度打量表最低分 -> 结论为「整体质量偏低」，不得谎报「无法归一化」
+T24 跨量表最弱维度：按归一化分选出，不得点名实际表现最好的维度
 """
 
 import json
@@ -680,6 +682,60 @@ def main():
               "归一化均分 0.10" in conclusions, f"结论：{conclusions}")
         check("T22.5 两个裁判都被识别出系统性偏差",
               conclusions.count("系统性") == 2, f"结论：{conclusions}")
+    finally:
+        cleanup_run(run_id, dataset_id)
+        psql(f"UPDATE eval_dimensions SET scale_min = 0, scale_max = 10 WHERE key = '{key_b}';")
+        cleanup_dimensions()
+
+    # ---- T23: 归一化总分为 0 不能被说成「无法归一化」
+    # 回归：overallConclusion 原先用 `NormalizedOverall > 0` 当「有没有值」的判据，
+    # 而 0 同时是「全打量表最低分」与「无值」两种含义。
+    print("\nT23 全维度打量表最低分：结论为「偏低」，不得谎称缺少量表区间")
+    dataset_id = make_dataset("L10 最低分测试")
+    key_a, key_b = make_dimensions("t23")
+    run_id = make_run(dataset_id, [key_a, key_b], [100], total=2, scored=2)
+    try:
+        item_ids = make_items(run_id, dataset_id, 2)
+        make_judge(run_id, 100, "裁判甲", "model-a")
+        # 量表 0~10，全打最低分 0 -> 归一化总分恰为 0（合法值，不是「无值」）。
+        make_scores(run_id, item_ids, 100, key_a, [0, 0])
+        make_scores(run_id, item_ids, 100, key_b, [0, 0])
+
+        status, report = request("GET", f"/api/v1/eval/runs/{run_id}/report", cookie)
+        check("T23.1 状态码 200", status == 200, f"实际 {status}")
+        conclusions = " ".join(report.get("conclusions") or [])
+        check("T23.2 归一化总分 0 应判为「整体质量偏低」",
+              "整体质量偏低" in conclusions, f"结论：{conclusions}")
+        check("T23.3 量表区间合法，不得声称「没有可用的量表区间」",
+              "没有可用的量表区间" not in conclusions, f"结论：{conclusions}")
+    finally:
+        cleanup_run(run_id, dataset_id)
+        cleanup_dimensions()
+
+    # ---- T24: 跨量表时最弱维度必须按归一化分选出
+    # 回归：weakestDimension 原先按原始分取最小值，会点名实际表现最好的维度。
+    print("\nT24 跨量表最弱维度：按归一化分选出，不点名实际最好的维度")
+    dataset_id = make_dataset("L10 跨量表最弱测试")
+    key_a, key_b = make_dimensions("t24")
+    # 维度 B 改成 0~100，两条维度权重相同。
+    psql(f"UPDATE eval_dimensions SET scale_min = 0, scale_max = 100 WHERE key = '{key_b}';")
+    run_id = make_run(dataset_id, [key_a, key_b], [100], total=2, scored=2)
+    try:
+        item_ids = make_items(run_id, dataset_id, 2)
+        make_judge(run_id, 100, "裁判甲", "model-a")
+        # A（0~10）打 8 -> 归一化 0.80（实际最好）；B（0~100）打 50 -> 0.50（实际最差）。
+        make_scores(run_id, item_ids, 100, key_a, [8, 8])
+        make_scores(run_id, item_ids, 100, key_b, [50, 50])
+
+        status, report = request("GET", f"/api/v1/eval/runs/{run_id}/report", cookie)
+        check("T24.1 状态码 200", status == 200, f"实际 {status}")
+        conclusions = " ".join(report.get("conclusions") or [])
+        check("T24.2 点名归一化分最低的「答案准确性」",
+              "答案准确性" in conclusions, f"结论：{conclusions}")
+        check("T24.3 不得点名实际表现最好的「长链深度」",
+              "长链深度" not in conclusions, f"结论：{conclusions}")
+        check("T24.4 跨量表比较标明归一化口径",
+              "低于整体归一化水平" in conclusions, f"结论：{conclusions}")
     finally:
         cleanup_run(run_id, dataset_id)
         psql(f"UPDATE eval_dimensions SET scale_min = 0, scale_max = 10 WHERE key = '{key_b}';")
