@@ -31,6 +31,9 @@ func init() {
 		evalJudgesApp = app
 		mux.HandleFunc("GET /api/v1/admin/eval/judges", app.listEvalJudgeOptions)
 		mux.HandleFunc("PUT /api/v1/eval/runs/{runId}/judges", app.setEvalRunJudges)
+		// 按数据集查看裁判选项：eval-judges。生成者 provider 由数据集决定
+		// （运行还没创建时也能算出），因此这是唯一能把「谁会被自评剔除」讲清楚的入口。
+		RegisterDatasetRouter("eval-judges", app.datasetJudgeOptions)
 	})
 }
 
@@ -48,6 +51,59 @@ func (app *application) listEvalJudgeOptions(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	app.writeJSON(w, http.StatusOK, options)
+}
+
+// datasetJudgeOptions 返回某数据集可用的裁判 provider，并标注哪些会被自评剔除。
+//
+// 路由：GET /api/v1/datasets/{id}/eval-judges
+//
+// 为什么需要它：生成者模型禁止自评这条规则，若接口不告知，用户只能先建运行、
+// 再调 start，撞上 400「没有可用的裁判模型」才知道——而且不知道该换成哪个。
+// 这里把 generatorProviderId 与每个候选的 excluded/excludeReason 一并返回，
+// 前端可以直接把生成者置灰并显示原因。
+func (app *application) datasetJudgeOptions(w http.ResponseWriter, r *http.Request, datasetID int64, rest string) {
+	if r.Method != http.MethodGet {
+		app.writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("GET only"))
+		return
+	}
+
+	ctx := r.Context()
+	// 生成者权威来源：datasets.provider_id。--dataset 复跑已有数据集时，
+	// 生成者未必是 id=1，写死 provider 1 会把剔除判定算错。
+	dataset, err := app.datasets.GetDataset(ctx, datasetID)
+	if err != nil {
+		app.writeError(w, http.StatusNotFound, fmt.Errorf("dataset %d not found", datasetID))
+		return
+	}
+
+	providers, err := app.store.ListProviders(ctx)
+	if err != nil {
+		app.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	_, records, err := eval.ResolveJudges(ctx, providers, dataset.ProviderID)
+	if err != nil {
+		app.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	options := make([]model.EvalJudgeOption, 0, len(records))
+	for _, record := range records {
+		options = append(options, model.EvalJudgeOption{
+			ProviderID:    record.ProviderID,
+			ProviderName:  record.ProviderName,
+			Model:         record.Model,
+			IsActive:      true,
+			Excluded:      record.Excluded,
+			ExcludeReason: record.ExcludeReason,
+		})
+	}
+
+	app.writeJSON(w, http.StatusOK, model.DatasetJudgeOptions{
+		DatasetID:           datasetID,
+		GeneratorProviderID: dataset.ProviderID,
+		Judges:              options,
+	})
 }
 
 // setEvalRunJudges 设定某次评估运行的裁判，并剔除生成者自身。
