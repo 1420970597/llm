@@ -37,6 +37,10 @@ T15 scores 接口按 dimensionKey 过滤生效
 T16 scores 接口无过滤时返回全部
 T17 scores 接口非法 judgeProviderId -> 400
 T18 完成的 run -> 汇总行写入 eval_summaries（overall/judge/dimension/item 四个 scope）
+T19 一个分都没打出来的裁判仍出现在报告里，且结论点名说明（不是「打分严格」）
+T20 被剔除的裁判（生成者自评）在结论里点名并带剔除原因
+T21 内置维度分类在结论里显示中文名（不泄漏英文 category key）
+T22 跨量表归一化：两个不同量表区间的维度，归一化总分正确（不被单一区间夹紧到 100）
 """
 
 import json
@@ -563,6 +567,122 @@ def main():
               f"实际 {out.strip()}，期望 {1 + 2 + 2 + len(item_ids)}")
     finally:
         cleanup_run(run_id, dataset_id)
+        cleanup_dimensions()
+
+    # ---- T19: 无有效打分的裁判仍可见
+    print("\nT19 一个分都没打出来的裁判仍出现在报告里且被结论点名")
+    dataset_id = make_dataset("L10 静默裁判测试")
+    key_a, key_b = make_dimensions("t19")
+    run_id = make_run(dataset_id, [key_a], [100, 200], total=2, scored=2)
+    try:
+        item_ids = make_items(run_id, dataset_id, 2)
+        make_judge(run_id, 100, "正常裁判", "model-a")
+        make_judge(run_id, 200, "失败裁判", "model-b")
+        # 只给裁判 100 打分；裁判 200 一条分都没有（模拟全程调用失败）。
+        make_scores(run_id, item_ids, 100, key_a, [6, 8])
+
+        status, report = request("GET", f"/api/v1/eval/runs/{run_id}/report", cookie)
+        check("T19.1 状态码 200", status == 200, f"实际 {status}")
+        judges = {j["providerId"]: j for j in report.get("judges") or []}
+        check("T19.2 两个登记的裁判都出现在报告里",
+              set(judges) == {100, 200}, f"实际 {sorted(judges)}")
+        silent = judges.get(200, {})
+        check("T19.3 无打分的裁判 sampleCount 为 0", silent.get("sampleCount") == 0,
+              f"实际 {silent.get('sampleCount')}")
+        check("T19.4 无打分的裁判仍回填名称", silent.get("providerName") == "失败裁判",
+              f"实际 {silent.get('providerName')!r}")
+        conclusions = " ".join(report.get("conclusions") or [])
+        check("T19.5 结论点名该裁判", "失败裁判" in conclusions, f"结论：{conclusions}")
+        check("T19.6 结论说明 0 分是调用失败而非打分严格",
+              "不代表打分严格" in conclusions, f"结论：{conclusions}")
+    finally:
+        cleanup_run(run_id, dataset_id)
+
+    # ---- T20: 被剔除的裁判（生成者自评）在结论里点名
+    print("\nT20 被剔除的裁判在结论里点名并带剔除原因")
+    dataset_id = make_dataset("L10 剔除裁判测试")
+    key_a, key_b = make_dimensions("t20")
+    run_id = make_run(dataset_id, [key_a], [100, 200], total=2, scored=2)
+    try:
+        item_ids = make_items(run_id, dataset_id, 2)
+        make_judge(run_id, 100, "裁判甲", "model-a")
+        make_judge(run_id, 200, "生成者", "model-gen")
+        psql(
+            "UPDATE eval_run_judges SET excluded = TRUE, "
+            "exclude_reason = '生成者模型，禁止自评' "
+            f"WHERE eval_run_id = {run_id} AND provider_id = 200;"
+        )
+        make_scores(run_id, item_ids, 100, key_a, [6, 8])
+
+        status, report = request("GET", f"/api/v1/eval/runs/{run_id}/report", cookie)
+        check("T20.1 状态码 200", status == 200, f"实际 {status}")
+        conclusions = " ".join(report.get("conclusions") or [])
+        check("T20.2 结论告知有裁判被剔除", "已被剔除" in conclusions, f"结论：{conclusions}")
+        check("T20.3 结论写出剔除原因", "禁止自评" in conclusions, f"结论：{conclusions}")
+    finally:
+        cleanup_run(run_id, dataset_id)
+
+    # ---- T21: 内置维度分类显示中文名
+    print("\nT21 内置维度分类在结论里显示中文名（不泄漏英文 key）")
+    dataset_id = make_dataset("L10 分类中文名测试")
+    # 用两个真实内置维度（量表 1~5）：domain_fit 类打最低分，验证它成为最弱维度后
+    # 中文分类名与专属建议都生效。不修改内置维度的权重，避免污染共享配置。
+    builtin_domain = "df_terminology"
+    builtin_chain = "lc_step_sufficiency"
+    run_id = make_run(dataset_id, [builtin_domain, builtin_chain], [100], total=2, scored=2)
+    try:
+        item_ids = make_items(run_id, dataset_id, 2)
+        make_judge(run_id, 100, "裁判甲", "model-a")
+        make_scores(run_id, item_ids, 100, builtin_domain, [1, 1])
+        make_scores(run_id, item_ids, 100, builtin_chain, [5, 5])
+
+        status, report = request("GET", f"/api/v1/eval/runs/{run_id}/report", cookie)
+        check("T21.1 状态码 200", status == 200, f"实际 {status}")
+        conclusions = " ".join(report.get("conclusions") or [])
+        check("T21.2 最弱维度用中文分类名「领域贴合」",
+              "领域贴合" in conclusions, f"结论：{conclusions}")
+        check("T21.3 不泄漏英文 category key「domain_fit」",
+              "domain_fit" not in conclusions, f"结论：{conclusions}")
+        check("T21.4 给出该分类的专属建议而非通用文案",
+              "答非所问" in conclusions, f"结论：{conclusions}")
+        check("T21.5 未回退到通用建议",
+              "定位共性模式" not in conclusions, f"结论：{conclusions}")
+    finally:
+        cleanup_run(run_id, dataset_id)
+
+    # ---- T22: 跨量表归一化（裁判偏差识别路径）
+    print("\nT22 跨量表归一化：裁判均分按各自维度量表归一化，不被单一区间夹紧")
+    dataset_id = make_dataset("L10 跨量表测试")
+    key_a, key_b = make_dimensions("t22")
+    # 维度 B 改成 0~100 的量表，两条维度权重相同。
+    psql(f"UPDATE eval_dimensions SET scale_min = 0, scale_max = 100 WHERE key = '{key_b}';")
+    run_id = make_run(dataset_id, [key_a, key_b], [100, 200], total=2, scored=2)
+    try:
+        item_ids = make_items(run_id, dataset_id, 2)
+        make_judge(run_id, 100, "正常裁判", "model-a")
+        make_judge(run_id, 200, "低分裁判", "model-b")
+        # 裁判 100：A（0~10）打 5 -> 0.5；B（0~100）打 50 -> 0.5。归一化均分 0.50。
+        make_scores(run_id, item_ids, 100, key_a, [5, 5])
+        make_scores(run_id, item_ids, 100, key_b, [50, 50])
+        # 裁判 200：A 打 1 -> 0.1；B 打 10 -> 0.1。归一化均分 0.10。
+        make_scores(run_id, item_ids, 200, key_a, [1, 1])
+        make_scores(run_id, item_ids, 200, key_b, [10, 10])
+
+        status, report = request("GET", f"/api/v1/eval/runs/{run_id}/report", cookie)
+        check("T22.1 状态码 200", status == 200, f"实际 {status}")
+        conclusions = " ".join(report.get("conclusions") or [])
+        # 若拿单一维度的量表去解释跨维度原始均分，裁判 100 的 27.5 会被夹紧成 1.00。
+        check("T22.2 裁判 100 归一化均分为 0.50",
+              "归一化均分 0.50" in conclusions, f"结论：{conclusions}")
+        check("T22.3 未被夹紧为 1.00（证明按各自量表归一化）",
+              "归一化均分 1.00" not in conclusions, f"结论：{conclusions}")
+        check("T22.4 裁判 200 归一化均分为 0.10",
+              "归一化均分 0.10" in conclusions, f"结论：{conclusions}")
+        check("T22.5 两个裁判都被识别出系统性偏差",
+              conclusions.count("系统性") == 2, f"结论：{conclusions}")
+    finally:
+        cleanup_run(run_id, dataset_id)
+        psql(f"UPDATE eval_dimensions SET scale_min = 0, scale_max = 10 WHERE key = '{key_b}';")
         cleanup_dimensions()
 
     print(f"\n{'=' * 60}")
