@@ -1,0 +1,416 @@
+package eval
+
+import (
+	"fmt"
+	"math"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/1420970597/llm/internal/model"
+)
+
+// 本文件把 Aggregate 算出的统计量翻译成给用户看的中文结论。
+//
+// 契约：docs/plans/eval-and-cleaning-plan.md 第 3.10 节（EvalReport.Conclusions）。
+//
+// 硬要求：每条结论都必须由真实统计量推导。不允许出现与数据无关的固定套话 ——
+// 一份看起来有结论、实际上和数字无关的报告，比没有报告更危险。
+
+// 整体质量档位阈值（作用于归一化到 0~1 的总分）。
+//
+// 阈值选择理由：归一化后 0.85 大致对应「十个维度里九个接近满分」，
+// 是「可以直接进训练集」的水平；0.7 对应「多数维度良好但有明显短板」，
+// 属于需要挑选而非全量采用；0.5 以下意味着近半数维度不达标，
+// 直接用于训练会引入系统性噪声。这些阈值是本项目的工程判断，
+// 调整它们只需改这里，结论文案会自动跟随。
+const (
+	qualityExcellent = 0.85
+	qualityGood      = 0.70
+	qualityFair      = 0.50
+)
+
+// 裁判一致性阈值（作用于 [0,1] 的一致性分数）。
+//
+// 0.8 以上：裁判们排序基本一致，结论可信。
+// 0.5 以下：分歧显著，任何基于平均分的结论都必须带保留意见。
+const (
+	agreementHigh = 0.80
+	agreementLow  = 0.50
+)
+
+// 裁判系统性偏差阈值：某裁判的归一化均分与全体均分之差超过该值时点名。
+// 取 0.1（归一化尺度上相当于量表区间的 10%），低于这个量级通常只是噪声。
+const judgeBiasThreshold = 0.10
+
+// BuildConclusions 生成中文结论列表。
+//
+// status 为 run 的状态；非 completed 时不产出质量结论，只说明进度 ——
+// 未完成的评估不能给出「数据集质量优秀」这种判断。
+func BuildConclusions(report model.EvalReport, notes AggregateNotes, status string) []string {
+	if status != "" && status != "completed" {
+		return []string{
+			"评估尚未完成，当前状态：" + status + "。",
+			"已评分 " + itoa(report.EvalRun.ScoredItems) + " / " + itoa(report.EvalRun.TotalItems) + " 条，",
+			"此时不给出质量结论 —— 部分评分不足以代表整个数据集。",
+		}
+	}
+
+	conclusions := []string{}
+
+	// 1. 整体质量判断。
+	conclusions = append(conclusions, overallConclusion(report, notes))
+
+	// 2. 最弱维度 + 可操作建议。
+	if weakest, ok := weakestDimension(report.Dimensions); ok {
+		conclusions = append(conclusions, fmt.Sprintf(
+			"最弱维度是「%s」（%s 类），均分 %.2f，低于整体水平 %.2f。建议优先复查该维度对应的数据，%s。",
+			weakest.Name, categoryLabel(weakest.Category), weakest.Score,
+			report.OverallScore, dimensionAdvice(weakest)))
+	}
+
+	// 3. 最弱条目提示。
+	if len(report.WeakestItems) > 0 {
+		conclusions = append(conclusions, weakestItemsConclusion(report.WeakestItems))
+	}
+
+	// 4. 裁判一致性 —— 多 LLM 评估最重要的诚实性输出。
+	conclusions = append(conclusions, agreementConclusion(report, notes)...)
+
+	// 5. 裁判系统性偏差。
+	conclusions = append(conclusions, judgeBiasConclusions(report, notes)...)
+
+	// 6. 被跳过/降级的情况，必须让用户知道。
+	conclusions = append(conclusions, degradationConclusions(notes)...)
+
+	// 7. 样本量提示。
+	conclusions = append(conclusions, sampleConclusion(report))
+
+	return conclusions
+}
+
+// overallConclusion 给出整体质量档位判断。
+func overallConclusion(report model.EvalReport, notes AggregateNotes) string {
+	// 优先用归一化分：不同维度的量表区间可能不同，直接比原始分没有可比性。
+	if notes.NormalizedOverall > 0 {
+		switch {
+		case notes.NormalizedOverall >= qualityExcellent:
+			return fmt.Sprintf("整体质量优秀（归一化得分 %.0f/100）。该数据集可以直接用于训练。",
+				notes.NormalizedOverall*100)
+		case notes.NormalizedOverall >= qualityGood:
+			return fmt.Sprintf("整体质量良好（归一化得分 %.0f/100），但存在明显短板维度。建议按维度筛选后再使用。",
+				notes.NormalizedOverall*100)
+		case notes.NormalizedOverall >= qualityFair:
+			return fmt.Sprintf("整体质量一般（归一化得分 %.0f/100）。近半数维度未达良好水平，直接用于训练会引入噪声，建议先按最弱维度做定向清洗。",
+				notes.NormalizedOverall*100)
+		default:
+			return fmt.Sprintf("整体质量偏低（归一化得分 %.0f/100）。多数维度不达标，建议回到数据生成阶段重做，而非仅靠清洗修补。",
+				notes.NormalizedOverall*100)
+		}
+	}
+
+	// 没有可归一化的维度（量表区间非法或维度定义缺失）时，
+	// 只能给原始加权分，并明确说明这是未归一化的数字。
+	return fmt.Sprintf(
+		"整体加权得分 %.2f。注意：本次评估没有可用的量表区间（scaleMin/scaleMax），无法归一化到统一尺度，该分数不能与其他数据集横向比较。",
+		report.OverallScore)
+}
+
+// weakestDimension 找均分最低的维度。并列时取 key 较小者，保证结论稳定。
+func weakestDimension(stats []model.EvalDimensionStat) (model.EvalDimensionStat, bool) {
+	if len(stats) == 0 {
+		return model.EvalDimensionStat{}, false
+	}
+	weakest := stats[0]
+	for _, stat := range stats[1:] {
+		if stat.Score < weakest.Score ||
+			(stat.Score == weakest.Score && stat.DimensionKey < weakest.DimensionKey) {
+			weakest = stat
+		}
+	}
+	return weakest, true
+}
+
+// dimensionAdvice 按维度分类给出可操作建议。
+//
+// 分类名来自 internal/eval/catalog.go 的 Categories()。未识别的分类
+// 返回通用建议，而不是编造一个看起来专业的假建议。
+func dimensionAdvice(stat model.EvalDimensionStat) string {
+	switch stat.Category {
+	case "long_chain":
+		return "重点看思维链是否跳步、是否有回溯与验证环节"
+	case "faithfulness":
+		return "重点看答案是否有原文支撑、有无编造事实"
+	case "reasoning_quality":
+		return "重点看推理是否自洽、有无前后矛盾"
+	case "answer_quality":
+		return "重点看答案是否完整回答了问题、有无遗漏要点"
+	case "safety":
+		return "重点看是否有不当内容或拒答"
+	default:
+		return "建议抽查该维度得分最低的若干条数据，定位共性模式"
+	}
+}
+
+// categoryLabel 把分类 key 翻译成中文。
+func categoryLabel(category string) string {
+	labels := map[string]string{
+		"long_chain":        "长链思考",
+		"faithfulness":      "事实忠实",
+		"reasoning_quality": "推理质量",
+		"answer_quality":    "答案质量",
+		"safety":            "安全性",
+	}
+	if label, ok := labels[category]; ok {
+		return label
+	}
+	if category == "" {
+		return "未分类"
+	}
+	return category
+}
+
+// weakestItemsConclusion 描述最弱条目。
+func weakestItemsConclusion(items []model.EvalItemScoreBrief) string {
+	parts := make([]string, 0, len(items))
+	for index, item := range items {
+		if index >= 3 {
+			break
+		}
+		// 面向用户展示时用 1-based 序号，与界面上的行号一致。
+		parts = append(parts, fmt.Sprintf("第 %d 条（%.2f 分）", item.ItemIndex+1, item.Score))
+	}
+	return fmt.Sprintf("最低分数据：%s。共 %d 条进入最弱清单，建议优先人工复核。",
+		strings.Join(parts, "、"), len(items))
+}
+
+// agreementConclusion 生成裁判一致性结论。
+func agreementConclusion(report model.EvalReport, notes AggregateNotes) []string {
+	conclusions := []string{}
+
+	if report.JudgeAgreement == JudgeAgreementNotApplicable {
+		// 一致性不适用时必须显式说明原因，不能留空或写 0。
+		reason := "仅 1 个裁判参与了评分"
+		if notes.AgreementPairs == 0 && len(notes.AgreementSkipped) > 0 {
+			reason = notes.AgreementSkipped[0]
+		}
+		conclusions = append(conclusions, fmt.Sprintf(
+			"裁判一致性不适用：%s。单个裁判的评分无法互相印证，本报告的结论缺少交叉验证。", reason))
+		return conclusions
+	}
+
+	percent := report.JudgeAgreement * 100
+	switch {
+	case report.JudgeAgreement >= agreementHigh:
+		conclusions = append(conclusions, fmt.Sprintf(
+			"裁判一致性 %.0f/100，各裁判在数据排序上高度共识，本报告结论可信。", percent))
+	case report.JudgeAgreement >= agreementLow:
+		conclusions = append(conclusions, fmt.Sprintf(
+			"裁判一致性 %.0f/100，存在一定分歧。结论大体可用，但争议条目的判定建议人工复核。", percent))
+	default:
+		// 这是最重要的警示，措辞必须明确。
+		conclusions = append(conclusions, fmt.Sprintf(
+			"⚠️ 裁判一致性仅 %.0f/100，各裁判分歧较大，结论可信度受限。平均分掩盖了模型之间的判断差异，建议增加裁判数量或对争议条目人工复核后再采信本报告。",
+			percent))
+	}
+
+	// 说明有几对裁判参与了比较，让用户能判断这个数字的统计基础。
+	if notes.AgreementPairs > 0 {
+		conclusions = append(conclusions, fmt.Sprintf(
+			"一致性由 %d 对裁判的两两秩相关平均得出（秩相关衡量排序共识，不受裁判打分尺度差异影响）。",
+			notes.AgreementPairs))
+	}
+	for _, skipped := range notes.AgreementSkipped {
+		conclusions = append(conclusions, "一致性计算跳过："+skipped+"。")
+	}
+	return conclusions
+}
+
+// judgeBiasConclusions 识别并点名打分系统性偏高/偏低的裁判。
+//
+// 这是暴露「裁判本身有偏差」的关键输出：若某个模型对任何数据都给高分，
+// 它会把整体均分抬高，让数据集看起来比实际更好。
+func judgeBiasConclusions(report model.EvalReport, notes AggregateNotes) []string {
+	if len(report.Judges) < 2 {
+		return nil
+	}
+
+	// 只比较有归一化均分的裁判；量表区间缺失的裁判无法参与横向比较。
+	type scored struct {
+		label string
+		value float64
+	}
+	values := make([]scored, 0, len(report.Judges))
+	var sum float64
+	for _, judge := range report.Judges {
+		normalized, ok := notes.NormalizedJudgeMeans[judge.ProviderID]
+		if !ok {
+			continue
+		}
+		values = append(values, scored{label: judgeLabelFor(judge), value: normalized})
+		sum += normalized
+	}
+	if len(values) < 2 {
+		return nil
+	}
+	average := sum / float64(len(values))
+
+	conclusions := []string{}
+	for _, item := range values {
+		delta := item.value - average
+		if math.Abs(delta) < judgeBiasThreshold {
+			continue
+		}
+		direction := "偏高"
+		if delta < 0 {
+			direction = "偏低"
+		}
+		conclusions = append(conclusions, fmt.Sprintf(
+			"裁判「%s」打分系统性%s：其归一化均分 %.2f，全体裁判均分 %.2f，相差 %.2f。该裁判的评分可能拉%s整体分数，建议复核其评判标准。",
+			item.label, direction, item.value, average, math.Abs(delta), directionWord(direction)))
+	}
+	return conclusions
+}
+
+// directionWord 用于拼接「拉高/拉低」。
+func directionWord(direction string) string {
+	if direction == "偏高" {
+		return "高"
+	}
+	return "低"
+}
+
+// judgeLabelFor 为 EvalJudgeStat 生成人类可读名称。
+func judgeLabelFor(judge model.EvalJudgeStat) string {
+	if judge.ProviderName != "" && judge.Model != "" {
+		return judge.ProviderName + "/" + judge.Model
+	}
+	if judge.ProviderName != "" {
+		return judge.ProviderName
+	}
+	if judge.Model != "" {
+		return judge.Model
+	}
+	return "provider#" + itoa64(judge.ProviderID)
+}
+
+// degradationConclusions 把聚合过程中被跳过的情况翻译成用户可读的说明。
+//
+// 这些情况必须出现在结论里：用户配置了某个维度却发现它没影响总分，
+// 如果没有一行说明，用户只会以为系统算错了。
+func degradationConclusions(notes AggregateNotes) []string {
+	conclusions := []string{}
+
+	if len(notes.ZeroWeightDimensions) > 0 {
+		conclusions = append(conclusions, fmt.Sprintf(
+			"以下维度权重为 0 或负值，已被排除在加权总分之外（其分数仍单独展示）：%s。若这不是本意，请调整维度权重。",
+			strings.Join(notes.ZeroWeightDimensions, "、")))
+	}
+	if len(notes.UnweightedDimensions) > 0 {
+		conclusions = append(conclusions, fmt.Sprintf(
+			"以下维度有分数但找不到维度定义，未计入总分：%s。通常是维度被删除或 key 不匹配。",
+			strings.Join(notes.UnweightedDimensions, "、")))
+	}
+	if notes.FailedScores > 0 {
+		conclusions = append(conclusions, fmt.Sprintf(
+			"有 %d 条打分未成功（状态非 scored），已排除在全部统计之外 —— 失败记录的分值为 0，计入会凭空拉低均分。",
+			notes.FailedScores))
+	}
+	return conclusions
+}
+
+// sampleConclusion 提示样本量，并警示小样本下的结论不稳。
+func sampleConclusion(report model.EvalReport) string {
+	if report.SampleCount == 0 {
+		return "本次评估没有任何成功评分的条目，报告中的全部统计量均为空值，不具参考意义。"
+	}
+	if report.SampleCount < 10 {
+		return fmt.Sprintf(
+			"本次仅 %d 条数据参与评分，样本量偏小，均分与一致性指标波动较大，建议扩大抽样范围后再下结论。",
+			report.SampleCount)
+	}
+	return fmt.Sprintf("本次共 %d 条数据参与评分。", report.SampleCount)
+}
+
+// BuildSummaries 把报告压平成可持久化的汇总行（表 eval_summaries）。
+//
+// scope 取值与 0011_eval_core.sql 的注释一致：overall / judge / dimension / item。
+// 这些行让前端不必每次请求都重算全量聚合。
+func BuildSummaries(report model.EvalReport) []model.EvalSummary {
+	summaries := make([]model.EvalSummary, 0, len(report.Judges)+len(report.Dimensions)+2)
+
+	summaries = append(summaries, model.EvalSummary{
+		EvalRunID:   report.EvalRun.ID,
+		Scope:       "overall",
+		RefKey:      "",
+		Score:       report.OverallScore,
+		SampleCount: report.SampleCount,
+		Detail: map[string]any{
+			"judgeAgreement": report.JudgeAgreement,
+			"datasetName":    report.DatasetName,
+		},
+	})
+
+	for _, judge := range report.Judges {
+		summaries = append(summaries, model.EvalSummary{
+			EvalRunID:   report.EvalRun.ID,
+			Scope:       "judge",
+			RefKey:      itoa64(judge.ProviderID),
+			Score:       judge.Score,
+			SampleCount: judge.SampleCount,
+			Detail: map[string]any{
+				"providerName": judge.ProviderName,
+				"model":        judge.Model,
+			},
+		})
+	}
+
+	for _, dimension := range report.Dimensions {
+		summaries = append(summaries, model.EvalSummary{
+			EvalRunID:   report.EvalRun.ID,
+			Scope:       "dimension",
+			RefKey:      dimension.DimensionKey,
+			Score:       dimension.Score,
+			SampleCount: dimension.SampleCount,
+			Detail: map[string]any{
+				"name":     dimension.Name,
+				"category": dimension.Category,
+				"stdDev":   dimension.StdDev,
+				"min":      dimension.Min,
+				"max":      dimension.Max,
+			},
+		})
+	}
+
+	for _, item := range report.WeakestItems {
+		summaries = append(summaries, model.EvalSummary{
+			EvalRunID:   report.EvalRun.ID,
+			Scope:       "item",
+			RefKey:      itoa64(item.QuestionID),
+			Score:       item.Score,
+			SampleCount: 1,
+			Detail: map[string]any{
+				"itemIndex": item.ItemIndex,
+			},
+		})
+	}
+
+	// 按 scope + refKey 排序，让写入顺序稳定、便于比对。
+	sort.SliceStable(summaries, func(i, j int) bool {
+		if summaries[i].Scope != summaries[j].Scope {
+			return summaries[i].Scope < summaries[j].Scope
+		}
+		return summaries[i].RefKey < summaries[j].RefKey
+	})
+	return summaries
+}
+
+// itoa 十进制整数转字符串。
+func itoa(value int) string {
+	return strconv.Itoa(value)
+}
+
+// itoa64 十进制 int64 转字符串。
+func itoa64(value int64) string {
+	return strconv.FormatInt(value, 10)
+}
