@@ -22,7 +22,7 @@
   <text x="395" y="110" text-anchor="middle" font-size="14" font-weight="bold" fill="#1d4ed8">n 个领域（L1）</text>
   <text x="395" y="132" text-anchor="middle" font-size="11" fill="#374151">job: directions.generate</text>
   <text x="395" y="150" text-anchor="middle" font-size="11" fill="#6b7280">domains.level=1</text>
-  <text x="395" y="166" text-anchor="middle" font-size="11" fill="#6b7280">datasets.domain_count</text>
+  <text x="395" y="166" text-anchor="middle" font-size="11" fill="#6b7280">strategy.domain_count</text>
 
   <line x1="500" y1="129" x2="546" y2="129" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
 
@@ -51,7 +51,7 @@
   <rect x="340" y="256" width="440" height="92" rx="10" fill="#fefce8" stroke="#eab308" stroke-width="2"/>
   <text x="560" y="282" text-anchor="middle" font-size="14" font-weight="bold" fill="#a16207">x 个具体问题 / 方向（L3）</text>
   <text x="560" y="304" text-anchor="middle" font-size="11" fill="#374151">job: questions.generate　HTTP: POST /datasets/{id}/questions/generate</text>
-  <text x="560" y="322" text-anchor="middle" font-size="11" fill="#6b7280">难度分层 difficultyMix → questions.difficulty / difficulty_score</text>
+  <text x="560" y="322" text-anchor="middle" font-size="11" fill="#6b7280">难度分层 difficultyMix → questions.difficulty / difficulty_score（x 存 datasets.questions_per_direction）</text>
   <text x="560" y="340" text-anchor="middle" font-size="11" fill="#6b7280">去重 DedupeKey → questions.dedupe_key（UNIQUE 语义由 store 保证）</text>
 
   <!-- branch -->

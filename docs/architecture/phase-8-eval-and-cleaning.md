@@ -45,7 +45,7 @@ Phase 8 把系统从「只会生成数据」升级为「生成 → 评估 → �
 | 存储 | `internal/store/dataset_store_directions.go`（`ListRootDomains` / `ListDirections` / `ListDirectionsByParent` / `UpsertDirections`）、`internal/store/generation_run_store.go`（断点续跑） |
 | HTTP | `apps/api/routes_directions.go`：`POST /api/v1/datasets/{id}/directions/generate`、`GET /api/v1/datasets/{id}/directions`、`POST /api/v1/datasets/{id}/generation-runs/{stage}/resume`、`GET /api/v1/datasets/{id}/generation-runs` |
 | worker | `apps/worker/job_directions.go`，jobType `directions.generate` |
-| 表 | `domains`（`level=1` 领域、`level=2` 方向）、`generation_runs`、`datasets.domain_count` / `datasets.direction_count` |
+| 表 | `domains`（`level=1` 领域、`level=2` 方向）、`generation_runs`、`datasets.direction_count`（m）；n 来自生成策略 `generation_strategies.domain_count` |
 | 迁移 | `sql/migrations/0016_generation_runs.sql` |
 | 测试 | `test/test_l1_directions.py`、`internal/store/dataset_store_directions_test.go` |
 
@@ -164,7 +164,7 @@ lane L15，即 `docs/architecture/phase-8-eval-and-cleaning.md`（本文）与 `
 
 | 阶段 | jobType | 入队接口 | 产出表 | 用户可控参数 |
 |---|---|---|---|---|
-| n 领域 + m 方向 | `directions.generate` | `POST /api/v1/datasets/{id}/directions/generate` | `domains` | `datasets.domain_count`、`datasets.direction_count`、请求体 `directionCount` |
+| n 领域 + m 方向 | `directions.generate` | `POST /api/v1/datasets/{id}/directions/generate` | `domains` | `datasets.direction_count`（m）、请求体 `directionCount`；n 来自 `generation_strategies.domain_count` |
 | 长链标准步骤 | `chain-standards.generate` | `POST /api/v1/datasets/{id}/chain-standards/generate` | `chain_standards`、`chain_standard_versions` | `domainIds` |
 | x 个问题 | `questions.generate` | `POST /api/v1/datasets/{id}/questions/generate` | `questions` | `questionsPerDirection`、`difficultyMix` |
 | GRPO 提示词 | `grpo.generate` | `POST /api/v1/datasets/{id}/grpo/generate` | `grpo_prompts` | `datasets.reward_levels`、请求体 `levels` |
@@ -702,7 +702,7 @@ func init() {
 | `sql/migrations/0013_chain_standards.sql` | `chain_standards` / `chain_standard_versions` | 第 2 节 |
 | `sql/migrations/0014_questions_v2.sql` | `questions` 扩展：`direction_domain_id` / `difficulty` / `difficulty_score` / `dedupe_key` / `source` / `cleaning_status` | 第 2 节 |
 | `sql/migrations/0015_export_mappings.sql` | `export_mappings` | 第 2 节 |
-| `sql/migrations/0016_generation_runs.sql` | `generation_runs` + `datasets` 扩展（`target_kind` / `direction_count` / `reward_levels` / `cleaning_enabled`） | 第 2 节 |
+| `sql/migrations/0016_generation_runs.sql` | `generation_runs` + `datasets` 扩展（`target_kind` / `direction_count` / `questions_per_direction` / `reward_levels` / `cleaning_enabled`） | 第 2 节 |
 | `sql/migrations/0017_grpo_prompts.sql` | `grpo_prompts` | 第 9.6 节 |
 | `sql/migrations/0018_sft_records.sql` | `sft_records` | 第 9.6 节 |
 

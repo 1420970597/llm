@@ -55,7 +55,7 @@
 | 生成模型 | 用哪个模型生成数据 | **记住这个选择**，评估时它会被自动排除出自评 |
 | 存储位置 | 结果存哪里 | 用默认即可 |
 
-n、m、x 都保存在数据集上（`datasets.domain_count` / `direction_count`，以及策略里的 `questions_per_domain`），任务创建后仍可调整再重新入队。
+n、m、x 都持久化在库里：n 存在生成策略的 `generation_strategies.domain_count`（即任务估算里的 `estimate.domainCount`），m 存 `datasets.direction_count`，x 存 `datasets.questions_per_direction`。任务创建后仍可调整 m / x 再重新入队。
 
 ### 第 3 步：等待生成
 
