@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"github.com/1420970597/llm/internal/migrate"
 	"github.com/1420970597/llm/internal/model"
 	"github.com/1420970597/llm/internal/store"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
@@ -280,11 +282,25 @@ func (app *application) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 	app.writeJSON(w, http.StatusOK, items)
 }
 
+// writeError 统一写错误响应。
+//
+// 关键行为：调用方常把 store 层错误一律当作 500 上报，但 store 层在「记录不存在」
+// 时返回的是 pgx.ErrNoRows —— 那是客户端问题（404），不是服务端故障。这里集中识别
+// 并降级，否则每个 handler 都得自己判断（历史上 apps/api/datasets.go 的 getDataset
+// 就是这么把 404 变成 500 的）。
+//
+// 另一个约定：5xx 不把内部错误原文回给客户端（可能含 SQL、连接串等），但也不能回
+// 英文兜底文案 —— 前端会把它直接渲染给中文用户，所以用中文。
 func (app *application) writeError(w http.ResponseWriter, status int, err error) {
 	msg := err.Error()
 	if status >= 500 {
-		log.Printf("internal error: %v", err)
-		msg = "internal server error"
+		if errors.Is(err, pgx.ErrNoRows) {
+			status = http.StatusNotFound
+			msg = "请求的资源不存在"
+		} else {
+			log.Printf("internal error: %v", err)
+			msg = "服务暂时不可用，请稍后重试"
+		}
 	}
 	app.writeJSON(w, status, map[string]string{"error": msg})
 }
