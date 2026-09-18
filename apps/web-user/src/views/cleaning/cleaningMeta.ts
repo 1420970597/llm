@@ -1,4 +1,4 @@
-import type { CleaningFinding, CleaningKeyword, CleaningRule, CleaningRun } from '../../lib/api'
+import type { CleaningFinding, CleaningKeyword, CleaningReport, CleaningRule, CleaningRun } from '../../lib/api'
 
 /**
  * 清洗模块的展示元数据与派生计算（L14 独占）。
@@ -208,4 +208,22 @@ export function deriveCategoryHits(keywords: CleaningKeyword[], findings: Cleani
 /** 把规则按优先级升序排列，与 cleaning.EvaluateRules 的判定顺序一致。 */
 export function sortRulesByPriority(rules: CleaningRule[]): CleaningRule[] {
   return [...rules].sort((left, right) => left.priority - right.priority || left.id - right.id)
+}
+
+/**
+ * 用运行列表里的最新值覆盖报告自带的 run 快照。
+ *
+ * 原因：报告接口里的 run 是 worker 在 MarkDone 之前写入的，status 恒为 queued、
+ * 计数全 0（internal/cleaning/scanner.go 的 BuildReport 接收的是 MarkDone 前的 run）。
+ * 直接用快照会把已完成的运行渲染成「排队中 · 检查 0 条」，
+ * 而且以快照状态判断未完成会导致轮询永不停止。
+ *
+ * 找不到同 id 的列表项时（例如列表尚未加载）退回快照，不丢信息。
+ */
+export function mergeReportRun(report: CleaningReport | null, runs: CleaningRun[]): CleaningRun | null {
+  if (!report) {
+    return null
+  }
+  const fresh = runs.find((item) => item.id === report.run.id)
+  return fresh ? { ...report.run, ...fresh } : report.run
 }
