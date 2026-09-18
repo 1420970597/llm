@@ -338,6 +338,13 @@ export type EvalJudgeOption = {
   excludeReason: string
 }
 
+/** 某数据集的裁判候选集：excluded 已按该数据集的生成者算好。 */
+export type DatasetJudgeOptions = {
+  datasetId: number
+  generatorProviderId: number
+  judges: EvalJudgeOption[]
+}
+
 export type EvalItem = {
   id: number
   evalRunId: number
@@ -648,7 +655,11 @@ export const consoleApi = {
     unwrap(client.request<ExportMapping>({ url: '/v1/admin/export-mappings', method: payload.id ? 'PUT' : 'POST', data: payload })),
 
   // ---- L7 评估裁判模型接入 ----
+  /** 全局候选列表：没有数据集上下文，excluded 恒为 false。做选择器请用 listDatasetEvalJudges。 */
   listEvalJudges: () => unwrap(client.get<EvalJudgeOption[]>('/v1/admin/eval/judges')),
+  /** 按数据集取候选，excluded/excludeReason 已按该数据集生成者计算。 */
+  listDatasetEvalJudges: (datasetId: number) =>
+    unwrap(client.get<DatasetJudgeOptions>(`/v1/datasets/${datasetId}/eval-judges`)),
   setEvalRunJudges: (runId: number, providerIds: number[]) =>
     unwrap(client.put<EvalRunJudge[]>(`/v1/eval/runs/${runId}/judges`, { providerIds })),
 

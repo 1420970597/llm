@@ -40,23 +40,27 @@ export function EvalRunForm({
   )
 
   const load = useCallback(async () => {
+    if (datasetId === null) return
     setLoading(true)
     setError('')
     try {
-      const [dimensionList, judgeList] = await Promise.all([
+      // 必须按数据集取裁判：/v1/admin/eval/judges 没有数据集上下文，
+      // 无法判定生成者自评剔除，会把所有候选都标成可用，
+      // 用户选完到启动才报「生成者模型禁止自评」。
+      const [dimensionList, judgeOptions] = await Promise.all([
         consoleApi.listEvalDimensions(),
-        consoleApi.listEvalJudges(),
+        consoleApi.listDatasetEvalJudges(datasetId),
       ])
       setDimensions(dimensionList.filter((item) => item.isActive))
-      setJudges(judgeList)
+      setJudges(judgeOptions.judges)
       // 被排除的裁判（生成者自评）不可选中，因此默认不预选。
-      setSelectedJudges((current) => current.filter((id) => judgeList.some((judge) => judge.providerId === id && !judge.excluded)))
+      setSelectedJudges((current) => current.filter((id) => judgeOptions.judges.some((judge) => judge.providerId === id && !judge.excluded)))
     } catch (err) {
       setError(errorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [datasetId])
 
   useEffect(() => {
     void load()

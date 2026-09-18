@@ -111,23 +111,31 @@ class Session:
         if isinstance(body, list):
             return body
         if isinstance(body, dict):
-            for key in ("items", "data", "records", "list"):
+            for key in ("items", "data", "records", "list", "domains", "directions",
+                        "questions", "judges", "scores", "runs", "artifacts"):
                 if isinstance(body.get(key), list):
                     return body[key]
         return []
 
-    def psql(self, sql):
+    def psql(self, sql, params=None):
         """在验收用的 Postgres 里执行 SQL（构造断点续跑场景需要写库）。
 
         只用于造场景，不用来断言业务结果：断言一律走 HTTP 接口，
         否则测试就绕过了被测代码。
+
+        params 为占位符值列表，通过 psql 变量（-v name=value + :'name'）绑定，
+        不做字符串拼接，避开注入面。
+
+        用 -f - 而不是 -c：psql 的 -c 不做变量插值（实测 17.11 会报
+        syntax error at or near ":"），必须走脚本文件。
         返回 stdout；失败返回空串。
         """
-        proc = subprocess.run(
-            ["docker", "exec", POSTGRES_CONTAINER, "psql", "-U", "llm_factory",
-             "-d", "llm_factory", "-t", "-A", "-c", sql],
-            capture_output=True, text=True, check=False,
-        )
+        args = ["docker", "exec", "-i", POSTGRES_CONTAINER, "psql", "-U", "llm_factory",
+                "-d", "llm_factory", "-t", "-A"]
+        for idx, value in enumerate(params or []):
+            args += ["-v", f"p{idx}={value}"]
+        args += ["-f", "-"]
+        proc = subprocess.run(args, input=sql, capture_output=True, text=True, check=False)
         if proc.returncode != 0:
             print(f"  [psql] 失败: {proc.stderr.strip()[:200]}")
             return ""
@@ -199,16 +207,21 @@ def verify_resume_roundtrip(session, prefix="验收-续跑"):
         return False, f"领域数不足 2（实际 {len(dlist)}），无法构造半途运行"
     done_id = dlist[0].get("id")
 
-    row = session.psql(
+    # 值全部通过 psql 变量绑定，不对 SQL 做字符串拼接。
+    sql_insert = (
         "INSERT INTO generation_runs (dataset_id, stage, status, cursor, total_units, "
         "done_units, attempts, started_at, updated_at) VALUES "
-        f"({ds}, 'directions', 'running', "
-        f"'{{\"completedDomainIds\": [{done_id}], \"producedDirections\": 1, "
-        f"\"directionCount\": 1}}'::jsonb, "
-        f"{len(dlist)}, 1, 1, NOW(), NOW()) RETURNING id;")
-    if not row:
-        return False, "插入半途运行记录失败"
-    run_id = row.strip().splitlines()[-1].strip()
+        "(:'p0'::bigint, 'directions', 'running', "
+        "jsonb_build_object('completedDomainIds', jsonb_build_array(:'p1'::bigint), "
+        "                   'producedDirections', 1, 'directionCount', 1), "
+        "(:'p2'::int), 1, 1, NOW(), NOW()) RETURNING id;")
+    row = session.psql(sql_insert, params=[ds, done_id, len(dlist)])
+    # psql -t -A 除 RETURNING 的值外还会打印命令标签（"INSERT 0 1"），
+    # 只取纯数字行，否则 run_id 会变成命令标签（上轮就踩了这个坑）。
+    ids = [ln.strip() for ln in (row or "").splitlines() if ln.strip().isdigit()]
+    if not ids:
+        return False, f"插入半途运行记录失败，psql 输出={str(row)[:160]}"
+    run_id = ids[0]
 
     # 3. 续跑：应命中这条 running 记录，且只跑剩下的领域。
     clear_dedup("directions", ds)
@@ -235,10 +248,14 @@ def verify_resume_roundtrip(session, prefix="验收-续跑"):
     if dn < 2:
         return False, f"续跑后方向数={dn}，未补齐剩余领域"
 
-    # 6. 游标必须把全部领域标为已完成。
+    # 6. 游标必须把全部领域标为已完成 —— 这是「续跑真的跑了剩下的领域」的直接证据。
     cursor = session.psql(
-        f"SELECT cursor->'completedDomainIds' FROM generation_runs WHERE id={run_id};")
-    completed = str(cursor).count(",") + 1 if cursor.strip() not in ("", "[]") else 0
+        "SELECT cursor->'completedDomainIds' FROM generation_runs WHERE id = :'p0'::bigint;",
+        params=[run_id])
+    completed = str(cursor).count(",") + 1 if str(cursor).strip() not in ("", "[]") else 0
+    if completed != len(dlist):
+        return False, (f"续跑后游标只标记了 {completed}/{len(dlist)} 个领域，"
+                       f"说明续跑未跑完剩余领域（cursor={str(cursor)[:120]}）")
 
     return True, (f"datasetId={ds} runId={run_id} status={status} "
                   f"attempts={attempts} done={done_units}/{total_units} "
@@ -316,7 +333,8 @@ def main():
         if code not in (200, 201):
             record("前置：创建数据集", False, f"HTTP {code} {str(body)[:200]}")
             return finish()
-        dataset_id = (body or {}).get("id")
+        created = body if isinstance(body, dict) else {}
+        dataset_id = created.get("id")
         record("前置：创建数据集", bool(dataset_id), f"datasetId={dataset_id}")
 
     # ---------------------------------------------------------------- R1
@@ -550,10 +568,10 @@ def main():
 
             # GET /eval/runs/{id} 返回 {"run":{...},"judges":[...]}，状态在 run 里。
             run = poll_until(session, f"/api/v1/eval/runs/{run_id}",
-                             lambda b: ((b or {}).get("run") or {}).get("status") in
+                             lambda b: (b if isinstance(b, dict) else {}).get("run", {}).get("status") in
                              ("completed", "failed", "partial_failed"),
                              timeout=EVAL_TIMEOUT)
-            run = (run or {}).get("run") or {}
+            run = ((run if isinstance(run, dict) else {}).get("run") or {})
             status = run.get("status")
             record("R7 评估运行完成", status == "completed",
                    f"status={status} scored={run.get('scoredItems')}/{run.get('totalItems')} "
