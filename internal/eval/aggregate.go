@@ -68,6 +68,10 @@ type AggregateNotes struct {
 
 	// AgreementSkipped 被跳过的一致性比较及原因。
 	AgreementSkipped []string
+
+	// ExcludedJudges 被 L7 剔除、未参与评分的裁判及其原因。
+	// 必须在结论里告知用户，否则「为什么少了一个模型」无从查起。
+	ExcludedJudges []string
 }
 
 // Aggregate 把逐条逐维度打分汇总成报告统计量。
@@ -79,6 +83,7 @@ func Aggregate(in AggregateInput) (model.EvalReport, AggregateNotes) {
 		ZeroWeightDimensions: []string{},
 		UnweightedDimensions: []string{},
 		AgreementSkipped:     []string{},
+		ExcludedJudges:       []string{},
 	}
 
 	report := model.EvalReport{
@@ -113,8 +118,21 @@ func Aggregate(in AggregateInput) (model.EvalReport, AggregateNotes) {
 	// 加权总分：先算每个维度的均分，再按维度权重加权。
 	// 权重 <= 0 的维度直接排除，并在 notes 里记名 —— 用户配了个 0 权重
 	// 却发现分数没变，必须能查到原因。
+	// 失败或未参与的裁判必须让用户看得见 —— L7 会剔除生成者模型的自评，
+	// 若报告里不提一句，用户会以为所有登记的裁判都参与了。
+	for _, judge := range in.Judges {
+		if !judge.Excluded {
+			continue
+		}
+		reason := judge.ExcludeReason
+		if reason == "" {
+			reason = "未说明原因"
+		}
+		notes.ExcludedJudges = append(notes.ExcludedJudges,
+			judgeLabel(judge)+"（"+reason+"）")
+	}
+
 	var weightedSum, weightTotal float64
-	var normalizedSum, normalizedWeightTotal float64
 	for _, stat := range report.Dimensions {
 		dimension, ok := dimensions[stat.DimensionKey]
 		if !ok {
@@ -128,11 +146,6 @@ func Aggregate(in AggregateInput) (model.EvalReport, AggregateNotes) {
 		}
 		weightedSum += stat.Score * dimension.Weight
 		weightTotal += dimension.Weight
-
-		if normalized, ok := normalizeScore(stat.Score, dimension); ok {
-			normalizedSum += normalized * dimension.Weight
-			normalizedWeightTotal += dimension.Weight
-		}
 	}
 	sort.Strings(notes.ZeroWeightDimensions)
 	sort.Strings(notes.UnweightedDimensions)
@@ -140,17 +153,13 @@ func Aggregate(in AggregateInput) (model.EvalReport, AggregateNotes) {
 	if weightTotal > 0 {
 		report.OverallScore = weightedSum / weightTotal
 	}
-	if normalizedWeightTotal > 0 {
-		notes.NormalizedOverall = normalizedSum / normalizedWeightTotal
-	}
+	notes.NormalizedOverall, _ = normalizedMean(report.Dimensions, dimensions)
 
-	// 每个裁判的统计。
-	report.Judges = buildJudgeStats(valid, items, dimensions)
+	// 每个裁判的统计。传入裁判名单，让「一条分都没打」的裁判也出现在报告里。
+	report.Judges = buildJudgeStats(valid, in.Judges, items, dimensions)
 	for _, judgeStat := range report.Judges {
-		if dimension, ok := firstDimension(dimensions, judgeStat.Dimensions); ok {
-			if normalized, ok := normalizeScore(judgeStat.Score, dimension); ok {
-				notes.NormalizedJudgeMeans[judgeStat.ProviderID] = normalized
-			}
+		if normalized, ok := normalizedMean(judgeStat.Dimensions, dimensions); ok {
+			notes.NormalizedJudgeMeans[judgeStat.ProviderID] = normalized
 		}
 	}
 
@@ -228,10 +237,13 @@ func buildDimensionStats(
 
 // buildJudgeStats 生成逐裁判统计。
 //
-// 输入里的每个裁判都会出现在结果里（即使一条分都没打），
-// 这样「某个裁判全程失败」在报告里是可见的，而不是悄悄消失。
+// 以 in.Judges（eval_run_judges 登记名单）为基准，而不是只遍历有分数的裁判：
+// 某个裁判全程调用失败、一条分都没打时，他必须仍然出现在报告里（SampleCount=0），
+// 否则用户看到的是一个「所有裁判都正常」的假象。
+// 名单里没有但确实打了分的裁判（例如 run 登记不完整）也会补上。
 func buildJudgeStats(
 	scores []model.EvalItemScore,
+	judges []model.EvalRunJudge,
 	items map[int64]model.EvalItem,
 	dimensions map[string]model.EvalDimension,
 ) []model.EvalJudgeStat {
@@ -240,8 +252,19 @@ func buildJudgeStats(
 		byJudge[score.JudgeProviderID] = append(byJudge[score.JudgeProviderID], score)
 	}
 
-	providerIDs := make([]int64, 0, len(byJudge))
+	meta := map[int64]model.EvalRunJudge{}
+	providerIDs := make([]int64, 0, len(judges)+len(byJudge))
+	for _, judge := range judges {
+		if _, exists := meta[judge.ProviderID]; exists {
+			continue
+		}
+		meta[judge.ProviderID] = judge
+		providerIDs = append(providerIDs, judge.ProviderID)
+	}
 	for providerID := range byJudge {
+		if _, exists := meta[providerID]; exists {
+			continue
+		}
 		providerIDs = append(providerIDs, providerID)
 	}
 	sort.Slice(providerIDs, func(i, j int) bool { return providerIDs[i] < providerIDs[j] })
@@ -254,6 +277,10 @@ func buildJudgeStats(
 			ProviderID: providerID,
 			Dimensions: []model.EvalDimensionStat{},
 			ItemScores: []model.EvalItemScoreBrief{},
+		}
+		if judge, ok := meta[providerID]; ok {
+			stat.ProviderName = judge.ProviderName
+			stat.Model = judge.Model
 		}
 		stat.SampleCount = len(judgeScores)
 
@@ -549,14 +576,34 @@ func normalizeScore(score float64, dimension model.EvalDimension) (float64, bool
 	return normalized, true
 }
 
-// firstDimension 取一组维度统计中的第一个，用于拿量表区间做归一化。
-func firstDimension(index map[string]model.EvalDimension, stats []model.EvalDimensionStat) (model.EvalDimension, bool) {
+// normalizedMean 把一组维度统计先按各维度自身的量表区间归一化，再按维度权重加权平均。
+//
+// 不能先算「跨维度原始均分」再拿某一个维度的量表去解释它：不同维度的量表
+// 区间可以完全不同（内置维度是 1~5，用户自定义维度可能是 0~10 或 0~100），
+// 跨维度原始均分本身没有统一量纲，用一个维度的区间去归一化它得到的数字
+// 没有意义，会让「某裁判打分偏高/偏低」的判断整体失真。
+//
+// 返回 ok=false 表示没有任何可用于归一化的维度（量表区间非法或权重全为 0）。
+func normalizedMean(
+	stats []model.EvalDimensionStat, dimensions map[string]model.EvalDimension,
+) (float64, bool) {
+	var sum, weightTotal float64
 	for _, stat := range stats {
-		if dimension, ok := index[stat.DimensionKey]; ok {
-			return dimension, true
+		dimension, ok := dimensions[stat.DimensionKey]
+		if !ok || dimension.Weight <= 0 {
+			continue
 		}
+		normalized, ok := normalizeScore(stat.Score, dimension)
+		if !ok {
+			continue
+		}
+		sum += normalized * dimension.Weight
+		weightTotal += dimension.Weight
 	}
-	return model.EvalDimension{}, false
+	if weightTotal <= 0 {
+		return 0, false
+	}
+	return sum / weightTotal, true
 }
 
 // mean 算术平均。空输入返回 0（调用方靠 SampleCount 区分「0 分」与「没有样本」）。

@@ -2,6 +2,7 @@ package eval
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/1420970597/llm/internal/model"
@@ -474,5 +475,109 @@ func TestSpearmanUndefinedCases(t *testing.T) {
 	}
 	if _, ok := spearman([]float64{5, 5, 5}, []float64{1, 2, 3}); ok {
 		t.Error("一侧无变化时不应计算（分母为 0）")
+	}
+}
+
+// TestAggregateIncludesSilentJudge 验证「一条分都没打」的裁判仍然出现在报告里。
+//
+// 场景：两个裁判被登记，其中裁判 200 全程调用失败（没有任何 eval_item_scores 行）。
+// 如果统计只遍历有分数的裁判，用户会看到一个「所有裁判都正常」的假象。
+func TestAggregateIncludesSilentJudge(t *testing.T) {
+	report, notes := Aggregate(AggregateInput{
+		Run:        model.EvalRun{ID: 1, Status: "completed"},
+		Items:      []model.EvalItem{item(1, 0), item(2, 1)},
+		Dimensions: testDimensions(),
+		Scores: []model.EvalItemScore{
+			score(1, 100, "long_chain_depth", 4),
+			score(2, 100, "long_chain_depth", 6),
+		},
+		Judges: []model.EvalRunJudge{
+			{ProviderID: 100, ProviderName: "正常裁判", Model: "model-a"},
+			{ProviderID: 200, ProviderName: "失败裁判", Model: "model-b", Status: "failed"},
+		},
+	})
+
+	if len(report.Judges) != 2 {
+		t.Fatalf("两个登记的裁判都应出现在报告里，实际 %d 个", len(report.Judges))
+	}
+	// 按 provider id 升序，[1] 是 200。
+	silent := report.Judges[1]
+	if silent.ProviderID != 200 {
+		t.Fatalf("第 2 个裁判应为 200，实际 %d", silent.ProviderID)
+	}
+	if silent.SampleCount != 0 {
+		t.Errorf("失败裁判样本数应为 0，实际 %d", silent.SampleCount)
+	}
+	if silent.ProviderName != "失败裁判" {
+		t.Errorf("裁判名应回填为「失败裁判」，实际 %q", silent.ProviderName)
+	}
+
+	conclusions := joined(BuildConclusions(report, notes, "completed"))
+	if !strings.Contains(conclusions, "失败裁判") {
+		t.Errorf("结论应点名没有任何有效打分的裁判，实际：\n%s", conclusions)
+	}
+	if !strings.Contains(conclusions, "不代表打分严格") {
+		t.Errorf("结论应说明 0 分是调用失败而非打分严格，实际：\n%s", conclusions)
+	}
+}
+
+// TestAggregateNamesExcludedJudge 被 L7 剔除的裁判必须在结论里说明原因。
+func TestAggregateNamesExcludedJudge(t *testing.T) {
+	report, notes := Aggregate(AggregateInput{
+		Run:        model.EvalRun{ID: 1, Status: "completed"},
+		Items:      []model.EvalItem{item(1, 0)},
+		Dimensions: testDimensions(),
+		Scores:     []model.EvalItemScore{score(1, 100, "long_chain_depth", 5)},
+		Judges: []model.EvalRunJudge{
+			{ProviderID: 100, ProviderName: "裁判甲", Model: "model-a"},
+			{ProviderID: 1, ProviderName: "生成者", Model: "model-gen",
+				Excluded: true, ExcludeReason: "生成者模型，禁止自评"},
+		},
+	})
+
+	if len(notes.ExcludedJudges) != 1 {
+		t.Fatalf("应有 1 条剔除记录，实际 %d：%v", len(notes.ExcludedJudges), notes.ExcludedJudges)
+	}
+	if !strings.Contains(notes.ExcludedJudges[0], "生成者模型，禁止自评") {
+		t.Errorf("剔除记录应带原因，实际 %q", notes.ExcludedJudges[0])
+	}
+
+	conclusions := joined(BuildConclusions(report, notes, "completed"))
+	if !strings.Contains(conclusions, "已被剔除") {
+		t.Errorf("结论应告知有裁判被剔除，实际：\n%s", conclusions)
+	}
+	if !strings.Contains(conclusions, "生成者模型，禁止自评") {
+		t.Errorf("结论应写出剔除原因，实际：\n%s", conclusions)
+	}
+}
+
+// TestNormalizedMeanMixesDifferentScales 验证跨量表归一化。
+//
+// 维度 A 量表 0~10（权重 1），维度 B 量表 0~100（权重 1）。
+// 原始均分是 (5 + 50) / 2 = 27.5 —— 这个数字毫无意义，因为它把两种量纲混在一起。
+// 正确做法：各自归一化到 0.5，再加权平均得到 0.5。
+// 若实现拿「第一个维度的区间」去解释跨维度原始均分，会得到 27.5/10 夹紧后的 1.0，
+// 把「中等水平」误判成「满分」。
+func TestNormalizedMeanMixesDifferentScales(t *testing.T) {
+	dimensions := map[string]model.EvalDimension{
+		"scale_10":  {Key: "scale_10", Weight: 1, ScaleMin: 0, ScaleMax: 10},
+		"scale_100": {Key: "scale_100", Weight: 1, ScaleMin: 0, ScaleMax: 100},
+	}
+	stats := []model.EvalDimensionStat{
+		{DimensionKey: "scale_10", Score: 5},
+		{DimensionKey: "scale_100", Score: 50},
+	}
+
+	got, ok := normalizedMean(stats, dimensions)
+	if !ok {
+		t.Fatal("两个维度量表区间都合法，应可归一化")
+	}
+	if !approxEqual(got, 0.5, 1e-9) {
+		t.Fatalf("跨量表归一化均分应为 0.5，实际 %.6f（若为 1.0 说明用单一区间解释了混合量纲）", got)
+	}
+
+	// 没有任何可归一化维度时必须返回 ok=false，不能编一个 0 出来。
+	if _, ok := normalizedMean(stats, map[string]model.EvalDimension{}); ok {
+		t.Error("维度定义缺失时不应返回可用的归一化分")
 	}
 }
