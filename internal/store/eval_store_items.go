@@ -394,6 +394,31 @@ func (s *EvalRunStore) LoadEvalSources(ctx context.Context, datasetID int64) ([]
 	return items, rows.Err()
 }
 
+// ActiveRun 返回该数据集上最近一次待执行的评估运行。
+//
+// 为什么需要它：入队 payload 只携带 datasetId（见 http_util.go 的 enqueueJob），
+// worker 拿不到 runID，因此必须靠「数据集上处于 queued/running 的最新一条」
+// 反查。这与 L12 的 CleaningRunStore.ActiveRun 是同一套约定。
+//
+// 不存在时返回 ErrEvalRunNotFound，调用方据此安静退出（不是错误）。
+func (s *EvalRunStore) ActiveRun(ctx context.Context, datasetID int64) (model.EvalRun, error) {
+	row := s.db.QueryRow(ctx, `
+    SELECT `+evalRunColumns+`
+    FROM eval_runs
+    WHERE dataset_id = $1 AND status IN ('queued', 'running')
+    ORDER BY id DESC
+    LIMIT 1`, datasetID)
+
+	run, err := scanEvalRun(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.EvalRun{}, ErrEvalRunNotFound
+		}
+		return model.EvalRun{}, err
+	}
+	return run, nil
+}
+
 // DatasetName 取数据集名，用于评估报告的展示。
 func (s *EvalRunStore) DatasetName(ctx context.Context, datasetID int64) (string, error) {
 	var name string
