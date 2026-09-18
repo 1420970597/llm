@@ -209,9 +209,31 @@ func (s *EvalRunStore) InsertItems(ctx context.Context, runID, datasetID int64, 
 	return inserted, nil
 }
 
+// ListAllItems 取运行的**全部**条目，内部按页拉取。
+//
+// 为何不直接用 ListItems：那边为保护单次查询把 limit 夹在 1000。
+// worker 需要遍历全部条目才能打分，若直接调 ListItems(len+1, 0)，
+// 超过 1000 条的数据集会静默只评前 1000 条，而 total_items 也只报 1000——
+// 用户看到「已完成」却不知道后一半从未被评。分页拉全，不设上限。
+func (s *EvalRunStore) ListAllItems(ctx context.Context, runID int64) ([]model.EvalItem, error) {
+	const pageSize = 1000
+	all := []model.EvalItem{}
+	for offset := 0; ; offset += pageSize {
+		page, err := s.ListItems(ctx, runID, pageSize, offset)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page...)
+		if len(page) < pageSize {
+			return all, nil
+		}
+	}
+}
+
 // ListItems 列出运行的被评条目，带分页。
 //
 // limit <= 0 时用默认 100；上限 1000，避免一次拉爆内存。
+// 需要全部条目请用 ListAllItems。
 func (s *EvalRunStore) ListItems(ctx context.Context, runID int64, limit, offset int) ([]model.EvalItem, error) {
 	if limit <= 0 {
 		limit = 100

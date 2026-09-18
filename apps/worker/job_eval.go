@@ -188,10 +188,15 @@ func executeEvalRun(ctx context.Context, jc *jobContext, runs *store.EvalRunStor
 		return err
 	}
 
-	storedItems, err := runs.ListItems(ctx, run.ID, len(items)+1, 0)
+	storedItems, err := runs.ListAllItems(ctx, run.ID)
 	if err != nil {
 		finish("failed", err.Error())
 		return err
+	}
+	// 落库结果与抽样结果必须对得上，否则本次运行的覆盖面对不上用户的抽样配置。
+	if len(storedItems) != len(items) {
+		log.Printf("eval.run.item_count_mismatch run=%d sampled=%d stored=%d",
+			run.ID, len(items), len(storedItems))
 	}
 	if err := runs.UpdateRunStatus(ctx, run.ID, "running", len(storedItems), 0, ""); err != nil {
 		finish("failed", err.Error())

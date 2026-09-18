@@ -203,3 +203,83 @@ func TestEvalRunStoreIntegration(t *testing.T) {
 		t.Errorf("expected 1 run for the dataset, got %d", len(runs))
 	}
 }
+
+// TestEvalRunStoreListAllItemsPaginates 验证 worker 能拿到**全部**条目。
+//
+// 背景：ListItems 为保护单次查询把 limit 夹在 1000。worker 若直接用它取全部条目，
+// 超过 1000 条的数据集会静默只评前 1000 条，total_items 也只报 1000——
+// 用户看到「已完成」却不知道剩余数据从未被评。ListAllItems 内部按页拉取，
+// 本测试用 1200 条数据卡住这个边界。
+func TestEvalRunStoreListAllItemsPaginates(t *testing.T) {
+	dsn := os.Getenv("LLM_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("输入缺失: LLM_TEST_POSTGRES_DSN 未设置，跳过真实 Postgres 集成测试")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect postgres: %v", err)
+	}
+	defer pool.Close()
+
+	store := NewEvalRunStore(pool)
+
+	var datasetID int64
+	if err := pool.QueryRow(ctx, `
+    INSERT INTO datasets (name, root_keyword, status)
+    VALUES ($1, 'L9 分页测试关键词', 'draft')
+    RETURNING id`, fmt.Sprintf("l9-paging-%d", time.Now().UnixNano())).Scan(&datasetID); err != nil {
+		t.Fatalf("create dataset: %v", err)
+	}
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM datasets WHERE id = $1`, datasetID)
+	}()
+
+	run, err := store.CreateRun(ctx, model.EvalRunCreateRequest{DatasetID: datasetID, Name: "分页测试运行"})
+	if err != nil {
+		t.Fatalf("CreateRun: %v", err)
+	}
+
+	// eval_items.question_id 没有外键（见 0011 迁移），因此无需造真实问题。
+	const total = 1200
+	items := make([]EvalItemInput, 0, total)
+	for index := 0; index < total; index++ {
+		items = append(items, EvalItemInput{
+			QuestionID: int64(index + 1),
+			ItemIndex:  index,
+			Payload:    map[string]any{"question": fmt.Sprintf("q%d", index)},
+		})
+	}
+	inserted, err := store.InsertItems(ctx, run.ID, datasetID, items)
+	if err != nil {
+		t.Fatalf("InsertItems: %v", err)
+	}
+	if inserted != total {
+		t.Fatalf("expected %d inserted items, got %d", total, inserted)
+	}
+
+	// 分页接口本身必须仍然夹紧，否则这里的断言就失去了对照意义。
+	capped, err := store.ListItems(ctx, run.ID, total+1, 0)
+	if err != nil {
+		t.Fatalf("ListItems: %v", err)
+	}
+	if len(capped) != 1000 {
+		t.Fatalf("ListItems must clamp to 1000, got %d", len(capped))
+	}
+
+	all, err := store.ListAllItems(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("ListAllItems: %v", err)
+	}
+	if len(all) != total {
+		t.Fatalf("ListAllItems must return all %d items, got %d", total, len(all))
+	}
+	// 顺序必须稳定：worker 依赖 item_index 递增来对应用户看到的明细顺序。
+	for index, item := range all {
+		if item.ItemIndex != index {
+			t.Fatalf("items must come back ordered by item_index, index %d has item_index %d",
+				index, item.ItemIndex)
+		}
+	}
+}
