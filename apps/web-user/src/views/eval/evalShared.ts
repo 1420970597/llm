@@ -78,6 +78,18 @@ export function agreementLevel(value: number): 'high' | 'medium' | 'low' {
 /** 评估运行列表轮询间隔（毫秒）。 */
 export const RUN_POLL_INTERVAL_MS = 5000
 
+export type SamplingMode = 'full' | 'ratio' | 'count'
+
+/**
+ * 抽样参数校验：只校验当前模式对应的输入（不相关输入不应参与校验）。
+ * 返回中文错误文案，合法时返回 null。
+ */
+export function samplingInputError(mode: SamplingMode, sampleRatio: number, sampleSize: number): string | null {
+  if (mode === 'ratio' && !(sampleRatio > 0 && sampleRatio <= 1)) return '抽样比例必须落在 0~1 之间'
+  if (mode === 'count' && !(sampleSize > 0)) return '抽样条数必须大于 0'
+  return null
+}
+
 /** 维度选择：按 category 聚合，供「按分类全选」使用。 */
 export function groupByCategory<T>(items: T[], categoryOf: (item: T) => string): Array<[string, T[]]> {
   const map = new Map<string, T[]>()
