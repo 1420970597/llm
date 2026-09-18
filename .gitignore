@@ -8,3 +8,7 @@ apps/**/dist/
 
 # pi 会话任务日志，不入库
 .pi/
+
+# python 缓存
+__pycache__/
+*.pyc
