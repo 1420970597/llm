@@ -36,6 +36,8 @@ postgres / redis 共用数据，但使用独立队列 WORKER_QUEUE_NAME=lane-l14
   T10 findings 按 stage 过滤只返回该阶段
   T11 严重度分布（UI 客户端 join 的数据源）：findings.keywordId 全部能在关键词库里 join 到 severity
   T12 未完成的 run：报告返回「清洗尚未完成」结论而非全零假报告
+  T13 报告 run 是陈旧快照（status 恒为 queued），运行列表才是权威值
+      —— 前端据此覆盖，否则会显示成「排队中 · 0 条」且轮询永不停止
 """
 
 import os
@@ -385,6 +387,21 @@ def main() -> int:
                f"status={res.status_code} conclusions={pending_conclusions}")
     else:
         record("T12 未完成 run 返回「清洗尚未完成」结论", False, f"插入 queued run 失败：{out}")
+
+    # T13 报告里的 run 是过期快照（worker 在 MarkDone 之前写入），前端必须用
+    # 运行列表的同一 run 覆盖它，否则界面会显示成「排队中 · 0 条」。
+    # 这里验证前端修复所依赖的前提：报告的 run 确实陈旧、而列表里是新的。
+    res = session.get(f"{BASE}/api/v1/datasets/{dataset_id}/cleaning/runs", timeout=30)
+    fresh_runs = [as_dict(item) for item in as_list(json_body(res))]
+    listed = next((item for item in fresh_runs if int(item.get("id")) == run_id), None)
+    snapshot = as_dict(report.get("run"))
+    record("T13 报告 run 为陈旧快照、运行列表为权威值（前端需覆盖）",
+           listed is not None
+           and snapshot.get("status") != listed.get("status")
+           and int(listed.get("scannedItems") or 0) > int(snapshot.get("scannedItems") or 0),
+           f"报告快照 status={snapshot.get('status')} scanned={snapshot.get('scannedItems')}；"
+           f"运行列表 status={listed.get('status') if listed else None} "
+           f"scanned={listed.get('scannedItems') if listed else None}")
 
     return summarize()
 

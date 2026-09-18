@@ -62,6 +62,16 @@ export function CleaningReportPanel({
     [report],
   )
 
+  // 报告里的 run 是 worker 在 MarkDone 之前写入的快照（status=queued、计数全 0），
+  // 运行列表里的同一 run 才是最新值。优先用列表值，避免界面显示成「排队中 · 0 条」。
+  const reportRun = useMemo(() => {
+    if (!report) {
+      return null
+    }
+    const fresh = runs.find((item) => item.id === report.run.id)
+    return fresh ? { ...report.run, ...fresh } : report.run
+  }, [report, runs])
+
   const visibleFindings = useMemo(() => findings.slice(0, detailLimit), [findings, detailLimit])
 
   const runColumns = useMemo(
@@ -132,14 +142,14 @@ export function CleaningReportPanel({
 
           {reportLoading ? (
             <div className="console-empty"><Spin /></div>
-          ) : !report ? (
+          ) : !report || !reportRun ? (
             <div className="console-empty"><Empty description="暂时读不到这份报告，请点「刷新记录」后重试。" /></div>
           ) : (
             <>
               {report.conclusions.length > 0 ? (
                 <Banner
                   className="mt-3"
-                  type={report.run.status === 'failed' ? 'danger' : report.run.status === 'completed' ? 'success' : 'info'}
+                  type={reportRun.status === 'failed' ? 'danger' : reportRun.status === 'completed' ? 'success' : 'info'}
                   closeIcon={null}
                   description={
                     <div className="console-stack">
@@ -152,13 +162,13 @@ export function CleaningReportPanel({
               ) : null}
 
               <div className="console-summary-grid mt-4">
-                <div className="console-summary-row"><span>状态</span><Text strong>{runStatusLabel(report.run.status)}</Text></div>
-                <div className="console-summary-row"><span>检查样本</span><Text strong>{report.run.scannedItems}</Text></div>
-                <div className="console-summary-row"><span>命中样本</span><Text strong>{report.run.flaggedItems}</Text></div>
-                <div className="console-summary-row"><span>丢弃样本</span><Text strong>{report.run.droppedItems}</Text></div>
+                <div className="console-summary-row"><span>状态</span><Text strong>{runStatusLabel(reportRun.status)}</Text></div>
+                <div className="console-summary-row"><span>检查样本</span><Text strong>{reportRun.scannedItems}</Text></div>
+                <div className="console-summary-row"><span>命中样本</span><Text strong>{reportRun.flaggedItems}</Text></div>
+                <div className="console-summary-row"><span>丢弃样本</span><Text strong>{reportRun.droppedItems}</Text></div>
                 <div className="console-summary-row"><span>报告生成时间</span><Text strong>{formatCleaningTime(report.generatedAt)}</Text></div>
-                {report.run.errorSummary ? (
-                  <div className="console-summary-row"><span>错误摘要</span><Text strong>{report.run.errorSummary}</Text></div>
+                {reportRun.errorSummary ? (
+                  <div className="console-summary-row"><span>错误摘要</span><Text strong>{reportRun.errorSummary}</Text></div>
                 ) : null}
               </div>
 
