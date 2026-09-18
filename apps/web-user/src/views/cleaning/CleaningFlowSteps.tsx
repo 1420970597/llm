@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import { Card, Space, Tag, Typography } from '@douyinfe/semi-ui'
 import { ArrowRight, CircleCheck, CircleDashed, Compass } from 'lucide-react'
 
@@ -38,24 +39,24 @@ export function CleaningFlowSteps({ onNavigate }: { onNavigate: (route: string) 
         数据清洗是第 {CLEANING_STEP_INDEX + 1} 步（共 {TASK_FLOW_STEPS.length} 步）：先生成数据、再做质量评估，
         然后在这里拦截拒答与异常样本，最后到「数据资产」导出成品。清洗只改样本状态，不改写内容。
       </Text>
-      <div className="cleaning-flow">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4">
         {TASK_FLOW_STEPS.map((step, index) => {
           const isCurrent = index === CLEANING_STEP_INDEX
           const isDone = index < CLEANING_STEP_INDEX
           return (
             <div
               key={step.key}
-              className={`cleaning-flow-step${isCurrent ? ' is-current' : ''}${isDone ? ' is-done' : ''}`}
+              className={clsx('console-domain-item grid gap-1.5', isCurrent && 'ring-2 ring-blue-400', isDone && 'ring-1 ring-green-300')}
             >
-              <div className="cleaning-flow-step-head">
-                <span className="cleaning-flow-index">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-600">
                   {isDone ? <CircleCheck size={14} /> : isCurrent ? <ArrowRight size={14} /> : <CircleDashed size={14} />}
                   {index + 1}
                 </span>
                 <Text strong>{step.label}</Text>
                 {isCurrent ? <Tag color="blue" size="small">当前位置</Tag> : null}
               </div>
-              <Text className="cleaning-flow-detail">{step.detail}</Text>
+              <Text className="text-xs console-caption">{step.detail}</Text>
               {!isCurrent ? (
                 <button type="button" className="link-button" onClick={() => onNavigate(step.route)}>
                   前往{step.label}

@@ -105,7 +105,7 @@ export function CleaningReportPanel({
   return (
     <div className="console-stack">
       <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-        <div className="cleaning-panel-head">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">清洗记录</Title>
             <Text className="mt-2 block console-caption">每次清洗都会留一条记录，点「查看报告」看这一轮拦下了什么。</Text>
@@ -188,23 +188,23 @@ export function CleaningReportPanel({
                   {report.topKeywords.length === 0 ? (
                     <Text className="console-caption">这一轮没有任何关键词命中。</Text>
                   ) : (
-                    <div className="cleaning-bar-list">
+                    <div className="grid gap-3">
                       {report.topKeywords.map((item) => (
-                        <div key={item.keywordId} className="cleaning-bar-row">
-                          <div className="cleaning-bar-head">
+                        <div key={item.keywordId} className="grid gap-1.5">
+                          <div className="flex items-center justify-between gap-3">
                             <Text strong>{item.pattern}</Text>
                             <Space>
                               <Tag color="blue" size="small">{categoryLabel(item.category)}</Tag>
                               <Text className="console-caption">命中 {item.hits} 次</Text>
                             </Space>
                           </div>
-                          <div className="cleaning-bar-track">
+                          <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
                             <div
-                              className="cleaning-bar-fill"
+                              className="h-full rounded-full bg-blue-500"
                               style={{ width: `${maxKeywordHits > 0 ? Math.max(4, (item.hits / maxKeywordHits) * 100) : 0}%` }}
                             />
                           </div>
-                          {item.sampleSnippet ? <Text className="cleaning-bar-sample">{item.sampleSnippet}</Text> : null}
+                          {item.sampleSnippet ? <Text className="text-xs console-caption break-all">{item.sampleSnippet}</Text> : null}
                         </div>
                       ))}
                     </div>
@@ -217,21 +217,21 @@ export function CleaningReportPanel({
                     报告接口不返回严重度字段，这里用命中明细的 keywordId 与关键词库的 severity 做客户端关联统计
                     （样本 {severity.total} 条命中）。
                   </Text>
-                  <div className="cleaning-severity-grid mt-3">
-                    <div className="cleaning-severity-card is-block">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3 mt-3">
+                    <div className="console-domain-item ring-2 ring-red-300">
                       <Text className="console-caption">拦截（block）</Text>
-                      <div className="cleaning-severity-value">{severity.block}</div>
+                      <div className="text-3xl font-bold">{severity.block}</div>
                       <Text className="console-caption">{severity.total > 0 ? percentLabel(severity.block / severity.total) : '—'}</Text>
                     </div>
-                    <div className="cleaning-severity-card is-warn">
+                    <div className="console-domain-item ring-2 ring-orange-300">
                       <Text className="console-caption">告警（warn）</Text>
-                      <div className="cleaning-severity-value">{severity.warn}</div>
+                      <div className="text-3xl font-bold">{severity.warn}</div>
                       <Text className="console-caption">{severity.total > 0 ? percentLabel(severity.warn / severity.total) : '—'}</Text>
                     </div>
                     {severity.unknown > 0 ? (
-                      <div className="cleaning-severity-card">
+                      <div className="console-domain-item">
                         <Text className="console-caption">未知来源</Text>
-                        <div className="cleaning-severity-value">{severity.unknown}</div>
+                        <div className="text-3xl font-bold">{severity.unknown}</div>
                         <Text className="console-caption">对应关键词已被删除</Text>
                       </div>
                     ) : null}
@@ -241,10 +241,10 @@ export function CleaningReportPanel({
                   {categoryHits.length === 0 ? (
                     <Text className="console-caption">当前明细里还没有命中，分布会在清洗完成后出现。</Text>
                   ) : (
-                    <div className="cleaning-bar-list">
+                    <div className="grid gap-3">
                       {categoryHits.map((item) => (
-                        <div key={item.category} className="cleaning-bar-row">
-                          <div className="cleaning-bar-head">
+                        <div key={item.category} className="grid gap-1.5">
+                          <div className="flex items-center justify-between gap-3">
                             <Text>{item.label}</Text>
                             <Text className="console-caption">{item.hits} 次</Text>
                           </div>
@@ -256,7 +256,7 @@ export function CleaningReportPanel({
               </div>
 
               <div className="mt-5">
-                <div className="cleaning-panel-head">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <Title heading={5} className="!mb-0">命中明细</Title>
                     <Text className="mt-2 block console-caption">
@@ -298,7 +298,7 @@ export function CleaningReportPanel({
                         {
                           title: '上下文片段',
                           dataIndex: 'snippet',
-                          render: (value: string) => <span className="cleaning-snippet">{value}</span>,
+                          render: (value: string) => <span className="text-xs console-caption break-all">{value}</span>,
                         },
                       ]}
                     />

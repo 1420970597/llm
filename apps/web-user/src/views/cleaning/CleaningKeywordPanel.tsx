@@ -211,7 +211,7 @@ export function CleaningKeywordPanel({
   return (
     <div className="console-stack">
       <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-        <div className="cleaning-panel-head">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <Title heading={4} className="!mb-0">关键词库</Title>
             <Text className="mt-2 block console-caption">
@@ -259,7 +259,7 @@ export function CleaningKeywordPanel({
         <Text className="mt-2 block console-caption">
           每行一个关键词，整批使用下方选择的分类与严重度。已经存在的词会被跳过，不会重复写入。
         </Text>
-        <div className="cleaning-import-grid mt-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 mt-4 mt-4">
           <div>
             <Text className="mb-2 block font-medium">关键词（每行一个）</Text>
             <TextArea

@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import { useMemo, useState } from 'react'
 import { Banner, Button, Card, Checkbox, Empty, Select, Space, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui'
 import { PlayCircle } from 'lucide-react'
@@ -98,7 +99,7 @@ export function CleaningRunPanel({
         </div>
       ) : (
         <>
-          <div className="cleaning-run-grid mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-4 mt-4 mt-4">
             <div>
               <Text className="mb-2 block font-medium">要清洗的任务</Text>
               <Select
@@ -112,16 +113,16 @@ export function CleaningRunPanel({
 
             <div>
               <Text className="mb-2 block font-medium">拦截阶段（可多选）</Text>
-              <div className="cleaning-stage-picker">
+              <div className="grid gap-2">
                 {CLEANING_STAGES.map((stage) => (
-                  <label key={stage.key} className={`cleaning-stage-option${stages.includes(stage.key) ? ' is-checked' : ''}`}>
+                  <label key={stage.key} className={clsx('console-domain-item grid gap-1 cursor-pointer', stages.includes(stage.key) && 'ring-2 ring-blue-400')}>
                     <Checkbox
                       checked={stages.includes(stage.key)}
                       onChange={(event) => toggleStage(stage.key, Boolean(event.target.checked))}
                     >
-                      <span className="cleaning-stage-label">{stage.label}</span>
+                      <span className="font-semibold">{stage.label}</span>
                     </Checkbox>
-                    <Text className="cleaning-stage-desc">{stage.description}</Text>
+                    <Text className="text-xs console-caption pl-6">{stage.description}</Text>
                   </label>
                 ))}
               </div>
@@ -137,10 +138,10 @@ export function CleaningRunPanel({
             {orderedRules.length === 0 ? (
               <Banner type="info" closeIcon={null} description="还没有规则。可以先到上方「清洗规则」新建一条，再回来发起清洗。" />
             ) : (
-              <div className="cleaning-rule-picker">
+              <div className="grid gap-2">
                 {orderedRules.map((rule) => (
-                  <div key={rule.id} className="cleaning-rule-option">
-                    <div className="cleaning-rule-option-main">
+                  <div key={rule.id} className="console-domain-item flex items-center justify-between gap-3">
+                    <div className="grid gap-1">
                       <Text strong>{rule.name}</Text>
                       <Space className="mt-1" wrap>
                         <Tag color="blue" size="small">优先级 {rule.priority}</Tag>
