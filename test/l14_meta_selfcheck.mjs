@@ -5,7 +5,8 @@
  *   1. mergeReportRun：报告自带的 run 是 MarkDone 之前的快照，必须用运行列表覆盖，
  *      否则界面显示「排队中 · 检查 0 条」且轮询永不停止；
  *   2. deriveSeverityDistribution：findings.keywordId 与关键词库 severity 的 join；
- *   3. sortRulesByPriority：必须与 cleaning.EvaluateRules 的判定顺序一致。
+ *   3. sortRulesByPriority：必须与运行时 cleaning.Scan → decideAction 的判定顺序一致
+ *      （priority 数字大的先判；注意内部 EvaluateRules 是升序但无生产调用方）。
  *
  * 运行：
  *   node test/l14_meta_selfcheck.mjs
@@ -87,17 +88,17 @@ try {
     `block=${dist.block} warn=${dist.warn} unknown=${dist.unknown} total=${dist.total}`,
   )
 
-  // --- sortRulesByPriority：与 EvaluateRules 判定顺序一致（数字小的先判）---
+  // --- sortRulesByPriority：与运行时 decideAction 一致（数字大的先判）---
   const rules = [
-    { id: 3, priority: 50 },
-    { id: 1, priority: 10 },
-    { id: 2, priority: 10 },
+    { id: 1, priority: 10, name: 'a' },
+    { id: 3, priority: 50, name: 'c' },
+    { id: 2, priority: 50, name: 'b' },
   ]
   const ordered = sortRulesByPriority(rules).map((rule) => rule.id)
   check(
-    'sortRulesByPriority 优先级升序、同级按 id 稳定',
-    ordered.join(',') === '1,2,3',
-    `顺序=${ordered.join(',')}`,
+    'sortRulesByPriority 优先级降序（数字大的先判）、同级按名称',
+    ordered.join(',') === '2,3,1',
+    `顺序=${ordered.join(',')}（期望 2,3,1：priority 50 的两条在前，同级按名称 b<c）`,
   )
 } finally {
   rmSync(workDir, { recursive: true, force: true })

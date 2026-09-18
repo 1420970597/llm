@@ -133,7 +133,7 @@ export function CleaningRunPanel({
             <Text className="mb-2 block font-medium">本次启用哪些规则</Text>
             <Text className="mb-3 block console-caption">
               开关会立即保存，清洗时只会使用启用中的规则（当前 {enabledRules.length} / {orderedRules.length} 条启用）。
-              一条规则都没启用时，样本不会被丢弃，只保留关键词命中明细。
+              一条规则都没启用时，命中关键词的样本不会被丢弃，但会被标记为待复查。
             </Text>
             {orderedRules.length === 0 ? (
               <Banner type="info" closeIcon={null} description="还没有规则。可以先到上方「清洗规则」新建一条，再回来发起清洗。" />
