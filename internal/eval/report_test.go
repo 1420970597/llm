@@ -389,3 +389,19 @@ func TestCategoryLabelFallsBackToKey(t *testing.T) {
 		t.Errorf("空分类应显示「未分类」，实际 %q", got)
 	}
 }
+
+// TestCategoryLabelCoversAllBuiltinCategories 每个内置分类都必须有中文名与专属建议。
+//
+// 内置 58 个维度分布在 7 个分类里；漏掉任何一个，中文结论里就会混进
+// 英文 key（如「domain_fit 类」），并回退到通用建议。
+func TestCategoryLabelCoversAllBuiltinCategories(t *testing.T) {
+	for _, category := range Categories() {
+		if got := categoryLabel(category); got == category {
+			t.Errorf("内置分类 %q 缺少中文名，结论里会直接显示英文 key", category)
+		}
+		advice := dimensionAdvice(model.EvalDimensionStat{Category: category})
+		if advice == genericDimensionAdvice {
+			t.Errorf("内置分类 %q 缺少专属建议，回退到了通用文案", category)
+		}
+	}
+}

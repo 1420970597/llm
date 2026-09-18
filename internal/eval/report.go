@@ -83,7 +83,12 @@ func BuildConclusions(report model.EvalReport, notes AggregateNotes, status stri
 	// 6. 被跳过/降级的情况，必须让用户知道。
 	conclusions = append(conclusions, degradationConclusions(notes)...)
 
-	// 7. 样本量提示。
+	// 7. 一个分都没打出来的裁判，同样必须可见。
+	if notice := silentJudgeConclusion(report); notice != "" {
+		conclusions = append(conclusions, notice)
+	}
+
+	// 8. 样本量提示。
 	conclusions = append(conclusions, sampleConclusion(report))
 
 	return conclusions
@@ -131,35 +136,48 @@ func weakestDimension(stats []model.EvalDimensionStat) (model.EvalDimensionStat,
 	return weakest, true
 }
 
+// genericDimensionAdvice 未识别分类时的通用建议。
+// 抽成常量供测试断言「该分类是否真的有专属建议」。
+const genericDimensionAdvice = "建议抽查该维度得分最低的若干条数据，定位共性模式"
+
 // dimensionAdvice 按维度分类给出可操作建议。
 //
-// 分类名来自 internal/eval/catalog.go 的 Categories()。未识别的分类
-// 返回通用建议，而不是编造一个看起来专业的假建议。
+// 分类常量取自 catalog.go，不写字面量：内置 58 个维度分布在 7 个分类里，
+// 手写字面量一旦与常量不同步，对应分类就会静默回退到通用建议。
 func dimensionAdvice(stat model.EvalDimensionStat) string {
 	switch stat.Category {
-	case "long_chain":
+	case CategoryLongChain:
 		return "重点看思维链是否跳步、是否有回溯与验证环节"
-	case "faithfulness":
+	case CategoryFaithfulness:
 		return "重点看答案是否有原文支撑、有无编造事实"
-	case "reasoning_quality":
-		return "重点看推理是否自洽、有无前后矛盾"
-	case "answer_quality":
+	case CategoryInstruction:
+		return "重点看是否严格遵循了问题里的格式、角色与约束要求"
+	case CategoryDomainFit:
+		return "重点看内容是否贴合该领域，有无答非所问或泛泛而谈"
+	case CategoryAnswerQuality:
 		return "重点看答案是否完整回答了问题、有无遗漏要点"
-	case "safety":
-		return "重点看是否有不当内容或拒答"
+	case CategoryRobustness:
+		return "重点看异常输入、边界条件下是否仍能稳定作答"
+	case CategoryEfficiency:
+		return "重点看推理是否冗长绕远、有无可合并的重复步骤"
 	default:
-		return "建议抽查该维度得分最低的若干条数据，定位共性模式"
+		return genericDimensionAdvice
 	}
 }
 
 // categoryLabel 把分类 key 翻译成中文。
 func categoryLabel(category string) string {
+	// 键必须与 catalog.go 的 Category* 常量一一对应。少一个键，结论里
+	// 就会把分类名原样吐给用户（例如「domain_fit 类」），中文报告里
+	// 混进英文 key 属于明显的交付缺陷。
 	labels := map[string]string{
-		"long_chain":        "长链思考",
-		"faithfulness":      "事实忠实",
-		"reasoning_quality": "推理质量",
-		"answer_quality":    "答案质量",
-		"safety":            "安全性",
+		CategoryLongChain:     "长链思考",
+		CategoryFaithfulness:  "事实忠实",
+		CategoryInstruction:   "指令遵循",
+		CategoryDomainFit:     "领域贴合",
+		CategoryAnswerQuality: "答案质量",
+		CategoryRobustness:    "鲁棒性",
+		CategoryEfficiency:    "推理效率",
 	}
 	if label, ok := labels[category]; ok {
 		return label
@@ -316,7 +334,31 @@ func degradationConclusions(notes AggregateNotes) []string {
 			"有 %d 条打分未成功（状态非 scored），已排除在全部统计之外 —— 失败记录的分值为 0，计入会凭空拉低均分。",
 			notes.FailedScores))
 	}
+	if len(notes.ExcludedJudges) > 0 {
+		conclusions = append(conclusions, fmt.Sprintf(
+			"以下裁判已被剔除，未参与本次评分：%s。剔除生成该数据集的模型是为了避免自评偏差；若这是误判，请调整裁判配置后重跑。",
+			strings.Join(notes.ExcludedJudges, "、")))
+	}
 	return conclusions
+}
+
+// silentJudgeConclusion 点名「一条分都没打出来」的裁判。
+//
+// 这类裁判平均分是 0，但它既不是「打了 0 分」也不是「没参加」。如果不提示，
+// 用户会拿一个 0 分去和别的裁判对比，得出「这个模型很严格」的错误结论。
+func silentJudgeConclusion(report model.EvalReport) string {
+	silent := []string{}
+	for _, judge := range report.Judges {
+		if judge.SampleCount == 0 {
+			silent = append(silent, judgeLabelFor(judge))
+		}
+	}
+	if len(silent) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(
+		"以下裁判没有任何有效打分，其均分 0 不代表打分严格，而是调用失败：%s。请查看该裁判的失败原因后重试。",
+		strings.Join(silent, "、"))
 }
 
 // sampleConclusion 提示样本量，并警示小样本下的结论不稳。
