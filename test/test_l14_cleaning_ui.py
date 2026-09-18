@@ -183,6 +183,19 @@ def poll_run(session: requests.Session, dataset_id: int, run_id: int, timeout: f
     return last or None
 
 
+def cleanup(dataset_id: int | None) -> None:
+    """清掉本测试写入的数据。
+
+    必要性：本测试会新建规则并置为启用（T5），而 worker 按 is_active=TRUE 加载
+    *全部* 规则（apps/worker/job_cleaning.go 的 loadCleaningRules）。留着启用规则会
+    改变同一共享 postgres 上其他 lane 的清洗结果，因此测试结束必须回收。
+    """
+    if dataset_id is not None:
+        psql(f"DELETE FROM datasets WHERE id = {dataset_id};")
+    psql("DELETE FROM cleaning_rules WHERE name LIKE 'l14-ui-rule-%';")
+    psql("DELETE FROM cleaning_keywords WHERE pattern LIKE 'l14-导入探针%';")
+
+
 def summarize() -> int:
     failed = [name for name, ok, _ in RESULTS if not ok]
     print("")
@@ -294,6 +307,7 @@ def main() -> int:
     dataset_id, detail = setup_dataset(stamp)
     if dataset_id is None:
         record("前置：准备测试数据集", False, detail)
+        cleanup(None)
         return summarize()
     record("前置：准备测试数据集", True, detail)
 
@@ -314,6 +328,7 @@ def main() -> int:
     runs = [as_dict(item) for item in as_list(json_body(res))]
     if not runs:
         record("T7 清洗运行落库", False, f"无 run 记录，body={res.text[:200]}")
+        cleanup(dataset_id)
         return summarize()
     run_id = int(runs[0]["id"])
     run = poll_run(session, dataset_id, run_id)
@@ -323,6 +338,7 @@ def main() -> int:
            f"scanned={run.get('scannedItems') if run else None} flagged={run.get('flaggedItems') if run else None}")
     if not run or run.get("status") != "completed":
         print(f"  运行未完成：{run.get('errorSummary') if run else '未知'}")
+        cleanup(dataset_id)
         return summarize()
 
     # T8 报告（UI 报告面板）。
@@ -403,6 +419,7 @@ def main() -> int:
            f"运行列表 status={listed.get('status') if listed else None} "
            f"scanned={listed.get('scannedItems') if listed else None}")
 
+    cleanup(dataset_id)
     return summarize()
 
 
