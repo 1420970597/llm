@@ -134,6 +134,12 @@ def run_e2e(client, dataset_id, generator_provider_id, tag, sampling, expected_i
     """
     print(f"T11/{tag} 端到端评估（真实 LLM 打分，{sampling}）")
 
+    # 临时裁判：base_url 与加密后的 api_key 复制自生成者 provider（同一个网关、
+    # 同一个 APP_ENCRYPTION_KEY，worker 能正常解密），但 **model 必须不同**。
+    # 因为 L7 的剔除规则把「同 BaseURL + 同 Model」判为与生成者同源
+    # （见 internal/eval/judge.go 的 sourceKey），同 model 的夹具会被直接剔除。
+    # 夹具创建也放在 try 里：中途失败也要清掉，不能往共享库漏 provider。
+
     if not generator_provider_id:
         print("  输入缺失: 数据集未设置 provider_id，无法构造裁判夹具")
         return
@@ -144,34 +150,30 @@ def run_e2e(client, dataset_id, generator_provider_id, tag, sampling, expected_i
         print("  输入缺失: eval_dimensions 表里没有启用的维度（L8 的 seed 未跑）")
         return
 
-    # 临时裁判：base_url 与加密后的 api_key 复制自生成者 provider（同一个网关、
-    # 同一个 APP_ENCRYPTION_KEY，worker 能正常解密），但 **model 必须不同**。
-    # 因为 L7 的剔除规则把「同 BaseURL + 同 Model」判为与生成者同源
-    # （见 internal/eval/judge.go 的 sourceKey），同 model 的夹具会被直接剔除。
-    judge_id = sql_scalar(
-        "INSERT INTO model_providers "
-        "(name, base_url, model, provider_type, is_active, api_key_masked, encrypted_api_key, timeout_seconds) "
-        f"SELECT 'L9-e2e-judge', base_url, '{E2E_JUDGE_MODEL}', provider_type, TRUE, '***', "
-        f"encrypted_api_key, timeout_seconds FROM model_providers WHERE id = {generator_provider_id} "
-        "RETURNING id;")
-    if not judge_id:
-        print("  输入缺失: 无法复制生成者 provider 作为裁判夹具")
-        return
-    judge_id = int(judge_id)
-
-    # 第二个临时裁判，**故意不选进 judgeProviderIds**。
-    # 它专门验证 worker 只使用运行选定的裁判：早期实现用 LoadJudgeRefs 返回的
-    # 全部可用 provider 打分，会把用户没选的模型也拉进来评。
-    unselected_id = sql_scalar(
-        "INSERT INTO model_providers "
-        "(name, base_url, model, provider_type, is_active, api_key_masked, encrypted_api_key, timeout_seconds) "
-        f"SELECT 'L9-e2e-judge-unselected', base_url, '{E2E_JUDGE_MODEL}', provider_type, TRUE, '***', "
-        f"encrypted_api_key, timeout_seconds FROM model_providers WHERE id = {generator_provider_id} "
-        "RETURNING id;")
-    unselected_id = int(unselected_id) if unselected_id else 0
-
+    judge_id = 0
+    unselected_id = 0
     run_id = None
     try:
+        judge_id = int(sql_scalar(
+            "INSERT INTO model_providers "
+            "(name, base_url, model, provider_type, is_active, api_key_masked, encrypted_api_key, timeout_seconds) "
+            f"SELECT 'L9-e2e-judge', base_url, '{E2E_JUDGE_MODEL}', provider_type, TRUE, '***', "
+            f"encrypted_api_key, timeout_seconds FROM model_providers WHERE id = {generator_provider_id} "
+            "RETURNING id;") or 0)
+        if not judge_id:
+            print("  输入缺失: 无法复制生成者 provider 作为裁判夹具")
+            return
+
+        # 第二个临时裁判，**故意不选进 judgeProviderIds**。
+        # 它专门验证 worker 只使用运行选定的裁判：早期实现用 LoadJudgeRefs 返回的
+        # 全部可用 provider 打分，会把用户没选的模型也拉进来评。
+        unselected_id = int(sql_scalar(
+            "INSERT INTO model_providers "
+            "(name, base_url, model, provider_type, is_active, api_key_masked, encrypted_api_key, timeout_seconds) "
+            f"SELECT 'L9-e2e-judge-unselected', base_url, '{E2E_JUDGE_MODEL}', provider_type, TRUE, '***', "
+            f"encrypted_api_key, timeout_seconds FROM model_providers WHERE id = {generator_provider_id} "
+            "RETURNING id;") or 0)
+
         status, body = client.post("/api/v1/eval/runs", {
             "datasetId": dataset_id,
             "name": f"L9-接口测试-e2e-{tag}",
@@ -259,9 +261,11 @@ def run_e2e(client, dataset_id, generator_provider_id, tag, sampling, expected_i
             check(f"T11/{tag} 评分理由非空", int(parts[4]) > 0, f"rationale_len={parts[4]}")
     finally:
         # 清理夹具：删 run 会级联删掉 items/scores/judges。
+        # 先删 run（级联清掉 items/scores/judges），再删临时 provider。
         if run_id:
             sql(f"DELETE FROM eval_runs WHERE id = {run_id};")
-        sql(f"DELETE FROM model_providers WHERE id IN ({judge_id}, {unselected_id});")
+        if judge_id or unselected_id:
+            sql(f"DELETE FROM model_providers WHERE id IN ({judge_id}, {unselected_id});")
         print(f"  [{tag}] 夹具已清理（run={run_id} judge_provider={judge_id} unselected={unselected_id}）")
 
 
