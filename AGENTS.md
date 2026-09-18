@@ -36,10 +36,46 @@ make db-migrate-smoke          # 起临时 Postgres 跑迁移
 
 **注意：宿主机没有 Go，也没有装 node_modules。** 跑 Go 用 `make go-test-docker`。注意该 target 用 `sh -lc`，而 golang:1.24-alpine 的 login shell 会丢 PATH —— 直接用 `docker run ... sh -c "go test ./..."` 更可靠。
 
+## CI / CD
+
+GitHub Actions，配置在 `.github/workflows/`。
+
+**CI**（`.github/workflows/ci.yml`，push main + PR）三个并行 job：
+
+| job | 内容 |
+|---|---|
+| Backend | `gofmt -l` 检查 → `go vet` → `go build` → `go test` |
+| Frontend | `npm ci` → `npm run build -w apps/web-user` |
+| Stack | `docker compose up -d --build` → 等 api/worker healthy → 验证 `schema_migrations` |
+
+改代码前本地跑一遍等价命令，别把 CI 当第一道防线：
+
+```bash
+docker run --rm -v $PWD:/w -w /w golang:1.24-alpine \
+  sh -c "gofmt -l apps internal && go vet ./... && go build ./... && go test ./..."
+```
+
+**CD**（`.github/workflows/cd.yml`，打 `v*` tag 或手动触发）通过 SSH 在目标主机上 `git fetch` + `docker compose up -d --build`，带部署后健康检查和失败自动回滚。
+
+CD 依赖这些仓库配置（**目前都未设置**，首次部署前必须补齐）：
+
+| 类型 | 名称 | 说明 |
+|---|---|---|
+| secret | `DEPLOY_HOST` | 目标主机 |
+| secret | `DEPLOY_USER` | SSH 用户 |
+| secret | `DEPLOY_SSH_KEY` | SSH 私钥 |
+| secret | `DEPLOY_KNOWN_HOSTS` | 主机指纹，留空会让 StrictHostKeyChecking 失败 |
+| variable | `DEPLOY_PATH` | 主机上的仓库路径 |
+| variable | `DEPLOY_HEALTH_URL` | 部署后探测的健康检查 URL |
+
+```bash
+gh secret set DEPLOY_HOST -b "1.2.3.4"
+gh variable set DEPLOY_PATH -b "/srv/llm"
+```
+
 ## 已知缺口（迭代时优先补）
 
-- **全仓库零测试**：`go test ./...` 所有包都是 `no test files`。新增逻辑请配套最小可运行测试。
-- 后端无 CI 配置；改动后至少本地跑一次 `go build ./...` 和前端 `tsc --noEmit`。
+- **全仓库零测试**：`go test ./...` 所有包都是 `no test files`。新增逻辑请配套最小可运行测试。CI 里的 `go test` 目前等于空跑。
 - `todo.md` 是当前进度追踪，动工前先看。
 
 ## 提交
