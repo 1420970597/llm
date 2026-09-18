@@ -1,0 +1,307 @@
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/1420970597/llm/internal/cleaning"
+	"github.com/1420970597/llm/internal/model"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// CleaningKeywordStore 管理清洗关键词库与清洗规则。
+// 表结构见 sql/migrations/0012_cleaning_core.sql（冻结契约，不得新增迁移）。
+type CleaningKeywordStore struct {
+	db *pgxpool.Pool
+}
+
+func NewCleaningKeywordStore(db *pgxpool.Pool) *CleaningKeywordStore {
+	return &CleaningKeywordStore{db: db}
+}
+
+const cleaningKeywordColumns = `id, pattern, category, match_mode, severity,
+	is_builtin, is_active, note, created_at, updated_at`
+
+func scanCleaningKeyword(row pgx.Row) (model.CleaningKeyword, error) {
+	var item model.CleaningKeyword
+	err := row.Scan(&item.ID, &item.Pattern, &item.Category, &item.MatchMode, &item.Severity,
+		&item.IsBuiltin, &item.IsActive, &item.Note, &item.CreatedAt, &item.UpdatedAt)
+	if err != nil {
+		return model.CleaningKeyword{}, err
+	}
+	return item, nil
+}
+
+// List 按分类与启用状态过滤关键词。category 为空表示不限分类，
+// active 为 nil 表示不限启用状态（true/false 则精确过滤）。
+func (s *CleaningKeywordStore) List(ctx context.Context, category string, active *bool) ([]model.CleaningKeyword, error) {
+	rows, err := s.db.Query(ctx, `
+    SELECT `+cleaningKeywordColumns+` FROM cleaning_keywords
+    WHERE ($1 = '' OR category = $1)
+      AND ($2::boolean IS NULL OR is_active = $2)
+    ORDER BY category, id`, category, active)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []model.CleaningKeyword{}
+	for rows.Next() {
+		item, err := scanCleaningKeyword(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// Get 按 ID 读取单条关键词。
+func (s *CleaningKeywordStore) Get(ctx context.Context, id int64) (model.CleaningKeyword, error) {
+	return scanCleaningKeyword(s.db.QueryRow(ctx,
+		`SELECT `+cleaningKeywordColumns+` FROM cleaning_keywords WHERE id = $1`, id))
+}
+
+// Upsert 新增或更新关键词。ID 为 0 时按 (pattern, category) 冲突更新，
+// 否则按 ID 更新。返回落库后的完整记录。
+func (s *CleaningKeywordStore) Upsert(ctx context.Context, input model.CleaningKeyword) (model.CleaningKeyword, error) {
+	if input.Pattern == "" {
+		return model.CleaningKeyword{}, fmt.Errorf("pattern 不能为空")
+	}
+	if input.Category == "" {
+		input.Category = "refusal"
+	}
+	if input.MatchMode == "" {
+		input.MatchMode = "contains"
+	}
+	if input.Severity == "" {
+		input.Severity = "block"
+	}
+
+	if input.ID == 0 {
+		row := s.db.QueryRow(ctx, `
+      INSERT INTO cleaning_keywords (pattern, category, match_mode, severity, is_builtin, is_active, note)
+      VALUES ($1, $2, $3, $4, FALSE, $5, $6)
+      ON CONFLICT (pattern, category) DO UPDATE SET
+        match_mode = EXCLUDED.match_mode,
+        severity = EXCLUDED.severity,
+        is_active = EXCLUDED.is_active,
+        note = EXCLUDED.note,
+        updated_at = NOW()
+      RETURNING `+cleaningKeywordColumns,
+			input.Pattern, input.Category, input.MatchMode, input.Severity, input.IsActive, input.Note)
+		return scanCleaningKeyword(row)
+	}
+
+	// 内置关键词允许改 severity / note / is_active，但不允许改成非内置或改 pattern，
+	// 否则内置基线会被悄悄替换掉。
+	row := s.db.QueryRow(ctx, `
+    UPDATE cleaning_keywords
+    SET match_mode = $3, severity = $4, is_active = $5, note = $6, updated_at = NOW()
+    WHERE id = $1 AND pattern = $2
+    RETURNING `+cleaningKeywordColumns,
+		input.ID, input.Pattern, input.MatchMode, input.Severity, input.IsActive, input.Note)
+	return scanCleaningKeyword(row)
+}
+
+// Delete 删除关键词。内置关键词拒绝删除（返回 cleaning.ErrBuiltinKeywordImmutable），
+// 调用方应引导用户改为停用。返回 pgx.ErrNoRows 表示 ID 不存在。
+func (s *CleaningKeywordStore) Delete(ctx context.Context, id int64) error {
+	var isBuiltin bool
+	err := s.db.QueryRow(ctx,
+		`SELECT is_builtin FROM cleaning_keywords WHERE id = $1`, id).Scan(&isBuiltin)
+	if err != nil {
+		return err
+	}
+	if isBuiltin {
+		return cleaning.ErrBuiltinKeywordImmutable
+	}
+	_, err = s.db.Exec(ctx, `DELETE FROM cleaning_keywords WHERE id = $1`, id)
+	return err
+}
+
+// Import 批量导入关键词，按 UNIQUE(pattern, category) 幂等。
+// 返回真正插入的数量与因重复被跳过的数量。
+func (s *CleaningKeywordStore) Import(ctx context.Context, patterns []string, category, severity string) (inserted int, skipped int, err error) {
+	if category == "" {
+		category = "refusal"
+	}
+	if severity == "" {
+		severity = "block"
+	}
+
+	seen := map[string]bool{}
+	for _, pattern := range patterns {
+		if pattern == "" {
+			skipped++
+			continue
+		}
+		// 同一批次内的重复也要去重，否则会多算 inserted。
+		if seen[pattern] {
+			skipped++
+			continue
+		}
+		seen[pattern] = true
+
+		tag, execErr := s.db.Exec(ctx, `
+      INSERT INTO cleaning_keywords (pattern, category, match_mode, severity, is_builtin, is_active, note)
+      VALUES ($1, $2, 'contains', $3, FALSE, TRUE, '')
+      ON CONFLICT (pattern, category) DO NOTHING`, pattern, category, severity)
+		if execErr != nil {
+			return inserted, skipped, execErr
+		}
+		if tag.RowsAffected() == 0 {
+			skipped++
+			continue
+		}
+		inserted++
+	}
+	return inserted, skipped, nil
+}
+
+// SeedBuiltin 幂等地写入内置关键词库，返回本次**新增**的条数（已存在的只刷新元数据，不计入）。
+//
+// 已存在的 pattern 只刷新 match_mode / severity / note，不覆盖用户的 is_active ——
+// 用户主动停用过的内置词，不该被下一次 seed 重新启用。
+func (s *CleaningKeywordStore) SeedBuiltin(ctx context.Context) (int, error) {
+	inserted := 0
+	for _, kw := range cleaning.BuiltinKeywords() {
+		if kw.Pattern == "" {
+			continue
+		}
+		category := kw.Category
+		if category == "" {
+			category = "refusal"
+		}
+		mode := kw.MatchMode
+		if mode == "" {
+			mode = "contains"
+		}
+		severity := kw.Severity
+		if severity == "" {
+			severity = "block"
+		}
+
+		// xmax = 0 表示这行是新插入的；DO UPDATE 命中时 xmax != 0。
+		// 用它可以区分「真新增」与「仅刷新」，让接口返回的 inserted 不虚报。
+		var isNew bool
+		err := s.db.QueryRow(ctx, `
+      INSERT INTO cleaning_keywords (pattern, category, match_mode, severity, is_builtin, is_active, note)
+      VALUES ($1, $2, $3, $4, TRUE, TRUE, $5)
+      ON CONFLICT (pattern, category) DO UPDATE SET
+        match_mode = EXCLUDED.match_mode,
+        severity = EXCLUDED.severity,
+        note = EXCLUDED.note,
+        is_builtin = TRUE,
+        updated_at = NOW()
+      RETURNING (xmax = 0)`, kw.Pattern, category, mode, severity, kw.Note).Scan(&isNew)
+		if err != nil {
+			return inserted, err
+		}
+		if isNew {
+			inserted++
+		}
+	}
+	return inserted, nil
+}
+
+// CountBuiltinInserted 统计库中内置关键词总数，供 seed 接口返回 total。
+func (s *CleaningKeywordStore) CountBuiltin(ctx context.Context) (int, error) {
+	var total int
+	err := s.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM cleaning_keywords WHERE is_builtin = TRUE`).Scan(&total)
+	return total, err
+}
+
+const cleaningRuleColumns = `id, name, stage_scope, min_hits, action, priority,
+	is_active, config, created_at, updated_at`
+
+func scanCleaningRule(row pgx.Row) (model.CleaningRule, error) {
+	var item model.CleaningRule
+	var stageScope, config []byte
+	err := row.Scan(&item.ID, &item.Name, &stageScope, &item.MinHits, &item.Action,
+		&item.Priority, &item.IsActive, &config, &item.CreatedAt, &item.UpdatedAt)
+	if err != nil {
+		return model.CleaningRule{}, err
+	}
+	if len(stageScope) > 0 {
+		_ = json.Unmarshal(stageScope, &item.StageScope)
+	}
+	if item.StageScope == nil {
+		item.StageScope = []string{}
+	}
+	if len(config) > 0 {
+		_ = json.Unmarshal(config, &item.Config)
+	}
+	if item.Config == nil {
+		item.Config = map[string]any{}
+	}
+	return item, nil
+}
+
+// ListRules 列出清洗规则，按优先级升序（与判定顺序一致）。
+func (s *CleaningKeywordStore) ListRules(ctx context.Context) ([]model.CleaningRule, error) {
+	rows, err := s.db.Query(ctx, `
+    SELECT `+cleaningRuleColumns+` FROM cleaning_rules
+    ORDER BY priority ASC, id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []model.CleaningRule{}
+	for rows.Next() {
+		item, err := scanCleaningRule(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// UpsertRule 新增或更新清洗规则（按 name 唯一）。
+func (s *CleaningKeywordStore) UpsertRule(ctx context.Context, input model.CleaningRule) (model.CleaningRule, error) {
+	if input.Name == "" {
+		return model.CleaningRule{}, fmt.Errorf("rule name 不能为空")
+	}
+	if input.Action == "" {
+		input.Action = "flag"
+	}
+	if input.MinHits < 1 {
+		input.MinHits = 1
+	}
+	stageScope := input.StageScope
+	if stageScope == nil {
+		stageScope = []string{"question", "reasoning", "answer"}
+	}
+	config := input.Config
+	if config == nil {
+		config = map[string]any{}
+	}
+	scopePayload, err := json.Marshal(stageScope)
+	if err != nil {
+		return model.CleaningRule{}, err
+	}
+	configPayload, err := json.Marshal(config)
+	if err != nil {
+		return model.CleaningRule{}, err
+	}
+
+	row := s.db.QueryRow(ctx, `
+    INSERT INTO cleaning_rules (name, stage_scope, min_hits, action, priority, is_active, config)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    ON CONFLICT (name) DO UPDATE SET
+      stage_scope = EXCLUDED.stage_scope,
+      min_hits = EXCLUDED.min_hits,
+      action = EXCLUDED.action,
+      priority = EXCLUDED.priority,
+      is_active = EXCLUDED.is_active,
+      config = EXCLUDED.config,
+      updated_at = NOW()
+    RETURNING `+cleaningRuleColumns,
+		input.Name, scopePayload, input.MinHits, input.Action, input.Priority, input.IsActive, configPayload)
+	return scanCleaningRule(row)
+}
