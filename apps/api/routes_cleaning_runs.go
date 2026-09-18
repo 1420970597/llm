@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -44,6 +46,64 @@ func init() {
 
 func (app *application) cleaningRuns() *store.CleaningRunStore {
 	return store.NewCleaningRunStore(app.db())
+}
+
+// validateCleaningRuleIDs 校验用户指定的规则 ID 全部存在，并去重。
+//
+// 返回空切片表示「未指定」——调用方据此沿用「全部启用规则」的既有行为。
+func (app *application) validateCleaningRuleIDs(ctx context.Context, requested []int64) ([]int64, error) {
+	if len(requested) == 0 {
+		return []int64{}, nil
+	}
+
+	rules, err := app.cleaningKeywords().ListRules(ctx)
+	if err != nil {
+		return nil, err
+	}
+	known := make([]int64, 0, len(rules))
+	for _, rule := range rules {
+		known = append(known, rule.ID)
+	}
+	return resolveCleaningRuleIDs(requested, known)
+}
+
+// resolveCleaningRuleIDs 是上面校验的纯函数核心，拆出来是为了不起数据库
+// 就能单测这段判定逻辑（apps/api 现有测试同样不依赖真实 Postgres）。
+//
+// 规则：
+//   - requested 为空 → 返回空切片，语义是「未指定，用全部启用规则」。
+//   - 重复 ID → 去重，保留首次出现的顺序。
+//   - 未知 ID → 报错并逐个列出，绝不静默丢弃（静默丢弃会让用户以为
+//     规则生效了，而实际清洗范围与预期不同）。
+//   - 不校验 is_active：用户显式按 ID 指定时，显式优先于开关状态。
+func resolveCleaningRuleIDs(requested, known []int64) ([]int64, error) {
+	if len(requested) == 0 {
+		return []int64{}, nil
+	}
+
+	knownSet := make(map[int64]bool, len(known))
+	for _, id := range known {
+		knownSet[id] = true
+	}
+
+	seen := make(map[int64]bool, len(requested))
+	out := make([]int64, 0, len(requested))
+	unknown := []string{}
+	for _, id := range requested {
+		if !knownSet[id] {
+			unknown = append(unknown, strconv.FormatInt(id, 10))
+			continue
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	if len(unknown) > 0 {
+		return nil, fmt.Errorf("未知的清洗规则 ID: %s", strings.Join(unknown, ", "))
+	}
+	return out, nil
 }
 
 func cleaningPathInt64(r *http.Request, name string) (int64, error) {
@@ -110,6 +170,15 @@ func enqueueCleaningRun(app *application, w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// ruleIds 是用户显式指定的本次清洗规则集合。空表示沿用全部启用规则。
+	// 这里先校验 ID 存在性：未知 ID 必须报 400 并列出，绝不静默丢弃——
+	// 静默丢弃会让用户以为规则生效了，而实际清洗范围与预期不同。
+	ruleIDs, err := app.validateCleaningRuleIDs(ctx, input.RuleIDs)
+	if err != nil {
+		app.writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
 	runs := app.cleaningRuns()
 	if _, err := runs.ActiveRun(ctx, datasetID); err == nil {
 		app.writeJSON(w, http.StatusAccepted, model.StageEnqueueResult{
@@ -126,8 +195,8 @@ func enqueueCleaningRun(app *application, w http.ResponseWriter, r *http.Request
 	}
 
 	// 先落 run 记录再入队：Create 是同步完成并提交的，worker 消费到任务时
-	// 一定能读到这条记录（含用户指定的 stages），不存在竞态。
-	run, err := runs.Create(ctx, datasetID, stages)
+	// 一定能读到这条记录（含用户指定的 stages 与 ruleIds），不存在竞态。
+	run, err := runs.Create(ctx, datasetID, stages, ruleIDs)
 	if err != nil {
 		app.writeError(w, http.StatusInternalServerError, err)
 		return

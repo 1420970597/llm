@@ -35,6 +35,7 @@ type CleaningRun struct {
 	ID           int64          `json:"id"`
 	DatasetID    int64          `json:"datasetId"`
 	Stages       []string       `json:"stages"`
+	RuleIDs      []int64        `json:"ruleIds"`
 	Status       string         `json:"status"`
 	ScannedItems int            `json:"scannedItems"`
 	FlaggedItems int            `json:"flaggedItems"`

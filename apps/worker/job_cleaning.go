@@ -78,7 +78,7 @@ func runCleaning(ctx context.Context, jc *jobContext, runs *store.CleaningRunSto
 		finish("failed", err.Error())
 		return err
 	}
-	rules, err := loadCleaningRules(ctx, jc)
+	rules, err := loadCleaningRules(ctx, jc, run.RuleIDs)
 	if err != nil {
 		finish("failed", err.Error())
 		return err
@@ -179,10 +179,26 @@ func loadActiveKeywords(ctx context.Context, jc *jobContext) ([]model.CleaningKe
 	return items, rows.Err()
 }
 
-func loadCleaningRules(ctx context.Context, jc *jobContext) ([]cleaning.RuleSpec, error) {
-	rows, err := jc.db().Query(ctx, `
+// loadCleaningRules 加载本次清洗要用的规则。
+//
+// ruleIDs 为空 → 沿用既有行为：全部 is_active = TRUE 的规则。
+// ruleIDs 非空 → 只加载这些 ID 的规则，且不要求 is_active
+// （用户在入队时显式指定，显式优先于开关状态，与 API 侧校验语义一致）。
+//
+// 用 = ANY($1) 而不是拼 IN (...) 字符串，避免动态 SQL 与注入风险。
+func loadCleaningRules(ctx context.Context, jc *jobContext, ruleIDs []int64) ([]cleaning.RuleSpec, error) {
+	query := `
     SELECT name, stage_scope, min_hits, action, priority
-    FROM cleaning_rules WHERE is_active = TRUE ORDER BY priority DESC, name ASC`)
+    FROM cleaning_rules WHERE is_active = TRUE ORDER BY priority DESC, name ASC`
+	args := []any{}
+	if len(ruleIDs) > 0 {
+		query = `
+    SELECT name, stage_scope, min_hits, action, priority
+    FROM cleaning_rules WHERE id = ANY($1) ORDER BY priority DESC, name ASC`
+		args = append(args, ruleIDs)
+	}
+
+	rows, err := jc.db().Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
