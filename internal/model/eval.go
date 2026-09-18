@@ -69,6 +69,9 @@ type EvalRunJudge struct {
 }
 
 // EvalJudgeOption 可选的裁判模型（来自 provider_admin）。
+//
+// Excluded/ExcludeReason 由 eval.ResolveJudges 按生成者填入：生成者模型与其
+// 同源模型禁止自评。前端的裁判选择器据此置灰并说明原因。
 type EvalJudgeOption struct {
 	ProviderID    int64  `json:"providerId"`
 	ProviderName  string `json:"providerName"`
@@ -76,6 +79,16 @@ type EvalJudgeOption struct {
 	IsActive      bool   `json:"isActive"`
 	Excluded      bool   `json:"excluded"`
 	ExcludeReason string `json:"excludeReason"`
+}
+
+// DatasetJudgeOptions 某数据集的裁判候选集（含剔除标注）。
+//
+// 带上 GeneratorProviderID 是为了让调用方自己也能复现剔除判定：
+// 不需要去探测「哪个是被剔除的那个」。
+type DatasetJudgeOptions struct {
+	DatasetID           int64             `json:"datasetId"`
+	GeneratorProviderID int64             `json:"generatorProviderId"`
+	Judges              []EvalJudgeOption `json:"judges"`
 }
 
 // EvalItem 被评估的单条数据快照。

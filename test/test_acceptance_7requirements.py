@@ -13,6 +13,23 @@
   R7 数据集评估（多 LLM 互评、≥50 维度、全量/抽样、剔除生成者自评、汇总分析）
   R8 数据清洗（拒答关键词库、多步骤拦截、报告）
 
+已知陷阱（踩过的坑，本脚本已处理）：
+  1. 去重：见 clear_dedup。每次入队前清键并断言 message 含「已入队」。
+  2. 领域先于方向：POST /directions/generate 无领域时返回 409，必须先走
+     legacy 同步路由 POST /domains/generate。
+  3. 字段名以 internal/model/*.go 的 json tag 为准。
+  4. GET /api/v1/eval/runs/{id} 返回 {"run":{...},"judges":[...]}，
+     状态在 body["run"]["status"]，不是顶层。
+  5. 断点续跑只对 failed/partial_failed 的运行有意义。运行已 completed 时
+     POST .../generation-runs/{stage}/resume 返回 404 是正确行为，
+     不是缺陷；要验「断点续跑可用」必须造出一个可续跑的运行。
+  6. 生成者自评剔除是**按数据集**判定的：GET /api/v1/admin/eval/judges 没有
+     数据集上下文，只能恒返回 excluded=false。要断言剔除生效，用
+     GET /api/v1/datasets/{id}/eval-judges。
+  7. 整个环境可能只有 1 个 provider，而它与生成者同源，因此「多 LLM 互评」
+     会因缺少第二个真实模型而无法跑通 —— 这种情况记 SKIP（输入缺失），
+     绝不伪造通过。
+
 运行方式（必须打当前 main 构建的镜像，不是 3210 上的旧镜像）：
   python3 test/test_acceptance_7requirements.py --base http://127.0.0.1:18100
 
@@ -41,11 +58,14 @@ import urllib.request
 from http.cookiejar import CookieJar
 
 REDIS_CONTAINER = os.environ.get("REDIS_CONTAINER", "llm-redis-1")
+POSTGRES_CONTAINER = os.environ.get("POSTGRES_CONTAINER", "llm-postgres-1")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@company.com")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123456")
 
 # 生成类任务等待上限：推理模型单次响应可达 120s，多步流水线需要更长。
 GEN_TIMEOUT = int(os.environ.get("GEN_TIMEOUT", "900"))
+# 评估要跑多次真实 LLM 调用（每样本 × 每维度 × 每裁判），比生成慢得多。
+EVAL_TIMEOUT = int(os.environ.get("EVAL_TIMEOUT", "2400"))
 
 PASS, FAIL, SKIP = [], [], []
 
@@ -91,10 +111,35 @@ class Session:
         if isinstance(body, list):
             return body
         if isinstance(body, dict):
-            for key in ("items", "data", "records", "list"):
+            for key in ("items", "data", "records", "list", "domains", "directions",
+                        "questions", "judges", "scores", "runs", "artifacts"):
                 if isinstance(body.get(key), list):
                     return body[key]
         return []
+
+    def psql(self, sql, params=None):
+        """在验收用的 Postgres 里执行 SQL（构造断点续跑场景需要写库）。
+
+        只用于造场景，不用来断言业务结果：断言一律走 HTTP 接口，
+        否则测试就绕过了被测代码。
+
+        params 为占位符值列表，通过 psql 变量（-v name=value + :'name'）绑定，
+        不做字符串拼接，避开注入面。
+
+        用 -f - 而不是 -c：psql 的 -c 不做变量插值（实测 17.11 会报
+        syntax error at or near ":"），必须走脚本文件。
+        返回 stdout；失败返回空串。
+        """
+        args = ["docker", "exec", "-i", POSTGRES_CONTAINER, "psql", "-U", "llm_factory",
+                "-d", "llm_factory", "-t", "-A"]
+        for idx, value in enumerate(params or []):
+            args += ["-v", f"p{idx}={value}"]
+        args += ["-f", "-"]
+        proc = subprocess.run(args, input=sql, capture_output=True, text=True, check=False)
+        if proc.returncode != 0:
+            print(f"  [psql] 失败: {proc.stderr.strip()[:200]}")
+            return ""
+        return proc.stdout
 
 
 def clear_dedup(job_type, dataset_id):
@@ -103,6 +148,118 @@ def clear_dedup(job_type, dataset_id):
         ["docker", "exec", REDIS_CONTAINER, "redis-cli", "del", f"dedup:{job_type}:{dataset_id}"],
         capture_output=True, check=False,
     )
+
+
+def judges_for_dataset(session, dataset_id):
+    """返回 (generatorProviderId, judges)，剔除标注按该数据集生成者计算。
+
+    不用 /api/v1/admin/eval/judges：那个接口没有数据集上下文，无法判定生成者，
+    只能恒返回 excluded=false。
+    """
+    code, body = session.call("GET", f"/api/v1/datasets/{dataset_id}/eval-judges")
+    if code != 200 or not isinstance(body, dict):
+        return 0, []
+    return body.get("generatorProviderId") or 0, body.get("judges") or []
+
+
+def usable_judges(judges):
+    """可用裁判 = 启用中且未被剔除。"""
+    return [j for j in judges
+            if not j.get("excluded") and j.get("isActive") and not j.get("isNoAPIKey")]
+
+
+def verify_resume_roundtrip(session, prefix="验收-续跑"):
+    """真正验证断点续跑：造一个停在半途的 directions 运行，然后续跑它。
+
+    只有 directions 阶段实现了游标续跑（`completedDomainIds`）：worker 会跳过
+    游标里已完成的领域，只跑剩下的。questions 阶段不进游标，不能续跑，
+    这一点已由「非法/不可续跑 stage 返回 400」那条用例覆盖。
+
+    构造法：数据集有 N 个领域时，插一条 running 的 directions 运行，游标里只
+    记下第一个领域，total_units=N。续跑应命中（ActiveRun）并只跑剩下的领域。
+
+    返回 (ok, detail)。任何一步失败都返回具体原因，不静默放过。
+    """
+    # 1. 造一个多领域的数据集：领域数设为 2，保证有「已完成 + 待续跑」的切分。
+    code, body = session.call("POST", "/api/v1/datasets", {
+        "name": f"{prefix}-{int(time.time())}",
+        "rootKeyword": "军事",
+        "targetSize": 8,
+        "providerId": 1,
+        "targetKind": "sft",
+        "directionCount": 1,
+        "estimate": {"domainCount": 3, "questionsPerDomain": 1,
+                     "answerVariants": 1, "rewardVariants": 1},
+    })
+    ds = (body or {}).get("id") if isinstance(body, dict) else None
+    if not ds:
+        return False, f"建数据集失败 HTTP {code} {str(body)[:120]}"
+
+    code, body = session.call("POST", f"/api/v1/datasets/{ds}/domains/generate", {},
+                              timeout=GEN_TIMEOUT)
+    if not isinstance(body, dict) or not session.as_list(body.get("domains")):
+        return False, f"领域生成失败 HTTP {code} {str(body)[:120]}"
+
+    # 2. 取领域 id 列表，构造一个「只完成了第一个领域」的 directions 运行。
+    code, domains = session.call("GET", f"/api/v1/datasets/{ds}/domains")
+    dlist = session.as_list(domains)
+    if len(dlist) < 2:
+        return False, f"领域数不足 2（实际 {len(dlist)}），无法构造半途运行"
+    done_id = dlist[0].get("id")
+
+    # 值全部通过 psql 变量绑定，不对 SQL 做字符串拼接。
+    sql_insert = (
+        "INSERT INTO generation_runs (dataset_id, stage, status, cursor, total_units, "
+        "done_units, attempts, started_at, updated_at) VALUES "
+        "(:'p0'::bigint, 'directions', 'running', "
+        "jsonb_build_object('completedDomainIds', jsonb_build_array(:'p1'::bigint), "
+        "                   'producedDirections', 1, 'directionCount', 1), "
+        "(:'p2'::int), 1, 1, NOW(), NOW()) RETURNING id;")
+    row = session.psql(sql_insert, params=[ds, done_id, len(dlist)])
+    # psql -t -A 除 RETURNING 的值外还会打印命令标签（"INSERT 0 1"），
+    # 只取纯数字行，否则 run_id 会变成命令标签（上轮就踩了这个坑）。
+    ids = [ln.strip() for ln in (row or "").splitlines() if ln.strip().isdigit()]
+    if not ids:
+        return False, f"插入半途运行记录失败，psql 输出={str(row)[:160]}"
+    run_id = ids[0]
+
+    # 3. 续跑：应命中这条 running 记录，且只跑剩下的领域。
+    clear_dedup("directions", ds)
+    code, msg, _ = enqueue(session, "directions", ds,
+                           f"/api/v1/datasets/{ds}/generation-runs/directions/resume")
+    if code != 202:
+        return False, f"续跑入队失败 HTTP {code} message={msg}"
+
+    run = wait_stage(session, ds, "directions")
+    status = (run or {}).get("status")
+    if status != "completed":
+        return False, f"续跑后状态={status} error={str((run or {}).get('errorSummary'))[:120]}"
+
+    # 4. 验证是「续跑」不是「重跑」：attempts 必须 > 1，done_units 必须覆盖全部领域。
+    attempts = (run or {}).get("attempts")
+    done_units = (run or {}).get("doneUnits")
+    total_units = (run or {}).get("totalUnits")
+    if attempts is not None and attempts <= 1:
+        return False, f"attempts={attempts}，未复用原运行记录（等于重跑而非续跑）"
+
+    # 5. 续跑必须真的产出结果：方向数应 ≥ 2（第一个领域已预先完成 + 续跑补齐其余）。
+    code, directions = session.call("GET", f"/api/v1/datasets/{ds}/directions")
+    dn = len(session.as_list(directions))
+    if dn < 2:
+        return False, f"续跑后方向数={dn}，未补齐剩余领域"
+
+    # 6. 游标必须把全部领域标为已完成 —— 这是「续跑真的跑了剩下的领域」的直接证据。
+    cursor = session.psql(
+        "SELECT cursor->'completedDomainIds' FROM generation_runs WHERE id = :'p0'::bigint;",
+        params=[run_id])
+    completed = str(cursor).count(",") + 1 if str(cursor).strip() not in ("", "[]") else 0
+    if completed != len(dlist):
+        return False, (f"续跑后游标只标记了 {completed}/{len(dlist)} 个领域，"
+                       f"说明续跑未跑完剩余领域（cursor={str(cursor)[:120]}）")
+
+    return True, (f"datasetId={ds} runId={run_id} status={status} "
+                  f"attempts={attempts} done={done_units}/{total_units} "
+                  f"directions={dn} 游标已完成领域数={completed}")
 
 
 def enqueue(session, job_type, dataset_id, path, body=None, expect=202):
@@ -176,7 +333,8 @@ def main():
         if code not in (200, 201):
             record("前置：创建数据集", False, f"HTTP {code} {str(body)[:200]}")
             return finish()
-        dataset_id = (body or {}).get("id")
+        created = body if isinstance(body, dict) else {}
+        dataset_id = created.get("id")
         record("前置：创建数据集", bool(dataset_id), f"datasetId={dataset_id}")
 
     # ---------------------------------------------------------------- R1
@@ -210,9 +368,26 @@ def main():
         record("R1 m 参数生效（每领域方向数 ≤ 2）", len(items) <= 2 * max(len(domains), 1),
                f"directions={len(items)} domains={len(domains)}")
 
-    code, msg, _ = enqueue(session, "directions", dataset_id,
-                           f"/api/v1/datasets/{dataset_id}/generation-runs/directions/resume")
-    record("R1 断点续跑接口可用", code == 202, f"HTTP {code} message={msg}")
+    # 断点续跑只对未跑完（failed/partial_failed）的运行有意义。上面的运行已
+    # completed，此时 resume 返回 404 是正确行为。要真验「断点续跑可用」，
+    # 得先造一个停在半途的运行：新建数据集 → 生成领域 → 带一个不存在的
+    # directionCount 入队让它失败，再 resume。这里走轻量变体：拿已完成的运行
+    # 断言「无可续跑时明确报错」+ 带非法 stage 断言 400，两条都是行为契约。
+    code, msg, _ = enqueue(
+        session, "directions", dataset_id,
+        f"/api/v1/datasets/{dataset_id}/generation-runs/directions/resume")
+    record("R1 断点续跑：已完成运行时明确返回 404（无可续跑）", code == 404,
+           f"HTTP {code} message={msg}")
+
+    code, msg, _ = enqueue(
+        session, "directions", dataset_id,
+        f"/api/v1/datasets/{dataset_id}/generation-runs/not-a-stage/resume")
+    record("R1 断点续跑：非法 stage 返回 400", code == 400,
+           f"HTTP {code} message={msg}")
+
+    # 真正的续跑：造一个会失败的运行，修好参数后再续跑。
+    resume_ok, resume_detail = verify_resume_roundtrip(session)
+    record("R1 断点续跑：失败运行可续跑并跑完", resume_ok, resume_detail)
 
     # ---------------------------------------------------------------- R2
     print("\nR2 方向 → 长链思维标准步骤（可编辑、版本化）")
@@ -352,12 +527,28 @@ def main():
     lc = [d for d in dlist if "long_chain" in str(d.get("category")) or "lc_" in str(d.get("key"))]
     record("R7 存在聚焦长链思考的维度", len(lc) > 0, f"long_chain_dims={len(lc)}")
 
-    code, judges = session.call("GET", "/api/v1/admin/eval/judges")
-    jlist = session.as_list(judges)
-    record("R7 裁判 provider 列表可用（多 LLM 接入）", code == 200, f"judges={len(jlist)}")
-    if not jlist:
-        record_skip("R7 真实多 LLM 互评打分", "未配置可用裁判 provider")
+    # 裁判候选必须按数据集取：生成者由数据集决定，/api/v1/admin/eval/judges
+    # 没有数据集上下文，无法判定自评剔除。
+    generator_id, judges = judges_for_dataset(session, dataset_id)
+    usable = usable_judges(judges)
+    record("R7 按数据集获取裁判候选（含剔除标注）", len(judges) > 0,
+           f"generator={generator_id} judges={len(judges)} usable={len(usable)}")
+    excluded_names = [j.get("providerName") for j in judges if j.get("excluded")]
+    record("R7 生成者自评剔除机制生效（含原因说明）",
+           bool(excluded_names) or generator_id == 0,
+           f"excluded={excluded_names} "
+           f"reasons={[j.get('excludeReason') for j in judges if j.get('excluded')][:2]}")
+
+    if len(usable) < 2:
+        record_skip(
+            "R7 真实多 LLM 互评打分",
+            f"环境只有 {len(usable)} 个可用裁判（需 ≥2 个不同真实模型才能对同一批数据互评）；"
+            f"generator={generator_id} 已被自评规则剔除。这是输入缺失，不是功能缺陷。")
+        record_skip("R7 评估运行完成", "同上：缺少第二个真实 LLM provider")
+        record_skip("R7 逐条多维打分已落库", "同上：缺少第二个真实 LLM provider")
+        record_skip("R7 多 LLM 汇总统计与一致性", "同上：缺少第二个真实 LLM provider")
     else:
+        judge_ids = [j.get("providerId") for j in usable[:2]]
         # 抽样评估：ratio 模式
         code, body = session.call("POST", "/api/v1/eval/runs", {
             "datasetId": dataset_id,
@@ -366,20 +557,25 @@ def main():
             "sampleRatio": 1.0,
             "targetKind": "sft",
             "dimensionKeys": [d.get("key") for d in dlist[:3]],
-            "judgeProviderIds": [j.get("providerId") or j.get("id") for j in jlist[:2]],
+            "judgeProviderIds": judge_ids,
         })
         run_id = (body or {}).get("id") if isinstance(body, dict) else None
         record("R7 创建抽样评估运行", code in (200, 201) and bool(run_id),
-               f"HTTP {code} runId={run_id} {str(body)[:140]}")
+               f"HTTP {code} runId={run_id} judges={judge_ids} {str(body)[:140]}")
         if run_id:
             code, body = session.call("POST", f"/api/v1/eval/runs/{run_id}/start")
-            record("R7 启动评估", code in (200, 202), f"HTTP {code}")
+            record("R7 启动评估", code in (200, 202), f"HTTP {code} {str(body)[:140]}")
 
+            # GET /eval/runs/{id} 返回 {"run":{...},"judges":[...]}，状态在 run 里。
             run = poll_until(session, f"/api/v1/eval/runs/{run_id}",
-                             lambda b: (b or {}).get("status") in
-                             ("completed", "failed", "partial_failed"))
-            status = (run or {}).get("status")
-            record("R7 评估运行完成", status == "completed", f"status={status}")
+                             lambda b: (b if isinstance(b, dict) else {}).get("run", {}).get("status") in
+                             ("completed", "failed", "partial_failed"),
+                             timeout=EVAL_TIMEOUT)
+            run = ((run if isinstance(run, dict) else {}).get("run") or {})
+            status = run.get("status")
+            record("R7 评估运行完成", status == "completed",
+                   f"status={status} scored={run.get('scoredItems')}/{run.get('totalItems')} "
+                   f"error={str(run.get('errorSummary'))[:120]}")
 
             code, report = session.call("GET", f"/api/v1/eval/runs/{run_id}/report")
             record("R7 报告可获取", code == 200, f"HTTP {code}")
@@ -390,21 +586,23 @@ def main():
                        report.get("overallScore") is not None
                        or (report.get("notes") or {}).get("normalizedOverall") is not None,
                        f"keys={sorted(report.keys())[:12]}")
+                # 多 LLM 汇总：一致性矩阵是「汇总统计」的可验证证据。
+                agree = report.get("judgeAgreement")
+                record("R7 多 LLM 汇总统计与一致性",
+                       bool(agree) and len(judge_ids) >= 2,
+                       f"judgeAgreement={str(agree)[:160]}")
             code, scores = session.call("GET", f"/api/v1/eval/runs/{run_id}/scores")
             slist = session.as_list(scores)
-            record("R7 逐条多维打分已落库", code == 200 and len(slist) > 0, f"count={len(slist)}")
+            record("R7 逐条多维打分已落库", code == 200 and len(slist) > 0,
+                   f"count={len(slist)}")
             if slist:
                 with_rationale = [s for s in slist if s.get("rationale")]
                 record("R7 打分含裁判理由（非纯数字）", len(with_rationale) > 0,
                        f"with_rationale={len(with_rationale)}/{len(slist)}")
-
-            # 剔除生成者自评
-            code, judges2 = session.call("GET", "/api/v1/admin/eval/judges")
-            j2 = session.as_list(judges2)
-            generator = [j for j in j2 if j.get("providerId") == 1]
-            record("R7 生成者自评剔除机制生效",
-                   (not generator) or bool(generator[0].get("excluded")),
-                   f"generator_entry={str(generator[:1])[:140]}")
+                by_judge = {s.get("judgeProviderId") for s in slist}
+                record("R7 多个 LLM 均实际打分（非单裁判）",
+                       len(by_judge & set(judge_ids)) >= 2,
+                       f"judges_scored={sorted(by_judge)} requested={judge_ids}")
 
     # ---------------------------------------------------------------- R8
     print("\nR8 数据清洗（拒答关键词库、多步骤拦截、报告）")

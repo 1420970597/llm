@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -210,6 +211,21 @@ func (app *application) resolveRunJudges(ctx context.Context, generatorProviderI
 	}
 	if len(missing) > 0 {
 		return nil, errors.New("unknown provider ids: " + strings.Join(missing, ","))
+	}
+
+	// 选中的裁判可能全部被剔除（自评/同源/未启用）。此时若放行创建，用户会拿到
+	// 一条 draft run，直到 start 才报错，而且不知道该换成哪个模型。
+	// 在创建前就拦住，并把「生成者是谁」写进错误里，用户才知道要换。
+	usable := make([]model.EvalRunJudge, 0, len(selected))
+	for _, record := range selected {
+		if !record.Excluded {
+			usable = append(usable, record)
+		}
+	}
+	if len(usable) == 0 {
+		return nil, fmt.Errorf(
+			"选中的裁判均被剔除（生成者 provider=%d 及其同源模型禁止自评），请另选一个 provider",
+			generatorProviderID)
 	}
 
 	return selected, nil
