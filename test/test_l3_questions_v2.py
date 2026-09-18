@@ -99,16 +99,24 @@ def create_dataset(session: Session, name: str, root_keyword: str) -> int | None
     return payload.get("id")
 
 
-def pick_dataset_with_directions(session: Session) -> int | None:
+def pick_dataset_with_directions(session: Session, exclude: set[int] | None = None) -> int | None:
     """挑一个已有 level=2 方向的数据集用于生成测试。
 
     用只读的 graph 接口探测，避免像入队接口那样产生副作用。
+
+    exclude 用于避开端到端用例的数据集：Redis 去重（dedup:questions.generate:<id>，
+    10 分钟 TTL）使得同一数据集在窗口内只有**首次**入队会真正投递任务，
+    而 worker 在出队时才读 generation_runs.cursor 取难度配比。
+    若 T5~T8 与 T9 共用同一数据集，T9 的配比就不会生效，断言会误报失败。
     """
+    exclude = exclude or set()
     status, datasets = session.json("GET", "/api/v1/datasets")
     if status != 200 or not isinstance(datasets, list):
         return None
     for dataset in datasets:
         did = dataset.get("id")
+        if did in exclude:
+            continue
         code, graph = session.json("GET", f"/api/v1/datasets/{did}")
         if code != 200 or not isinstance(graph, dict):
             continue
@@ -187,7 +195,11 @@ def main() -> int:
               f"HTTP {status}, body={json.dumps(payload, ensure_ascii=False)[:120]}")
 
     # ---------- T5 入队契约（有方向的数据集） ----------
-    target_id = pick_dataset_with_directions(session)
+    # 避开端到端用例的数据集：同一数据集在 Redis 去重窗口内只有首次入队会真正
+    # 投递任务，而 worker 在出队时才读 cursor 取难度配比。共用数据集会让 T9
+    # 的配比不生效，导致误报。
+    t9_dataset = {args.dataset_id} if args.dataset_id else set()
+    target_id = pick_dataset_with_directions(session, exclude=t9_dataset)
     original_per_direction = None
     if target_id:
         _, graph = session.json("GET", f"/api/v1/datasets/{target_id}")
@@ -278,6 +290,15 @@ def run_llm_case(session: Session, dataset_id: int) -> None:
         return
     check("T9a 端到端数据集含 level=2 方向", True,
           f"dataset_id={dataset_id}, directions={direction_count}")
+
+    # 去重窗口内该数据集必须尚未入队过，否则本次配比不会生效（见 T9g 说明）。
+    code, runs = session.json("GET", f"/api/v1/datasets/{dataset_id}/generation-runs")
+    if code == 200 and isinstance(runs, list):
+        already_queued = [r for r in runs if r.get("stage") == "questions"]
+        if already_queued:
+            print(f"[WARN] dataset {dataset_id} 已有 {len(already_queued)} 条 questions 运行记录；")
+            print("       Redis 去重窗口内重复入队不会重新投递任务，T9g 的配比断言可能不成立。")
+            print("       请用 --dataset-id 指向一个尚未入队过的数据集。")
 
     original = (graph.get("dataset") or {}).get("questionsPerDirection")
     per_direction = 2
