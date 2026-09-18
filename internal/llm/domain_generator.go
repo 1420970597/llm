@@ -77,9 +77,9 @@ func generateDomainsInBatches(ctx context.Context, provider ProviderConfig, data
 		}
 		messages = append(messages, map[string]string{"role": "user", "content": prompt})
 		payload := map[string]any{
-			"model": provider.Model,
+			"model":    provider.Model,
 			"messages": messages,
-			"stream": true,
+			"stream":   true,
 		}
 		applyReasoningEffort(payload, provider)
 

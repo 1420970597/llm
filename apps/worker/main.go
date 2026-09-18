@@ -13,6 +13,7 @@ import (
 	"github.com/1420970597/llm/internal/config"
 	appcrypto "github.com/1420970597/llm/internal/crypto"
 	"github.com/1420970597/llm/internal/llm"
+	"github.com/1420970597/llm/internal/migrate"
 	"github.com/1420970597/llm/internal/model"
 	"github.com/1420970597/llm/internal/storage"
 	"github.com/1420970597/llm/internal/store"
@@ -35,6 +36,10 @@ func main() {
 		log.Fatalf("worker postgres connect failed: %v", err)
 	}
 	defer pool.Close()
+
+	if err := migrate.Run(ctx, pool, cfg.MigrationPath); err != nil {
+		log.Fatalf("worker migration failed: %v", err)
+	}
 
 	box, err := appcrypto.NewSecretBox(cfg.EncryptionKey)
 	if err != nil {

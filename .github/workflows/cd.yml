@@ -1,0 +1,86 @@
+name: CD
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy
+        required: false
+        default: main
+
+env:
+  COMPOSE_FILE: deployments/compose/docker-compose.yml
+  DEPLOY_REF: ${{ github.event.inputs.ref || github.ref_name }}
+
+concurrency:
+  group: cd-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to host
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check required secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          missing=""
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY; do
+            if [ -z "${!name}" ]; then
+              missing="$missing $name"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::missing repository secrets:$missing"
+            echo "Add them under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: |
+          ssh -i ~/.ssh/id_deploy \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "set -e
+             cd '${{ vars.DEPLOY_PATH }}'
+             git fetch --all --tags --prune
+             git checkout --force '${{ env.DEPLOY_REF }}'
+             docker compose pull --ignore-buildable
+             docker compose up -d --build --remove-orphans
+             docker image prune -f"
+
+      - name: Post-deploy smoke
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "${{ vars.DEPLOY_HEALTH_URL }}" >/dev/null; then
+              echo "deploy healthy"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::post-deploy health check failed"
+          exit 1
+
+      - name: Roll back to previous commit
+        if: failure()
+        run: |
+          ssh -i ~/.ssh/id_deploy \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "set -e
+             cd '${{ vars.DEPLOY_PATH }}'
+             git checkout --force HEAD@{1}
+             docker compose up -d --build --remove-orphans"

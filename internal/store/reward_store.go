@@ -1,26 +1,26 @@
 package store
 
 import (
-  "context"
+	"context"
 
-  "github.com/1420970597/llm/internal/model"
-  "github.com/jackc/pgx/v5/pgxpool"
+	"github.com/1420970597/llm/internal/model"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type RewardStore struct {
-  db *pgxpool.Pool
+	db *pgxpool.Pool
 }
 
 func NewRewardStore(db *pgxpool.Pool) *RewardStore {
-  return &RewardStore{db: db}
+	return &RewardStore{db: db}
 }
 
 func (s *RewardStore) Insert(ctx context.Context, datasetID int64, records []model.RewardRecord) error {
-  return s.upsert(ctx, datasetID, records, true)
+	return s.upsert(ctx, datasetID, records, true)
 }
 
 func (s *RewardStore) UpsertPartial(ctx context.Context, datasetID int64, records []model.RewardRecord) error {
-  return s.upsert(ctx, datasetID, records, false)
+	return s.upsert(ctx, datasetID, records, false)
 }
 
 func (s *RewardStore) upsert(ctx context.Context, datasetID int64, records []model.RewardRecord, markGenerated bool) error {
@@ -69,24 +69,24 @@ func (s *RewardStore) upsert(ctx context.Context, datasetID int64, records []mod
 }
 
 func (s *RewardStore) List(ctx context.Context, datasetID int64) ([]model.RewardRecord, error) {
-  rows, err := s.db.Query(ctx, `
+	rows, err := s.db.Query(ctx, `
     SELECT r.id, r.dataset_id, r.question_id, q.content, r.score, r.object_key, r.status, r.created_at, r.updated_at
     FROM reward_records r
     JOIN questions q ON q.id = r.question_id
     WHERE r.dataset_id = $1
     ORDER BY r.id ASC`, datasetID)
-  if err != nil {
-    return nil, err
-  }
-  defer rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-  items := []model.RewardRecord{}
-  for rows.Next() {
-    var item model.RewardRecord
-    if err := rows.Scan(&item.ID, &item.DatasetID, &item.QuestionID, &item.QuestionText, &item.Score, &item.ObjectKey, &item.Status, &item.CreatedAt, &item.UpdatedAt); err != nil {
-      return nil, err
-    }
-    items = append(items, item)
-  }
-  return items, rows.Err()
+	items := []model.RewardRecord{}
+	for rows.Next() {
+		var item model.RewardRecord
+		if err := rows.Scan(&item.ID, &item.DatasetID, &item.QuestionID, &item.QuestionText, &item.Score, &item.ObjectKey, &item.Status, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }

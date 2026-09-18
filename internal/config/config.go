@@ -40,6 +40,7 @@ type WorkerConfig struct {
 	RedisPort        string
 	QueueName        string
 	EncryptionKey    string
+	MigrationPath    string
 }
 
 func LoadAPIConfig() APIConfig {
@@ -92,6 +93,7 @@ func LoadWorkerConfig() WorkerConfig {
 		RedisPort:        getenv("REDIS_PORT", "6379"),
 		QueueName:        getenv("WORKER_QUEUE_NAME", "dataset-generation"),
 		EncryptionKey:    getenv("APP_ENCRYPTION_KEY", "phase1-dev-only-32-byte-secret!!!"),
+		MigrationPath:    getenv("MIGRATION_PATH", "sql/migrations"),
 	}
 }
 

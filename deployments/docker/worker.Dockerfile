@@ -9,5 +9,6 @@ RUN go build -o /out/worker ./apps/worker
 FROM alpine:3.21
 WORKDIR /app
 COPY --from=builder /out/worker /usr/local/bin/worker
+COPY sql ./sql
 EXPOSE 8081
 ENTRYPOINT ["/usr/local/bin/worker"]
