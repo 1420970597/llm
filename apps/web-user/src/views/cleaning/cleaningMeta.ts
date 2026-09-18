@@ -227,11 +227,14 @@ export function sortRulesByPriority(rules: CleaningRule[]): CleaningRule[] {
  *
  * 新建（无 id）时提交草稿全量字段。
  *
- * 编辑（有 id）时后端走 CleaningKeywordStore.Upsert 的 UPDATE 分支，它只写
- * match_mode / severity / is_active / note，且 WHERE id = $1 AND pattern = $2：
- * category 改了不会生效，pattern 改了直接查不到记录（404）。所以编辑态只提交
- * 真正会被写入的字段，pattern 原样带上用于定位记录。界面上对应的输入框同时置为
- * 只读，否则用户会看到「保存成功」但值没变。
+ * 编辑（有 id）时只提交可写字段：match_mode / severity / is_active / note。
+ * pattern 与 category 原样带上仅用于定位记录，**不参与修改**。
+ *
+ * 这是刻意的领域规则，不是后端缺陷：pattern 与 category 共同构成关键词身份
+ * （表上 UNIQUE(pattern, category)），也是清洗命中的去重键。允许就地改身份会让
+ * 历史 findings 指向的词条凭空变义，因此后端对身份字段变更返回 409 拒绝
+ * （cleaning.ErrKeywordIdentityImmutable / ErrBuiltinKeywordIdentityImmutable），
+ * 界面上对应的输入框同时置为只读。需要改词请删除后重新新增（内置词只能停用）。
  */
 export function buildKeywordSavePayload(draft: Partial<CleaningKeyword>): Partial<CleaningKeyword> {
   if (!draft.id) {

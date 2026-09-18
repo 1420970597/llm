@@ -16,7 +16,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui'
 import { Pencil, RefreshCw, Trash2, Upload } from 'lucide-react'
-import { consoleApi, type CleaningKeyword } from '../../lib/api'
+import { consoleApi, type ApiError, type CleaningKeyword } from '../../lib/api'
 import { buildKeywordSavePayload, categoryLabel, matchModeLabel, severityLabel } from './cleaningMeta'
 
 const { Text, Title } = Typography
@@ -57,7 +57,7 @@ export function CleaningKeywordPanel({
   const [draft, setDraft] = useState<KeywordDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
-  // 后端 UPDATE 分支按 id + pattern 定位，且不写 category（见 buildKeywordSavePayload 注释）。
+  // pattern 与 category 共同构成关键词身份，后端拒绍就地修改（409），故编辑态置为只读。
   const editing = Boolean(draft?.id)
 
   const [importText, setImportText] = useState('')
@@ -98,7 +98,15 @@ export function CleaningKeywordPanel({
       await onRefresh()
       Toast.success('关键词已保存')
     } catch (error) {
-      Toast.error((error as Error).message)
+      // 409 是身份字段（pattern / category）被拒：正常情况下编辑态不会提交这两个
+      // 字段，所以这条路径只在别的调用方（脚本、未来的批量编辑）触发时才会走到。
+      // 但一旦走到就必须把后端的中文原因展示出来，而不是笼统的「请求失败」。
+      const failure = error as ApiError
+      if (failure.statusCode === 409) {
+        Toast.warning(failure.message)
+      } else {
+        Toast.error(failure.message)
+      }
     } finally {
       setSaving(false)
     }
@@ -326,7 +334,7 @@ export function CleaningKeywordPanel({
               />
               {editing ? (
                 <Text className="mt-2 block console-caption">
-                  关键词内容创建后不可修改。需要改词请删除后重新新增（内置词可停用）。
+                  关键词内容是关键词的身份，创建后不可修改。需要改词请删除后重新新增（内置词可停用）。
                 </Text>
               ) : null}
             </div>
@@ -336,7 +344,9 @@ export function CleaningKeywordPanel({
                 {editing ? (
                   <>
                     <Input value={categoryLabel(draft.category ?? '')} disabled />
-                    <Text className="mt-2 block console-caption">分类创建后不可修改。</Text>
+                    <Text className="mt-2 block console-caption">
+                      分类与关键词内容共同构成身份，创建后不可修改。
+                    </Text>
                   </>
                 ) : (
                   <Select value={draft.category ?? 'refusal'} optionList={CATEGORY_OPTIONS} onChange={(value) => setDraft({ ...draft, category: String(value) })} style={{ width: '100%' }} />
