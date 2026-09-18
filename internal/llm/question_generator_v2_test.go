@@ -295,7 +295,7 @@ func TestBuildQuestionPromptIncludesChainFramework(t *testing.T) {
 	prompt := buildQuestionPrompt(input, direction, 3, map[string]int{DifficultyEasy: 1, DifficultyHard: 2})
 
 	for _, want := range []string{"海上巡逻", "确认海域态势", "态势是否清晰", "评估可用兵力", "简单 1 个", "困难 2 个", "JSON"} {
-		if !contains(prompt, want) {
+		if !containsText(prompt, want) {
 			t.Errorf("prompt missing %q\n--- prompt ---\n%s", want, prompt)
 		}
 	}
@@ -309,6 +309,6 @@ func testContext() context.Context {
 	return ctx
 }
 
-func contains(haystack, needle string) bool {
+func containsText(haystack, needle string) bool {
 	return strings.Contains(haystack, needle)
 }
