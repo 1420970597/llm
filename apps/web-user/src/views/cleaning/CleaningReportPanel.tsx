@@ -4,6 +4,7 @@ import { FileText, RefreshCw } from 'lucide-react'
 import type { CleaningFinding, CleaningKeyword, CleaningReport, CleaningRun } from '../../lib/api'
 import {
   categoryLabel,
+  mergeReportRun,
   deriveCategoryHits,
   deriveSeverityDistribution,
   formatCleaningTime,
@@ -62,15 +63,8 @@ export function CleaningReportPanel({
     [report],
   )
 
-  // 报告里的 run 是 worker 在 MarkDone 之前写入的快照（status=queued、计数全 0），
-  // 运行列表里的同一 run 才是最新值。优先用列表值，避免界面显示成「排队中 · 0 条」。
-  const reportRun = useMemo(() => {
-    if (!report) {
-      return null
-    }
-    const fresh = runs.find((item) => item.id === report.run.id)
-    return fresh ? { ...report.run, ...fresh } : report.run
-  }, [report, runs])
+  // 报告自带的 run 是 MarkDone 之前的快照，用运行列表的最新值覆盖。
+  const reportRun = useMemo(() => mergeReportRun(report, runs), [report, runs])
 
   const visibleFindings = useMemo(() => findings.slice(0, detailLimit), [findings, detailLimit])
 
