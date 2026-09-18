@@ -188,6 +188,27 @@ def main():
     status, updated = call("PUT", f"/eval/runs/{run_id}/judges", {"providerIds": JUDGE_IDS})
     check("PUT /eval/runs/{id}/judges 返回裁判数组", status == 200 and isinstance(updated, list), f"status={status} len={len(updated) if isinstance(updated, list) else updated}")
 
+    # ---- L7：生成者自评剔除（UI 必须禁用被排除裁判并展示原因）----
+    status, excluded_run = call("POST", "/eval/runs", {
+        "datasetId": DATASET_ID,
+        "name": f"L13-排除裁判-{int(time.time())}",
+        "samplingMode": "full",
+        "dimensionKeys": [DIMENSIONS[0]],
+        "judgeProviderIds": JUDGE_IDS,
+        "generatorProviderId": JUDGE_IDS[0],
+    })
+    if status in (200, 201) and isinstance(excluded_run, dict):
+        _, ex_detail = call("GET", f"/eval/runs/{excluded_run['id']}")
+        ex_judges = ex_detail.get("judges", []) if isinstance(ex_detail, dict) else []
+        generator_judge = next((j for j in ex_judges if j.get("providerId") == JUDGE_IDS[0]), None)
+        check(
+            "生成者模型被判为 excluded 且有中文原因",
+            bool(generator_judge) and generator_judge.get("excluded") is True and bool(generator_judge.get("excludeReason")),
+            f"excluded={generator_judge and generator_judge.get('excluded')} reason={generator_judge and generator_judge.get('excludeReason')!r}",
+        )
+    else:
+        check("创建带 generatorProviderId 的运行", False, f"status={status} body={excluded_run}")
+
     failed = [name for name, ok, _ in results if not ok]
     print(f"\n合计 {len(results)} 项，通过 {len(results) - len(failed)}，失败 {len(failed)}", flush=True)
     if failed:
