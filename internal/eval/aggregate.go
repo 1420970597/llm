@@ -60,6 +60,14 @@ type AggregateNotes struct {
 	// 用于识别「某个裁判系统性打分偏高/偏低」。
 	NormalizedJudgeMeans map[int64]float64
 
+	// NormalizedDimensionScores 每个维度的均分按自身量表区间归一化到 0~1 的值，按维度 key 索引。
+	//
+	// 用于跨量表比较维度优劣（例如选出最弱维度）：不同维度的量表区间可以完全不同
+	// （内置维度是 1~5，自定义维度可能是 0~10 或 0~100），直接比原始分会把
+	// 「0~10 打 8」判成比「0~100 打 50」更差，点名实际表现最好的维度。
+	// 量表区间非法（无法归一化）的维度不出现在这里，调用方回退原始分。
+	NormalizedDimensionScores map[string]float64
+
 	// ZeroWeightDimensions 权重 <= 0 因而被排除在加权总分之外的维度 key。
 	ZeroWeightDimensions []string
 
@@ -90,12 +98,13 @@ type AggregateNotes struct {
 // 返回的第二值是聚合过程中的降级说明，结论生成需要它。
 func Aggregate(in AggregateInput) (model.EvalReport, AggregateNotes) {
 	notes := AggregateNotes{
-		NormalizedJudgeMeans: map[int64]float64{},
-		ZeroWeightDimensions: []string{},
-		UnweightedDimensions: []string{},
-		AgreementSkipped:     []string{},
-		ExcludedJudges:       []string{},
-		ExcludedJudgeIDs:     []int64{},
+		NormalizedJudgeMeans:      map[int64]float64{},
+		NormalizedDimensionScores: map[string]float64{},
+		ZeroWeightDimensions:      []string{},
+		UnweightedDimensions:      []string{},
+		AgreementSkipped:          []string{},
+		ExcludedJudges:            []string{},
+		ExcludedJudgeIDs:          []int64{},
 	}
 
 	report := model.EvalReport{
@@ -167,6 +176,11 @@ func Aggregate(in AggregateInput) (model.EvalReport, AggregateNotes) {
 		report.OverallScore = weightedSum / weightTotal
 	}
 	notes.NormalizedOverall, notes.HasNormalizedOverall = normalizedMean(report.Dimensions, dimensions)
+	for _, stat := range report.Dimensions {
+		if normalized, ok := normalizeScore(stat.Score, dimensions[stat.DimensionKey]); ok {
+			notes.NormalizedDimensionScores[stat.DimensionKey] = normalized
+		}
+	}
 
 	// 每个裁判的统计。传入裁判名单，让「一条分都没打」的裁判也出现在报告里。
 	report.Judges = buildJudgeStats(valid, in.Judges, items, dimensions)

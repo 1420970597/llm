@@ -62,11 +62,21 @@ func BuildConclusions(report model.EvalReport, notes AggregateNotes, status stri
 	conclusions = append(conclusions, overallConclusion(report, notes))
 
 	// 2. 最弱维度 + 可操作建议。
-	if weakest, ok := weakestDimension(report.Dimensions); ok {
+	if weakest, ok := weakestDimension(report.Dimensions, notes); ok {
 		// 只有一个维度时，最弱维度就是整体本身，「低于整体水平」是假的。
 		// 同理，任何与整体持平的情况都不能声称它拉低了分数。
+		//
+		// 比较必须同口径：跨量表时原始分不可比（0~10 的 8 分与 0~100 的 50 分不能
+		// 直接相减），因此优先用归一化分，并在文案里明确标出「归一化」，
+		// 避免与前面的原始「均分」混成一句话里两个量纲的数字。
 		comparison := ""
-		if weakest.Score < report.OverallScore {
+		if lowest, ok := notes.NormalizedDimensionScores[weakest.DimensionKey]; ok {
+			if notes.HasNormalizedOverall && lowest < notes.NormalizedOverall {
+				comparison = fmt.Sprintf("，归一化得分 %.2f，低于整体归一化水平 %.2f",
+					lowest, notes.NormalizedOverall)
+			}
+		} else if weakest.Score < report.OverallScore {
+			// 量表区间非法、无法归一化时，两边都只能用原始分，口径仍然一致。
 			comparison = fmt.Sprintf("，低于整体水平 %.2f", report.OverallScore)
 		}
 		conclusions = append(conclusions, fmt.Sprintf(
@@ -131,15 +141,27 @@ func overallConclusion(report model.EvalReport, notes AggregateNotes) string {
 		report.OverallScore)
 }
 
-// weakestDimension 找均分最低的维度。并列时取 key 较小者，保证结论稳定。
-func weakestDimension(stats []model.EvalDimensionStat) (model.EvalDimensionStat, bool) {
+// weakestDimension 找表现最差的维度。并列时取 key 较小者，保证结论稳定。
+//
+// 按**归一化分**排序：维度可以自定义量表区间（内置维度是 1~5，自定义维度
+// 可能是 0~10 或 0~100），直接比原始分会把「0~10 打 8」判成比「0~100 打 50」
+// 更差，点名实际表现最好的维度。归一化不可用（量表区间非法）的维度回退原始分。
+func weakestDimension(stats []model.EvalDimensionStat, notes AggregateNotes) (model.EvalDimensionStat, bool) {
 	if len(stats) == 0 {
 		return model.EvalDimensionStat{}, false
 	}
+
+	lowest := func(stat model.EvalDimensionStat) float64 {
+		if normalized, ok := notes.NormalizedDimensionScores[stat.DimensionKey]; ok {
+			return normalized
+		}
+		return stat.Score
+	}
+
 	weakest := stats[0]
 	for _, stat := range stats[1:] {
-		if stat.Score < weakest.Score ||
-			(stat.Score == weakest.Score && stat.DimensionKey < weakest.DimensionKey) {
+		if lowest(stat) < lowest(weakest) ||
+			(lowest(stat) == lowest(weakest) && stat.DimensionKey < weakest.DimensionKey) {
 			weakest = stat
 		}
 	}

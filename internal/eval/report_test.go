@@ -466,6 +466,42 @@ func TestConclusionsAllLowestScoresIsNotReportedAsNoScale(t *testing.T) {
 	}
 }
 
+// TestWeakestDimensionUsesNormalizedScore 跨量表时最弱维度必须按归一化分选出。
+//
+// 场景：维度 A 量表 0~10 打 8（归一化 0.80，实际最好）、维度 B 量表 0~100 打 50
+// （归一化 0.50，实际最差）。按原始分排序会点名 A —— 那是实际表现最好的维度，
+// 而且「低于整体水平 29.00」本身在比较不同量纲的数字。
+func TestWeakestDimensionUsesNormalizedScore(t *testing.T) {
+	dimensions := []model.EvalDimension{
+		{Key: "wide_scale", Name: "A维", Category: "long_chain", Weight: 1, ScaleMin: 0, ScaleMax: 10},
+		{Key: "narrow_scale", Name: "B维", Category: "answer_quality", Weight: 1, ScaleMin: 0, ScaleMax: 100},
+	}
+	report, notes := Aggregate(AggregateInput{
+		Run:        model.EvalRun{ID: 1, Status: "completed", TotalItems: 2, ScoredItems: 2},
+		Items:      []model.EvalItem{item(1, 0), item(2, 1)},
+		Dimensions: dimensions,
+		Scores: []model.EvalItemScore{
+			score(1, 100, "wide_scale", 8),
+			score(2, 100, "wide_scale", 8),
+			score(1, 100, "narrow_scale", 50),
+			score(2, 100, "narrow_scale", 50),
+		},
+		Judges: []model.EvalRunJudge{{ProviderID: 100, ProviderName: "裁判甲"}},
+	})
+
+	conclusions := joined(BuildConclusions(report, notes, "completed"))
+	if !strings.Contains(conclusions, "「B维」") {
+		t.Errorf("B维归一化 0.50 低于 A维 0.80，应点名 B维，实际：\n%s", conclusions)
+	}
+	if strings.Contains(conclusions, "「A维」") {
+		t.Errorf("A维是实际表现最好的维度，不应被点名为最弱，实际：\n%s", conclusions)
+	}
+	// 「低于整体」的比较必须同口径：用归一化值，而不是拿 0.50 和原始加权分 29.00 比。
+	if !strings.Contains(conclusions, "低于整体归一化水平") {
+		t.Errorf("跨量表比较应标明归一化口径，实际：\n%s", conclusions)
+	}
+}
+
 // TestExcludedJudgeNotReportedAsCallFailure 被剔除的裁判不能同时被说成「调用失败」。
 //
 // 剔除是主动决策（禁止生成者自评），调用失败是异常。两者都导致 sampleCount=0，
