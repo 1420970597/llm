@@ -299,8 +299,9 @@ func (app *application) startEvalRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 已完成的运行不允许重复启动：重跑请新建运行，
-	// 否则会覆盖上一次的分数，历史结论无从追溯。
+	// 已在跑的运行不重复入队（入队不会产生第二个任务，只会把状态搅乱）。
+	// 注意：completed / failed / draft 都允许重新启动，重跑会覆盖同一批条目的分数
+	// （eval_item_scores 按 (条目, 裁判, 维度) upsert），这正是「重跑一次」需要的语义。
 	if run.Status == "running" || run.Status == "queued" {
 		app.writeJSON(w, http.StatusAccepted, model.StageEnqueueResult{
 			DatasetID:  run.DatasetID,
@@ -336,6 +337,9 @@ func (app *application) startEvalRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 先把运行标为 queued 再入队：worker 拿到 job 时靠 ActiveRun 反查
+	// status IN ('queued','running') 的运行（job payload 只带 datasetId），
+	// 顺序反了会出现 worker 先到、查不到运行而静默空跑。
 	if err := runs.UpdateRunStatus(ctx, runID, "queued", run.TotalItems, run.ScoredItems, ""); err != nil {
 		app.writeError(w, http.StatusInternalServerError, err)
 		return
@@ -343,6 +347,10 @@ func (app *application) startEvalRun(w http.ResponseWriter, r *http.Request) {
 
 	enqueued, err := app.enqueueJob(ctx, evalJobType, run.DatasetID, "")
 	if err != nil {
+		// 入队本身失败（Redis 不可用）：必须把状态退回 failed，
+		// 否则运行会永远停在 queued，后续 start 只会返回「已在队列中」而永远没人执行。
+		_ = runs.UpdateRunStatus(ctx, runID, "failed", run.TotalItems, run.ScoredItems,
+			"入队失败："+err.Error())
 		app.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
