@@ -38,6 +38,8 @@ postgres / redis 共用数据，但使用独立队列 WORKER_QUEUE_NAME=lane-l14
   T12 未完成的 run：报告返回「清洗尚未完成」结论而非全零假报告
   T13 报告 run 是陈旧快照（status 恒为 queued），运行列表才是权威值
       —— 前端据此覆盖，否则会显示成「排队中 · 0 条」且轮询永不停止
+  T14 编辑态只提交可写字段（前端 buildKeywordSavePayload 契约）时修改真实落库
+  T15 后端 UPDATE 分支不写 category（冻结文件缺口，前端因此把该输入框置为只读）
 """
 
 import os
@@ -256,24 +258,79 @@ def main() -> int:
            f"重复 inserted={body2.get('inserted')} skipped={body2.get('skipped')}")
 
     # T3 启用/停用（UI 开关直接调 saveCleaningKeyword）。
+    # 请求体与前端 buildKeywordSavePayload 的编辑态一致：只带后端 UPDATE 分支真正
+    # 会写入的字段（match_mode / severity / is_active / note）+ 定位用的 id/pattern。
+    def editable_payload(record: dict, **changes: object) -> dict:
+        payload = {key: record.get(key) for key in ("id", "pattern", "matchMode", "severity", "isActive", "note")}
+        payload.update(changes)
+        return payload
+
     target = next((item for item in keywords if str(item.get("pattern")) in TEST_PATTERNS), None)
     if target is None:
         record("T3 关键词启用/停用落库", False, "找不到可切换的测试关键词")
     else:
         res = session.put(
             f"{BASE}/api/v1/cleaning/keywords",
-            json={**target, "isActive": False},
+            json=editable_payload(target, isActive=False),
             timeout=30,
         )
         off_ok = res.status_code == 200 and as_dict(json_body(res)).get("isActive") is False
         res = session.put(
             f"{BASE}/api/v1/cleaning/keywords",
-            json={**target, "isActive": True},
+            json=editable_payload(target, isActive=True),
             timeout=30,
         )
         on_ok = res.status_code == 200 and as_dict(json_body(res)).get("isActive") is True
         record("T3 关键词启用/停用落库", off_ok and on_ok,
                f"停用→{off_ok}，启用→{on_ok}，pattern={target.get('pattern')}")
+
+    # T14 编辑态只提交可写字段时，修改必须真实落库（前端 buildKeywordSavePayload 的契约）。
+    # 背景：后端 UPDATE 分支只写 match_mode / severity / is_active / note，且以
+    # id + pattern 定位。前端因此不再提交 category / 不再允许改 pattern。
+    if target is None:
+        record("T14 编辑态可写字段真实落库", False, "找不到可切换的测试关键词")
+    else:
+        flipped = "warn" if str(target.get("severity")) == "block" else "block"
+        res = session.put(
+            f"{BASE}/api/v1/cleaning/keywords",
+            json=editable_payload(target, severity=flipped, note="l14-编辑探针"),
+            timeout=30,
+        )
+        saved = as_dict(json_body(res))
+        res = session.get(f"{BASE}/api/v1/cleaning/keywords", timeout=30)
+        reread = next(
+            (item for item in (as_dict(x) for x in as_list(json_body(res))) if item.get("id") == target.get("id")),
+            {},
+        )
+        ok = (
+            res.status_code == 200
+            and saved.get("severity") == flipped
+            and reread.get("severity") == flipped
+            and reread.get("note") == "l14-编辑探针"
+        )
+        record("T14 编辑态提交的 severity/note 真实落库（非假成功）", ok,
+               f"status={res.status_code} 响应 severity={saved.get('severity')} "
+               f"重新读取 severity={reread.get('severity')} note={reread.get('note')}")
+        session.put(
+            f"{BASE}/api/v1/cleaning/keywords",
+            json=editable_payload(target, severity=target.get("severity"), note=target.get("note")),
+            timeout=30,
+        )
+
+        # T15 后端确实不写 category（冻结文件缺口，前端据此禁用该输入框）。
+        # 这条断言记录的是*现状*：接口 200 但分类不变。若未来后端补上 category，
+        # 本项会失败并提醒前端可以放开编辑。
+        other_category = "safety" if str(target.get("category")) != "safety" else "refusal"
+        res = session.put(
+            f"{BASE}/api/v1/cleaning/keywords",
+            json={**editable_payload(target), "category": other_category},
+            timeout=30,
+        )
+        echoed = as_dict(json_body(res)).get("category")
+        record("T15 后端 UPDATE 不写 category（缺口，前端因此禁用编辑）",
+               res.status_code == 200 and echoed == target.get("category"),
+               f"status={res.status_code} 请求 category={other_category} 响应 category={echoed} "
+               f"（与当前值 {target.get('category')} 相同即证明被静默丢弃）")
 
     # T4 规则列表（UI 规则面板的数据源）。
     res = session.get(f"{BASE}/api/v1/cleaning/rules", timeout=30)
