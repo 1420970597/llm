@@ -4,7 +4,7 @@ services:
       context: ../..
       dockerfile: deployments/docker/web-user.Dockerfile
     ports:
-      - "3210:80"
+      - "${WEB_USER_PORT:-3210}:80"
     depends_on:
       api:
         condition: service_started
@@ -13,20 +13,34 @@ services:
     build:
       context: ../..
       dockerfile: deployments/docker/api.Dockerfile
+    env_file:
+      - path: ../../.env
+        required: false
     environment:
-      APP_ENV: development
-      APP_ALLOWED_ORIGIN: "*"
-      APP_ENCRYPTION_KEY: phase1-dev-only-32-byte-secret!!!
+      APP_ENV: ${APP_ENV:-development}
+      APP_ALLOWED_ORIGIN: ${APP_ALLOWED_ORIGIN:-*}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-phase1-dev-only-32-byte-secret!!!}
       API_PORT: 8080
-      POSTGRES_HOST: postgres
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       POSTGRES_PORT: 5432
-      POSTGRES_DB: llm_factory
-      POSTGRES_USER: llm_factory
-      POSTGRES_PASSWORD: llm_factory_dev
-      REDIS_HOST: redis
+      POSTGRES_DB: ${POSTGRES_DB:-llm_factory}
+      POSTGRES_USER: ${POSTGRES_USER:-llm_factory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-llm_factory_dev}
+      REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: 6379
-      S3_ENDPOINT: http://minio:9000
-      WORKER_QUEUE_NAME: dataset-generation
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-dataset-generation}
+      APP_DEFAULT_ADMIN_EMAIL: ${APP_DEFAULT_ADMIN_EMAIL:-admin@company.com}
+      APP_DEFAULT_ADMIN_PASSWORD: ${APP_DEFAULT_ADMIN_PASSWORD:-admin123456}
+      APP_DEFAULT_USER_EMAIL: ${APP_DEFAULT_USER_EMAIL:-user@company.com}
+      APP_DEFAULT_USER_PASSWORD: ${APP_DEFAULT_USER_PASSWORD:-user123456}
+      APP_BOOTSTRAP_PROVIDER_NAME: ${APP_BOOTSTRAP_PROVIDER_NAME:-}
+      APP_BOOTSTRAP_PROVIDER_BASE_URL: ${APP_BOOTSTRAP_PROVIDER_BASE_URL:-}
+      APP_BOOTSTRAP_PROVIDER_MODEL: ${APP_BOOTSTRAP_PROVIDER_MODEL:-}
+      APP_BOOTSTRAP_PROVIDER_API_KEY: ${APP_BOOTSTRAP_PROVIDER_API_KEY:-}
+      APP_BOOTSTRAP_PROVIDER_TYPE: ${APP_BOOTSTRAP_PROVIDER_TYPE:-openai-compatible}
+      APP_BOOTSTRAP_PROVIDER_TIMEOUT_SECONDS: ${APP_BOOTSTRAP_PROVIDER_TIMEOUT_SECONDS:-120}
+      APP_BOOTSTRAP_PROVIDER_MAX_CONCURRENCY: ${APP_BOOTSTRAP_PROVIDER_MAX_CONCURRENCY:-4}
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,18 +58,21 @@ services:
     build:
       context: ../..
       dockerfile: deployments/docker/worker.Dockerfile
+    env_file:
+      - path: ../../.env
+        required: false
     environment:
-      APP_ENV: development
-      APP_ENCRYPTION_KEY: phase1-dev-only-32-byte-secret!!!
-      POSTGRES_HOST: postgres
+      APP_ENV: ${APP_ENV:-development}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-phase1-dev-only-32-byte-secret!!!}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       POSTGRES_PORT: 5432
-      POSTGRES_DB: llm_factory
-      POSTGRES_USER: llm_factory
-      POSTGRES_PASSWORD: llm_factory_dev
+      POSTGRES_DB: ${POSTGRES_DB:-llm_factory}
+      POSTGRES_USER: ${POSTGRES_USER:-llm_factory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-llm_factory_dev}
       WORKER_PORT: 8081
-      REDIS_HOST: redis
+      REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: 6379
-      WORKER_QUEUE_NAME: dataset-generation
+      WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-dataset-generation}
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,13 +87,13 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: llm_factory
-      POSTGRES_USER: llm_factory
-      POSTGRES_PASSWORD: llm_factory_dev
+      POSTGRES_DB: ${POSTGRES_DB:-llm_factory}
+      POSTGRES_USER: ${POSTGRES_USER:-llm_factory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-llm_factory_dev}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U llm_factory -d llm_factory"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-llm_factory} -d ${POSTGRES_DB:-llm_factory}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -94,8 +111,8 @@ services:
     image: quay.io/minio/minio:RELEASE.2025-02-28T09-55-16Z
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
     volumes:
       - minio-data:/data
     healthcheck:
