@@ -136,6 +136,11 @@ export type Dataset = {
   strategyId: number
   providerId: number
   storageProfileId: number
+  targetKind: 'sft' | 'grpo' | string
+  directionCount: number
+  questionsPerDirection: number
+  rewardLevels: string[]
+  cleaningEnabled: boolean
   estimate: Estimate
   createdAt: string
   updatedAt: string
@@ -152,11 +157,331 @@ export type Question = {
   datasetId: number
   domainId: number
   domainName: string
+  directionDomainId: number
   content: string
   canonicalHash: string
+  dedupeKey: string
+  difficulty: 'easy' | 'medium' | 'hard' | string
+  difficultyScore: number
+  source: string
+  cleaningStatus: 'clean' | 'flagged' | 'dropped' | string
   status: string
   createdAt: string
   updatedAt: string
+}
+
+export type DifficultyStats = {
+  levels: Record<string, number>
+  total: number
+}
+
+export type ChainStep = {
+  index: number
+  title: string
+  description: string
+  checkpoint: string
+}
+
+export type ChainStandard = {
+  id: number
+  datasetId: number
+  domainId: number
+  domainName: string
+  directionKey: string
+  currentVersion: number
+  status: string
+  steps: ChainStep[]
+  createdAt: string
+  updatedAt: string
+}
+
+export type ChainStandardVersion = {
+  id: number
+  standardId: number
+  version: number
+  steps: ChainStep[]
+  source: string
+  changeNote: string
+  createdBy: number
+  createdAt: string
+}
+
+export type GrpoLevelRubric = {
+  level: string
+  label: string
+  criteria: string
+  acceptCase: string
+  rejectCase: string
+}
+
+export type GrpoPrompt = {
+  id: number
+  datasetId: number
+  questionId: number
+  questionText: string
+  domainId: number
+  domainName: string
+  levels: string[]
+  judgePrompt: string
+  levelRubrics: GrpoLevelRubric[]
+  frameworkRef: string
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type SftRecord = {
+  id: number
+  datasetId: number
+  questionId: number
+  questionText: string
+  domainId: number
+  domainName: string
+  chainOfThought: string
+  answer: string
+  chainSteps: ChainStep[]
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type GenerationRun = {
+  id: number
+  datasetId: number
+  stage: string
+  status: string
+  cursor: Record<string, unknown>
+  totalUnits: number
+  doneUnits: number
+  attempts: number
+  errorSummary: string
+  startedAt?: string
+  finishedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type ExportMapping = {
+  id: number
+  name: string
+  format: string
+  targetKind: string
+  fieldMap: Record<string, unknown>
+  options: Record<string, unknown>
+  isBuiltin: boolean
+  isDefault: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type ExportFormatList = {
+  formats: string[]
+  mappings: ExportMapping[]
+}
+
+export type EvalDimension = {
+  id: number
+  key: string
+  name: string
+  category: string
+  description: string
+  rubric: string
+  scaleMin: number
+  scaleMax: number
+  isBuiltin: boolean
+  isActive: boolean
+  weight: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type EvalRun = {
+  id: number
+  datasetId: number
+  name: string
+  samplingMode: 'full' | 'ratio' | 'count' | string
+  sampleRatio: number
+  sampleSize: number
+  targetKind: string
+  dimensionKeys: string[]
+  judgeProviderIds: number[]
+  generatorProviderId: number
+  status: string
+  totalItems: number
+  scoredItems: number
+  errorSummary: string
+  createdBy: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type EvalRunJudge = {
+  id: number
+  evalRunId: number
+  providerId: number
+  providerName: string
+  model: string
+  excluded: boolean
+  excludeReason: string
+  status: string
+  scoredItems: number
+  errorSummary: string
+  createdAt: string
+}
+
+export type EvalJudgeOption = {
+  providerId: number
+  providerName: string
+  model: string
+  isActive: boolean
+  excluded: boolean
+  excludeReason: string
+}
+
+export type EvalItem = {
+  id: number
+  evalRunId: number
+  datasetId: number
+  questionId: number
+  itemIndex: number
+  payload: Record<string, unknown>
+  createdAt: string
+}
+
+export type EvalItemScore = {
+  id: number
+  evalRunId: number
+  evalItemId: number
+  judgeProviderId: number
+  dimensionKey: string
+  score: number
+  rationale: string
+  rawResponse: string
+  status: string
+  createdAt: string
+}
+
+export type EvalDimensionStat = {
+  dimensionKey: string
+  name: string
+  category: string
+  score: number
+  sampleCount: number
+  stdDev: number
+  min: number
+  max: number
+}
+
+export type EvalItemScoreBrief = {
+  questionId: number
+  itemIndex: number
+  score: number
+}
+
+export type EvalJudgeStat = {
+  providerId: number
+  providerName: string
+  model: string
+  score: number
+  sampleCount: number
+  dimensions: EvalDimensionStat[]
+  itemScores: EvalItemScoreBrief[]
+}
+
+export type EvalReport = {
+  evalRun: EvalRun
+  datasetName: string
+  overallScore: number
+  judgeAgreement: number
+  sampleCount: number
+  judges: EvalJudgeStat[]
+  dimensions: EvalDimensionStat[]
+  weakestItems: EvalItemScoreBrief[]
+  conclusions: string[]
+  generatedAt: string
+}
+
+export type EvalRunDetail = {
+  run: EvalRun
+  judges: EvalRunJudge[]
+  dimensions: EvalDimension[]
+}
+
+export type CleaningKeyword = {
+  id: number
+  pattern: string
+  category: string
+  matchMode: 'contains' | 'regex' | 'prefix' | string
+  severity: 'block' | 'warn' | string
+  isBuiltin: boolean
+  isActive: boolean
+  note: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type CleaningRule = {
+  id: number
+  name: string
+  stageScope: string[]
+  minHits: number
+  action: 'drop' | 'flag' | 'retry' | string
+  priority: number
+  isActive: boolean
+  config: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export type CleaningRun = {
+  id: number
+  datasetId: number
+  stages: string[]
+  status: string
+  scannedItems: number
+  flaggedItems: number
+  droppedItems: number
+  report: Record<string, unknown>
+  errorSummary: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type CleaningFinding = {
+  id: number
+  cleaningRunId: number
+  datasetId: number
+  questionId: number
+  stage: string
+  keywordId: number
+  matchedText: string
+  snippet: string
+  action: string
+  createdAt: string
+}
+
+export type CleaningStageStat = {
+  stage: string
+  scannedItems: number
+  flaggedItems: number
+  droppedItems: number
+  hitRate: number
+}
+
+export type CleaningKeywordStat = {
+  keywordId: number
+  pattern: string
+  category: string
+  hits: number
+  sampleSnippet: string
+}
+
+export type CleaningReport = {
+  run: CleaningRun
+  stages: CleaningStageStat[]
+  topKeywords: CleaningKeywordStat[]
+  conclusions: string[]
+  generatedAt: string
 }
 
 export type ReasoningRecord = {
@@ -275,18 +600,124 @@ export const consoleApi = {
   artifactDownloadUrl: (datasetId: number, artifactId: number) => `/api/v1/datasets/${datasetId}/export/download?artifactId=${artifactId}`,
   pipelineProgress: (id: number) => unwrap(client.get<PipelineProgress>(`/v1/datasets/${id}/pipeline/progress`)),
   runtimeStatus: () => unwrap(client.get<RuntimeStatus>('/v1/platform/runtime')),
+
+  // ---- L1 方向生成（n 领域 → m 方向，断点续跑） ----
+  generateDirections: (id: number, directionCount?: number) =>
+    unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/directions/generate`, { directionCount: directionCount ?? 0 })),
+  listDirections: (id: number) => unwrap(client.get<Domain[]>(`/v1/datasets/${id}/directions`)),
+  listGenerationRuns: (id: number) => unwrap(client.get<GenerationRun[]>(`/v1/datasets/${id}/generation-runs`)),
+  resumeStage: (id: number, stage: string) =>
+    unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/generation-runs/${stage}/resume`)),
+
+  // ---- L2 长链思维标准步骤（可编辑、版本化） ----
+  generateChainStandards: (id: number, domainIds: number[] = []) =>
+    unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/chain-standards/generate`, { domainIds })),
+  listChainStandards: (id: number) => unwrap(client.get<ChainStandard[]>(`/v1/datasets/${id}/chain-standards`)),
+  updateChainStandard: (id: number, domainId: number, steps: ChainStep[], changeNote: string) =>
+    unwrap(client.put<ChainStandard>(`/v1/datasets/${id}/chain-standards/${domainId}`, { steps, changeNote })),
+  listChainStandardVersions: (id: number, domainId: number) =>
+    unwrap(client.get<ChainStandardVersion[]>(`/v1/datasets/${id}/chain-standards/${domainId}/versions`)),
+
+  // ---- L3 问题生成（x 可控、去重、难度分层） ----
+  generateQuestionsV2: (id: number, questionsPerDirection: number, difficultyMix?: Record<string, number>) =>
+    unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/questions/generate`, {
+      questionsPerDirection,
+      difficultyMix: difficultyMix ?? {},
+    })),
+  questionDifficultyStats: (id: number) =>
+    unwrap(client.get<DifficultyStats>(`/v1/datasets/${id}/questions/difficulty-stats`)),
+
+  // ---- L4 GRPO 教师模型评判提示词 ----
+  setRewardLevels: (id: number, levels: string[]) =>
+    unwrap(client.put<{ levels: string[] }>(`/v1/datasets/${id}/reward-levels`, { levels })),
+  generateGrpo: (id: number, levels: string[] = []) =>
+    unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/grpo/generate`, { levels })),
+  listGrpo: (id: number) => unwrap(client.get<GrpoPrompt[]>(`/v1/datasets/${id}/grpo`)),
+
+  // ---- L5 SFT 思维链 + 答案 ----
+  generateSft: (id: number, includeAnswer = true) =>
+    unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/sft/generate`, { includeAnswer })),
+  listSft: (id: number) => unwrap(client.get<SftRecord[]>(`/v1/datasets/${id}/sft`)),
+
+  // ---- L6 多格式导出 ----
+  exportFormats: (id: number) => unwrap(client.get<ExportFormatList>(`/v1/datasets/${id}/export/formats`)),
+  exportDataset: (id: number, format: string, mappingId = 0, filters: Record<string, unknown> = {}) =>
+    unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/export`, { format, mappingId, filters })),
+  listExportMappings: () => unwrap(client.get<ExportMapping[]>('/v1/admin/export-mappings')),
+  saveExportMapping: (payload: Partial<ExportMapping>) =>
+    unwrap(client.request<ExportMapping>({ url: '/v1/admin/export-mappings', method: payload.id ? 'PUT' : 'POST', data: payload })),
+
+  // ---- L7 评估裁判模型接入 ----
+  listEvalJudges: () => unwrap(client.get<EvalJudgeOption[]>('/v1/admin/eval/judges')),
+  setEvalRunJudges: (runId: number, providerIds: number[]) =>
+    unwrap(client.put<EvalRunJudge[]>(`/v1/eval/runs/${runId}/judges`, { providerIds })),
+
+  // ---- L8 评估维度 ----
+  listEvalDimensions: (params: { category?: string; builtin?: boolean } = {}) =>
+    unwrap(client.get<EvalDimension[]>('/v1/eval/dimensions', { params })),
+  saveEvalDimension: (payload: Partial<EvalDimension>) =>
+    unwrap(client.request<EvalDimension>({ url: '/v1/eval/dimensions', method: payload.id ? 'PUT' : 'POST', data: payload })),
+  deleteEvalDimension: (id: number) => unwrap(client.delete<{ deleted: boolean }>(`/v1/eval/dimensions/${id}`)),
+  seedEvalDimensions: () => unwrap(client.post<{ inserted: number; total: number }>('/v1/eval/dimensions/seed')),
+  evalDimensionCategories: () => unwrap(client.get<{ categories: string[] }>('/v1/eval/dimensions/categories')),
+
+  // ---- L9 评估运行（全量 / 抽样 / 逐条多维打分） ----
+  createEvalRun: (payload: {
+    datasetId: number
+    name: string
+    samplingMode: 'full' | 'ratio' | 'count'
+    sampleRatio?: number
+    sampleSize?: number
+    targetKind?: string
+    dimensionKeys: string[]
+    judgeProviderIds: number[]
+    generatorProviderId?: number
+  }) => unwrap(client.post<EvalRun>('/v1/eval/runs', payload)),
+  listEvalRuns: (datasetId?: number) =>
+    unwrap(client.get<EvalRun[]>('/v1/eval/runs', { params: datasetId ? { datasetId } : {} })),
+  getEvalRun: (id: number) => unwrap(client.get<EvalRunDetail>(`/v1/eval/runs/${id}`)),
+  startEvalRun: (id: number) => unwrap(client.post<StageEnqueueResult>(`/v1/eval/runs/${id}/start`)),
+  listEvalItems: (id: number, limit = 50, offset = 0) =>
+    unwrap(client.get<EvalItem[]>(`/v1/eval/runs/${id}/items`, { params: { limit, offset } })),
+
+  // ---- L10 评估汇总统计与结论 ----
+  evalReport: (id: number) => unwrap(client.get<EvalReport>(`/v1/eval/runs/${id}/report`)),
+  evalScores: (id: number, judgeProviderId?: number, dimensionKey?: string) =>
+    unwrap(client.get<EvalItemScore[]>(`/v1/eval/runs/${id}/scores`, {
+      params: { judgeProviderId, dimensionKey },
+    })),
+
+  // ---- L11 清洗关键词库与规则 ----
+  listCleaningKeywords: (params: { category?: string; active?: boolean } = {}) =>
+    unwrap(client.get<CleaningKeyword[]>('/v1/cleaning/keywords', { params })),
+  saveCleaningKeyword: (payload: Partial<CleaningKeyword>) =>
+    unwrap(client.request<CleaningKeyword>({ url: '/v1/cleaning/keywords', method: payload.id ? 'PUT' : 'POST', data: payload })),
+  deleteCleaningKeyword: (id: number) => unwrap(client.delete<{ deleted: boolean }>(`/v1/cleaning/keywords/${id}`)),
+  importCleaningKeywords: (patterns: string[], category = 'refusal', severity = 'block') =>
+    unwrap(client.post<{ inserted: number; skipped: number }>('/v1/cleaning/keywords/import', { patterns, category, severity })),
+  listCleaningRules: () => unwrap(client.get<CleaningRule[]>('/v1/cleaning/rules')),
+  saveCleaningRule: (payload: Partial<CleaningRule>) =>
+    unwrap(client.request<CleaningRule>({ url: '/v1/cleaning/rules', method: payload.id ? 'PUT' : 'POST', data: payload })),
+
+  // ---- L12 分步清洗与报告 ----
+  runCleaning: (id: number, stages: string[] = ['question', 'reasoning', 'answer'], ruleIds: number[] = []) =>
+    unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/cleaning/run`, { stages, ruleIds })),
+  listCleaningRuns: (id: number) => unwrap(client.get<CleaningRun[]>(`/v1/datasets/${id}/cleaning/runs`)),
+  cleaningReport: (runId: number) => unwrap(client.get<CleaningReport>(`/v1/cleaning/runs/${runId}/report`)),
+  listCleaningFindings: (runId: number, stage?: string, limit = 100) =>
+    unwrap(client.get<CleaningFinding[]>(`/v1/cleaning/runs/${runId}/findings`, { params: { stage, limit } })),
 }
 
 client.interceptors.response.use(
   (response) => response,
   (error) => {
     const statusCode = error?.response?.status
-    const fallbackMessage =
-      statusCode === 401
-        ? '登录状态已失效，请重新登录。'
-        : statusCode === 403
-          ? '你没有执行该操作的权限，请联系管理员。'
-          : '请求失败'
+    let fallbackMessage = '请求失败'
+    if (statusCode === 401) {
+      fallbackMessage = '登录状态已失效，请重新登录。'
+    } else if (statusCode === 403) {
+      fallbackMessage = '你没有执行该操作的权限，请联系管理员。'
+    }
     const message = error?.response?.data?.error ?? error?.message ?? fallbackMessage
     const nextError: ApiError = new Error(message)
     nextError.statusCode = statusCode

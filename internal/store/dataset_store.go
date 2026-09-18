@@ -45,13 +45,53 @@ func (s *DatasetStore) Estimate(ctx context.Context, rootKeyword string, targetS
 	return estimate, nil
 }
 
+// datasetColumns 是 datasets 表的统一查询列，供所有扫描复用，避免多处漂移。
+const datasetColumns = `id, name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id,
+	target_kind, direction_count, questions_per_direction, reward_levels, cleaning_enabled,
+	estimate_json, created_at, updated_at`
+
+// scanDataset 统一扫描 datasets 行（顺序必须与 datasetColumns 一致）。
+func scanDataset(row pgx.Row) (model.Dataset, error) {
+	var item model.Dataset
+	var estimatePayload []byte
+	var rewardPayload []byte
+	err := row.Scan(&item.ID, &item.Name, &item.RootKeyword, &item.TargetSize, &item.Status,
+		&item.StrategyID, &item.ProviderID, &item.StorageProfileID,
+		&item.TargetKind, &item.DirectionCount, &item.QuestionsPerDirect, &rewardPayload, &item.CleaningEnabled,
+		&estimatePayload, &item.CreatedAt, &item.UpdatedAt)
+	if err != nil {
+		return model.Dataset{}, err
+	}
+	_ = json.Unmarshal(estimatePayload, &item.Estimate)
+	if len(rewardPayload) > 0 {
+		_ = json.Unmarshal(rewardPayload, &item.RewardLevels)
+	}
+	if item.RewardLevels == nil {
+		item.RewardLevels = []string{"-1", "0", "1"}
+	}
+	return item, nil
+}
+
 func (s *DatasetStore) CreateDataset(ctx context.Context, input model.Dataset) (model.Dataset, error) {
 	payload, _ := json.Marshal(input.Estimate)
-	var item model.Dataset
-	err := s.db.QueryRow(ctx, `
-	    INSERT INTO datasets (name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id, estimate_json, updated_at)
-	    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-	    RETURNING id, name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id, estimate_json, created_at, updated_at`,
+	if input.TargetKind == "" {
+		input.TargetKind = "sft"
+	}
+	if input.DirectionCount <= 0 {
+		input.DirectionCount = 3
+	}
+	if input.QuestionsPerDirect <= 0 {
+		input.QuestionsPerDirect = 5
+	}
+	rewardPayload, _ := json.Marshal(input.RewardLevels)
+	if len(input.RewardLevels) == 0 {
+		rewardPayload = []byte(`["-1","0","1"]`)
+	}
+	return scanDataset(s.db.QueryRow(ctx, `
+	    INSERT INTO datasets (name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id,
+	        target_kind, direction_count, questions_per_direction, reward_levels, estimate_json, updated_at)
+	    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+	    RETURNING `+datasetColumns,
 		input.Name,
 		input.RootKeyword,
 		input.TargetSize,
@@ -59,19 +99,16 @@ func (s *DatasetStore) CreateDataset(ctx context.Context, input model.Dataset) (
 		input.StrategyID,
 		input.ProviderID,
 		input.StorageProfileID,
+		input.TargetKind,
+		input.DirectionCount,
+		input.QuestionsPerDirect,
+		rewardPayload,
 		payload,
-	).Scan(&item.ID, &item.Name, &item.RootKeyword, &item.TargetSize, &item.Status, &item.StrategyID, &item.ProviderID, &item.StorageProfileID, &payload, &item.CreatedAt, &item.UpdatedAt)
-	if err != nil {
-		return model.Dataset{}, err
-	}
-	_ = json.Unmarshal(payload, &item.Estimate)
-	return item, nil
+	))
 }
 
 func (s *DatasetStore) ListDatasets(ctx context.Context) ([]model.Dataset, error) {
-	rows, err := s.db.Query(ctx, `
-	    SELECT id, name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id, estimate_json, created_at, updated_at
-	    FROM datasets ORDER BY id DESC`)
+	rows, err := s.db.Query(ctx, `SELECT `+datasetColumns+` FROM datasets ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -79,29 +116,104 @@ func (s *DatasetStore) ListDatasets(ctx context.Context) ([]model.Dataset, error
 
 	items := []model.Dataset{}
 	for rows.Next() {
-		var item model.Dataset
-		var payload []byte
-		if err := rows.Scan(&item.ID, &item.Name, &item.RootKeyword, &item.TargetSize, &item.Status, &item.StrategyID, &item.ProviderID, &item.StorageProfileID, &payload, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		item, err := scanDataset(rows)
+		if err != nil {
 			return nil, err
 		}
-		_ = json.Unmarshal(payload, &item.Estimate)
 		items = append(items, item)
 	}
 	return items, rows.Err()
 }
 
 func (s *DatasetStore) GetDataset(ctx context.Context, id int64) (model.Dataset, error) {
-	var item model.Dataset
-	var payload []byte
-	err := s.db.QueryRow(ctx, `
-	    SELECT id, name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id, estimate_json, created_at, updated_at
-	    FROM datasets WHERE id = $1`, id,
-	).Scan(&item.ID, &item.Name, &item.RootKeyword, &item.TargetSize, &item.Status, &item.StrategyID, &item.ProviderID, &item.StorageProfileID, &payload, &item.CreatedAt, &item.UpdatedAt)
-	if err != nil {
-		return model.Dataset{}, err
+	return scanDataset(s.db.QueryRow(ctx, `SELECT `+datasetColumns+` FROM datasets WHERE id = $1`, id))
+}
+
+// UpdateDirectionCount 设置每个领域下生成的方向数量（m 用户可控）。
+func (s *DatasetStore) UpdateDirectionCount(ctx context.Context, datasetID int64, count int) error {
+	if count <= 0 {
+		return fmt.Errorf("direction count must be positive")
 	}
-	_ = json.Unmarshal(payload, &item.Estimate)
-	return item, nil
+	_, err := s.db.Exec(ctx, `UPDATE datasets SET direction_count = $2, updated_at = NOW() WHERE id = $1`, datasetID, count)
+	return err
+}
+
+// UpdateRewardLevels 设置 GRPO 打分档次（如 -1/0/1）。
+func (s *DatasetStore) UpdateRewardLevels(ctx context.Context, datasetID int64, levels []string) error {
+	if len(levels) < 2 {
+		return fmt.Errorf("at least two reward levels are required")
+	}
+	payload, err := json.Marshal(levels)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(ctx, `UPDATE datasets SET reward_levels = $2, updated_at = NOW() WHERE id = $1`, datasetID, payload)
+	return err
+}
+
+// UpdateQuestionsPerDirection 设置每个方向的问题数量（x 用户可控）。
+func (s *DatasetStore) UpdateQuestionsPerDirection(ctx context.Context, datasetID int64, count int) error {
+	if count <= 0 {
+		return fmt.Errorf("questions per direction must be positive")
+	}
+	_, err := s.db.Exec(ctx, `UPDATE datasets SET questions_per_direction = $2, updated_at = NOW() WHERE id = $1`, datasetID, count)
+	return err
+}
+
+// UpdateTargetKind 切换数据集训练类型（sft / grpo）。
+func (s *DatasetStore) UpdateTargetKind(ctx context.Context, datasetID int64, kind string) error {
+	if kind != "sft" && kind != "grpo" {
+		return fmt.Errorf("target kind must be sft or grpo")
+	}
+	_, err := s.db.Exec(ctx, `UPDATE datasets SET target_kind = $2, updated_at = NOW() WHERE id = $1`, datasetID, kind)
+	return err
+}
+
+// ListDomainsByLevel 按层级筛选领域（level=1 领域，level=2 方向）。
+func (s *DatasetStore) ListDomainsByLevel(ctx context.Context, datasetID int64, level int) ([]model.Domain, error) {
+	rows, err := s.db.Query(ctx, `
+    SELECT id, dataset_id, name, canonical_name, level, parent_id, source, review_status, created_at, updated_at
+    FROM domains WHERE dataset_id = $1 AND level = $2 ORDER BY id ASC`, datasetID, level)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []model.Domain{}
+	for rows.Next() {
+		var item model.Domain
+		if err := rows.Scan(&item.ID, &item.DatasetID, &item.Name, &item.Canonical, &item.Level, &item.ParentID,
+			&item.Source, &item.ReviewStatus, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// DeleteDomainsByLevel 删除某层级的领域（方向重生成时使用）。
+func (s *DatasetStore) DeleteDomainsByLevel(ctx context.Context, datasetID int64, level int) error {
+	_, err := s.db.Exec(ctx, `DELETE FROM domains WHERE dataset_id = $1 AND level = $2`, datasetID, level)
+	return err
+}
+
+// InsertDomains 批量插入领域/方向并返回带 ID 的结果。
+func (s *DatasetStore) InsertDomains(ctx context.Context, datasetID int64, domains []model.Domain) ([]model.Domain, error) {
+	inserted := make([]model.Domain, 0, len(domains))
+	for _, domain := range domains {
+		var item model.Domain
+		if err := s.db.QueryRow(ctx, `
+      INSERT INTO domains (dataset_id, name, canonical_name, level, parent_id, source, review_status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, dataset_id, name, canonical_name, level, parent_id, source, review_status, created_at, updated_at`,
+			datasetID, domain.Name, domain.Canonical, domain.Level, domain.ParentID, domain.Source, domain.ReviewStatus,
+		).Scan(&item.ID, &item.DatasetID, &item.Name, &item.Canonical, &item.Level, &item.ParentID,
+			&item.Source, &item.ReviewStatus, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		inserted = append(inserted, item)
+	}
+	return inserted, nil
 }
 
 func (s *DatasetStore) ReplaceDomains(ctx context.Context, datasetID int64, domains []model.Domain, edges []model.DomainEdge) error {

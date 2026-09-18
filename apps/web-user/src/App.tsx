@@ -29,6 +29,7 @@ import {
   CirclePlus,
   Database,
   FileOutput,
+  Filter,
   FolderCog,
   GitBranch,
   HardDriveDownload,
@@ -73,6 +74,8 @@ import {
   type Strategy,
   type User,
 } from './lib/api'
+import { CleaningView } from './views/CleaningView'
+import { EvaluationView } from './views/EvaluationView'
 
 const { Title, Text } = Typography
 
@@ -92,6 +95,8 @@ const userPages: NavPage[] = [
   { label: '新建任务', route: '/console/planning', icon: CirclePlus, caption: '创建新任务' },
   { label: '我的任务', route: '/console/tasks', icon: Target, caption: '查看任务' },
   { label: '数据资产', route: '/console/results', icon: HardDriveDownload, caption: '结果与交付文件' },
+  { label: '质量评估', route: '/console/evaluation', icon: ShieldCheck, caption: '多模型互评与打分' },
+  { label: '数据清洗', route: '/console/cleaning', icon: Filter, caption: '拒答与异常拦截' },
   { label: '账户与帮助', route: '/console/help', icon: Users, caption: '帮助与恢复' },
 ]
 
@@ -3636,6 +3641,8 @@ export default function App() {
                       <Route path="/console/tasks/:taskId" element={renderTaskDetail()} />
                       <Route path="/console/planning" element={renderPlanning()} />
                       <Route path="/console/results" element={renderResultsHub()} />
+                      <Route path="/console/evaluation" element={<EvaluationView datasets={datasets} />} />
+                      <Route path="/console/cleaning" element={<CleaningView datasets={datasets} />} />
                       {isAdmin ? <Route path="/console/operations" element={renderOperations()} /> : null}
                       <Route path="/console/domains" element={<Navigate to={activeTaskDetailRoute} replace />} />
                       <Route path="/console/questions" element={<Navigate to={activeTaskDetailRoute} replace />} />

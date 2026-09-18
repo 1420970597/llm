@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -45,30 +44,9 @@ func (app *application) enqueueQuestionGeneration(w http.ResponseWriter, r *http
 	})
 }
 
+// enqueueDatasetJob 保留原有签名，内部委托给共享的 enqueueJob 实现。
 func (app *application) enqueueDatasetJob(ctx context.Context, jobType string, datasetID int64, queuedStatus string) (bool, error) {
-	dedupKey := fmt.Sprintf("dedup:%s:%d", jobType, datasetID)
-	set, err := app.redis.SetNX(ctx, dedupKey, "1", 10*time.Minute).Result()
-	if err != nil {
-		return false, err
-	}
-	if !set {
-		return false, nil
-	}
-
-	payload, err := json.Marshal(map[string]any{"type": jobType, "datasetId": datasetID})
-	if err != nil {
-		_ = app.redis.Del(ctx, dedupKey)
-		return false, err
-	}
-	if err := app.redis.LPush(ctx, app.cfg.QueueName, payload).Err(); err != nil {
-		_ = app.redis.Del(ctx, dedupKey)
-		return false, err
-	}
-	if err := app.datasets.UpdateStatus(ctx, datasetID, queuedStatus); err != nil {
-		_ = app.redis.Del(ctx, dedupKey)
-		return false, err
-	}
-	return true, nil
+	return app.enqueueJob(ctx, jobType, datasetID, queuedStatus)
 }
 
 func queuedMessage(enqueued bool, created string, existing string) string {
