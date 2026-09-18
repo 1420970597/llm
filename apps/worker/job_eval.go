@@ -47,6 +47,37 @@ func handleEvalRun(ctx context.Context, jc *jobContext, job jobPayload) error {
 	return nil
 }
 
+// evalSelectedJudgeIDs 取本次运行实际选定的裁判 provider id 集合。
+//
+// 来源是 L7 落库的 eval_run_judges 记录（而非 eval_runs.judge_provider_ids）：
+// 前者带着剔除判定（生成者自评 / 缺 API Key），是启动接口校验过的权威集合。
+func evalSelectedJudgeIDs(ctx context.Context, jc *jobContext, runID int64) (map[int64]struct{}, error) {
+	records, err := store.NewEvalJudgeStore(jc.db()).ListRunJudges(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	selected := make(map[int64]struct{}, len(records))
+	for _, record := range records {
+		if record.Excluded {
+			continue
+		}
+		selected[record.ProviderID] = struct{}{}
+	}
+	return selected, nil
+}
+
+// filterEvalJudges 只保留 selected 里的裁判，保持 LoadJudgeRefs 的原有顺序。
+func filterEvalJudges(candidates []eval.JudgeRef, selected map[int64]struct{}) []eval.JudgeRef {
+	kept := make([]eval.JudgeRef, 0, len(candidates))
+	for _, judge := range candidates {
+		if _, ok := selected[judge.ProviderID]; !ok {
+			continue
+		}
+		kept = append(kept, judge)
+	}
+	return kept
+}
+
 func executeEvalRun(ctx context.Context, jc *jobContext, runs *store.EvalRunStore, run model.EvalRun) error {
 	// 与冻结契约一致：异步任务同时落 generation_runs，前端据此统一轮询进度。
 	progress, err := jc.generationRuns.StartRun(ctx, run.DatasetID, evalRunStage, 1)
@@ -74,15 +105,29 @@ func executeEvalRun(ctx context.Context, jc *jobContext, runs *store.EvalRunStor
 
 	// 2. 解析裁判。generatorProviderID 必须传入：生成该数据集的模型禁止自评，
 	//    否则模型给自己的数据打高分，评估结论失去意义。
-	judges, _, err := eval.LoadJudgeRefs(ctx, jc.prompts, run.GeneratorProvider)
+	candidates, _, err := eval.LoadJudgeRefs(ctx, jc.prompts, run.GeneratorProvider)
 	if err != nil {
 		finish("failed", err.Error())
 		return err
 	}
+
+	// 2.1 收敛到「本次运行选定的裁判」。
+	//     LoadJudgeRefs 返回的是环境里全部可用 provider，而用户在
+	//     PUT /api/v1/eval/runs/{runId}/judges 里选定的是其中一部分。
+	//     不过滤就会用用户没选的模型去打分：分数落库后无法分辨它来自哪个裁判，
+	//     报告里的「本次评估用了哪些裁判」也与用户配置不符。
+	selectedJudgeIDs, err := evalSelectedJudgeIDs(ctx, jc, run.ID)
+	if err != nil {
+		finish("failed", err.Error())
+		return err
+	}
+	judges := filterEvalJudges(candidates, selectedJudgeIDs)
 	if len(judges) == 0 {
-		// 全部候选都被剔除（例如本地只配了生成者 provider）。
-		// 这是环境配置问题，不是代码缺陷——如实报错而不是伪造一份空报告。
-		err := fmt.Errorf("评估运行 %d 没有可用裁判：生成者模型禁止自评，请配置其他 provider", run.ID)
+		// 两种成因都如实报错，不伪造一份空报告：
+		//   - 环境里只有生成者 provider（全部候选被自评规则剔除）
+		//   - 运行选定的裁判已被停用 / 移出环境
+		err := fmt.Errorf("评估运行 %d 没有可用裁判（已选定 %d 个，环境候选 %d 个）：生成者模型禁止自评，请确认裁判 provider 处于启用状态",
+			run.ID, len(selectedJudgeIDs), len(candidates))
 		_ = runs.UpdateRunStatus(ctx, run.ID, "failed", 0, 0, err.Error())
 		finish("failed", err.Error())
 		return err
