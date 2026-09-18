@@ -12,6 +12,8 @@ on:
 
 env:
   COMPOSE_FILE: deployments/compose/docker-compose.yml
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: 1420970597
   DEPLOY_REF: ${{ github.event.inputs.ref || github.ref_name }}
 
 concurrency:
@@ -19,10 +21,55 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  publish:
+    name: Build and push images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE_TAG: ${{ github.event.inputs.ref || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+
+      - name: Log in to the container registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Build images
+        run: docker compose build api worker web-user
+
+      - name: Push images
+        run: docker compose push api worker web-user
+
+      - name: Make packages public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          base="https://github.com/users/$IMAGE_NAMESPACE/packages/container"
+          for pkg in llm-api llm-worker llm-web-user; do
+            gh api --method PATCH "user/packages/container/$pkg" \
+              --field visibility=public >/dev/null 2>&1 || true
+            vis=$(gh api "user/packages/container/$pkg" --jq .visibility)
+            echo "$pkg visibility: $vis"
+            if [ "$vis" != "public" ]; then
+              echo "::error::$pkg is $vis — the deploy host cannot pull it" \
+                "anonymously. Set it to Public once at $base/$pkg/settings," \
+                "then re-run this workflow."
+              exit 1
+            fi
+          done
+
   deploy:
     name: Deploy to host
+    needs: publish
     runs-on: ubuntu-latest
     environment: production
+    env:
+      IMAGE_TAG: ${{ github.event.inputs.ref || github.ref_name }}
     steps:
       - name: Check required secrets
         env:
@@ -50,16 +97,20 @@ jobs:
           echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
       - name: Deploy
+        id: deploy
         run: |
           ssh -i ~/.ssh/id_deploy \
             -o StrictHostKeyChecking=yes \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "set -e
              cd '${{ vars.DEPLOY_PATH }}'
+             [ -f .deployed-tag ] && cp .deployed-tag .previous-tag || true
              git fetch --all --tags --prune
              git checkout --force '${{ env.DEPLOY_REF }}'
-             docker compose pull --ignore-buildable
-             docker compose up -d --build --remove-orphans
+             export IMAGE_TAG='${{ env.IMAGE_TAG }}'
+             docker compose pull api worker web-user
+             docker compose up -d --no-build --remove-orphans
+             printf '%s\n' \"\$IMAGE_TAG\" > .deployed-tag
              docker image prune -f"
 
       - name: Post-deploy smoke
@@ -74,13 +125,20 @@ jobs:
           echo "::error::post-deploy health check failed"
           exit 1
 
-      - name: Roll back to previous commit
-        if: failure()
+      - name: Roll back to previous image
+        if: failure() && steps.deploy.outcome == 'failure'
         run: |
           ssh -i ~/.ssh/id_deploy \
             -o StrictHostKeyChecking=yes \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "set -e
              cd '${{ vars.DEPLOY_PATH }}'
-             git checkout --force HEAD@{1}
-             docker compose up -d --build --remove-orphans"
+             if [ ! -f .previous-tag ]; then
+               echo 'no previous tag recorded — nothing to roll back to'
+               exit 0
+             fi
+             export IMAGE_TAG=\$(cat .previous-tag)
+             echo \"rolling back to \$IMAGE_TAG\"
+             docker compose pull api worker web-user
+             docker compose up -d --no-build --remove-orphans
+             printf '%s\n' \"\$IMAGE_TAG\" > .deployed-tag"
