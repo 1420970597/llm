@@ -22,7 +22,8 @@ T1  未完成的 run -> report 返回骨架 + 结论明确说明未完成（不�
 T2  不存在的 run id -> report 404
 T3  不存在的 run id -> scores 404
 T4  非法 run id（非数字/0/负数）-> 400
-T5  真实造数：两个裁判、两个维度 -> 验证加权总分（加权而非算术平均）
+T5  真实造数：两个裁判、两个维度 -> 验证加权总分（加权而非算术平均）、
+    datasetName 回填、generatedAt、sampleCount
 T6  真实造数：验证逐维度统计（均分/标准差/极值/样本数）
 T7  真实造数：验证逐裁判统计（各裁判均分不同）
 T8  真实造数：验证最弱条目按分数升序
@@ -299,6 +300,13 @@ def main():
               overall is not None and abs(overall - 7.5) < 1e-6, f"实际 {overall}")
         check("T5.3 总分不是算术平均 5.0（证明权重生效）",
               overall is not None and abs(overall - 5.0) > 1e-6, f"实际 {overall}")
+        check("T5.4 回填数据集名称（契约要求 EvalReport.DatasetName）",
+              report.get("datasetName") == "L10 加权测试",
+              f"实际 {report.get('datasetName')!r}")
+        check("T5.5 回填 generatedAt",
+              bool(report.get("generatedAt")), f"实际 {report.get('generatedAt')!r}")
+        check("T5.6 sampleCount 为已评分条目数 4",
+              report.get("sampleCount") == 4, f"实际 {report.get('sampleCount')}")
 
         print("\nT6  真实造数：逐维度统计（均分/标准差/极值/样本数）")
         dimensions = {d["dimensionKey"]: d for d in report.get("dimensions") or []}
