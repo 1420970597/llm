@@ -521,7 +521,7 @@ sequenceDiagram
     W->>A: GET /api/v1/cleaning/runs/{runId}/report
     A-->>W: CleaningReport(分阶段统计 / Top 关键词 / 结论)
     W->>A: GET /api/v1/cleaning/runs/{runId}/findings?stage=
-    A-->>W: CleaningFinding[](命中片段与处置动作)
+    A-->>W: CleaningFinding 列表（命中片段与处置动作）
 ```
 
 ---
@@ -719,8 +719,8 @@ func init() {
 
 | 缺口 | 说明 |
 |---|---|
-| L9 未合并 | 抽样（`internal/eval/sampling.go`）、打分（`internal/eval/scoring.go`）、`internal/store/eval_store_items.go`、`apps/api/routes_eval_runs.go`、`apps/worker/job_eval.go` 在编写本文时**不存在于当前分支**。因此第 3.9 节的接口、第 6 节的评估时序、第 9.2 / 9.3 节的两条决策属于「契约已冻结、实现待合并」，本文按此如实标注。 |
-| L10 未合并 | `internal/eval/aggregate.go`、`internal/eval/report.go`、`internal/store/eval_store_summary.go`、`apps/api/routes_eval_report.go` 同上；`EvalReport` 相关前端类型已冻结在 `apps/web-user/src/lib/api.ts`，但后端接口尚未落地。 |
+| L9 待合并 | 抽样（`internal/eval/sampling.go`）、打分（`internal/eval/scoring.go`）、`internal/store/eval_store_items.go`、`apps/api/routes_eval_runs.go`、`apps/worker/job_eval.go` 在编写本文时**不存在于当前分支**。因此第 3.9 节的接口、第 6 节的评估时序、第 9.2 / 9.3 节的两条决策属于「契约已冻结、实现待合并」，本文按此如实标注。 |
+| L10 待合并 | `internal/eval/aggregate.go`、`internal/eval/report.go`、`internal/store/eval_store_summary.go`、`apps/api/routes_eval_report.go` 同上；`EvalReport` 相关前端类型已冻结在 `apps/web-user/src/lib/api.ts`，但后端接口尚未落地。 |
 | L13 / L14 未合并 | `apps/web-user/src/views/EvaluationView.tsx` 与 `apps/web-user/src/views/CleaningView.tsx` 目前仍是 foundation 的占位实现（仅渲染数据集数量），真实 UI 在各自 lane 分支上。因此使用说明中「前端怎么点」的部分，凡涉及这两个页面的具体交互，均以契约（`docs/plans/eval-and-cleaning-plan.md` 第 4 节）为准，并标注「待 L13/L14 合并」。 |
 | 全仓库测试基线 | `go test ./...` 在 Phase 8 之前长期为空跑；本阶段各 lane 已配套新增单测与 `test/test_l*.py` 接口测试，但端到端（前端 + 后端 + worker + LLM）仍需按各 lane 的接口测试脚本单独执行。 |
 
