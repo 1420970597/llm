@@ -405,3 +405,54 @@ func TestCategoryLabelCoversAllBuiltinCategories(t *testing.T) {
 		}
 	}
 }
+
+// TestWeakestDimensionDoesNotClaimBelowOverall 只有一个维度时不能声称它「低于整体水平」。
+//
+// 单维度时最弱维度就是整体本身，两者均分必然相等。原文案写死「低于整体水平
+// X」，会输出「均分 6.00，低于整体水平 6.00」这种自相矛盾的句子。
+func TestWeakestDimensionDoesNotClaimBelowOverall(t *testing.T) {
+	report, notes := Aggregate(AggregateInput{
+		Run:        model.EvalRun{ID: 1, Status: "completed", TotalItems: 2, ScoredItems: 2},
+		Items:      []model.EvalItem{item(1, 0), item(2, 1)},
+		Dimensions: testDimensions()[:1], // 只给一个维度定义
+		Scores: []model.EvalItemScore{
+			score(1, 100, "long_chain_depth", 6),
+			score(2, 100, "long_chain_depth", 6),
+		},
+		Judges: []model.EvalRunJudge{{ProviderID: 100, ProviderName: "裁判甲"}},
+	})
+
+	conclusions := joined(BuildConclusions(report, notes, "completed"))
+	if strings.Contains(conclusions, "低于整体水平") {
+		t.Errorf("单维度时最弱维度即整体，不应声称「低于整体水平」，实际：\n%s", conclusions)
+	}
+	if !strings.Contains(conclusions, "最弱维度是") {
+		t.Errorf("仍应给出最弱维度与建议，实际：\n%s", conclusions)
+	}
+}
+
+// TestExcludedJudgeNotReportedAsCallFailure 被剔除的裁判不能同时被说成「调用失败」。
+//
+// 剔除是主动决策（禁止生成者自评），调用失败是异常。两者都导致 sampleCount=0，
+// 但把它们混在一句话里会自相矛盾，也让用户误以为系统出了问题。
+func TestExcludedJudgeNotReportedAsCallFailure(t *testing.T) {
+	report, notes := Aggregate(AggregateInput{
+		Run:        model.EvalRun{ID: 1, Status: "completed", TotalItems: 1, ScoredItems: 1},
+		Items:      []model.EvalItem{item(1, 0)},
+		Dimensions: testDimensions(),
+		Scores:     []model.EvalItemScore{score(1, 100, "long_chain_depth", 6)},
+		Judges: []model.EvalRunJudge{
+			{ProviderID: 100, ProviderName: "裁判甲", Model: "model-a"},
+			{ProviderID: 200, ProviderName: "生成者", Model: "model-gen",
+				Excluded: true, ExcludeReason: "生成者模型，禁止自评"},
+		},
+	})
+
+	conclusions := joined(BuildConclusions(report, notes, "completed"))
+	if !strings.Contains(conclusions, "已被剔除") {
+		t.Errorf("应告知裁判被剔除，实际：\n%s", conclusions)
+	}
+	if strings.Contains(conclusions, "不代表打分严格") {
+		t.Errorf("被剔除的裁判不应再被报为「调用失败」，实际：\n%s", conclusions)
+	}
+}

@@ -72,6 +72,10 @@ type AggregateNotes struct {
 	// ExcludedJudges 被 L7 剔除、未参与评分的裁判及其原因。
 	// 必须在结论里告知用户，否则「为什么少了一个模型」无从查起。
 	ExcludedJudges []string
+
+	// ExcludedJudgeIDs 被剔除裁判的 provider id。
+	// 用于把「被剔除」与「调用失败」两类零分裁判区分开。
+	ExcludedJudgeIDs []int64
 }
 
 // Aggregate 把逐条逐维度打分汇总成报告统计量。
@@ -84,6 +88,7 @@ func Aggregate(in AggregateInput) (model.EvalReport, AggregateNotes) {
 		UnweightedDimensions: []string{},
 		AgreementSkipped:     []string{},
 		ExcludedJudges:       []string{},
+		ExcludedJudgeIDs:     []int64{},
 	}
 
 	report := model.EvalReport{
@@ -130,6 +135,7 @@ func Aggregate(in AggregateInput) (model.EvalReport, AggregateNotes) {
 		}
 		notes.ExcludedJudges = append(notes.ExcludedJudges,
 			judgeLabel(judge)+"（"+reason+"）")
+		notes.ExcludedJudgeIDs = append(notes.ExcludedJudgeIDs, judge.ProviderID)
 	}
 
 	var weightedSum, weightTotal float64

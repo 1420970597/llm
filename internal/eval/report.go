@@ -63,10 +63,16 @@ func BuildConclusions(report model.EvalReport, notes AggregateNotes, status stri
 
 	// 2. 最弱维度 + 可操作建议。
 	if weakest, ok := weakestDimension(report.Dimensions); ok {
+		// 只有一个维度时，最弱维度就是整体本身，「低于整体水平」是假的。
+		// 同理，任何与整体持平的情况都不能声称它拉低了分数。
+		comparison := ""
+		if weakest.Score < report.OverallScore {
+			comparison = fmt.Sprintf("，低于整体水平 %.2f", report.OverallScore)
+		}
 		conclusions = append(conclusions, fmt.Sprintf(
-			"最弱维度是「%s」（%s 类），均分 %.2f，低于整体水平 %.2f。建议优先复查该维度对应的数据，%s。",
+			"最弱维度是「%s」（%s类），均分 %.2f%s。建议优先复查该维度对应的数据，%s。",
 			weakest.Name, categoryLabel(weakest.Category), weakest.Score,
-			report.OverallScore, dimensionAdvice(weakest)))
+			comparison, dimensionAdvice(weakest)))
 	}
 
 	// 3. 最弱条目提示。
@@ -84,7 +90,7 @@ func BuildConclusions(report model.EvalReport, notes AggregateNotes, status stri
 	conclusions = append(conclusions, degradationConclusions(notes)...)
 
 	// 7. 一个分都没打出来的裁判，同样必须可见。
-	if notice := silentJudgeConclusion(report); notice != "" {
+	if notice := silentJudgeConclusion(report, notes); notice != "" {
 		conclusions = append(conclusions, notice)
 	}
 
@@ -346,12 +352,24 @@ func degradationConclusions(notes AggregateNotes) []string {
 //
 // 这类裁判平均分是 0，但它既不是「打了 0 分」也不是「没参加」。如果不提示，
 // 用户会拿一个 0 分去和别的裁判对比，得出「这个模型很严格」的错误结论。
-func silentJudgeConclusion(report model.EvalReport) string {
+//
+// 已被剔除的裁判要排除在外：他们本来就不该打分，上面第 6 步已经说明过原因，
+// 再说一句「调用失败」是自相矛盾的。
+func silentJudgeConclusion(report model.EvalReport, notes AggregateNotes) string {
+	excluded := map[int64]struct{}{}
+	for _, providerID := range notes.ExcludedJudgeIDs {
+		excluded[providerID] = struct{}{}
+	}
+
 	silent := []string{}
 	for _, judge := range report.Judges {
-		if judge.SampleCount == 0 {
-			silent = append(silent, judgeLabelFor(judge))
+		if judge.SampleCount != 0 {
+			continue
 		}
+		if _, isExcluded := excluded[judge.ProviderID]; isExcluded {
+			continue
+		}
+		silent = append(silent, judgeLabelFor(judge))
 	}
 	if len(silent) == 0 {
 		return ""
