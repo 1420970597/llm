@@ -20,13 +20,13 @@ func NewCleaningRunStore(db *pgxpool.Pool) *CleaningRunStore {
 	return &CleaningRunStore{db: db}
 }
 
-const cleaningRunColumns = `id, dataset_id, stages, status, scanned_items, flagged_items,
+const cleaningRunColumns = `id, dataset_id, stages, rule_ids, status, scanned_items, flagged_items,
 	dropped_items, report, error_summary, created_at, updated_at`
 
 func scanCleaningRun(row pgx.Row) (model.CleaningRun, error) {
 	var item model.CleaningRun
 	var stagesPayload, reportPayload []byte
-	err := row.Scan(&item.ID, &item.DatasetID, &stagesPayload, &item.Status, &item.ScannedItems,
+	err := row.Scan(&item.ID, &item.DatasetID, &stagesPayload, &item.RuleIDs, &item.Status, &item.ScannedItems,
 		&item.FlaggedItems, &item.DroppedItems, &reportPayload, &item.ErrorSummary,
 		&item.CreatedAt, &item.UpdatedAt)
 	if err != nil {
@@ -38,6 +38,11 @@ func scanCleaningRun(row pgx.Row) (model.CleaningRun, error) {
 	if item.Stages == nil {
 		item.Stages = []string{}
 	}
+	// rule_ids 为空表示「用全部启用规则」，与 0012 起的既有行为一致。
+	// 这里统一成空切片，避免前端拿到 null 还要做一次判空。
+	if item.RuleIDs == nil {
+		item.RuleIDs = []int64{}
+	}
 	if len(reportPayload) > 0 {
 		_ = json.Unmarshal(reportPayload, &item.Report)
 	}
@@ -48,18 +53,24 @@ func scanCleaningRun(row pgx.Row) (model.CleaningRun, error) {
 }
 
 // Create 新建一次清洗运行，状态为 queued。
-func (s *CleaningRunStore) Create(ctx context.Context, datasetID int64, stages []string) (model.CleaningRun, error) {
+//
+// ruleIDs 为空表示沿用既有行为（使用全部启用规则）；非空表示本次只使用
+// 用户显式指定的这些规则，与规则自身的 is_active 无关。
+func (s *CleaningRunStore) Create(ctx context.Context, datasetID int64, stages []string, ruleIDs []int64) (model.CleaningRun, error) {
 	if len(stages) == 0 {
 		stages = []string{"question", "reasoning", "answer"}
+	}
+	if ruleIDs == nil {
+		ruleIDs = []int64{}
 	}
 	payload, err := json.Marshal(stages)
 	if err != nil {
 		return model.CleaningRun{}, err
 	}
 	return scanCleaningRun(s.db.QueryRow(ctx, `
-    INSERT INTO cleaning_runs (dataset_id, stages, status)
-    VALUES ($1, $2, 'queued')
-    RETURNING `+cleaningRunColumns, datasetID, payload))
+    INSERT INTO cleaning_runs (dataset_id, stages, rule_ids, status)
+    VALUES ($1, $2, $3, 'queued')
+    RETURNING `+cleaningRunColumns, datasetID, payload, ruleIDs))
 }
 
 // GetRun 按 ID 查询运行记录。
