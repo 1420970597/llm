@@ -1,7 +1,7 @@
 # 长链思考数据工厂 · 评估与清洗能力建设方案（契约冻结版）
 
 > 本文档是 **唯一权威契约**。所有 lane 子代理必须以本文档为准，不得自行改动接口、表结构、字段名。
-> 冻结版本：`v1.0`（对应迁移 `0011` ~ `0016`）
+> 冻结版本：`v1.0`（对应迁移 `0011` ~ `0019`）
 > 对应需求：`功能说明.txt` 全 7 项；`todo.md` 的 TO C 信息架构（第 3 节、第 12 节）。
 
 ---
@@ -35,7 +35,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │  foundation（父代理独占，已冻结）                              │
 │  ┌───────────────┐ ┌──────────────┐ ┌────────────────────┐  │
-│  │ sql/0011-0016 │ │ model/*.go   │ │ store/*_store.go   │  │
+│  │ sql/0011-0019 │ │ model/*.go   │ │ store/*_store.go   │  │
 │  │ 迁移（全表）   │ │ 类型（全量）  │ │ 构造器（全量）      │  │
 │  └───────────────┘ └──────────────┘ └────────────────────┘  │
 │  ┌───────────────────────────┐ ┌──────────────────────────┐ │
@@ -108,9 +108,27 @@ func RegisterJobHandler(jobType string, h jobHandler)   // lane 在 init() 中�
 
 ---
 
-## 2. 数据库迁移契约（编号区间 0011 ~ 0016）
+## 2. 数据库迁移契约（编号区间 0011 ~ 0019）
 
 编号区间已冻结。**lane 不得新增迁移文件**；若确需字段，走 issue 由父代理统一加。
+
+### 编号 → lane 归属表（全部已落地 `main`）
+
+| 编号 | 文件 | 归属 |
+|---|---|---|
+| 0011 | `eval_core.sql` | foundation |
+| 0012 | `cleaning_core.sql` | foundation |
+| 0013 | `chain_standards.sql` | L2 |
+| 0014 | `questions_v2.sql` | L3 |
+| 0015 | `export_mappings.sql` | L6 |
+| 0016 | `generation_runs.sql` | foundation |
+| 0017 | `grpo_prompts.sql` | L4 |
+| 0018 | `sft_records.sql` | L5 |
+| 0019 | `cleaning_run_rule_ids.sql` | 父代理（L12 `cleaning_runs.rule_ids` 接线） |
+
+> **历史教训**：本节此前写 `0011 ~ 0016`，与 `sql/migrations/` 实际内容不符。
+> 后果是后续 lane 读到会以为 0017/0018 仍可用，从而撞编号。
+> 任何新增迁移都必须同步更新本节与本表。
 
 ### 0011 `eval_dimensions` / `eval_runs` / `eval_run_judges` / `eval_items` / `eval_item_scores` / `eval_summaries`
 
