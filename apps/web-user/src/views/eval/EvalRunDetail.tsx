@@ -18,6 +18,7 @@ import {
   scoreStatusMeta,
   RUN_POLL_INTERVAL_MS,
 } from './evalShared'
+import { EvalScoreTable } from './EvalScoreTable'
 
 const { Title, Text } = Typography
 
@@ -275,6 +276,8 @@ export function EvalRunDetail({ runId }: { runId: number }) {
               )}
             </div>
           </Card>
+
+          <EvalScoreTable run={run} judges={detail.judges} dimensions={detail.dimensions} />
         </>
       ) : null}
     </div>
