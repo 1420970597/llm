@@ -446,7 +446,9 @@ erDiagram
 | `cleaning_rules` | `name UNIQUE` | 规则按名字覆盖更新 |
 
 评估侧的状态机：`eval_runs.status` ∈ `draft` / `queued` / `running` / `partial_failed` / `failed` / `completed`；`eval_run_judges.status` 记录单个裁判的进度与错误。
-清洗侧：`cleaning_runs.status` 由 `Create`（`queued`）→ `MarkDone` / `MarkFailed` 推进；`questions.cleaning_status` ∈ `clean` / `flagged` / `dropped`（由 `ApplyCleaningStatus` 写回）。
+清洗侧：`cleaning_runs.status` 由 `Create`（`queued`）→ `MarkDone` / `MarkFailed` 推进。
+
+> ⚠️ **已知缺陷（与冻结契约不一致，已列入第 12 节）**：`questions.cleaning_status` 的契约取值是 `clean` / `flagged` / `dropped`（见 `docs/plans/eval-and-cleaning-plan.md` 第 2 节与 `apps/web-user/src/lib/api.ts` 的类型声明），但 `ApplyCleaningStatus` 实际写入的是**动作常量** `internal/cleaning/scanner.go` 里的 `ActionFlag = "flag"` / `ActionDrop = "drop"`，即真实取值是 `clean` / `flag` / `drop`。两处对不上。
 
 ---
 
@@ -735,6 +737,7 @@ func init() {
 | 全仓库测试基线 | `go test ./...` 在 Phase 8 之前长期为空跑；本阶段各 lane 已配套新增单测与 `test/test_l*.py` 接口测试，但端到端（前端 + 后端 + worker + LLM）仍需按各 lane 的接口测试脚本单独执行。 |
 | `priority` 语义在两条 lane 里相反 | `internal/cleaning/scanner.go` 的 `decideAction` 按 `priority` 降序匹配，`internal/cleaning/keywords.go` 的 `EvaluateRules` 按升序匹配。两者名字相近、语义相反，而后者当前**只被单测调用、不在生产路径上**（worker 用的是 `Scan` → `decideAction`）。建议由父代理裁定保留哪一个、删掉另一个，否则后续维护者很容易改错一处。 |
 | `job_cleaning.go` 里有临时匹配器 | `apps/worker/job_cleaning.go` 的 `newKeywordMatcher` / `keywordMatcher` 带 `ponytail:` 注释，写明它是 L11 落地前的临时实现，应换成 `cleaning.MatchKeywords` + `cleaning.Snippet`（以复用全角半角归一化）。当前生产路径用的仍是临时匹配器，与 L11 的单测覆盖的 `MatchKeywords` 不是同一份代码。已合并但**接线未完成**，属于真实缺口。 |
+| `questions.cleaning_status` 取值与契约不符 | 契约与前端类型声明的是 `clean` / `flagged` / `dropped`，而 `internal/store/cleaning_store_runs.go` 的 `ApplyCleaningStatus` 直接写入 `internal/cleaning/scanner.go` 的动作常量值 `flag` / `drop`。后果：前端若按 `flagged` / `dropped` 做判断会全部落空；后端 `LoadScanSources` 里的 `WHERE q.cleaning_status <> 'dropped'` 也永远不会命中（因为实际写的是 `drop`），导致被剔除的数据在**下次清洗时仍会被重新扫描**。另：导出链路（`apps/worker/job_export_multi.go` 的 `loadExportRecords`）**完全不看 `cleaning_status`**，因此被 `drop` 的数据目前**仍会出现在导出里**。这三处需要父代理统一裁定并修复。 |
 
 ---
 
