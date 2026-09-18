@@ -30,6 +30,18 @@ import (
 // 不允许删除；否则用户一次误删就会让清洗静默失效且无法追溯。
 var ErrBuiltinKeywordImmutable = errors.New("内置关键词不可删除，请改为停用（isActive=false）")
 
+// ErrKeywordIdentityImmutable 表示试图修改关键词的 pattern 或 category。
+//
+// 领域规则：pattern 与 category 共同构成关键词的身份（表上 UNIQUE(pattern, category)），
+// 也是清洗命中的去重键。允许就地改身份会让历史 findings 指向的词条凭空变义，
+// 因此只允许删除后重建；内置词连删除都不允许，只能停用。
+var ErrKeywordIdentityImmutable = errors.New("关键词内容与分类不可修改，请删除后重新新增（内置词可停用）")
+
+// ErrBuiltinKeywordIdentityImmutable 表示试图修改内置关键词的 pattern 或 category。
+// 与 ErrKeywordIdentityImmutable 分开是为了让接口能给出更精确的提示：
+// 自定义词可以「删除后重建」，内置词只能停用。
+var ErrBuiltinKeywordIdentityImmutable = errors.New("内置关键词的内容与分类不可修改，只能停用或调整严重度")
+
 // Match 单条关键词命中。
 type Match struct {
 	KeywordID   int64  `json:"keywordId"`

@@ -67,6 +67,15 @@ func (s *CleaningKeywordStore) Get(ctx context.Context, id int64) (model.Cleanin
 // Upsert 新增或更新关键词。ID 为 0 时按 (pattern, category) 冲突更新，
 // 否则按 ID 更新。返回落库后的完整记录。
 func (s *CleaningKeywordStore) Upsert(ctx context.Context, input model.CleaningKeyword) (model.CleaningKeyword, error) {
+	if input.ID == 0 {
+		return s.insertKeyword(ctx, input)
+	}
+	return s.updateKeyword(ctx, input)
+}
+
+// insertKeyword 新增自定义关键词（is_builtin 恒为 FALSE）。
+// 空值走默认：category=refusal、match_mode=contains、severity=block。
+func (s *CleaningKeywordStore) insertKeyword(ctx context.Context, input model.CleaningKeyword) (model.CleaningKeyword, error) {
 	if input.Pattern == "" {
 		return model.CleaningKeyword{}, fmt.Errorf("pattern 不能为空")
 	}
@@ -80,8 +89,7 @@ func (s *CleaningKeywordStore) Upsert(ctx context.Context, input model.CleaningK
 		input.Severity = "block"
 	}
 
-	if input.ID == 0 {
-		row := s.db.QueryRow(ctx, `
+	row := s.db.QueryRow(ctx, `
       INSERT INTO cleaning_keywords (pattern, category, match_mode, severity, is_builtin, is_active, note)
       VALUES ($1, $2, $3, $4, FALSE, $5, $6)
       ON CONFLICT (pattern, category) DO UPDATE SET
@@ -91,19 +99,60 @@ func (s *CleaningKeywordStore) Upsert(ctx context.Context, input model.CleaningK
         note = EXCLUDED.note,
         updated_at = NOW()
       RETURNING `+cleaningKeywordColumns,
-			input.Pattern, input.Category, input.MatchMode, input.Severity, input.IsActive, input.Note)
-		return scanCleaningKeyword(row)
+		input.Pattern, input.Category, input.MatchMode, input.Severity, input.IsActive, input.Note)
+	return scanCleaningKeyword(row)
+}
+
+// updateKeyword 按 ID 更新已有关键词。
+//
+// 身份字段（pattern / category）不允许就地修改：与库中现值不一致时**报错**，
+// 而不是静默丢弃。原实现只 SET match_mode/severity/is_active/note，且 WHERE id=$1
+// AND pattern=$2，于是「改分类」返回 200 但值不变、「改内容」直接 404 —— 两者都是
+// 假成功：用户看到「已保存」却什么也没发生。
+//
+// 空值语义为「保持原值」，因此调用方可以只提交要改的字段。
+func (s *CleaningKeywordStore) updateKeyword(ctx context.Context, input model.CleaningKeyword) (model.CleaningKeyword, error) {
+	var current model.CleaningKeyword
+	err := s.db.QueryRow(ctx,
+		`SELECT `+cleaningKeywordColumns+` FROM cleaning_keywords WHERE id = $1`,
+		input.ID).Scan(&current.ID, &current.Pattern, &current.Category, &current.MatchMode,
+		&current.Severity, &current.IsBuiltin, &current.IsActive, &current.Note,
+		&current.CreatedAt, &current.UpdatedAt)
+	if err != nil {
+		return model.CleaningKeyword{}, err
 	}
 
-	// 内置关键词允许改 severity / note / is_active，但不允许改成非内置或改 pattern，
-	// 否则内置基线会被悄悄替换掉。
+	if input.Pattern != "" && input.Pattern != current.Pattern {
+		return model.CleaningKeyword{}, s.identityError(current.IsBuiltin)
+	}
+	if input.Category != "" && input.Category != current.Category {
+		return model.CleaningKeyword{}, s.identityError(current.IsBuiltin)
+	}
+
+	// 未提交的字段沿用库中现值，避免把用户的设置重置回默认值。
+	if input.MatchMode == "" {
+		input.MatchMode = current.MatchMode
+	}
+	if input.Severity == "" {
+		input.Severity = current.Severity
+	}
+
 	row := s.db.QueryRow(ctx, `
     UPDATE cleaning_keywords
-    SET match_mode = $3, severity = $4, is_active = $5, note = $6, updated_at = NOW()
-    WHERE id = $1 AND pattern = $2
+    SET match_mode = $2, severity = $3, is_active = $4, note = $5, updated_at = NOW()
+    WHERE id = $1
     RETURNING `+cleaningKeywordColumns,
-		input.ID, input.Pattern, input.MatchMode, input.Severity, input.IsActive, input.Note)
+		input.ID, input.MatchMode, input.Severity, input.IsActive, input.Note)
 	return scanCleaningKeyword(row)
+}
+
+// identityError 按是否内置返回对应的身份不可变错误，
+// 让接口能提示「删除后重建」（自定义）还是「只能停用」（内置）。
+func (s *CleaningKeywordStore) identityError(isBuiltin bool) error {
+	if isBuiltin {
+		return cleaning.ErrBuiltinKeywordIdentityImmutable
+	}
+	return cleaning.ErrKeywordIdentityImmutable
 }
 
 // Delete 删除关键词。内置关键词拒绝删除（返回 cleaning.ErrBuiltinKeywordImmutable），

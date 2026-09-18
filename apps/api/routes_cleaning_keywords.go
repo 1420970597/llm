@@ -64,11 +64,17 @@ func (app *application) upsertCleaningKeyword(w http.ResponseWriter, r *http.Req
 
 	item, err := app.cleaningKeywords().Upsert(r.Context(), input)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
 			app.writeError(w, http.StatusNotFound, fmt.Errorf("关键词不存在"))
-			return
+		case errors.Is(err, cleaning.ErrBuiltinKeywordIdentityImmutable),
+			errors.Is(err, cleaning.ErrKeywordIdentityImmutable):
+			// 409 而非 200：身份字段不可就地修改，必须让调用方知道这次没生效，
+			// 否则前端会弹「已保存」而值根本没变。
+			app.writeError(w, http.StatusConflict, err)
+		default:
+			app.writeError(w, http.StatusBadRequest, err)
 		}
-		app.writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	app.writeJSON(w, http.StatusOK, item)
