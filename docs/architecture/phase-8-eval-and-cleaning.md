@@ -40,10 +40,10 @@ Phase 8 把系统从「只会生成数据」升级为「生成 → 评估 → �
 
 | 项 | 内容 |
 |---|---|
-| lane | L1 |
-| 生成器 | `internal/llm/direction_generator.go`（`GenerateDirections`） |
+| lane | L1（m 层 + 断点续跑）；n 层沿用既有实现 |
+| 生成器 | m 层：`internal/llm/direction_generator.go`（`GenerateDirections`）；n 层：`internal/llm/domain_generator.go`（`GenerateDomains`） |
 | 存储 | `internal/store/dataset_store_directions.go`（`ListRootDomains` / `ListDirections` / `ListDirectionsByParent` / `UpsertDirections`）、`internal/store/generation_run_store.go`（断点续跑） |
-| HTTP | `apps/api/routes_directions.go`：`POST /api/v1/datasets/{id}/directions/generate`、`GET /api/v1/datasets/{id}/directions`、`POST /api/v1/datasets/{id}/generation-runs/{stage}/resume`、`GET /api/v1/datasets/{id}/generation-runs` |
+| HTTP | `apps/api/routes_directions.go`：`POST /api/v1/datasets/{id}/directions/generate`、`GET /api/v1/datasets/{id}/directions`、`POST /api/v1/datasets/{id}/generation-runs/{stage}/resume`、`GET /api/v1/datasets/{id}/generation-runs`；n 层走 legacy 路由 `POST /api/v1/datasets/{id}/domains/generate`（`apps/api/datasets.go` 的 `generateDomains`） |
 | worker | `apps/worker/job_directions.go`，jobType `directions.generate` |
 | 表 | `domains`（`level=1` 领域、`level=2` 方向）、`generation_runs`、`datasets.direction_count`（m）；n 来自生成策略 `generation_strategies.domain_count` |
 | 迁移 | `sql/migrations/0016_generation_runs.sql` |

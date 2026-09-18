@@ -19,8 +19,8 @@
 
   <!-- Stage 1: n domains -->
   <rect x="290" y="86" width="210" height="86" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
-  <text x="395" y="110" text-anchor="middle" font-size="14" font-weight="bold" fill="#1d4ed8">n 个领域（L1）</text>
-  <text x="395" y="132" text-anchor="middle" font-size="11" fill="#374151">job: directions.generate</text>
+  <text x="395" y="110" text-anchor="middle" font-size="14" font-weight="bold" fill="#1d4ed8">n 个领域（既有）</text>
+  <text x="395" y="132" text-anchor="middle" font-size="11" fill="#374151">legacy: POST /domains/generate</text>
   <text x="395" y="150" text-anchor="middle" font-size="11" fill="#6b7280">domains.level=1</text>
   <text x="395" y="166" text-anchor="middle" font-size="11" fill="#6b7280">strategy.domain_count</text>
 
@@ -29,7 +29,7 @@
   <!-- Stage 2: m directions -->
   <rect x="550" y="86" width="210" height="86" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
   <text x="655" y="110" text-anchor="middle" font-size="14" font-weight="bold" fill="#1d4ed8">m 个方向（L1）</text>
-  <text x="655" y="132" text-anchor="middle" font-size="11" fill="#374151">同上 job，逐领域续跑</text>
+  <text x="655" y="132" text-anchor="middle" font-size="11" fill="#374151">job: directions.generate</text>
   <text x="655" y="150" text-anchor="middle" font-size="11" fill="#6b7280">domains.level=2</text>
   <text x="655" y="166" text-anchor="middle" font-size="11" fill="#6b7280">datasets.direction_count</text>
 
