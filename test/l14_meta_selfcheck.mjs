@@ -7,8 +7,8 @@
  *   2. deriveSeverityDistribution：findings.keywordId 与关键词库 severity 的 join；
  *   3. sortRulesByPriority：必须与运行时 cleaning.Scan → decideAction 的判定顺序一致
  *      （priority 数字大的先判；注意内部 EvaluateRules 是升序但无生产调用方）；
- *   4. buildKeywordSavePayload：编辑态不得把后端 UPDATE 分支不写的字段（category）
- *      发给接口，否则界面提示「已保存」而值没变（假成功）。
+ *   4. buildKeywordSavePayload：编辑态不得提交身份字段（pattern/category）——
+ *      后端对身份字段变更返回 409 拒绝（设计如此），前端对应的输入框置为只读。
  *
  * 运行：
  *   node test/l14_meta_selfcheck.mjs
@@ -112,7 +112,7 @@ try {
   )
   const editPayload = buildKeywordSavePayload({ id: 27, pattern: 'I cannot', category: 'placeholder', matchMode: 'prefix', severity: 'warn', isActive: false, note: 'n' })
   check(
-    'buildKeywordSavePayload 编辑态不提交 category（后端 UPDATE 分支不写该列）',
+    'buildKeywordSavePayload 编辑态不提交 category（身份字段，后端 409 拒绝）',
     editPayload.id === 27 && editPayload.pattern === 'I cannot' && !('category' in editPayload)
       && editPayload.severity === 'warn' && editPayload.isActive === false,
     `keys=${Object.keys(editPayload).join(',')}（category 必须缺席）`,
