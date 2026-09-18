@@ -1,4 +1,9 @@
+import type { ComponentProps } from 'react'
+import type { Tag } from '@douyinfe/semi-ui'
 import type { ApiError } from '../../lib/api'
+
+/** Semi Tag 的合法颜色值（TagColor 未从包入口导出，这里从组件 props 反推）。 */
+export type TagTone = NonNullable<ComponentProps<typeof Tag>['color']>
 
 /** 把 API 错误统一转成可展示的中文文案（api.ts 拦截器已给出可读 message）。 */
 export function errorMessage(error: unknown): string {
@@ -7,7 +12,7 @@ export function errorMessage(error: unknown): string {
 }
 
 /** 评估运行状态 → 中文标签与 Semi Tag 颜色。 */
-export function runStatusMeta(status: string): { label: string; color: string } {
+export function runStatusMeta(status: string): { label: string; color: TagTone } {
   switch (status) {
     case 'draft':
       return { label: '草稿', color: 'grey' }
@@ -27,7 +32,7 @@ export function runStatusMeta(status: string): { label: string; color: string } 
 }
 
 /** 裁判/条目打分状态 → 中文标签与颜色。 */
-export function scoreStatusMeta(status: string): { label: string; color: string } {
+export function scoreStatusMeta(status: string): { label: string; color: TagTone } {
   switch (status) {
     case 'completed':
     case 'scored':
