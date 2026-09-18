@@ -83,6 +83,26 @@ func main() {
 		log.Fatalf("bootstrap user failed: %v", err)
 	}
 
+	// 从环境变量幂等引导默认 LLM provider（密钥加密落库，不写入日志）。
+	if cfg.BootstrapProviderBaseURL != "" && cfg.BootstrapProviderAPIKey != "" {
+		providerID, created, err := app.store.EnsureProvider(ctx, model.ModelProvider{
+			Name:           cfg.BootstrapProviderName,
+			BaseURL:        cfg.BootstrapProviderBaseURL,
+			Model:          cfg.BootstrapProviderModel,
+			ProviderType:   cfg.BootstrapProviderType,
+			MaxConcurrency: cfg.BootstrapProviderMaxConcurrency,
+			TimeoutSeconds: cfg.BootstrapProviderTimeoutSeconds,
+			IsActive:       true,
+			APIKey:         cfg.BootstrapProviderAPIKey,
+		})
+		if err != nil {
+			log.Fatalf("bootstrap provider failed: %v", err)
+		}
+		if created {
+			log.Printf("bootstrap provider ensured: id=%d model=%s", providerID, cfg.BootstrapProviderModel)
+		}
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", app.health)
 	mux.HandleFunc("GET /readyz", app.ready)

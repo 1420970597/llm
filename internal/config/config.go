@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 )
 
 type APIConfig struct {
@@ -25,6 +27,15 @@ type APIConfig struct {
 	DefaultAdminPassword string
 	DefaultUserEmail     string
 	DefaultUserPassword  string
+
+	// 首次启动时从环境变量引导写入的默认 LLM provider。
+	BootstrapProviderName           string
+	BootstrapProviderBaseURL        string
+	BootstrapProviderModel          string
+	BootstrapProviderAPIKey         string
+	BootstrapProviderType           string
+	BootstrapProviderTimeoutSeconds int
+	BootstrapProviderMaxConcurrency int
 }
 
 type WorkerConfig struct {
@@ -70,6 +81,14 @@ func LoadAPIConfig() APIConfig {
 		DefaultAdminPassword: getenv("APP_DEFAULT_ADMIN_PASSWORD", "admin123456"),
 		DefaultUserEmail:     getenv("APP_DEFAULT_USER_EMAIL", "user@company.com"),
 		DefaultUserPassword:  getenv("APP_DEFAULT_USER_PASSWORD", "user123456"),
+
+		BootstrapProviderName:           getenv("APP_BOOTSTRAP_PROVIDER_NAME", "default-provider"),
+		BootstrapProviderBaseURL:        getenv("APP_BOOTSTRAP_PROVIDER_BASE_URL", ""),
+		BootstrapProviderModel:          getenv("APP_BOOTSTRAP_PROVIDER_MODEL", ""),
+		BootstrapProviderAPIKey:         getenv("APP_BOOTSTRAP_PROVIDER_API_KEY", ""),
+		BootstrapProviderType:           getenv("APP_BOOTSTRAP_PROVIDER_TYPE", "openai-compatible"),
+		BootstrapProviderTimeoutSeconds: getenvInt("APP_BOOTSTRAP_PROVIDER_TIMEOUT_SECONDS", 120),
+		BootstrapProviderMaxConcurrency: getenvInt("APP_BOOTSTRAP_PROVIDER_MAX_CONCURRENCY", 4),
 	}
 }
 
@@ -102,4 +121,16 @@ func getenv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func getenvInt(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
 }
