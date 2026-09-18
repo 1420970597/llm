@@ -37,11 +37,20 @@ func handleChainStandardGeneration(ctx context.Context, jc *jobContext, job jobP
 	if err != nil {
 		return err
 	}
+	allTargets := targets
 	targets = pickDomains(targets, selected)
 	if len(targets) == 0 {
-		log.Printf("chain-standards.generate.no_matching_domains dataset=%d", job.DatasetID)
-		return nil
+		// cursor 里的选择集来自入队那一刻。数据重排后（例如 L1 重跑，原来的
+		// level=2 方向被替换成 level=1 领域）可能与当前候选全部失配。此时若
+		// 直接返回，任务会「成功但什么都没做」—— 调用方拿到 completed，用户
+		// 却一条标准步骤都没有。选择集只是入队时的优化提示，不是权威：失配
+		// 就回退为全量，让任务真的干活。
+		log.Printf("chain-standards.generate.selection_stale dataset=%d selected=%d fallback=all",
+			job.DatasetID, len(selected))
+		targets = allTargets
 	}
+	// 之后的 cursor 只记录本次真正处理的方向，避免把过期 ID 一路带下去。
+	effective := domainIDsOf(targets)
 
 	baseURL, modelName, providerType, reasoningEffort, apiKey, err := jc.datasets.ResolveProvider(ctx, dataset.ProviderID)
 	if err != nil {
@@ -90,7 +99,7 @@ func handleChainStandardGeneration(ctx context.Context, jc *jobContext, job jobP
 		done[domain.ID] = struct{}{}
 		completed++
 		if err := jc.generationRuns.SaveCursor(ctx, run.ID, map[string]any{
-			"domainIds":      selected,
+			"domainIds":      effective,
 			"doneDomainIds":  domainIDList(done),
 			"lastDomainName": domain.Name,
 		}, completed, len(targets)); err != nil {
@@ -175,6 +184,15 @@ func domainIDList(done map[int64]struct{}) []int64 {
 		for j := i; j > 0 && ids[j] < ids[j-1]; j-- {
 			ids[j], ids[j-1] = ids[j-1], ids[j]
 		}
+	}
+	return ids
+}
+
+// domainIDsOf 抽取方向 ID 列表，保持输入顺序。
+func domainIDsOf(domains []model.Domain) []int64 {
+	ids := make([]int64, 0, len(domains))
+	for _, domain := range domains {
+		ids = append(ids, domain.ID)
 	}
 	return ids
 }
