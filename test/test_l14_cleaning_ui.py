@@ -39,7 +39,8 @@ postgres / redis 共用数据，但使用独立队列 WORKER_QUEUE_NAME=lane-l14
   T13 报告 run 是陈旧快照（status 恒为 queued），运行列表才是权威值
       —— 前端据此覆盖，否则会显示成「排队中 · 0 条」且轮询永不停止
   T14 编辑态只提交可写字段（前端 buildKeywordSavePayload 契约）时修改真实落库
-  T15 后端 UPDATE 分支不写 category（冻结文件缺口，前端因此把该输入框置为只读）
+  T15 身份字段（category / pattern）变更被拒绝：409 且库中值不变
+      —— 后端 PR #50 起不再 200 静默丢弃，前端因此把这两个输入框设计为只读
 """
 
 import os
@@ -317,20 +318,43 @@ def main() -> int:
             timeout=30,
         )
 
-        # T15 后端确实不写 category（冻结文件缺口，前端据此禁用该输入框）。
-        # 这条断言记录的是*现状*：接口 200 但分类不变。若未来后端补上 category，
-        # 本项会失败并提醒前端可以放开编辑。
+        # T15 身份字段变更必须被明确拒绝（409），而不是 200 静默丢弃。
+        # 领域规则：pattern 与 category 共同构成关键词身份（表上 UNIQUE(pattern,
+        # category)），也是清洗命中的去重键。允许就地改身份会让历史 findings
+        # 指向的词条凭空变义，所以后端拒绝、前端把这两个输入框设计为只读。
+        #
+        # 背景：后端原实现只 SET match_mode/severity/is_active/note 且
+        # WHERE id=$1 AND pattern=$2，于是改分类返回 200 但值不变、改内容直接
+        # 404 —— 两者都是假成功（用户看到「已保存」却什么也没发生）。
+        # 父代理已在 PR #50 修掉根因，本项锁定新语义。
         other_category = "safety" if str(target.get("category")) != "safety" else "refusal"
         res = session.put(
             f"{BASE}/api/v1/cleaning/keywords",
             json={**editable_payload(target), "category": other_category},
             timeout=30,
         )
-        echoed = as_dict(json_body(res)).get("category")
-        record("T15 后端 UPDATE 不写 category（缺口，前端因此禁用编辑）",
-               res.status_code == 200 and echoed == target.get("category"),
-               f"status={res.status_code} 请求 category={other_category} 响应 category={echoed} "
-               f"（与当前值 {target.get('category')} 相同即证明被静默丢弃）")
+        put_status = res.status_code
+        put_error = as_dict(json_body(res)).get("error")
+        res = session.get(f"{BASE}/api/v1/cleaning/keywords", timeout=30)
+        reread = next(
+            (item for item in (as_dict(x) for x in as_list(json_body(res))) if item.get("id") == target.get("id")),
+            {},
+        )
+        record("T15a 改 category 被拒绝（409）且库中值不变",
+               put_status == 409 and reread.get("category") == target.get("category"),
+               f"status={put_status}（期望 409）error={put_error}；"
+               f"重新读取 category={reread.get('category')}（期望保持 {target.get('category')}）")
+
+        # T15b 改 pattern 同样必须被拒绝（原实现是 404，语义更差：
+        # 像是「记录不存在」而不是「不允许改」）。
+        res = session.put(
+            f"{BASE}/api/v1/cleaning/keywords",
+            json={**editable_payload(target), "pattern": f"{target.get('pattern')}-l14改"},
+            timeout=30,
+        )
+        record("T15b 改 pattern 被拒绝（409）",
+               res.status_code == 409,
+               f"status={res.status_code}（期望 409）响应 error={as_dict(json_body(res)).get('error')}")
 
     # T4 规则列表（UI 规则面板的数据源）。
     res = session.get(f"{BASE}/api/v1/cleaning/rules", timeout=30)
