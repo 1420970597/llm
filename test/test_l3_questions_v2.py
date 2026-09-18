@@ -281,9 +281,11 @@ def run_llm_case(session: Session, dataset_id: int) -> None:
 
     original = (graph.get("dataset") or {}).get("questionsPerDirection")
     per_direction = 2
+    # 显式请求两档均分、hard 为 0，用于验证难度以用户配比为准而非模型自报。
+    requested_mix = {"easy": 0.5, "medium": 0.5, "hard": 0.0}
     status, payload = session.json("POST", f"/api/v1/datasets/{dataset_id}/questions/generate",
                                    {"questionsPerDirection": per_direction,
-                                    "difficultyMix": {"easy": 0.5, "medium": 0.5, "hard": 0.0}})
+                                    "difficultyMix": requested_mix})
     if status != 202:
         check("T9b 端到端入队", False, f"HTTP {status}, body={json.dumps(payload, ensure_ascii=False)[:160]}")
         return
@@ -313,6 +315,15 @@ def run_llm_case(session: Session, dataset_id: int) -> None:
         non_zero = [k for k, v in levels.items() if v > 0]
         check("T9e 难度分层生效（至少出现 2 档）", len(non_zero) >= 2, f"levels={levels}")
 
+        # 难度必须以用户配比为准，而不是照抄模型自报的标签。
+        # 实测模型经常不遵守提示词的难度要求（请求 hard=0 却返回一半 hard）。
+        # 实现按「每个方向各自分配」再汇总，故这里也先算单方向再乘方向数。
+        per_direction_plan = expected_plan(requested_mix, per_direction)
+        expected_per_level = {k: v * direction_count for k, v in per_direction_plan.items()}
+        check("T9g 实际难度分布等于请求的配比（难度以用户配比为准）",
+              {k: v for k, v in levels.items() if v} == {k: v for k, v in expected_per_level.items() if v},
+              f"actual={levels}, expected={expected_per_level}")
+
         check("T9f difficultyScore 与 difficulty 一致",
               all(score_of(q.get("difficulty")) == q.get("difficultyScore") for q in questions),
               "easy→1 / medium→2 / hard→3")
@@ -324,6 +335,30 @@ def run_llm_case(session: Session, dataset_id: int) -> None:
 
 def score_of(level: Any) -> int:
     return {"easy": 1, "medium": 2, "hard": 3}.get(level, 2)
+
+
+def expected_plan(mix: dict[str, float], total: int) -> dict[str, int]:
+    """复现最大余数法的期望分配，用于端到端断言。
+
+    与 Go 侧 AllocateDifficultyMix 同构：按配比取整后用最大余数补足总数。
+    传入的 total 应为**单个方向**的问题数（实现按方向逐个分配）。
+    """
+    positive = {k: v for k, v in mix.items() if v > 0}
+    if not positive or total <= 0:
+        return {}
+    weight_sum = sum(positive.values())
+    normalized = {k: v / weight_sum for k, v in positive.items()}
+
+    exact = {k: v * total for k, v in normalized.items()}
+    floored = {k: int(v) for k, v in exact.items()}
+    assigned = sum(floored.values())
+    order = sorted(exact, key=lambda k: -(exact[k] - floored[k]))
+    index = 0
+    while assigned < total:
+        floored[order[index % len(order)]] += 1
+        assigned += 1
+        index += 1
+    return floored
 
 
 def summarize() -> int:

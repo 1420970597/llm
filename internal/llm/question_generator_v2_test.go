@@ -209,6 +209,53 @@ func TestRemainingQuotaFallsBackWhenPlanSatisfied(t *testing.T) {
 	}
 }
 
+// difficultyPlan 把配额展开成有序序列，顺序固定 easy→medium→hard。
+func TestDifficultyPlanExpandsAllocationInFixedOrder(t *testing.T) {
+	plan := difficultyPlan(map[string]int{
+		DifficultyEasy: 3, DifficultyMedium: 5, DifficultyHard: 2,
+	}, 10)
+	if len(plan) != 10 {
+		t.Fatalf("plan length = %d, want 10", len(plan))
+	}
+	counts := map[string]int{}
+	for _, level := range plan {
+		counts[level]++
+	}
+	if counts[DifficultyEasy] != 3 || counts[DifficultyMedium] != 5 || counts[DifficultyHard] != 2 {
+		t.Fatalf("plan counts = %v, want easy=3 medium=5 hard=2", counts)
+	}
+	// 顺序必须可重现。
+	if plan[0] != DifficultyEasy || plan[2] != DifficultyEasy || plan[3] != DifficultyMedium || plan[9] != DifficultyHard {
+		t.Fatalf("plan order = %v, want easy×3 then medium×5 then hard×2", plan)
+	}
+}
+
+// 配额总和小于 total 时用 medium 补齐，不得越界。
+func TestDifficultyPlanPadsWhenAllocationShort(t *testing.T) {
+	plan := difficultyPlan(map[string]int{DifficultyEasy: 1}, 4)
+	if len(plan) != 4 {
+		t.Fatalf("plan length = %d, want 4 (padded)", len(plan))
+	}
+	if plan[0] != DifficultyEasy {
+		t.Fatalf("first entry should be easy, got %v", plan)
+	}
+}
+
+// 契约样例：x=10、mix=0.3/0.5/0.2 → 计划序列恰好 3 easy / 5 medium / 2 hard。
+func TestDifficultyPlanMatchesContractExample(t *testing.T) {
+	allocation := AllocateDifficultyMix(10, map[string]float64{
+		DifficultyEasy: 0.3, DifficultyMedium: 0.5, DifficultyHard: 0.2,
+	})
+	plan := difficultyPlan(allocation, 10)
+	counts := map[string]int{}
+	for _, level := range plan {
+		counts[level]++
+	}
+	if counts[DifficultyEasy] != 3 || counts[DifficultyMedium] != 5 || counts[DifficultyHard] != 2 {
+		t.Fatalf("contract example plan = %v, want easy=3 medium=5 hard=2", counts)
+	}
+}
+
 // 生成器在方向为空、provider 不完整时必须明确报错。
 func TestGenerateQuestionsV2ValidatesInput(t *testing.T) {
 	ctx := testContext()

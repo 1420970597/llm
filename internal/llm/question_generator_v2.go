@@ -164,13 +164,39 @@ func GenerateQuestionsV2(ctx context.Context, provider ProviderConfig, input Que
 	return questions, nil
 }
 
+// difficultyPlan 把难度配额展开成有序序列，供逐条分配使用。
+//
+// 顺序固定为 easy → medium → hard，使同一配比下的分配结果可重现。
+// 例：allocation={easy:3,medium:5,hard:2} → [easy,easy,easy,medium×5,hard,hard]。
+func difficultyPlan(allocation map[string]int, total int) []string {
+	plan := make([]string, 0, total)
+	for _, level := range []string{DifficultyEasy, DifficultyMedium, DifficultyHard} {
+		for count := allocation[level]; count > 0; count-- {
+			plan = append(plan, level)
+		}
+	}
+	// 配额不足 total 时（理论上不会发生，AllocateDifficultyMix 已保证相等）
+	// 用 medium 补齐，避免下标越界。
+	for len(plan) < total {
+		plan = append(plan, DifficultyMedium)
+	}
+	return plan
+}
+
 // generateForDirection 为单个方向生成目标数量的问题，多轮补齐并去重。
+//
+// 难度以计划为准：`allocation` 是本方向按用户配比算出的各档数量，
+// 最终每条问题的 difficulty 由 difficultyPlan 逐条分配，而不是照抄模型自报的
+// 标签。原因：模型经常不遵守提示词里的难度要求（实测把 hard 配额 0 的请求
+// 返回成一半 hard），若照抄则用户的 difficultyMix 形同虚设。模型自报值与计划
+// 不一致时记日志，便于观察提示词遵循度。
 func generateForDirection(ctx context.Context, provider ProviderConfig, input QuestionGenInput,
 	direction DirectionContext, target int, allocation map[string]int) ([]model.Question, error) {
 
 	collected := make([]questionDraft, 0, target)
 	seen := map[string]struct{}{}
 	produced := map[string]int{}
+	plan := difficultyPlan(allocation, target)
 
 	for round := 0; round < questionGenMaxRounds && len(collected) < target; round++ {
 		needed := target - len(collected)
@@ -201,9 +227,16 @@ func generateForDirection(ctx context.Context, provider ProviderConfig, input Qu
 				continue
 			}
 			seen[key] = struct{}{}
-			level, _ := ReconcileDifficulty(draft.Difficulty)
-			collected = append(collected, questionDraft{Content: content, Difficulty: level})
-			produced[level]++
+
+			// 难度以计划为准，模型自报值仅用于记录偏差。
+			planned := plan[len(collected)]
+			if reported, _ := ReconcileDifficulty(draft.Difficulty); reported != planned {
+				log.Printf("questions.v2.difficulty.mismatch dataset_id=%d direction_id=%d planned=%s model=%s",
+					input.DatasetID, direction.DomainID, planned, reported)
+			}
+
+			collected = append(collected, questionDraft{Content: content, Difficulty: planned})
+			produced[planned]++
 			added++
 			if len(collected) >= target {
 				break

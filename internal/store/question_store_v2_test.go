@@ -13,9 +13,10 @@ import (
 // 不伪造通过。
 //
 // 跑法（在 lane worktree 里，借 compose 网络）：
-//   docker run --rm --network llm_default \
-//     -e POSTGRES_DSN='postgres://llm_factory:llm_factory_dev@postgres:5432/llm_factory?sslmode=disable' \
-//     -v <worktree>:/w -w /w golang:1.24-alpine go test ./internal/store/ -v
+//
+//	docker run --rm --network llm_default \
+//	  -e POSTGRES_DSN='postgres://llm_factory:llm_factory_dev@postgres:5432/llm_factory?sslmode=disable' \
+//	  -v <worktree>:/w -w /w golang:1.24-alpine go test ./internal/store/ -v
 func testPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("POSTGRES_DSN")
