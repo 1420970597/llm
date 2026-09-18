@@ -27,21 +27,21 @@ func NewEvalSummaryStore(db *pgxpool.Pool) *EvalSummaryStore {
 	return &EvalSummaryStore{db: db}
 }
 
-// ErrEvalRunNotFound 表示评估运行不存在。
-var ErrEvalRunNotFound = errors.New("评估运行不存在")
+// ErrEvalSummaryRunNotFound 表示评估运行不存在。
+var ErrEvalSummaryRunNotFound = errors.New("评估运行不存在")
 
-// IsEvalRunNotFound 判断错误是否为「评估运行不存在」。
-func IsEvalRunNotFound(err error) bool {
-	return errors.Is(err, pgx.ErrNoRows) || errors.Is(err, ErrEvalRunNotFound)
+// IsEvalSummaryRunNotFound 判断错误是否为「评估运行不存在」。
+func IsEvalSummaryRunNotFound(err error) bool {
+	return errors.Is(err, pgx.ErrNoRows) || errors.Is(err, ErrEvalSummaryRunNotFound)
 }
 
-// evalRunColumns 与 0011_eval_core.sql 的 eval_runs 列一一对应。
-const evalRunColumns = `id, dataset_id, name, sampling_mode, sample_ratio, sample_size,
+// evalSummaryRunColumns 与 0011_eval_core.sql 的 eval_runs 列一一对应。
+const evalSummaryRunColumns = `id, dataset_id, name, sampling_mode, sample_ratio, sample_size,
 	target_kind, dimension_keys, judge_provider_ids, generator_provider_id,
 	status, total_items, scored_items, error_summary, created_by, created_at, updated_at`
 
-// scanEvalRun 扫描一行 eval_runs。
-func scanEvalRun(row pgx.Row) (model.EvalRun, error) {
+// scanEvalSummaryRun 扫描一行 eval_runs。
+func scanEvalSummaryRun(row pgx.Row) (model.EvalRun, error) {
 	var run model.EvalRun
 	err := row.Scan(&run.ID, &run.DatasetID, &run.Name, &run.SamplingMode, &run.SampleRatio,
 		&run.SampleSize, &run.TargetKind, &run.DimensionKeys, &run.JudgeProviderIDs,
@@ -55,8 +55,8 @@ func scanEvalRun(row pgx.Row) (model.EvalRun, error) {
 
 // GetRun 按 id 取评估运行。不存在时返回 pgx.ErrNoRows。
 func (s *EvalSummaryStore) GetRun(ctx context.Context, runID int64) (model.EvalRun, error) {
-	return scanEvalRun(s.db.QueryRow(ctx,
-		`SELECT `+evalRunColumns+` FROM eval_runs WHERE id = $1`, runID))
+	return scanEvalSummaryRun(s.db.QueryRow(ctx,
+		`SELECT `+evalSummaryRunColumns+` FROM eval_runs WHERE id = $1`, runID))
 }
 
 // DatasetName 取数据集名称，供报告展示。

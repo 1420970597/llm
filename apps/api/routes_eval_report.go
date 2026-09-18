@@ -64,7 +64,7 @@ func (app *application) evalRunReport(w http.ResponseWriter, r *http.Request) {
 
 	run, err := summaries.GetRun(ctx, runID)
 	if err != nil {
-		if store.IsEvalRunNotFound(err) {
+		if store.IsEvalSummaryRunNotFound(err) {
 			app.writeError(w, http.StatusNotFound, errors.New("eval run not found"))
 			return
 		}
@@ -153,7 +153,7 @@ func (app *application) evalRunScores(w http.ResponseWriter, r *http.Request) {
 	// 先确认 run 存在，否则不存在的 run 会返回空数组而不是 404，
 	// 用户无法区分「这个 run 没有分数」与「这个 run 根本不存在」。
 	if _, err := summaries.GetRun(ctx, runID); err != nil {
-		if store.IsEvalRunNotFound(err) {
+		if store.IsEvalSummaryRunNotFound(err) {
 			app.writeError(w, http.StatusNotFound, errors.New("eval run not found"))
 			return
 		}
