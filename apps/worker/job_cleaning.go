@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"regexp"
-	"strings"
 
 	"github.com/1420970597/llm/internal/cleaning"
 	"github.com/1420970597/llm/internal/model"
@@ -207,99 +205,36 @@ func loadCleaningRules(ctx context.Context, jc *jobContext) ([]cleaning.RuleSpec
 	return specs, rows.Err()
 }
 
-// 关键词匹配适配器。
+// 关键词匹配适配器：把 L11 的匹配引擎接到 L12 的扫描器上。
 //
-// ponytail: 这里是 L11（internal/cleaning/keywords.go）落地前的临时实现，
-// 用 model.CleaningKeyword 自身做 contains / prefix / regex 匹配。
-// L11 合并后应替换为 cleaning.MatchKeywords(content, keywords) + cleaning.Snippet，
-// 以复用 L11 的全角半角归一化与内置关键词库。待接线点仅此一处。
+// cleaning.Matcher 的签名是 Match(content string) []ScannerMatch，而 L11 导出的是
+// 包级函数 cleaning.MatchKeywords(content, keywords) []cleaning.Match。
+// 这里做一层薄适配，把 keywords 绑进结构体，并把 cleaning.Match 映射为
+// cleaning.ScannerMatch（两者字段一一对应）。
+//
+// 用 L11 的实现而不是自己写匹配，是为了复用它的全角半角归一化与
+// 大小写折叠 —— 中文场景下「，」与「,」、「？」与 "?" 必须等价，
+// 自建实现会漏掉这些。
 type keywordMatcher struct {
 	keywords []model.CleaningKeyword
-	regexes  map[int64]*regexp.Regexp
 }
 
 func newKeywordMatcher(keywords []model.CleaningKeyword) *keywordMatcher {
-	matcher := &keywordMatcher{keywords: keywords, regexes: map[int64]*regexp.Regexp{}}
-	for _, keyword := range keywords {
-		if keyword.MatchMode != "regex" {
-			continue
-		}
-		if compiled, err := regexp.Compile(keyword.Pattern); err == nil {
-			matcher.regexes[keyword.ID] = compiled
-		}
-	}
-	return matcher
+	return &keywordMatcher{keywords: keywords}
 }
 
 func (m *keywordMatcher) Match(content string) []cleaning.ScannerMatch {
-	matches := []cleaning.ScannerMatch{}
-	if strings.TrimSpace(content) == "" {
-		return matches
-	}
-	for _, keyword := range m.keywords {
-		pattern := strings.TrimSpace(keyword.Pattern)
-		if pattern == "" {
-			continue
-		}
-
-		index, end := -1, 0
-		switch keyword.MatchMode {
-		case "prefix":
-			if strings.HasPrefix(content, pattern) {
-				index, end = 0, len(pattern)
-			}
-		case "regex":
-			compiled, ok := m.regexes[keyword.ID]
-			if !ok {
-				continue
-			}
-			if loc := compiled.FindStringIndex(content); loc != nil {
-				index, end = loc[0], loc[1]
-			}
-		default: // contains
-			if at := strings.Index(content, pattern); at >= 0 {
-				index, end = at, at+len(pattern)
-			}
-		}
-		if index < 0 {
-			continue
-		}
-
-		matches = append(matches, cleaning.ScannerMatch{
-			KeywordID:   keyword.ID,
-			Pattern:     keyword.Pattern,
-			Category:    keyword.Category,
-			MatchedText: content[index:end],
-			Snippet:     snippetRunes(content, index, end, 30),
-			Severity:    keyword.Severity,
+	matched := cleaning.MatchKeywords(content, m.keywords)
+	results := make([]cleaning.ScannerMatch, 0, len(matched))
+	for _, hit := range matched {
+		results = append(results, cleaning.ScannerMatch{
+			KeywordID:   hit.KeywordID,
+			Pattern:     hit.Pattern,
+			Category:    hit.Category,
+			MatchedText: hit.MatchedText,
+			Snippet:     hit.Snippet,
+			Severity:    hit.Severity,
 		})
 	}
-	return matches
-}
-
-// snippetRunes 截取命中位置前后各 radius 个字符的上下文。
-// 必须按 rune 处理：中文是多字节，按 byte 切会切出乱码。
-func snippetRunes(content string, start, end, radius int) string {
-	runes := []rune(content)
-	// start/end 是 byte 偏移，先换算成 rune 下标。
-	startRune := len([]rune(content[:start]))
-	endRune := startRune + len([]rune(content[start:end]))
-
-	from := startRune - radius
-	if from < 0 {
-		from = 0
-	}
-	to := endRune + radius
-	if to > len(runes) {
-		to = len(runes)
-	}
-	prefix := ""
-	if from > 0 {
-		prefix = "…"
-	}
-	suffix := ""
-	if to < len(runes) {
-		suffix = "…"
-	}
-	return prefix + string(runes[from:to]) + suffix
+	return results
 }
