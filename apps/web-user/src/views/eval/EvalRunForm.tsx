@@ -7,11 +7,9 @@ import {
   type EvalDimension,
   type EvalJudgeOption,
 } from '../../lib/api'
-import { errorMessage, groupByCategory } from './evalShared'
+import { errorMessage, groupByCategory, samplingInputError, type SamplingMode } from './evalShared'
 
 const { Title, Text } = Typography
-
-type SamplingMode = 'full' | 'ratio' | 'count'
 
 /** L13：抽样配置 + 启动评估（维度多选、按分类全选、被排除裁判禁用）。 */
 export function EvalRunForm({
@@ -64,6 +62,11 @@ export function EvalRunForm({
     void load()
   }, [load])
 
+  // 父组件异步加载 datasets：首帧可能为空，加载完成后补齐默认数据集。
+  useEffect(() => {
+    if (datasetId === null && datasets.length > 0) setDatasetId(datasets[0].id)
+  }, [datasets, datasetId])
+
   const groupedDimensions = useMemo(() => groupByCategory(dimensions, (item) => item.category), [dimensions])
 
   function toggleDimension(key: string, checked: boolean) {
@@ -90,12 +93,9 @@ export function EvalRunForm({
       Toast.error('请先选择目标数据集')
       return
     }
-    if (samplingMode === 'ratio' && !(sampleRatio > 0 && sampleRatio <= 1)) {
-      Toast.error('抽样比例必须落在 0~1 之间')
-      return
-    }
-    if (samplingMode === 'count' && !(sampleSize > 0)) {
-      Toast.error('抽样条数必须大于 0')
+    const samplingError = samplingInputError(samplingMode, sampleRatio, sampleSize)
+    if (samplingError) {
+      Toast.error(samplingError)
       return
     }
     if (selectedDimensions.length === 0) {
