@@ -34,7 +34,9 @@
 
 ### 第 1 步：登录
 
-打开系统地址（本地开发是 `http://127.0.0.1:3210`），用管理员账号登录：
+打开系统地址（本地用 `docker compose` 起全栈时是 `http://127.0.0.1:3210`，即 `deployments/compose/docker-compose.yml` 里 `web-user` 服务的 `3210:80` 端口映射），用管理员账号登录：
+
+> 只有 `docker compose` 起的 web-user（nginx）会把 `/api/*` 反代到 `api:8080`（`deployments/docker/nginx/web-user.conf` 的 `location /api/`）。单独跑 `npm run dev:web` 时 vite **没有配置 proxy**（`apps/web-user/vite.config.ts` 的 `server` 段只有 host 与 port），那种跑法只能看页面、接口会 404。API 在 compose 里没有映射到宿主机端口，所以宿主机上请一律走 `:3210`。
 
 - 邮箱 `admin@company.com`
 - 密码 `admin123456`
@@ -414,7 +416,7 @@ n、m、x 都持久化在库里：n 存在生成策略的 `generation_strategies
 
 ## 7. 附：不通过界面时怎么验证
 
-界面尚未合并的模块（评估运行 / 评估报告）可以直接用接口验证。登录拿到 Cookie 后：
+界面尚未合并的模块（评估运行 / 评估报告）可以直接用接口验证。下面的请求经 web-user 的 nginx 反代到 API（宿主机上 API 没有独立端口映射），登录拿到 Cookie 后：
 
 ```bash
 # 登录，保存 Cookie
@@ -437,5 +439,7 @@ curl -s -b /tmp/cookies.txt 'http://127.0.0.1:3210/api/v1/cleaning/keywords?acti
 # 查看某个清洗运行的报告
 curl -s -b /tmp/cookies.txt http://127.0.0.1:3210/api/v1/cleaning/runs/1/report
 ```
+
+若直接进容器网络调试，API 监听的是 `8080`（`internal/config/config.go` 的 `API_PORT` 默认值），可在同一网络内用 `curl http://api:8080/...`。
 
 接口的完整清单与请求/响应格式见 `docs/plans/eval-and-cleaning-plan.md` 第 3 节；架构背景见 `docs/architecture/phase-8-eval-and-cleaning.md`。
