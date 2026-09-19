@@ -591,3 +591,93 @@ func TestArtifactDownloadFetchesSameOriginRelativePath(t *testing.T) {
 		}
 	}
 }
+
+// TestBackendProgressMapsCoverAllStatuses 断言后端的**进度映射表**覆盖全部状态值。
+//
+// 为什么需要这条（issue #98 的隐藏根源）：
+// 父代理用候选容器复现发现，页面显示「进度 0%」**不是**前端 `progressPercent` 的问题 ——
+// 前端根本没轮到它，因为 `activePipeline` 存在时会用后端返回的 `completionPercent`。
+// 而后端 `internal/store/dataset_store.go` 有**四张**按状态查值的映射表，
+// 它们都漏了 `directions_*`：
+//
+//	rankByStatus / queuedStageByStatus / failedStageByStatus / completionByStatus
+//
+// 后果链：`rankByStatus["directions_completed"]` 取到零值 0
+//
+//	-> `stageState("domains", 1, N)` 判不出 completed
+//	-> 没有阶段算完成 -> 兜底 `completionPercent = completed * 20` = **0**
+//
+// 实测（候选容器 vs 主栈，同一个 dataset #48）：
+//
+//	修复前：completionPercent=0   domains=in_progress  currentStage=domains
+//	修复后：completionPercent=45  domains=completed    currentStage=questions
+//
+// 因此「只改前端」修不掉 0% —— 必须同时覆盖后端映射表。
+func TestBackendProgressMapsCoverAllStatuses(t *testing.T) {
+	source := readSource(t, "../internal/store/dataset_store.go")
+
+	// 后端会写的全部状态（复用同一个提取器，避免两处清单漂移）。
+	allStatuses := collectBackendLiteralStatuses(t)
+	if len(allStatuses) == 0 {
+		t.Fatal("未能提取后端状态值，守卫失效")
+	}
+
+	// 四张按状态查值的映射表。key 是 Go 里的字符串字面量。
+	maps := []string{"rankByStatus", "queuedStageByStatus", "failedStageByStatus", "completionByStatus"}
+	for _, mapName := range maps {
+		block := regexp.MustCompile(`(?s)` + mapName + `\s*:?=\s*map\[string\][^{]*\{(.*?)\n\t\}`).FindStringSubmatch(source)
+		if block == nil {
+			t.Errorf("未找到 %s 映射表，守卫失效（源码结构已变化，请同步更新）", mapName)
+			continue
+		}
+		body := block[1]
+
+		// 收集该表已有的 key
+		keys := map[string]bool{}
+		for _, m := range regexp.MustCompile(`"([A-Za-z0-9_]+)"\s*:`).FindAllStringSubmatch(body, -1) {
+			keys[m[1]] = true
+		}
+		if len(keys) == 0 {
+			t.Errorf("%s 未解析出任何 key，守卫失效", mapName)
+			continue
+		}
+
+		// completionByStatus 是「最终状态 -> 进度」的查表，必须覆盖全部状态；
+		// 另外三张是「特定状态 -> 阶段」的映射，只对相关状态有值，因此只检查
+		// 「没有阶段会被错误归零」这一点（见下方 directions 专项断言）。
+		if mapName != "completionByStatus" {
+			continue
+		}
+
+		var missing []string
+		for _, status := range allStatuses {
+			if !keys[status] {
+				missing = append(missing, status)
+			}
+		}
+		if len(missing) > 0 {
+			t.Errorf("%s 缺少 %d 个状态的进度值：%v\n"+
+				"  缺失会落到 `completed * 20` 兜底；若该状态对应的阶段不被算作 completed，\n"+
+				"  页面就会显示 **0%%**（issue #98 的第二个症状，父代理已用真实 API 复现）。",
+				mapName, len(missing), missing)
+		}
+	}
+
+	// 专项：directions_* 必须在四张表里都有对应处理，否则 rank 归零。
+	// （这是 issue #98 的真实成因，单独断言以便失败信息足够明确。）
+	directionsStatuses := []string{"directions_completed", "directions_partial_failed", "directions_queued"}
+	for _, mapName := range []string{"rankByStatus", "completionByStatus"} {
+		block := regexp.MustCompile(`(?s)` + mapName + `\s*:?=\s*map\[string\][^{]*\{(.*?)\n\t\}`).FindStringSubmatch(source)
+		if block == nil {
+			t.Errorf("未找到 %s，无法断言 directions_* 覆盖", mapName)
+			continue
+		}
+		for _, status := range directionsStatuses {
+			if !strings.Contains(block[1], `"`+status+`"`) {
+				t.Errorf("%s 缺少 %q：\n"+
+					"  该状态会让 rank/进度落到零值，用户看到 0%% 进度与「阶段卡在整理中」。",
+					mapName, status)
+			}
+		}
+	}
+}

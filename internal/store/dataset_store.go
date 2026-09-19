@@ -364,34 +364,46 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 	}
 
 	rankByStatus := map[string]int{
-		"draft":               0,
-		"domains_confirmed":   1,
-		"questions_queued":    1,
-		"questions_generated": 2,
-		"questions_failed":    2,
-		"reasoning_queued":    2,
-		"reasoning_generated": 3,
-		"reasoning_partial":   3,
-		"reasoning_failed":    3,
-		"rewards_queued":      3,
-		"rewards_generated":   4,
-		"rewards_partial":     4,
-		"rewards_failed":      4,
-		"export_queued":       4,
-		"export_generated":    5,
-		"export_failed":       5,
+		"draft":             0,
+		"domains_confirmed": 1,
+		// directions_queued / directions_completed / directions_partial_failed：
+		// 方向（level=2）生成处于「领域整理」阶段的内部推进，与 domains_confirmed 同 rank（1）。
+		// 缺失这三个 key 会让 statusRank 落到零值 0，于是 stageState("domains", 1, N)
+		// 判不出 completed —— 表现就是 issue #98 的「进度 0% / 阶段卡在 in_progress」。
+		"directions_queued":         1,
+		"directions_completed":      1,
+		"directions_partial_failed": 1,
+		"chain_standards_queued":    1,
+		"questions_queued":          1,
+		"questions_generated":       2,
+		"questions_failed":          2,
+		"reasoning_queued":          2,
+		"reasoning_generated":       3,
+		"reasoning_partial":         3,
+		"reasoning_failed":          3,
+		"rewards_queued":            3,
+		"rewards_generated":         4,
+		"rewards_partial":           4,
+		"rewards_failed":            4,
+		"export_queued":             4,
+		"export_generated":          5,
+		"export_failed":             5,
 	}
 	queuedStageByStatus := map[string]string{
-		"questions_queued": "questions",
-		"reasoning_queued": "reasoning",
-		"rewards_queued":   "rewards",
-		"export_queued":    "export",
+		// 方向与长链标准步骤都是「领域整理」阶段内的子步骤
+		"directions_queued":      "domains",
+		"chain_standards_queued": "domains",
+		"questions_queued":       "questions",
+		"reasoning_queued":       "reasoning",
+		"rewards_queued":         "rewards",
+		"export_queued":          "export",
 	}
 	failedStageByStatus := map[string]string{
-		"questions_failed": "questions",
-		"reasoning_failed": "reasoning",
-		"rewards_failed":   "rewards",
-		"export_failed":    "export",
+		"directions_partial_failed": "domains",
+		"questions_failed":          "questions",
+		"reasoning_failed":          "reasoning",
+		"rewards_failed":            "rewards",
+		"export_failed":             "export",
 	}
 	statusRank := rankByStatus[dataset.Status]
 	queuedStage := queuedStageByStatus[dataset.Status]
@@ -455,22 +467,32 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 	}
 
 	completionByStatus := map[string]int{
-		"draft":               15,
-		"domains_confirmed":   35,
-		"questions_queued":    35,
-		"questions_generated": 55,
-		"questions_failed":    35,
-		"reasoning_queued":    55,
-		"reasoning_generated": 75,
-		"reasoning_partial":   75,
-		"reasoning_failed":    55,
-		"rewards_queued":      75,
-		"rewards_generated":   90,
-		"rewards_partial":     90,
-		"rewards_failed":      75,
-		"export_queued":       90,
-		"export_generated":    100,
-		"export_failed":       90,
+		"draft":             15,
+		"domains_confirmed": 35,
+		// 方向已生成比仅确认领域更进一层，但问题尚未开始；
+		// 与前端 lib/datasetStatus.ts 的 DATASET_STATUS_PROGRESS 保持同值（45）。
+		// 缺失该 key 会落到 `completed * 20` 兜底，而方向阶段不被算作 completed，
+		// 于是显示 0%（issue #98 的第二个症状，父代理已用真实 API 复现）。
+		"directions_queued":         35,
+		"directions_completed":      45,
+		"directions_partial_failed": 45,
+		"chain_standards_queued":    45,
+		"grpo_queued":               55,
+		"sft_queued":                55,
+		"questions_queued":          35,
+		"questions_generated":       55,
+		"questions_failed":          35,
+		"reasoning_queued":          55,
+		"reasoning_generated":       75,
+		"reasoning_partial":         75,
+		"reasoning_failed":          55,
+		"rewards_queued":            75,
+		"rewards_generated":         90,
+		"rewards_partial":           90,
+		"rewards_failed":            75,
+		"export_queued":             90,
+		"export_generated":          100,
+		"export_failed":             90,
 	}
 	completionPercent, ok := completionByStatus[dataset.Status]
 	if !ok {
