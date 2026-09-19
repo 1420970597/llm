@@ -106,6 +106,7 @@ const codeRefResolvedViaBasename = []
 const codeRefResolvedViaNumbered = []
 const codeRefResolvedViaAbsoluteTail = []
 const codeRefOutOfRepo = []
+const codeRefGenerated = []
 
 function checkRelativeTarget(fromFile, rawTarget) {
   // 去掉可能的行内锚点与标题后缀
@@ -215,6 +216,23 @@ const CODE_REF_IGNORE = [
  */
 const OUT_OF_REPO_REFS = new Set([
   'wave1.js', // /root/pi-waves/wave1.js（父代理的 wave1 orchestration script）
+])
+
+/**
+ * **生成物**（有意不入库）的仓库相对路径 → 生成它的脚本。
+ *
+ * 为什么单独处理而不是加进 CODE_REF_IGNORE 静默跳过：
+ * 静默跳过会让「引用了一个根本不存在的采集产物」永远不被发现。
+ * 这里的做法是：产物本身不必存在（因为它由脚本生成、不入库），
+ * 但**生成它的脚本必须存在** —— 这样引用仍然可校验，
+ * 而且若将来脚本被删/改名，检查会立即失败。
+ *
+ * 提交这类产物到仓库是刻意避免的：它们是浏览器采集的快照
+ * （体积大、内容随页面实现变动、diff 噪声高），入库没有收益。
+ */
+const GENERATED_REFS = new Map([
+  ['test/artifacts/page-structure/page-structure.json', 'test/l15_page_structure_capture.mjs'],
+  ['test/artifacts/page-structure/hub-and-form.json', 'test/l15_hub_and_form_capture.mjs'],
 ])
 
 /**
@@ -337,6 +355,19 @@ function checkCodeRefs(fromFile, markdown) {
       continue
     }
 
+    // 生成物（有意不入库）：产物不要求存在，但生成它的脚本必须存在。
+    const generator = GENERATED_REFS.get(ref)
+    if (generator) {
+      if (existsSync(path.join(REPO_ROOT, generator))) {
+        codeRefGenerated.push(`${ref} <- ${generator}`)
+      } else {
+        problems.push(
+          `${fromFile}: 生成物引用 \`${ref}\` 声称由 \`${generator}\` 生成，但该脚本不存在`,
+        )
+      }
+      continue
+    }
+
     const resolved = resolveRef(ref)
     if (resolved) {
       codeRefChecked.push(ref)
@@ -428,6 +459,12 @@ for (const ref of [...new Set(codeRefForward)].sort()) {
   console.log(`        ~ ${ref}`)
 }
 console.log(`    · 仓库外引用（有意不入库的运行环境路径，不参与校验）：${[...new Set(codeRefOutOfRepo)].length} 条`)
+if (codeRefGenerated.length > 0) {
+  console.log(`    · 生成物引用（不入库，但已校验生成它的脚本存在）：${[...new Set(codeRefGenerated)].length} 条`)
+  for (const item of [...new Set(codeRefGenerated)]) {
+    console.log(`        ~ ${item}`)
+  }
+}
 for (const ref of [...new Set(codeRefOutOfRepo)].sort()) {
   console.log(`        ~ ${ref}`)
 }
