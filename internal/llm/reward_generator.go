@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -23,12 +24,19 @@ func GenerateRewards(ctx context.Context, provider ProviderConfig, dataset model
 		generated, err := generateRewardForQuestion(ctx, provider, dataset, question, promptTemplate)
 		status := "generated"
 		if err != nil {
-			log.Printf("reward.generate.question.error dataset_id=%d question_id=%d err=%v", dataset.ID, question.ID, err)
-			generated = rewardPayload{
-				Score:     0,
-				Rationale: fmt.Sprintf("生成失败（question_id=%d）: %v", question.ID, err),
+			if errors.Is(err, ErrInvalidContent) {
+				// 同 reasoning：模型返回了可解析但占位的评分理由，
+				// 标记 invalid 以便与网络失败区分计数。
+				status = ContentStatusInvalid
+				log.Printf("reward.generate.question.invalid dataset_id=%d question_id=%d err=%v", dataset.ID, question.ID, err)
+			} else {
+				log.Printf("reward.generate.question.error dataset_id=%d question_id=%d err=%v", dataset.ID, question.ID, err)
+				generated = rewardPayload{
+					Score:     0,
+					Rationale: fmt.Sprintf("生成失败（question_id=%d）: %v", question.ID, err),
+				}
+				status = "failed"
 			}
-			status = "failed"
 		}
 		payloads[question.ID] = generated
 		records = append(records, model.RewardRecord{
@@ -38,7 +46,7 @@ func GenerateRewards(ctx context.Context, provider ProviderConfig, dataset model
 			Score:        generated.Score,
 			Status:       status,
 		})
-		log.Printf("reward.generate.question.done dataset_id=%d question_id=%d", dataset.ID, question.ID)
+		log.Printf("reward.generate.question.done dataset_id=%d question_id=%d status=%s", dataset.ID, question.ID, status)
 	}
 	return records, payloads, nil
 }
@@ -83,14 +91,19 @@ func generateRewardForQuestion(ctx context.Context, provider ProviderConfig, dat
 	}
 	var generated rewardPayload
 	if err := unmarshalStructuredContent(decoded.Choices[0].Message.Content, &generated); err != nil {
+		// 同 reasoning_generator：解析失败如实返回错误（即 failed），
+		// 不再把非 JSON 文本当作有效评分返回 nil 错误。保留原始文本供核查。
 		fallback := strings.TrimSpace(decoded.Choices[0].Message.Content)
-		if fallback == "" {
-			return rewardPayload{}, err
+		if fallback != "" {
+			return rewardPayload{Score: 0, Rationale: fallback}, err
 		}
-		return rewardPayload{
-			Score:     0,
-			Rationale: fallback,
-		}, nil
+		return rewardPayload{}, err
+	}
+
+	// 结构层通过不代表内容可用：rationale 是评分的唯一依据，
+	// 占位理由意味着这条评分没有实际判断过程。
+	if assessment := AssessRewardContent(generated.Rationale); !assessment.Valid {
+		return generated, newInvalidContentError(assessment)
 	}
 	return generated, nil
 }
