@@ -78,6 +78,7 @@ const codeRefSkipped = []
 const codeRefForward = []
 const codeRefResolvedViaShorthand = []
 const codeRefResolvedViaBasename = []
+const codeRefResolvedViaNumbered = []
 
 function checkRelativeTarget(fromFile, rawTarget) {
   // 去掉可能的行内锚点与标题后缀
@@ -159,6 +160,23 @@ const CONTRACT_FORWARD_REFS = new Set([
 const isSuffixPattern = (ref) => ref.startsWith('_') || ref.includes('*')
 
 /**
+ * 形似路径但不是「本仓库真实文件引用」的写法，显式跳过。
+ *
+ * 与 CONTRACT_FORWARD_REFS 的区别：白名单是「契约冻结、尚未创建」的**前向引用**
+ * （会被单独列出让人审查）；这里是**从来就不打算指向具体文件**的写法，
+ * 列入后静默跳过。写入这里必须有理由，不能拿来掩盖真实的路径漂移。
+ */
+const CODE_REF_IGNORE = [
+  // 用户/字典里的示例文件名，不是仓库文件（例如 *.env 说明、导出示例）
+  /^\/etc\//,
+  // 语义化版本或纯数字文件名
+  /^v\d+\.\d+/,
+  // 形如 `phase-1-foundation.md ~ phase-8-eval-and-cleaning.md` 的区间写法会先被
+  // CODE_REF_PATTERN 切成两段，这里按「文档标题里的省略写法」跳过。
+  /^\.\.\./,
+]
+
+/**
  * 仓库内全部文件的 basename 索引（只建一次）。
  *
  * 既有文档大量用裸文件名引用源码（`scanner.go`、`exporter.go`、`api.ts`），
@@ -186,7 +204,7 @@ function buildBasenameIndex() {
 
 /**
  * 按多基准解析一个相对路径。
- * 返回 { path, how } 或 null；how 取值：exact / shorthand / basename。
+ * 返回 { path, how } 或 null；how 取值：exact / shorthand / basename / numbered。
  */
 function resolveRef(ref) {
   for (const root of RESOLVE_ROOTS) {
@@ -205,6 +223,33 @@ function resolveRef(ref) {
     const dirMatches = matches.filter((m) => path.dirname(m).endsWith(refDir))
     if (dirMatches.length > 0) return { path: dirMatches[0], how: 'basename' }
   }
+
+  // 编号前缀写法的解析。
+  //
+  // 仓库的迁移文件命名是 `<NNNN>_<name>.sql`，而文档（包括已冻结的
+  // docs/plans/eval-and-cleaning-plan.md 的编号归属表）习惯把编号与文件名分列引用：
+  // 表格里写 `0011` 与 `eval_core.sql` 两列，指向同一个文件 0011_eval_core.sql。
+  // 这是既有写作惯例，不是路径漂移，因此按「带编号前缀的 basename 唯一匹配」解析。
+  // 只在唯一命中时接受：多份同名变体（0001_x.sql 与 0002_x.sql）会被判为歧义而不解析，
+  // 避免用一个看似合理的猜测掩盖真实的引用错误。
+  // 编号前缀写法的解析。
+  //
+  // 仓库的迁移文件命名是 `<NNNN>_<name>.sql`，而文档（包括已冻结的
+  // docs/plans/eval-and-cleaning-plan.md 的编号归属表）习惯把编号与文件名分列引用：
+  // 表格里写 `0011` 与 `eval_core.sql` 两列，指向同一个文件 0011_eval_core.sql。
+  // 这是既有写作惯例，不是路径漂移，因此按「带编号前缀的 basename 唯一匹配」解析。
+  // 只在唯一命中时接受：多份同名变体（0001_x.sql 与 0002_x.sql）会被判为歧义而不解析，
+  // 避免用一个看似合理的猜测掩盖真实的引用错误。
+  const numberedCandidates = []
+  for (const [name, paths] of basenameIndex) {
+    if (/^\d{4}_/.test(name) && name.endsWith('_' + bare)) {
+      numberedCandidates.push(...paths)
+    }
+  }
+  if (numberedCandidates.length === 1) {
+    return { path: numberedCandidates[0], how: 'numbered' }
+  }
+
   return null
 }
 
@@ -227,6 +272,8 @@ function checkCodeRefs(fromFile, markdown) {
         codeRefResolvedViaShorthand.push(`${ref} -> ${resolved.path}`)
       } else if (resolved.how === 'basename') {
         codeRefResolvedViaBasename.push(`${ref} -> ${resolved.path}`)
+      } else if (resolved.how === 'numbered') {
+        codeRefResolvedViaNumbered.push(`${ref} -> ${resolved.path}`)
       }
       continue
     }
@@ -280,6 +327,7 @@ console.log(`  同文档锚点：${anchorChecked.length} 条`)
 console.log(`  代码路径引用：${codeRefChecked.length} 条`)
 console.log(`    · 其中简写路径按基准解析命中：${new Set(codeRefResolvedViaShorthand).size} 条`)
 console.log(`    · 其中裸文件名按 basename 回查命中：${new Set(codeRefResolvedViaBasename).size} 条`)
+console.log(`    · 其中编号前缀写法命中：${new Set(codeRefResolvedViaNumbered).size} 条`)
 console.log(`    · 跳过非仓库路径写法 / 后缀模式：${codeRefSkipped.length} 条`)
 console.log(`    · 契约冻结的前向引用（文件尚未创建，符合契约 §6.1）：${[...new Set(codeRefForward)].length} 条`)
 for (const ref of [...new Set(codeRefForward)].sort()) {
