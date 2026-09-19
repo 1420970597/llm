@@ -259,7 +259,13 @@ func handleReasoningGeneration(ctx context.Context, datasetID int64, datasets *s
 		promptConfig = &promptTemplate
 	}
 
-	recorded := 0
+	// 关键（issue #5）：答案记录必须**整批一次**落库。
+	//
+	// internal/store 的 Insert 语义是「整批完成 + 推进数据集状态」：它按传入的这批
+	// 记录统计 failed/partial 并写死 datasets.status。若在逐题循环内调用，第一次迭代
+	// 就会用「当次那一条」推算并写死整批终态 —— 后续题目无论成败都改不回真实状态。
+	// 因此这里先累积全部题目，循环结束后才 flushOnce。
+	batch := &batchPersist[model.ReasoningRecord]{}
 	for _, question := range questions {
 		records, payloads, err := llm.GenerateReasoning(ctx, llm.ProviderConfig{
 			BaseURL:         baseURL,
@@ -269,22 +275,32 @@ func handleReasoningGeneration(ctx context.Context, datasetID int64, datasets *s
 			APIKey:          apiKey,
 		}, dataset, []model.Question{question}, promptConfig)
 		if err != nil {
+			// 中途失败：保住已经拿到的记录，但**不推进状态**（salvage 用 UpsertPartial）。
+			// 调用方随后会把数据集标为 reasoning_failed，这是正确的：这一批并没有跑完。
+			batch.salvage(func(items []model.ReasoningRecord) error {
+				return reasoningStore.UpsertPartial(ctx, datasetID, items)
+			})
 			return err
 		}
 		for index := range records {
 			key := filepath.ToSlash(fmt.Sprintf("datasets/%d/reasoning/question-%d.json", datasetID, records[index].QuestionID))
 			uri, putErr := objectStore.PutJSON(ctx, key, payloads[records[index].QuestionID])
 			if putErr != nil {
+				batch.salvage(func(items []model.ReasoningRecord) error {
+					return reasoningStore.UpsertPartial(ctx, datasetID, items)
+				})
 				return putErr
 			}
 			records[index].ObjectKey = uri
 		}
-		if upsertErr := reasoningStore.Insert(ctx, datasetID, records); upsertErr != nil {
-			return upsertErr
-		}
-		recorded += len(records)
+		batch.add(records...)
 	}
-	log.Printf("reasoning generated dataset=%d count=%d", datasetID, recorded)
+	if err := batch.flushOnce(func(items []model.ReasoningRecord) error {
+		return reasoningStore.Insert(ctx, datasetID, items)
+	}); err != nil {
+		return err
+	}
+	log.Printf("reasoning generated dataset=%d count=%d", datasetID, batch.len())
 	return nil
 }
 
@@ -327,7 +343,9 @@ func handleRewardGeneration(ctx context.Context, datasetID int64, datasets *stor
 		promptConfig = &promptTemplate
 	}
 
-	recorded := 0
+	// 关键（issue #5）：同 handleReasoningGeneration —— 评分记录整批一次落库，
+	// 否则第一条写完就会把 datasets.status 写死成 rewards_generated。
+	batch := &batchPersist[model.RewardRecord]{}
 	for _, question := range questions {
 		records, payloads, err := llm.GenerateRewards(ctx, llm.ProviderConfig{
 			BaseURL:         baseURL,
@@ -337,22 +355,30 @@ func handleRewardGeneration(ctx context.Context, datasetID int64, datasets *stor
 			APIKey:          apiKey,
 		}, dataset, []model.Question{question}, promptConfig)
 		if err != nil {
+			batch.salvage(func(items []model.RewardRecord) error {
+				return rewardStore.UpsertPartial(ctx, datasetID, items)
+			})
 			return err
 		}
 		for index := range records {
 			key := filepath.ToSlash(fmt.Sprintf("datasets/%d/rewards/question-%d.json", datasetID, records[index].QuestionID))
 			uri, putErr := objectStore.PutJSON(ctx, key, payloads[records[index].QuestionID])
 			if putErr != nil {
+				batch.salvage(func(items []model.RewardRecord) error {
+					return rewardStore.UpsertPartial(ctx, datasetID, items)
+				})
 				return putErr
 			}
 			records[index].ObjectKey = uri
 		}
-		if upsertErr := rewardStore.Insert(ctx, datasetID, records); upsertErr != nil {
-			return upsertErr
-		}
-		recorded += len(records)
+		batch.add(records...)
 	}
-	log.Printf("reward records generated dataset=%d count=%d", datasetID, recorded)
+	if err := batch.flushOnce(func(items []model.RewardRecord) error {
+		return rewardStore.Insert(ctx, datasetID, items)
+	}); err != nil {
+		return err
+	}
+	log.Printf("reward records generated dataset=%d count=%d", datasetID, batch.len())
 	return nil
 }
 
