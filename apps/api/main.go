@@ -332,7 +332,9 @@ func (app *application) routeDatasetActions(w http.ResponseWriter, r *http.Reque
 	case strings.HasSuffix(r.URL.Path, "/export"):
 		app.enqueueExport(w, r)
 	default:
-		http.NotFound(w, r)
+		// 不认识的子路径一律 404。落这里说明既没注册到注册表，也不在 legacy 清单里 ——
+		// 返 200 会让漏注册的端点静默成功（issue #8）。
+		app.writeDatasetSubResourceNotFound(w)
 	}
 }
 
@@ -354,7 +356,23 @@ func (app *application) routeDatasetGet(w http.ResponseWriter, r *http.Request) 
 		app.listArtifacts(w, r)
 	case strings.HasSuffix(r.URL.Path, "/pipeline/progress"):
 		app.pipelineProgress(w, r)
+	case strings.HasSuffix(r.URL.Path, "/domains"):
+		// /domains 此前不在 switch 里，靠 default 落到 getDataset 才返回数据集图。
+		// 换成 404 兜底后必须显式保留，且**保持响应形状不变**（测试与前端都依赖
+		// 它返回带 domains 字段的对象），否则就是把 issue #8 的修复变成回归。
+		app.getDataset(w, r)
 	default:
+		// 只有**精确指向数据集本身**（/api/v1/datasets/{id}[/]）才返回数据集图。
+		// 其余子路径一律 404，否则任何漏注册的端点都会静默拿到 200 + 数据集图。
+		suffix, ok := datasetSubResourceSuffix(r.URL.Path)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		if suffix != "" {
+			app.writeDatasetSubResourceNotFound(w)
+			return
+		}
 		app.getDataset(w, r)
 	}
 }

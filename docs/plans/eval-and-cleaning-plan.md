@@ -67,13 +67,22 @@ type routeRegistrar func(mux *http.ServeMux, app *application)
 
 func RegisterRoutes(r routeRegistrar)          // lane 在 init() 中调用
 
-// 数据集子动作注册（POST /api/v1/datasets/{id}/<suffix>）
-// 优先级高于 main.go 内置 legacy 分支
-func RegisterDatasetAction(suffix string, fn datasetActionFunc)
-func RegisterDatasetGet(suffix string, fn datasetActionFunc)
+// 数据集子动作注册（/api/v1/datasets/{id}/<suffix>）
+// 优先级高于 main.go 内置 legacy 分支；suffix 允许含斜杠（例如
+// "questions/difficulty-stats"、"export/formats"），因此不受单段禁止清单限制。
+func RegisterDatasetAction(suffix string, fn datasetActionFunc)   // POST
+func RegisterDatasetGet(suffix string, fn datasetActionFunc)      // GET
 
 type datasetActionFunc func(w http.ResponseWriter, r *http.Request, id int64)
+
+// 按单段注册（拿得到 segment 之后的 rest，适合一整个子树的 lane）
+type datasetRouter func(w http.ResponseWriter, r *http.Request, id int64, rest string)
+
+func RegisterDatasetRouter(segment string, router datasetRouter)
 ```
+
+> 查表顺序：`RegisterDatasetRouter` 的单段精确匹配优先，其次按 suffix 最长匹配。
+> 两者都未命中且不在 legacy 清单里时返回 **404**（不再静默返回数据集图）。
 
 **Worker job** — `apps/worker/registry.go`
 
