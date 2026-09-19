@@ -76,11 +76,14 @@ const apiSource = readFileSync(API_SOURCE, 'utf8')
  * 避免写出一个不存在的调用而被断言放过。
  */
 const CAPABILITIES = [
+  // R1 方向生成（lane L1）：issue #65 的能力表里明确列了「方向生成 R1」
+  //（POST /directions/generate、GET /directions），此前同样从未被 UI 调用。
+  { key: 'directions', label: 'R1 方向生成（n 领域 → m 方向）', methods: ['generateDirections', 'listGenerationRuns'] },
   { key: 'chain-standards', label: 'L2 长链思维标准步骤', methods: ['generateChainStandards', 'listChainStandards'] },
   { key: 'difficulty', label: 'L3 难度分层统计', methods: ['questionDifficultyStats'] },
   { key: 'grpo', label: 'L4 GRPO 教师评判提示词', methods: ['generateGrpo', 'listGrpo'] },
   { key: 'sft', label: 'L5 SFT 思维链与答案', methods: ['generateSft', 'listSft'] },
-  { key: 'export-formats', label: 'L6 导出格式与字段映射', methods: ['listExportMappings'] },
+  { key: 'export-formats', label: 'L6 导出格式与字段映射', methods: ['listExportMappings', 'exportFormats', 'exportDataset'] },
   { key: 'eval-judges', label: 'R1 评估裁判配置', methods: ['listDatasetEvalJudges'] },
 ]
 
@@ -208,6 +211,16 @@ const mutLabel = mutateRemoveLabel('L4 GRPO 教师评判提示词')
 record('变异：删掉「L4 GRPO」入口文案 -> 断言失败',
   !mutLabel.includes('L4 GRPO 教师评判提示词'), '删掉后源码里不再出现该入口文案')
 
+const mutLabelDirections = mutateRemoveLabel('R1 方向生成（n 领域 → m 方向）')
+record('变异：删掉「R1 方向生成」入口文案 -> 断言失败',
+  !mutLabelDirections.includes('R1 方向生成（n 领域 → m 方向）'),
+  '删掉后源码里不再出现该入口文案')
+
+const mutCallDirections = mutateRemoveCall('generateDirections')
+record('变异：删掉 generateDirections 的真实调用 -> 断言失败',
+  !/consoleApi\.generateDirections\s*\(/.test(mutCallDirections),
+  '删掉后不再有 consoleApi.generateDirections( 调用')
+
 const mutCall = mutateRemoveCall('generateGrpo')
 record('变异：删掉 generateGrpo 的真实调用 -> 断言失败',
   !/consoleApi\.generateGrpo\s*\(/.test(mutCall), '删掉后不再有 consoleApi.generateGrpo( 调用')
@@ -239,11 +252,13 @@ if (WITH_API) {
 
     if (dataset.id) {
       const probes = [
+        ['R1 生成运行记录', 'GET', `/datasets/${dataset.id}/generation-runs`],
         ['L2 长链标准步骤列表', 'GET', `/datasets/${dataset.id}/chain-standards`],
         ['L3 难度统计', 'GET', `/datasets/${dataset.id}/questions/difficulty-stats`],
         ['L4 GRPO 列表', 'GET', `/datasets/${dataset.id}/grpo`],
         ['L5 SFT 列表', 'GET', `/datasets/${dataset.id}/sft`],
         ['L6 导出字段映射', 'GET', '/admin/export-mappings'],
+        ['L6 导出格式清单', 'GET', `/datasets/${dataset.id}/export/formats`],
         ['R1 数据集裁判选项', 'GET', `/datasets/${dataset.id}/eval-judges`],
       ]
       for (const [label, method, url] of probes) {
@@ -266,7 +281,7 @@ if (WITH_API) {
     record('真实 API 断言', false, String(error?.message ?? error))
   }
 } else {
-  recordSkip('真实端点可达性（6 项能力）',
+  recordSkip('真实端点可达性（8 个端点）',
     '未启用 --with-api（默认路径不需要容器；加 --with-api 并先跑 scripts/l15-r10-stack.sh）')
 }
 

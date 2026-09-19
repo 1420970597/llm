@@ -64,7 +64,9 @@ import {
   type Domain,
   type ExportMapping,
   type GrpoPrompt,
+  type ExportFormatList,
   type PipelineProgress,
+  type GenerationRun,
   type PromptRecord,
   type Provider,
   type ProviderConnectivityResult,
@@ -866,6 +868,8 @@ export default function App() {
   const [grpoPrompts, setGrpoPrompts] = useState<GrpoPrompt[]>([])
   const [sftRecords, setSftRecords] = useState<SftRecord[]>([])
   const [exportMappings, setExportMappings] = useState<ExportMapping[]>([])
+  const [generationRuns, setGenerationRuns] = useState<GenerationRun[]>([])
+  const [exportFormats, setExportFormats] = useState<ExportFormatList | null>(null)
   const [showAdvancedGraphView, setShowAdvancedGraphView] = useState(false)
   const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null)
   const [stageRunMeta, setStageRunMeta] = useState<Partial<Record<StageKey, StageEnqueueResult>>>({})
@@ -1319,18 +1323,22 @@ export default function App() {
         return null
       }
     }
-    const [standards, difficulty, grpo, sft, mappings] = await Promise.all([
+    const [standards, difficulty, grpo, sft, mappings, runs, formats] = await Promise.all([
       settle(consoleApi.listChainStandards(datasetId), 'chain-standards'),
       settle(consoleApi.questionDifficultyStats(datasetId), 'difficulty-stats'),
       settle(consoleApi.listGrpo(datasetId), 'grpo'),
       settle(consoleApi.listSft(datasetId), 'sft'),
       settle(consoleApi.listExportMappings(), 'export-mappings'),
+      settle(consoleApi.listGenerationRuns(datasetId), 'generation-runs'),
+      settle(consoleApi.exportFormats(datasetId), 'export-formats'),
     ])
     setChainStandards(standards ?? [])
     setDifficultyStats(difficulty)
     setGrpoPrompts(grpo ?? [])
     setSftRecords(sft ?? [])
     setExportMappings(mappings ?? [])
+    setGenerationRuns(runs ?? [])
+    setExportFormats(formats)
   }, [])
 
   useEffect(() => {
@@ -2346,6 +2354,26 @@ export default function App() {
 
     return [
       {
+        key: 'directions',
+        label: 'R1 方向生成（n 领域 → m 方向）',
+        badge: graph?.domains?.length ? `已生成 ${graph.domains.length} 个方向` : '未生成',
+        badgeColor: (graph?.domains?.length ? 'green' : 'grey') as 'green' | 'grey',
+        description: '调用 llm 根据已确认的领域生成其下属方向（m 由任务参数控制），支持断点续跑。',
+        statusText: generationRuns.length > 0
+          ? `最近 ${generationRuns.length} 次生成运行记录；可对失败/部分失败运行续跑。`
+          : '尚无生成运行记录；需要先有领域。',
+        actionLabel: '生成方向',
+        run: async () => {
+          const id = requireDataset('生成方向')
+          if (id === null) return
+          await wrap('方向生成', () => consoleApi.generateDirections(id))
+        },
+        refresh: async () => {
+          if (!activeDatasetId) return Toast.warning('请先选择任务，再刷新方向')
+          await loadCapabilityData(activeDatasetId)
+        },
+      },
+      {
         key: 'chain-standards',
         label: 'L2 长链思维标准步骤',
         badge: chainStandards.length > 0 ? `${chainStandards.length} 个领域` : '未生成',
@@ -2428,20 +2456,34 @@ export default function App() {
       {
         key: 'export-formats',
         label: 'L6 导出格式与字段映射',
-        badge: exportMappings.length > 0 ? `${exportMappings.length} 个映射` : '无映射',
-        badgeColor: exportMappings.length > 0 ? 'green' : 'grey',
-        description: '查看可用的导出格式与字段映射配置，决定导出时用哪套字段。',
-        statusText: exportMappings.length > 0
-          ? `已配置 ${exportMappings.length} 套字段映射`
-          : '尚无字段映射；需要先在管理后台配置。',
-        actionLabel: '刷新导出映射',
+        badge: exportFormats?.formats?.length
+          ? `${exportFormats.formats.length} 种格式`
+          : exportMappings.length > 0 ? `${exportMappings.length} 个映射` : '无数据',
+        badgeColor: (exportFormats?.formats?.length || exportMappings.length > 0 ? 'green' : 'grey') as 'green' | 'grey',
+        description: '查看支持的导出格式与字段映射配置，决定导出时用哪套字段；可直接发起一次真实导出。',
+        statusText: exportFormats?.formats?.length
+          ? `可用格式：${exportFormats.formats.slice(0, 8).join('、')}；已配置 ${exportMappings.length} 套字段映射`
+          : '尚无格式/字段映射；需要先在管理后台配置。',
+        actionLabel: '按默认格式导出',
         run: async () => {
-          const id = requireDataset('刷新导出映射')
+          const id = requireDataset('发起导出')
           if (id === null) return
-          await wrap('导出映射刷新', async () => { setExportMappings(await consoleApi.listExportMappings()) }, false)
+          setActionLoading(true)
+          try {
+            // 不传 format（空串）时后端委派给 legacy enqueueExport：
+            // 它带奖励完整性校验，worker 侧回退到 legacy 导出，字段集与旧调用方完全一致。
+            // 因此「导出未完成质量评估」会得到 409 —— 这是正确行为，不是缺陷。
+            await consoleApi.exportDataset(id, '')
+            Toast.success('导出任务已触发')
+            if (activeDatasetId) await loadCapabilityData(activeDatasetId)
+          } catch (error) {
+            if (!handleRequestError(error)) Toast.error((error as Error).message)
+          } finally {
+            setActionLoading(false)
+          }
         },
         refresh: async () => {
-          if (!activeDatasetId) return Toast.warning('请先选择任务，再刷新导出映射')
+          if (!activeDatasetId) return Toast.warning('请先选择任务，再刷新导出格式与映射')
           await loadCapabilityData(activeDatasetId)
         },
       },
