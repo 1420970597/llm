@@ -93,6 +93,7 @@ import {
   describeArtifactType,
   describeDomainReviewStatus,
 } from './lib/enumLabels'
+import { APP_BUILD_TIME, APP_VERSION_SHORT, APP_VERSION_UNKNOWN } from './buildInfo'
 import { CleaningView } from './views/CleaningView'
 import { EvaluationView } from './views/EvaluationView'
 
@@ -3442,6 +3443,50 @@ export default function App() {
             </Card>
           </Card>
         </div>
+
+        <Card className="console-panel mt-6" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">构建版本</Title>
+          <Text className="mt-2 block console-caption">
+            用于确认「当前页面是哪一版源码构建的」（issue #88：部署镜像曾落后于仓库 HEAD，页面上无法察觉）。
+          </Text>
+          <div className="mt-4 console-summary-grid">
+            <div className="console-summary-row">
+              <span>前端版本</span>
+              <Tag color={APP_VERSION_UNKNOWN ? 'orange' : 'green'}>
+                {APP_VERSION_UNKNOWN ? '未注入' : APP_VERSION_SHORT}
+              </Tag>
+            </div>
+            <div className="console-summary-row">
+              <span>构建时间</span>
+              <Text className="console-caption">{APP_BUILD_TIME || '未知'}</Text>
+            </div>
+          </div>
+          {APP_VERSION_UNKNOWN ? (
+            <Text className="mt-3 block console-caption" style={{ color: 'var(--semi-color-warning)' }}>
+              本次构建未传入 GIT_SHA，无法自证与源码的对应关系。请用
+              {' '}<Text code>./scripts/check-deployed-version.sh</Text>{' '}
+              比对，或在重建时传入构建参数；不要假定它等于当前 HEAD。
+            </Text>
+          ) : (
+            <Text className="mt-3 block console-caption">
+              完整校验：{' '}
+              <Text code>./scripts/check-deployed-version.sh</Text>{' '}
+              会把本页版本与 <Text code>git rev-parse HEAD</Text> 直接对比。
+            </Text>
+          )}
+        </Card>
+
+        <Card className="console-panel mt-6" bodyStyle={{ padding: 20 }}>
+          <Title heading={4} className="!mb-0">部署自检</Title>
+          <Text className="mt-2 block console-caption">
+            若界面行为与当前源码不符，先用下面两条命令确认跑的是哪一版，再排查业务问题。
+          </Text>
+          <div className="console-next-step-list mt-3">
+            <Text className="console-caption">• <Text code>curl -s http://localhost:3210/version.json</Text> —— 看部署中的前端版本</Text>
+            <Text className="console-caption">• <Text code>git rev-parse HEAD</Text> —— 看本地源码版本</Text>
+            <Text className="console-caption">• 两者不一致 → 执行 <Text code>docker compose up -d --build</Text> 重建，不要继续用旧镜像做验收</Text>
+          </div>
+        </Card>
       </div>
     )
   }

@@ -3,6 +3,20 @@ services:
     build:
       context: ../..
       dockerfile: deployments/docker/web-user.Dockerfile
+      # 构建期注入 git 版本（issue #88）。
+      #
+      # 取值来源是仓库根的 .env（compose 从入口文件所在目录读 .env，
+      # 根 docker-compose.yml 已把 project 目录固定在仓库根）。
+      # 默认 unknown 而不是某个具体 SHA：构建方没传时，页面必须显式
+      # 表现为「无法自证」，而不是看起来像当前源码。
+      #
+      # 为什么不在这里用 $(git rev-parse HEAD) 命令替换：compose 变量插值
+      # 不做命令执行；而用 shell 包装又会把 `docker compose up -d --build`
+      # 这条 README 里的标准命令变得不可移植。因此交给调用方传
+      #（见 scripts/build-with-version.sh 与 README 的部署小节）。
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-}
     ports:
       - "${WEB_USER_PORT:-3210}:80"
     depends_on:
