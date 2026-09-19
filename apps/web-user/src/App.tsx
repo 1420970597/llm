@@ -56,11 +56,17 @@ import {
   type ApiError,
   type Artifact,
   type AuditRecord,
+  type ChainStandard,
   type DashboardRecord,
   type Dataset,
   type DatasetGraph,
+  type DifficultyStats,
   type Domain,
+  type ExportMapping,
+  type GrpoPrompt,
+  type ExportFormatList,
   type PipelineProgress,
+  type GenerationRun,
   type PromptRecord,
   type Provider,
   type ProviderConnectivityResult,
@@ -69,6 +75,7 @@ import {
   type ReasoningRecord,
   type RewardRecord,
   type RuntimeStatus,
+  type SftRecord,
   type StageEnqueueResult,
   type StorageProfile,
   type Strategy,
@@ -854,6 +861,15 @@ export default function App() {
   const [rewards, setRewards] = useState<RewardRecord[]>([])
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [exportFilter, setExportFilter] = useState<'all' | 'delivery' | 'review' | 'other'>('delivery')
+  // 进阶能力（issue #65）：这些后端能力不在 5 个主阶段的线性流程里，
+  // 此前 lib/api.ts 里有方法但**没有任何视图调用**（孤儿方法），用户无法触达。
+  const [chainStandards, setChainStandards] = useState<ChainStandard[]>([])
+  const [difficultyStats, setDifficultyStats] = useState<DifficultyStats | null>(null)
+  const [grpoPrompts, setGrpoPrompts] = useState<GrpoPrompt[]>([])
+  const [sftRecords, setSftRecords] = useState<SftRecord[]>([])
+  const [exportMappings, setExportMappings] = useState<ExportMapping[]>([])
+  const [generationRuns, setGenerationRuns] = useState<GenerationRun[]>([])
+  const [exportFormats, setExportFormats] = useState<ExportFormatList | null>(null)
   const [showAdvancedGraphView, setShowAdvancedGraphView] = useState(false)
   const [pipelineProgress, setPipelineProgress] = useState<PipelineProgress | null>(null)
   const [stageRunMeta, setStageRunMeta] = useState<Partial<Record<StageKey, StageEnqueueResult>>>({})
@@ -1294,6 +1310,37 @@ export default function App() {
     }
   }, [])
 
+  // 进阶能力的数据加载。与主工作区分开：这些能力在部分数据集上不可用
+  //（例如未确认主题就没有标准步骤），失败不应把整个工作区拉成错误态。
+  const loadCapabilityData = useCallback(async (datasetId: number) => {
+    const settle = async <T,>(task: Promise<T>, label: string): Promise<T | null> => {
+      try {
+        return await task
+      } catch {
+        // 单项不可用是常态（前置阶段未完成），不是错误；但不要静默：
+        // 在控制台留下可排查的痕迹。
+        console.warn(`[capability] ${label} 加载失败（前置阶段可能未完成）`)
+        return null
+      }
+    }
+    const [standards, difficulty, grpo, sft, mappings, runs, formats] = await Promise.all([
+      settle(consoleApi.listChainStandards(datasetId), 'chain-standards'),
+      settle(consoleApi.questionDifficultyStats(datasetId), 'difficulty-stats'),
+      settle(consoleApi.listGrpo(datasetId), 'grpo'),
+      settle(consoleApi.listSft(datasetId), 'sft'),
+      settle(consoleApi.listExportMappings(), 'export-mappings'),
+      settle(consoleApi.listGenerationRuns(datasetId), 'generation-runs'),
+      settle(consoleApi.exportFormats(datasetId), 'export-formats'),
+    ])
+    setChainStandards(standards ?? [])
+    setDifficultyStats(difficulty)
+    setGrpoPrompts(grpo ?? [])
+    setSftRecords(sft ?? [])
+    setExportMappings(mappings ?? [])
+    setGenerationRuns(runs ?? [])
+    setExportFormats(formats)
+  }, [])
+
   useEffect(() => {
     let active = true
     void (async () => {
@@ -1324,7 +1371,10 @@ export default function App() {
     if (!routeDatasetId) return
     if (routeDatasetId === activeDatasetId && graph?.dataset.id === routeDatasetId) return
     void loadDatasetWorkspace(routeDatasetId)
-  }, [activeDatasetId, graph?.dataset.id, loadDatasetWorkspace, location.pathname, user])
+    // 进阶能力数据单独加载：其中几项在前置阶段未完成时不可用，
+    // 失败不应把主工作区拉成错误态（loadCapabilityData 内部逐项 settle）。
+    void loadCapabilityData(routeDatasetId)
+  }, [activeDatasetId, graph?.dataset.id, loadCapabilityData, loadDatasetWorkspace, location.pathname, user])
 
   useEffect(() => {
     if (sessionLoading) return
@@ -2263,6 +2313,217 @@ export default function App() {
     )
   }
 
+  // 进阶能力入口（issue #65）。
+  //
+  // 每一项对应一个后端已实现、但此前在 UI 上**无法触达**的能力。
+  // 共同约定：
+  //   1. 未选中任务时给明确提示，不静默 return（与 #64 的守卫约定一致）；
+  //   2. run() 发**真实请求**（不是占位），成功后刷新对应数据；
+  //   3. 失败走既有 handleRequestError，不自己吞错。
+  const capabilityActions: Array<{
+    key: string
+    label: string
+    badge: string
+    badgeColor: 'green' | 'grey' | 'orange' | 'blue'
+    description: string
+    statusText: string
+    actionLabel: string
+    run: () => Promise<unknown>
+    refresh: () => Promise<unknown>
+  }> = (() => {
+    const requireDataset = (label: string): number | null => {
+      if (!activeDatasetId) {
+        Toast.warning(`请先选择任务，再${label}`)
+        return null
+      }
+      return activeDatasetId
+    }
+
+    const wrap = async (label: string, task: () => Promise<unknown>, reload = true) => {
+      setActionLoading(true)
+      try {
+        await task()
+        Toast.success(`${label}已触发`)
+        if (reload && activeDatasetId) await loadCapabilityData(activeDatasetId)
+      } catch (error) {
+        if (!handleRequestError(error)) Toast.error((error as Error).message)
+      } finally {
+        setActionLoading(false)
+      }
+    }
+
+    return [
+      {
+        key: 'directions',
+        label: 'R1 方向生成（n 领域 → m 方向）',
+        badge: graph?.domains?.length ? `已生成 ${graph.domains.length} 个方向` : '未生成',
+        badgeColor: (graph?.domains?.length ? 'green' : 'grey') as 'green' | 'grey',
+        description: '调用 llm 根据已确认的领域生成其下属方向（m 由任务参数控制），支持断点续跑。',
+        statusText: generationRuns.length > 0
+          ? `最近 ${generationRuns.length} 次生成运行记录；可对失败/部分失败运行续跑。`
+          : '尚无生成运行记录；需要先有领域。',
+        actionLabel: '生成方向',
+        run: async () => {
+          const id = requireDataset('生成方向')
+          if (id === null) return
+          await wrap('方向生成', () => consoleApi.generateDirections(id))
+        },
+        refresh: async () => {
+          if (!activeDatasetId) return Toast.warning('请先选择任务，再刷新方向')
+          await loadCapabilityData(activeDatasetId)
+        },
+      },
+      {
+        key: 'chain-standards',
+        label: 'L2 长链思维标准步骤',
+        badge: chainStandards.length > 0 ? `${chainStandards.length} 个领域` : '未生成',
+        badgeColor: chainStandards.length > 0 ? 'green' : 'grey',
+        description: '为每个领域生成可编辑、可版本化的长链思维标准步骤（后续问题与答案生成会引用它）。',
+        statusText: chainStandards.length > 0
+          ? `已覆盖 ${chainStandards.length} 个领域；当前版本号最高 ${Math.max(...chainStandards.map((item) => item.currentVersion ?? 0), 0)}`
+          : '尚未生成；需要先确认主题结构。',
+        actionLabel: '生成长链标准步骤',
+        run: async () => {
+          const id = requireDataset('生成长链标准步骤')
+          if (id === null) return
+          await wrap('长链标准步骤生成', () => consoleApi.generateChainStandards(id))
+        },
+        refresh: async () => {
+          if (!activeDatasetId) return Toast.warning('请先选择任务，再刷新标准步骤')
+          await loadCapabilityData(activeDatasetId)
+        },
+      },
+      {
+        key: 'difficulty',
+        label: 'L3 难度分层统计',
+        badge: difficultyStats ? `${difficultyStats.total ?? 0} 题` : '无数据',
+        badgeColor: difficultyStats && (difficultyStats.levels?.hard ?? 0) > 0 ? 'green' : 'orange',
+        description: '查看问题在简单/中等/困难三档上的实际分布，验证难度配比是否落地。',
+        statusText: difficultyStats
+          ? `简单 ${difficultyStats.levels?.easy ?? 0} · 中等 ${difficultyStats.levels?.medium ?? 0} · 困难 ${difficultyStats.levels?.hard ?? 0}（共 ${difficultyStats.total ?? 0} 题）`
+          : '尚无难度数据；需要先生成问题。',
+        actionLabel: '刷新难度统计',
+        run: async () => {
+          const id = requireDataset('刷新难度统计')
+          if (id === null) return
+          await wrap('难度统计刷新', async () => { setDifficultyStats(await consoleApi.questionDifficultyStats(id)) }, false)
+        },
+        refresh: async () => {
+          if (!activeDatasetId) return Toast.warning('请先选择任务，再刷新难度统计')
+          await loadCapabilityData(activeDatasetId)
+        },
+      },
+      {
+        key: 'grpo',
+        label: 'L4 GRPO 教师评判提示词',
+        badge: grpoPrompts.length > 0 ? `${grpoPrompts.length} 条` : '未生成',
+        badgeColor: grpoPrompts.length > 0 ? 'green' : 'grey',
+        description: '按用户设定的打分档次，为每个问题自动生成供教师模型打分的评判提示词。',
+        statusText: grpoPrompts.length > 0
+          ? `已生成 ${grpoPrompts.length} 条评判提示词`
+          : '尚未生成；需要先有质量评估结果或已设定打分档次。',
+        actionLabel: '生成 GRPO 提示词',
+        run: async () => {
+          const id = requireDataset('生成 GRPO 提示词')
+          if (id === null) return
+          await wrap('GRPO 提示词生成', () => consoleApi.generateGrpo(id))
+        },
+        refresh: async () => {
+          if (!activeDatasetId) return Toast.warning('请先选择任务，再刷新 GRPO 提示词')
+          await loadCapabilityData(activeDatasetId)
+        },
+      },
+      {
+        key: 'sft',
+        label: 'L5 SFT 思维链与答案',
+        badge: sftRecords.length > 0 ? `${sftRecords.length} 条` : '未生成',
+        badgeColor: sftRecords.length > 0 ? 'green' : 'grey',
+        description: '为每个问题单独生成对应的思维链与答案（SFT 分支，与 GRPO 分支互斥）。',
+        statusText: sftRecords.length > 0
+          ? `已生成 ${sftRecords.length} 条 SFT 记录`
+          : '尚未生成；需要先生成问题。',
+        actionLabel: '生成 SFT 记录',
+        run: async () => {
+          const id = requireDataset('生成 SFT 记录')
+          if (id === null) return
+          await wrap('SFT 记录生成', () => consoleApi.generateSft(id))
+        },
+        refresh: async () => {
+          if (!activeDatasetId) return Toast.warning('请先选择任务，再刷新 SFT 记录')
+          await loadCapabilityData(activeDatasetId)
+        },
+      },
+      {
+        key: 'export-formats',
+        label: 'L6 导出格式与字段映射',
+        badge: exportFormats?.formats?.length
+          ? `${exportFormats.formats.length} 种格式`
+          : exportMappings.length > 0 ? `${exportMappings.length} 个映射` : '无数据',
+        badgeColor: (exportFormats?.formats?.length || exportMappings.length > 0 ? 'green' : 'grey') as 'green' | 'grey',
+        description: '查看支持的导出格式与字段映射配置，决定导出时用哪套字段；可直接发起一次真实导出。',
+        statusText: exportFormats?.formats?.length
+          ? `可用格式：${exportFormats.formats.slice(0, 8).join('、')}；已配置 ${exportMappings.length} 套字段映射`
+          : '尚无格式/字段映射；需要先在管理后台配置。',
+        actionLabel: '按默认格式导出',
+        run: async () => {
+          const id = requireDataset('发起导出')
+          if (id === null) return
+          setActionLoading(true)
+          try {
+            // 不传 format（空串）时后端委派给 legacy enqueueExport：
+            // 它带奖励完整性校验，worker 侧回退到 legacy 导出，字段集与旧调用方完全一致。
+            // 因此「导出未完成质量评估」会得到 409 —— 这是正确行为，不是缺陷。
+            await consoleApi.exportDataset(id, '')
+            Toast.success('导出任务已触发')
+            if (activeDatasetId) await loadCapabilityData(activeDatasetId)
+          } catch (error) {
+            if (!handleRequestError(error)) Toast.error((error as Error).message)
+          } finally {
+            setActionLoading(false)
+          }
+        },
+        refresh: async () => {
+          if (!activeDatasetId) return Toast.warning('请先选择任务，再刷新导出格式与映射')
+          await loadCapabilityData(activeDatasetId)
+        },
+      },
+      {
+        key: 'eval-judges',
+        label: 'R1 评估裁判配置',
+        badge: '多 LLM 互评',
+        badgeColor: 'blue',
+        description: '查看本数据集可用的评估裁判：生成者会被自动剔除，避免自评。',
+        statusText: '剔除规则：生成者模型及其同源模型禁止自评；至少需要 2 个非生成者裁判才能互评。',
+        actionLabel: '查看可用裁判',
+        run: async () => {
+          const id = requireDataset('查看评估裁判')
+          if (id === null) return
+          setActionLoading(true)
+          try {
+            // 必须用**带数据集上下文**的接口：/admin/eval/judges 没有数据集上下文，
+            // excluded 恒为 false，用它判断剔除会把生成者误当成可用裁判。
+            const options = await consoleApi.listDatasetEvalJudges(id)
+            const usable = options.judges.filter((judge) => !judge.excluded)
+            const excluded = options.judges.filter((judge) => judge.excluded)
+            if (usable.length === 0) {
+              Toast.warning(`没有可用裁判（生成者 provider=${options.generatorProviderId}）：${excluded.map((item) => item.excludeReason).filter(Boolean).join('；') || '全部被剔除'}`)
+            } else {
+              Toast.success(`可用裁判 ${usable.length} 个（已剔除 ${excluded.length} 个，生成者 provider=${options.generatorProviderId}）`)
+            }
+          } catch (error) {
+            if (!handleRequestError(error)) Toast.error((error as Error).message)
+          } finally {
+            setActionLoading(false)
+          }
+        },
+        refresh: async () => {
+          if (!activeDatasetId) return Toast.warning('请先选择任务，再刷新评估裁判')
+          await loadCapabilityData(activeDatasetId)
+        },
+      },
+    ]
+  })()
+
   const renderTaskDetail = () => {
     const queueDepth = runtime?.queueDepth ?? 0
     const datasetStatus = activeDataset?.status ?? 'draft'
@@ -2429,6 +2690,40 @@ export default function App() {
             )
           })}
         </div>
+
+        <Card className="console-panel" bodyStyle={{ padding: 20 }}>
+          <Title heading={5} className="!mb-0">进阶能力</Title>
+          <Text className="mt-2 block console-caption">
+            这些后端能力已实现，但不在 5 个主阶段的线性流程里，需要按需单独触发。
+            每一项都会发起真实请求，不是占位入口。
+          </Text>
+          <div className="console-card-grid-2 mt-4">
+            {capabilityActions.map((capability) => (
+              <div key={capability.key} className="console-panel" style={{ borderRadius: 16, padding: 16 }}>
+                <div className="flex items-center justify-between gap-3">
+                  <Text strong>{capability.label}</Text>
+                  <Tag color={capability.badgeColor ?? 'blue'}>{capability.badge}</Tag>
+                </div>
+                <Text className="mt-2 block console-caption">{capability.description}</Text>
+                <Text className="mt-1 block console-caption">{capability.statusText}</Text>
+                <Space className="mt-3" wrap>
+                  <Button
+                    size="small"
+                    theme="solid"
+                    type="primary"
+                    loading={actionLoading}
+                    onClick={() => void capability.run()}
+                  >
+                    {capability.actionLabel}
+                  </Button>
+                  <Button size="small" theme="light" loading={workspaceLoading} onClick={() => void capability.refresh()}>
+                    刷新
+                  </Button>
+                </Space>
+              </div>
+            ))}
+          </div>
+        </Card>
 
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={5} className="!mb-0">质量与交付</Title>
