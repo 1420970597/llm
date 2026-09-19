@@ -86,23 +86,22 @@ func main() {
 	}
 
 	// 从环境变量幂等引导默认 LLM provider（密钥加密落库，不写入日志）。
-	if cfg.BootstrapProviderBaseURL != "" && cfg.BootstrapProviderAPIKey != "" {
-		providerID, created, err := app.store.EnsureProvider(ctx, model.ModelProvider{
-			Name:           cfg.BootstrapProviderName,
-			BaseURL:        cfg.BootstrapProviderBaseURL,
-			Model:          cfg.BootstrapProviderModel,
-			ProviderType:   cfg.BootstrapProviderType,
-			MaxConcurrency: cfg.BootstrapProviderMaxConcurrency,
-			TimeoutSeconds: cfg.BootstrapProviderTimeoutSeconds,
-			IsActive:       true,
-			APIKey:         cfg.BootstrapProviderAPIKey,
-		})
+	//
+	// 注意：引导与 HTTP upsertProvider 共用 store.ValidateProviderInput（校验只该有一份），
+	// 但配置不完整时**不能** log.Fatalf —— 那会让「少填一个字段」升级为「容器起不来」。
+	// 详见 apps/api/provider_bootstrap.go 的说明与对应单测。
+	bootstrapInput, outcome, validationErr := resolveBootstrapProvider(cfg)
+	switch outcome {
+	case bootstrapReady:
+		providerID, created, err := app.store.EnsureProvider(ctx, bootstrapInput)
 		if err != nil {
 			log.Fatalf("bootstrap provider failed: %v", err)
 		}
 		if created {
 			log.Printf("bootstrap provider ensured: id=%d model=%s", providerID, cfg.BootstrapProviderModel)
 		}
+	case bootstrapSkippedIncomplete:
+		log.Printf("WARNING: 跳过默认 provider 引导，APP_BOOTSTRAP_PROVIDER_* 配置不完整: %v（服务继续启动，可在管理后台手动添加）", validationErr)
 	}
 
 	mux := http.NewServeMux()
@@ -194,7 +193,7 @@ func (app *application) upsertProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	item, err := app.store.UpsertProvider(r.Context(), input)
 	if err != nil {
-		app.writeError(w, http.StatusInternalServerError, err)
+		app.writeError(w, upsertErrorStatus(err), err)
 		return
 	}
 	_ = app.store.WriteAuditLog(r.Context(), "admin", "upsert", "model_provider", strconv.FormatInt(item.ID, 10), item.Name)
@@ -218,7 +217,7 @@ func (app *application) upsertStorageProfile(w http.ResponseWriter, r *http.Requ
 	}
 	item, err := app.store.UpsertStorageProfile(r.Context(), input)
 	if err != nil {
-		app.writeError(w, http.StatusInternalServerError, err)
+		app.writeError(w, upsertErrorStatus(err), err)
 		return
 	}
 	_ = app.store.WriteAuditLog(r.Context(), "admin", "upsert", "storage_profile", strconv.FormatInt(item.ID, 10), item.Name)
@@ -242,7 +241,7 @@ func (app *application) upsertStrategy(w http.ResponseWriter, r *http.Request) {
 	}
 	item, err := app.store.UpsertStrategy(r.Context(), input)
 	if err != nil {
-		app.writeError(w, http.StatusInternalServerError, err)
+		app.writeError(w, upsertErrorStatus(err), err)
 		return
 	}
 	_ = app.store.WriteAuditLog(r.Context(), "admin", "upsert", "generation_strategy", strconv.FormatInt(item.ID, 10), item.Name)
@@ -266,7 +265,7 @@ func (app *application) upsertPrompt(w http.ResponseWriter, r *http.Request) {
 	}
 	item, err := app.store.UpsertPrompt(r.Context(), input)
 	if err != nil {
-		app.writeError(w, http.StatusInternalServerError, err)
+		app.writeError(w, upsertErrorStatus(err), err)
 		return
 	}
 	_ = app.store.WriteAuditLog(r.Context(), "admin", "upsert", "prompt_template", strconv.FormatInt(item.ID, 10), item.Name)
@@ -309,6 +308,19 @@ func (app *application) writeJSON(w http.ResponseWriter, status int, payload any
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// upsertErrorStatus 把 4 个 admin 配置 upsert 的 store 错误映射为 HTTP 状态码。
+//
+// store.ValidationError 表示用户填错了字段，属于客户端问题（issue #63）：
+// 它必须变成 400 + 具体字段名，不能被当成 500。其余错误仍走 500，
+// 由 writeError 统一隐藏内部细节。
+func upsertErrorStatus(err error) int {
+	var validationErr *store.ValidationError
+	if errors.As(err, &validationErr) {
+		return http.StatusBadRequest
+	}
+	return http.StatusInternalServerError
 }
 
 func (app *application) routeDatasetActions(w http.ResponseWriter, r *http.Request) {
