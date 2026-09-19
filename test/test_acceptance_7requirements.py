@@ -65,7 +65,19 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123456")
 # 生成类任务等待上限：推理模型单次响应可达 120s，多步流水线需要更长。
 GEN_TIMEOUT = int(os.environ.get("GEN_TIMEOUT", "900"))
 # 评估要跑多次真实 LLM 调用（每样本 × 每维度 × 每裁判），比生成慢得多。
-EVAL_TIMEOUT = int(os.environ.get("EVAL_TIMEOUT", "2400"))
+#
+# 实测标定（2026-09-19，真实 provider）：一次「8 项 × 3 维度 × 2 裁判 = 48 次调用」
+# 的抽样评估耗时 **68.4 分钟**（eval_runs.created_at → updated_at）。
+# 此前默认 2400s（40 分钟）**小于真实耗时**，于是 `R7 评估运行完成` 这条断言
+# 在默认参数下**必然失败** —— 失败原因写的是 `status=running`，看起来像产品没跑完，
+# 实际是**测试给的时间窗不够**。
+#
+# 因此默认值按实测放大到 5400s（90 分钟），给 48 次串行真实调用留出余量。
+# 注意：这不是「为了让测试通过而放宽标准」—— 断言本身（最终状态必须是终态）
+# 一字未改，改的是「等多久才算超时」。真实缺陷仍会让它失败：
+# 例如 PR #128 修的那个「候选列表与执行侧口径不一致」会让状态变成 failed，
+# 那种失败不受 timeout 影响。
+EVAL_TIMEOUT = int(os.environ.get("EVAL_TIMEOUT", "5400"))
 
 PASS, FAIL, SKIP = [], [], []
 
