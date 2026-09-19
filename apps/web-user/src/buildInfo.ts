@@ -33,11 +33,32 @@ declare global {
   }
 }
 
+// 读取构建期注入值的**防御式**入口。
+//
+// 为什么不能直接写 `import.meta.env.VITE_APP_VERSION`：
+// `import.meta.env` 是 Vite 注入的对象，**只在 Vite 构建里存在**。
+// 本仓库的 UI 测试（test/l15_stage_routes.mjs、test/l15_capability_entries.mjs 等）
+// 用 esbuild + React 渲染来验证真实的组件函数体，而 esbuild **不注入**
+// `import.meta.env` —— 它是 `undefined`，于是 `.VITE_APP_VERSION` 抛
+// `Cannot read properties of undefined`，把整个渲染腿打挂。
+//
+// 这在合并 PR #112 时确实发生了：两个此前通过的 SSR 测试（R1 的阶段路由、
+// R10 的能力入口）开始失败。`?? ''` 只能兜住「属性不存在」，兜不住「宿主对象不存在」，
+// 因此必须在访问前判断宿主是否存在。
+//
+// 语义不变：拿不到就返回空串，由调用方按既有约定回退为 'unknown'（不伪造版本号）。
+function readInjectedEnv(key: 'VITE_APP_VERSION' | 'VITE_APP_BUILD_TIME'): string {
+  // `import.meta.env` 在 Vite 下是对象，在 esbuild/Node 下可能是 undefined。
+  const env = (import.meta as { env?: Record<string, string | undefined> }).env
+  if (!env || typeof env !== 'object') return ''
+  return (env[key] ?? '').trim()
+}
+
 /** 构建期注入的 git commit SHA；未注入时为 'unknown'。 */
-export const APP_VERSION: string = (import.meta.env.VITE_APP_VERSION ?? '').trim() || 'unknown'
+export const APP_VERSION: string = readInjectedEnv('VITE_APP_VERSION') || 'unknown'
 
 /** 构建期注入的构建时间（UTC ISO）；未注入时为空串。 */
-export const APP_BUILD_TIME: string = (import.meta.env.VITE_APP_BUILD_TIME ?? '').trim()
+export const APP_BUILD_TIME: string = readInjectedEnv('VITE_APP_BUILD_TIME')
 
 /** 短版本号（前 7 位），用于界面展示。 */
 export const APP_VERSION_SHORT: string = APP_VERSION === 'unknown' ? 'unknown' : APP_VERSION.slice(0, 7)
