@@ -501,9 +501,9 @@ func TestGenerateQuestionsV2ProducesHardAtTwoPerDirection(t *testing.T) {
 // 用户显式指定含困难档的配比且每方向 3 条时，落库分布必须三档齐全。
 func TestGenerateQuestionsV2ProducesEveryLevelAtThreePerDirection(t *testing.T) {
 	server := fakeProvider(t, `[
-      {"content":"问题甲：例行巡逻","difficulty":"medium"},
-      {"content":"问题乙：突发拦截","difficulty":"medium"},
-      {"content":"问题丙：多目标处置","difficulty":"medium"}
+      {"content":"问题甲：例行巡逻时发现不明小艇靠近，请给出处置方案。","difficulty":"medium"},
+      {"content":"问题乙：突发拦截任务中通信中断，请给出处置方案。","difficulty":"medium"},
+      {"content":"问题丙：同时出现多批可疑目标，请给出处置优先级。","difficulty":"medium"}
     ]`)
 	input := fakeInput(server, 3, defaultMixForTest)
 

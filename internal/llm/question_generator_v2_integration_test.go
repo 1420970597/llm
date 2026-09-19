@@ -104,9 +104,9 @@ func TestGenerateQuestionsV2UsesPlannedDifficultyNotModelLabels(t *testing.T) {
 // difficultyScore 必须与 difficulty 一致。
 func TestGenerateQuestionsV2KeepsScoreConsistentWithDifficulty(t *testing.T) {
 	server := fakeProvider(t, `[
-      {"content":"问题甲：例行巡逻","difficulty":"medium"},
-      {"content":"问题乙：突发拦截","difficulty":"medium"},
-      {"content":"问题丙：多目标处置","difficulty":"medium"}
+      {"content":"问题甲：例行巡逻时发现不明小艇靠近，请给出处置方案。","difficulty":"medium"},
+      {"content":"问题乙：突发拦截任务中通信中断，请给出处置方案。","difficulty":"medium"},
+      {"content":"问题丙：同时出现多批可疑目标，请给出处置优先级。","difficulty":"medium"}
     ]`)
 	input := fakeInput(server, 3, map[string]float64{
 		DifficultyEasy: 0.3, DifficultyMedium: 0.5, DifficultyHard: 0.2,
@@ -253,11 +253,11 @@ func TestGenerateQuestionsV2RetriesUntilTargetReached(t *testing.T) {
 		// 第一轮只给 1 条，第二轮补足剩余 2 条。
 		var content string
 		if callCount == 1 {
-			content = `[{"content":"问题一：首轮产出","difficulty":"easy"}]`
+			content = `[{"content":"问题一：首轮产出，发现可疑目标靠近编队，请给出处置方案。","difficulty":"easy"}]`
 		} else {
 			content = `[
-              {"content":"问题二：次轮产出甲","difficulty":"medium"},
-              {"content":"问题三：次轮产出乙","difficulty":"hard"}
+              {"content":"问题二：次轮产出甲，可疑目标改变航向，请给出处置方案。","difficulty":"medium"},
+              {"content":"问题三：次轮产出乙，目标进入警戒区，请给出处置方案。","difficulty":"hard"}
             ]`
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -315,7 +315,7 @@ func TestGenerateQuestionsV2SendsDifficultyQuotaToProvider(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []any{map[string]any{
-				"message": map[string]any{"role": "assistant", "content": `["问题一","问题二","问题三","问题四"]`},
+				"message": map[string]any{"role": "assistant", "content": `["问题一：近海巡逻遭遇可疑目标，请给出处置方案","问题二：编队护航中通信中断，请给出处置方案","问题三：多目标同时出现，请给出处置优先级","问题四：突发拦截任务，请给出处置流程"]`},
 			}},
 		})
 	}))
@@ -353,7 +353,7 @@ func TestGenerateQuestionsV2SendsChainFrameworkToProvider(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []any{map[string]any{
-				"message": map[string]any{"role": "assistant", "content": `["问题一"]`},
+				"message": map[string]any{"role": "assistant", "content": `["问题一：近海巡逻遭遇可疑目标，请给出处置方案"]`},
 			}},
 		})
 	}))
@@ -394,7 +394,7 @@ func TestGenerateQuestionsV2RendersUserTemplate(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []any{map[string]any{
-				"message": map[string]any{"role": "assistant", "content": `["问题一","问题二"]`},
+				"message": map[string]any{"role": "assistant", "content": `["问题一：近海巡逻遭遇可疑目标，请给出处置方案","问题二：编队护航中通信中断，请给出处置方案"]`},
 			}},
 		})
 	}))
@@ -421,8 +421,8 @@ func TestGenerateQuestionsV2RendersUserTemplate(t *testing.T) {
 // 多方向时每个方向各自按配比分配。
 func TestGenerateQuestionsV2AllocatesPerDirection(t *testing.T) {
 	server := fakeProvider(t, `[
-      {"content":"问题甲","difficulty":"easy"},
-      {"content":"问题乙","difficulty":"medium"}
+      {"content":"问题甲：编队护航中遭遇可疑目标，请给出处置方案。","difficulty":"easy"},
+      {"content":"问题乙：护航海域出现不明目标，请给出处置方案。","difficulty":"medium"}
     ]`)
 	input := fakeInput(server, 2, map[string]float64{
 		DifficultyEasy: 0.5, DifficultyMedium: 0.5, DifficultyHard: 0,

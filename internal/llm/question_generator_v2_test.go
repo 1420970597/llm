@@ -139,35 +139,35 @@ func TestParseQuestionDraftsReadsStructuredObjects(t *testing.T) {
 
 // 兼容模型只返回字符串数组的形态。
 func TestParseQuestionDraftsReadsPlainStrings(t *testing.T) {
-	drafts, err := parseQuestionDrafts(`["问题甲","问题乙"]`)
+	drafts, err := parseQuestionDrafts(`["问题甲：近海巡逻遭遇可疑目标，请给出处置方案。","问题乙：编队护航中通信中断，请给出处置方案。"]`)
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
-	if len(drafts) != 2 || drafts[0].Content != "问题甲" {
+	if len(drafts) != 2 || drafts[0].Content != "问题甲：近海巡逻遭遇可疑目标，请给出处置方案。" {
 		t.Fatalf("unexpected drafts: %+v", drafts)
 	}
 }
 
 // 解析要能穿透 Markdown 代码块与前后解释文字。
 func TestParseQuestionDraftsToleratesFencesAndProse(t *testing.T) {
-	raw := "好的，以下是问题：\n```json\n[{\"content\":\"场景问题\",\"difficulty\":\"medium\"}]\n```\n以上。"
+	raw := "好的，以下是问题：\n```json\n[{\"content\":\"场景问题：近海巡逻遭遇可疑目标，请给出处置方案。\",\"difficulty\":\"medium\"}]\n```\n以上。"
 	drafts, err := parseQuestionDrafts(raw)
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
-	if len(drafts) != 1 || drafts[0].Content != "场景问题" {
+	if len(drafts) != 1 || drafts[0].Content != "场景问题：近海巡逻遭遇可疑目标，请给出处置方案。" {
 		t.Fatalf("unexpected drafts: %+v", drafts)
 	}
 }
 
 // 对象数组里 content 为空白的元素必须被剔除，且不能因此报错。
 func TestParseQuestionDraftsSkipsEmptyContent(t *testing.T) {
-	raw := `[{"content":"  ","difficulty":"easy"},{"content":"有效问题","difficulty":"hard"}]`
+	raw := `[{"content":"  ","difficulty":"easy"},{"content":"有效问题：近海巡逻遭遇可疑目标，请给出处置方案。","difficulty":"hard"}]`
 	drafts, err := parseQuestionDrafts(raw)
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
-	if len(drafts) != 1 || drafts[0].Content != "有效问题" {
+	if len(drafts) != 1 || drafts[0].Content != "有效问题：近海巡逻遭遇可疑目标，请给出处置方案。" {
 		t.Fatalf("unexpected drafts: %+v", drafts)
 	}
 }

@@ -189,7 +189,14 @@ func generateForDirection(ctx context.Context, provider ProviderConfig, input Qu
 		added := 0
 		for _, draft := range drafts {
 			content := strings.TrimSpace(draft.Content)
-			if content == "" {
+			// 占位内容判定（issue #7）。这里是 questions.generate 的**活路径**
+			// （apps/worker/job_questions_v2.go 用 RegisterJobHandler 注册，优先于 legacy），
+			// 此前只跳过空串，于是模型返回 "..." / "N/A" 这类占位内容仍会落库为问题。
+			// question_generator.go（legacy）里有这个判定，但 legacy 分支在生产链路上不可达，
+			// 所以那条判定实际从未生效 —— R3 的独立评审者发现了这个落差。
+			if assessment := AssessQuestionContent(content); !assessment.Valid {
+				log.Printf("questions.v2.placeholder dataset_id=%d direction_id=%d reason=%s",
+					input.DatasetID, direction.DomainID, assessment.Reason)
 				continue
 			}
 			key := DedupeKey(content)
@@ -395,14 +402,23 @@ func parseQuestionDrafts(raw string) ([]questionDraft, error) {
 		return nil, err
 	}
 	drafts := make([]questionDraft, 0, len(plain))
+	placeholderCount := 0
 	for _, text := range plain {
 		content := strings.TrimSpace(text)
-		if content == "" {
+		if assessment := AssessQuestionContent(content); !assessment.Valid {
+			// 空串与占位内容都归这里：对调用方而言两者都是「不可用」，
+			// 但占位内容单独计数，便于区分「模型没返回」与「模型返回了占位」。
+			if content != "" {
+				placeholderCount++
+			}
 			continue
 		}
 		drafts = append(drafts, questionDraft{Content: content})
 	}
 	if len(drafts) == 0 {
+		if placeholderCount > 0 {
+			return nil, fmt.Errorf("provider returned %d placeholder question(s) and no usable content", placeholderCount)
+		}
 		return nil, fmt.Errorf("provider returned no usable questions")
 	}
 	return drafts, nil
