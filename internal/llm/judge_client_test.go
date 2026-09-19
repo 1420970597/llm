@@ -30,9 +30,9 @@ func TestCompleteStructuredRetriesNonJSONResponse(t *testing.T) {
 	const jsonResponse = `{"score": 3, "rationale": "表达较为紧凑，无冗余铺垫。"}`
 
 	var (
-		calls       int
-		secondUser  string
-		firstUser   string
+		calls      int
+		secondUser string
+		firstUser  string
 	)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
