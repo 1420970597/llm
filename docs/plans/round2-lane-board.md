@@ -18,7 +18,7 @@
 子代理以显式 `cwd` 进入自己的 lane（`isolation` 默认 `none`）。契约要求的一写者一 worktree 不变。
 
 | Lane | Issue | 分支 | worktree | 认领文件 | 候选容器端口 | 状态 | PR |
-|---|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |---|---|
 | R1 | #61 | `lane/r1-stage-routes` | `/root/worktrees/llm-round2/r1` | `apps/web-user/src/App.tsx`, `test/frontend_routes_test.go`, `test/l15_stage_routes.mjs` | — | running | — |
 | R2 | #5 | `lane/r2-worker-batch-status` | `/root/worktrees/llm-round2/r2` | `apps/worker/main.go`, `internal/store/reasoning_store.go`, `internal/store/reward_store.go` | 18102 | running | — |
 | R3 | #7 | `lane/r3-placeholder-content` | `/root/worktrees/llm-round2/r3` | `internal/llm/reasoning_generator.go`, `reward_generator.go`, `question_generator.go` | — | running | — |
@@ -93,7 +93,84 @@ P0: R1, R2, R3, R4, R5 → P1: R6, R7, R8, R9, R10 → P2: R11, R12。
 | #65 | 修（R10） | 静态：`lib/api.ts` 存在未调用方法 | — |
 | #66 | 已修（PR #68） | `writeError` 集中降级 | 待活体复现后关单 |
 
-## 4. PR 处置看板（3 open → 0 open）
+## 6. 并发波次与machine利用率
+
+操作者要求「最大限度利用机器性能启动多个子代理」。当前**同时运行 3 个独立波次**，互不共享可写文件：
+
+| 波次 | runId | 并发 | 编制 | 性质 |
+|---|---|---|---|---|
+| wave1b | `feddb2b2` | 4 | 26（含 6 个 retained-child resume，复用原编制配额） | 写者 + 评审者 |
+| verify-parallel | `421fd090` | 5 | 5 | 只读独立复验 |
+| eval-multi-judge | `d4e388a1` | 1 | 1 | 写者（补需求缺口） |
+
+机器现状：16 核，load average 4.8，内存 4.1G/15G，磁盘 27G/97G，运行中容器 20 个（其中 13 个是各 lane 的候选栈）。
+
+### verify-parallel 的 5 个任务（均为只读）
+
+1. `verify-r4-r7`：对已合并的 #74(R4/#9) 与 #73(R7/#58) 做**对抗式**复验，含变异验证
+   （临时改坏被保护的行为 → 跑守卫 → 确认失败 → 还原；**只在 verify worktree 内做**）。
+   该 lane 自建了隔离的 `l15-verify-pg`，不碰共享库（这是正确做法）。
+2. `verify-r5-r3`：对已合并的 #75(R5/#8) 与 #76(R3/#7) 做对抗式复验。
+   重点是 R5 的最大回归面：「404 兜底是否把**已注册**路径也吃掉了」——要求逐个 case 真机探测。
+3. `verify-frontend`：用真实 DOM（createRoot + MemoryRouter + act，**不装 chromium**）复验 #70 的
+   5 个阶段路由可达性，并带**反向断言**（这些路由下不应出现详情页自指特征）。
+   R1 仅用源码级断言验证过这件事，这是补上渲染级证据。
+4. `verify-7requirements`：在已合并 main 上跑既有 73 条验收断言，取**合并中期基线**（端口 18164）。
+5. `verify-requirement-reach`：以 `功能说明.txt` 为准审计 7 项需求 + 评估 + 清洗的 UI 可达性（端口 18165），
+   并输出「必须补的第二波缺口清单」。
+
+## 7. 需求缺口补强：多 LLM 互评（wave `d4e388a1`）
+
+### 父代理核实的事实
+
+`功能说明.txt` 要求「采用多 llm 互评……由 A 生成的数据集 A1，评估 A1 则需要**除去 A** 之外的 llm」。
+而环境原本**只有 1 个 provider**，因此既有验收脚本对这项能力**只能记 SKIP（输入缺失）**——
+这是契约 §3.5 允许的诚实行为，但意味着该需求**从未被真正验证过**。
+
+核实过程（可复现）：
+
+```bash
+# 同一端点还提供其他真实可用模型
+cd /root/llm && set -a && . ./.env && set +a
+curl -s "$APP_BOOTSTRAP_PROVIDER_BASE_URL/models" -H "Authorization: Bearer $APP_BOOTSTRAP_PROVIDER_API_KEY"
+# 实测可用的两个：
+#   gpt-5.6-sol  -> '可用'
+#   global:hy3   -> '可用'
+#   gpt-5.4-mini -> upstream_error（上游暂不可用，未采用）
+```text
+
+已引导第二个 provider（`is_active=true`）：
+
+```text
+id=1  deepseek-v4.1-flash   model=global:deepseek-v4.1-flash
+id=7  gpt-5.6-sol-judge     model=gpt-5.6-sol
+```text
+
+`GET /api/v1/admin/eval/judges` 现在返回 2 个候选，`excluded` 均为 false。
+
+**注意**：剔除生成者自评必须用**带数据集上下文**的 `GET /api/v1/datasets/{id}/eval-judges`；
+`/api/v1/admin/eval/judges` 没有数据集上下文，按设计恒返回 `excluded=false`（这是既有验收脚本
+记录的陷阱）。
+
+### 该项已被核实为满足的部分
+
+```bash
+docker exec llm-postgres-1 psql -U llm_factory -d llm_factory -tAc "select count(*) from eval_dimensions"
+# -> 58   （功能说明.txt 要求「不少于 50 个」，满足）
+```text
+
+### eval-multi-judge lane 的任务
+
+新建 `test/l15_eval_multi_judge.py`，真机断言：多 provider 就绪 / ≥50 内置维度且用户可新增 /
+**用数据集上下文验证剔除生成者自评** / 真实互评跑通并汇总出「每个 llm 对数据集的整体分数」/
+全量与抽样两种模式 / 评估结果里不得出现生成者作为裁判。端口 18170，前缀 `l15-evalmulti-<pid>-`。
+
+## 8. Lane 看板的收尾说明
+
+- R1 在 wave1b 的 stage B 因**上游 provider 报错**（`upstream_error: Upstream request failed`）中断。
+  其核心改动（`stageRouteNavMap` 改为单一来源派生，消除三处漂移）已由父代理提交为 `52ae626`
+  并推送到 `lane/r1-stage-routes`，然后**同协议 resume** 继续收尾（补冻结测试文件 + 开 PR）。
+  这是契约 §8 允许的「保留现场 + 同协议重试」。
 
 | PR | 判定 | 证据 |
 |---|---|---|
@@ -111,9 +188,9 @@ P0: R1, R2, R3, R4, R5 → P1: R6, R7, R8, R9, R10 → P2: R11, R12。
 
 ### #66 的关单证据（父代理活体复现）
 
-```
+```http
 POST /api/v1/auth/login          -> 200
 GET  /api/v1/datasets/999999999  -> 404 {"error":"请求的资源不存在"}
-```
+```text
 
 修复前为 500 + 英文 `internal server error`。已附证据关单。
