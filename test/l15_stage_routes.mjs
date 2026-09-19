@@ -44,7 +44,7 @@
  * 不用硬编码假数据。
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -435,6 +435,3 @@ if (failures.length > 0) {
   console.log(`STAGE ROUTES OK: ${results.length - skipped}/${results.length - skipped} 项通过` +
     (skipped ? `（另 ${skipped} 项因输入缺失跳过）` : ''))
 }
-
-// 未使用但保留：existsSync 用于未来显式检查 dist 产物；此处避免 lint 噪音。
-void existsSync
