@@ -12,3 +12,4 @@ apps/**/dist/
 # python 缓存
 __pycache__/
 *.pyc
+test/artifacts/
