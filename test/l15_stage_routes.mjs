@@ -2,8 +2,29 @@
  * L15 R1 阶段路由可达性守卫（自包含，一条命令）。
  *
  * 运行：
- *   node test/l15_stage_routes.mjs
- *   L15_API_BASE=http://127.0.0.1:18101/api/v1 node test/l15_stage_routes.mjs
+ *   node test/l15_stage_routes.mjs              # 源码级断言（CI 默认路径，无需任何容器）
+ *   node test/l15_stage_routes.mjs --with-api   # 额外跑真实 API + 渲染级断言
+ *
+ * ---------------------------------------------------------------------------
+ * 为什么默认只跑源码级断言（CI 可执行性是硬要求）
+ * ---------------------------------------------------------------------------
+ * CI 的 Backend job 只跑 `go test`，Frontend job 只跑 `tsc + vite build`，
+ * **都不会**起 :18101 的候选容器。因此若本脚本把「真实 API 登录」作为必经前置，
+ * 它在 CI 里 100% 失败 —— 等于一个永远跑不起来的守卫，CI 防不住回归；
+ * 而且会把「环境不可达」误报为「断言失败」，真出回归时没人分得清两者。
+ *
+ * 所以拆成两层：
+ *   - **源码级断言（默认，exit code 由此决定）**：只读 App.tsx 源码文本求值，
+ *     不需要容器、不需要 DOM、不需要网络。CI 直接跑它。
+ *     覆盖：#61 自指重定向形态、5 个阶段路由必须渲染页面、render* 不得成死代码、
+ *     stageRouteNavMap 必须由阶段工作台声明派生、以及 **route→navParent 取值正确性**。
+ *   - **真实 API + 渲染级断言（--with-api，可选）**：起候选容器后跑，
+ *     验证打的是本 lane 的镜像，并用 esbuild + SSR 真实渲染页面。
+ *     未启用时输出 [SKIP]，**不影响 exit code**。
+ *
+ * 变异自证：源码级断言自带变异用例（把路由退回 <Navigate>、把派生退回手写表、
+ * 把 navParent 改错），每条都必须被捕获；若某条变异未被捕获，测试自身报 FAIL。
+ * 这样「断言非空转」是被证明的，而不是被声称的。
  *
  * 背景（issue #61）：5b90c2e 把 5 个任务阶段路由改成
  *   <Route path="/console/domains" element={<Navigate to={activeTaskDetailRoute} replace />} />
@@ -60,6 +81,10 @@ const esbuild = webRequire('esbuild')
 const API_BASE = process.env.L15_API_BASE ?? 'http://127.0.0.1:18101/api/v1'
 const ADMIN_EMAIL = process.env.L15_ADMIN_EMAIL ?? 'admin@company.com'
 const ADMIN_PASSWORD = process.env.L15_ADMIN_PASSWORD ?? 'admin123456'
+
+// --with-api：启用需要候选容器的「真实 API + 渲染级断言」。
+// 默认关闭，因为 CI 不起容器；默认路径必须能独立跑绿并决定 exit code。
+const WITH_API = process.argv.includes('--with-api')
 
 /**
  * 5 个阶段路由、其在侧边栏中的归属父项（navParent），以及面包屑使用的短标签（label）。
@@ -296,18 +321,25 @@ const applied = { seeded: null }
 let render
 
 try {
+  const source = readFileSync(APP_SOURCE, 'utf8')
+
   // ---- 0. 真实 API 探活（证明打的是本 lane 的镜像） ----
-  try {
-    const status = await realLogin()
-    record('真实登录本 lane 的 API', status === 200, `${API_BASE} 登录返回 ${status}`)
-  } catch (error) {
-    record('真实登录本 lane 的 API', false,
-      `${API_BASE} 不可达或被拒：${error.message}（先跑 scripts/l15-r1-stack.sh）`)
-    throw new Error('被测 API 不可及，无法继续')
+  // 仅在 --with-api 下执行：CI 不起容器，默认路径不得因环境缺失而失败。
+  if (WITH_API) {
+    try {
+      const status = await realLogin()
+      record('真实登录本 lane 的 API', status === 200, `${API_BASE} 登录返回 ${status}`)
+    } catch (error) {
+      record('真实登录本 lane 的 API', false,
+        `${API_BASE} 不可达或被拒：${error.message}（先跑 scripts/l15-r1-stack.sh）`)
+      throw new Error('被测 API 不可及，无法继续')
+    }
+  } else {
+    recordSkip('真实登录本 lane 的 API', `未启用 --with-api（默认路径不需要容器；加 --with-api 并先跑 scripts/l15-r1-stack.sh）`)
   }
 
   // ---- 1. 打包 + 会话预置最小性自检 ----
-  const source = readFileSync(APP_SOURCE, 'utf8')
+  // 渲染级断言同样需要 esbuild 打包，但**不需要网络**；打包失败属真实缺陷，故不跳过。
   render = await buildRenderer(path.join(workDir, 'App.seeded.tsx'), applied)
 
   record('App.tsx 可被打包并渲染', typeof render === 'function', 'esbuild bundle + renderToStaticMarkup 可用')
