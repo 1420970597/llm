@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -23,7 +23,7 @@ func (app *application) enqueueQuestionGeneration(w http.ResponseWriter, r *http
 		return
 	}
 	if len(domains) == 0 {
-		app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue questions: dataset %d has no domains", id))
+		app.writeError(w, http.StatusConflict, errors.New(msgNoDirections))
 		return
 	}
 

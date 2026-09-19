@@ -51,7 +51,7 @@ func (s *AuthStore) EnsureBootstrapUser(ctx context.Context, email, password, ro
 func (s *AuthStore) Authenticate(ctx context.Context, email, password string) (model.User, error) {
 	email = strings.TrimSpace(strings.ToLower(email))
 	if email == "" || password == "" {
-		return model.User{}, fmt.Errorf("email and password are required")
+		return model.User{}, fmt.Errorf("请输入邮箱与密码")
 	}
 
 	var user model.User
@@ -63,13 +63,13 @@ func (s *AuthStore) Authenticate(ctx context.Context, email, password string) (m
   `, email).Scan(&user.ID, &user.Email, &user.Role, &hashedPassword)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return model.User{}, fmt.Errorf("invalid email or password")
+			return model.User{}, fmt.Errorf("邮箱或密码不正确，请重新输入")
 		}
 		return model.User{}, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password)); err != nil {
-		return model.User{}, fmt.Errorf("invalid email or password")
+		return model.User{}, fmt.Errorf("邮箱或密码不正确，请重新输入")
 	}
 
 	return user, nil
@@ -80,7 +80,7 @@ func (s *AuthStore) GetUserByID(ctx context.Context, id int64) (model.User, erro
 	err := s.db.QueryRow(ctx, `SELECT id, email, role FROM users WHERE id = $1`, id).Scan(&user.ID, &user.Email, &user.Role)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return model.User{}, fmt.Errorf("user not found")
+			return model.User{}, fmt.Errorf("未找到该用户，请重新登录")
 		}
 		return model.User{}, err
 	}

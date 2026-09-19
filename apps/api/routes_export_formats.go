@@ -74,7 +74,7 @@ func routeExport(w http.ResponseWriter, r *http.Request, id int64, rest string) 
 func (app *application) exportFormats(w http.ResponseWriter, r *http.Request, id int64) {
 	// 数据集不存在时明确返回 404，而不是给出格式清单让调用方误以为可用。
 	if _, err := app.datasets.GetDataset(r.Context(), id); err != nil {
-		app.writeError(w, http.StatusNotFound, err)
+		app.writeError(w, http.StatusNotFound, newUserFacingError(msgDatasetNotFound, err))
 		return
 	}
 
@@ -120,7 +120,7 @@ func (app *application) enqueueMultiFormatExport(w http.ResponseWriter, r *http.
 	}
 
 	if _, err := app.datasets.GetDataset(r.Context(), id); err != nil {
-		app.writeError(w, http.StatusNotFound, err)
+		app.writeError(w, http.StatusNotFound, newUserFacingError(msgDatasetNotFound, err))
 		return
 	}
 

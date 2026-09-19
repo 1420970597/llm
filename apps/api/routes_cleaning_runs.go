@@ -110,7 +110,7 @@ func cleaningPathInt64(r *http.Request, name string) (int64, error) {
 	raw := r.PathValue(name)
 	value, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || value <= 0 {
-		return 0, errors.New("invalid " + name + " in path")
+		return 0, errors.New("路径里的 " + name + " 不是有效的整数")
 	}
 	return value, nil
 }
@@ -166,7 +166,7 @@ func enqueueCleaningRun(app *application, w http.ResponseWriter, r *http.Request
 
 	ctx := r.Context()
 	if _, err := app.datasets.GetDataset(ctx, datasetID); err != nil {
-		app.writeError(w, http.StatusNotFound, err)
+		app.writeError(w, http.StatusNotFound, newUserFacingError(msgDatasetNotFound, err))
 		return
 	}
 
@@ -204,14 +204,14 @@ func enqueueCleaningRun(app *application, w http.ResponseWriter, r *http.Request
 
 	enqueued, err := app.enqueueJob(ctx, cleaningJobType, datasetID, "")
 	if err != nil {
-		_ = runs.MarkFailed(ctx, run.ID, err.Error())
+		_ = runs.MarkFailed(ctx, run.ID, msgEnqueueFailed)
 		app.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	if !enqueued {
 		// 去重键仍在有效期内（上一次运行已完成但 TTL 未过）。此时任务不会被执行，
 		// 必须把刚建的记录标失败，否则会留下一条永远 queued 的僵尸运行。
-		_ = runs.MarkFailed(ctx, run.ID, "重复入队：去重键仍在有效期内，本次未执行")
+		_ = runs.MarkFailed(ctx, run.ID, msgDuplicateEnqueue)
 	}
 
 	app.writeJSON(w, http.StatusAccepted, model.StageEnqueueResult{
@@ -235,7 +235,7 @@ func (app *application) cleaningRunReport(w http.ResponseWriter, r *http.Request
 	run, err := runs.GetRun(r.Context(), runID)
 	if err != nil {
 		if store.IsCleaningRunNotFound(err) {
-			app.writeError(w, http.StatusNotFound, errors.New("cleaning run not found"))
+			app.writeError(w, http.StatusNotFound, errors.New(msgCleaningRunNotFound))
 			return
 		}
 		app.writeError(w, http.StatusInternalServerError, err)
@@ -269,7 +269,7 @@ func (app *application) cleaningRunFindings(w http.ResponseWriter, r *http.Reque
 	}
 	stage := strings.TrimSpace(r.URL.Query().Get("stage"))
 	if stage != "" && !cleaning.ValidStage(stage) {
-		app.writeError(w, http.StatusBadRequest, errors.New("unknown stage, expected question/reasoning/answer"))
+		app.writeError(w, http.StatusBadRequest, errors.New("未知的清洗阶段；可选值为 question / reasoning / answer"))
 		return
 	}
 	limit := 0

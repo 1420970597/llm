@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -81,7 +81,7 @@ func (app *application) enqueueGrpoGeneration(w http.ResponseWriter, r *http.Req
 
 	dataset, err := app.datasets.GetDataset(r.Context(), id)
 	if err != nil {
-		app.writeError(w, http.StatusNotFound, err)
+		app.writeError(w, http.StatusNotFound, newUserFacingError(msgDatasetNotFound, err))
 		return
 	}
 
@@ -90,7 +90,7 @@ func (app *application) enqueueGrpoGeneration(w http.ResponseWriter, r *http.Req
 		levels = normalizeRewardLevels(dataset.RewardLevels)
 	}
 	if len(levels) < 2 {
-		app.writeError(w, http.StatusBadRequest, fmt.Errorf("at least two reward levels are required"))
+		app.writeError(w, http.StatusBadRequest, errors.New(msgRewardLevelsTooFew))
 		return
 	}
 	if err := app.datasets.UpdateRewardLevels(r.Context(), id, levels); err != nil {
@@ -104,7 +104,7 @@ func (app *application) enqueueGrpoGeneration(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if len(questions) == 0 {
-		app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue grpo prompts: dataset %d has no questions", id))
+		app.writeError(w, http.StatusConflict, errors.New(msgNoQuestions))
 		return
 	}
 
@@ -144,7 +144,7 @@ func (app *application) routeRewardLevels(w http.ResponseWriter, r *http.Request
 	}
 	levels := normalizeRewardLevels(input.Levels)
 	if len(levels) < 2 {
-		app.writeError(w, http.StatusBadRequest, fmt.Errorf("at least two reward levels are required"))
+		app.writeError(w, http.StatusBadRequest, errors.New(msgRewardLevelsTooFew))
 		return
 	}
 	if err := app.datasets.UpdateRewardLevels(r.Context(), id, levels); err != nil {

@@ -42,7 +42,7 @@ func (app *application) evalSummaries() *store.EvalSummaryStore {
 func evalReportPathInt64(r *http.Request, name string) (int64, error) {
 	value, err := strconv.ParseInt(r.PathValue(name), 10, 64)
 	if err != nil || value <= 0 {
-		return 0, errors.New("invalid " + name + " in path")
+		return 0, errors.New("路径里的 " + name + " 不是有效的整数")
 	}
 	return value, nil
 }
@@ -65,7 +65,7 @@ func (app *application) evalRunReport(w http.ResponseWriter, r *http.Request) {
 	run, err := summaries.GetRun(ctx, runID)
 	if err != nil {
 		if store.IsEvalSummaryRunNotFound(err) {
-			app.writeError(w, http.StatusNotFound, errors.New("eval run not found"))
+			app.writeError(w, http.StatusNotFound, errors.New(msgEvalRunNotFound))
 			return
 		}
 		app.writeError(w, http.StatusInternalServerError, err)
@@ -140,7 +140,7 @@ func (app *application) evalRunScores(w http.ResponseWriter, r *http.Request) {
 		parsed, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || parsed < 0 {
 			app.writeError(w, http.StatusBadRequest,
-				errors.New("invalid judgeProviderId, expected a non-negative integer"))
+				errors.New("judgeProviderId 不是有效的非负整数"))
 			return
 		}
 		judgeProviderID = parsed
@@ -154,7 +154,7 @@ func (app *application) evalRunScores(w http.ResponseWriter, r *http.Request) {
 	// 用户无法区分「这个 run 没有分数」与「这个 run 根本不存在」。
 	if _, err := summaries.GetRun(ctx, runID); err != nil {
 		if store.IsEvalSummaryRunNotFound(err) {
-			app.writeError(w, http.StatusNotFound, errors.New("eval run not found"))
+			app.writeError(w, http.StatusNotFound, errors.New(msgEvalRunNotFound))
 			return
 		}
 		app.writeError(w, http.StatusInternalServerError, err)

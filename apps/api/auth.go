@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log"
 	"net/http"
 	"runtime/debug"
@@ -51,7 +51,7 @@ func (app *application) login(w http.ResponseWriter, r *http.Request) {
 func (app *application) me(w http.ResponseWriter, r *http.Request) {
 	user, ok := app.currentUser(r)
 	if !ok {
-		app.writeError(w, http.StatusUnauthorized, fmt.Errorf("authentication required"))
+		app.writeError(w, http.StatusUnauthorized, errors.New(msgAuthRequired))
 		return
 	}
 	app.writeJSON(w, http.StatusOK, model.AuthResponse{User: user})
@@ -68,7 +68,7 @@ func (app *application) middleware(next http.Handler) http.Handler {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				log.Printf("panic method=%s path=%s err=%v stack=%s", r.Method, r.URL.Path, recovered, string(debug.Stack()))
-				app.writeError(w, http.StatusInternalServerError, fmt.Errorf("internal server error"))
+				app.writeError(w, http.StatusInternalServerError, errors.New("服务暂时不可用，请稍后重试"))
 			}
 			log.Printf("method=%s path=%s duration=%s", r.Method, r.URL.Path, time.Since(start))
 		}()
@@ -87,16 +87,16 @@ func (app *application) middleware(next http.Handler) http.Handler {
 		if app.routeRequiresAdmin(r.URL.Path) {
 			user, ok := app.currentUser(r)
 			if !ok {
-				app.writeError(w, http.StatusUnauthorized, fmt.Errorf("authentication required"))
+				app.writeError(w, http.StatusUnauthorized, errors.New(msgAuthRequired))
 				return
 			}
 			if user.Role != "admin" {
-				app.writeError(w, http.StatusForbidden, fmt.Errorf("admin privileges required"))
+				app.writeError(w, http.StatusForbidden, errors.New(msgAdminRequired))
 				return
 			}
 		} else if app.routeRequiresAuth(r.URL.Path) {
 			if _, ok := app.currentUser(r); !ok {
-				app.writeError(w, http.StatusUnauthorized, fmt.Errorf("authentication required"))
+				app.writeError(w, http.StatusUnauthorized, errors.New(msgAuthRequired))
 				return
 			}
 		}

@@ -84,10 +84,10 @@ func encodeChainSteps(steps []model.ChainStep) ([]byte, error) {
 // 首次写入 current_version=1；已存在则版本自增，两种情况都会留一条 source='ai' 的版本记录。
 func (s *ChainStandardStore) UpsertFromAI(ctx context.Context, datasetID, domainID int64, directionKey string, steps []model.ChainStep) (model.ChainStandard, error) {
 	if datasetID <= 0 || domainID <= 0 {
-		return model.ChainStandard{}, fmt.Errorf("dataset id and domain id are required")
+		return model.ChainStandard{}, fmt.Errorf("缺少 dataset id 或 domain id")
 	}
 	if len(steps) == 0 {
-		return model.ChainStandard{}, fmt.Errorf("chain steps must not be empty")
+		return model.ChainStandard{}, fmt.Errorf("标准步骤不能为空，请至少填写一步")
 	}
 	payload, err := encodeChainSteps(steps)
 	if err != nil {
@@ -162,7 +162,7 @@ func (s *ChainStandardStore) GetByDataset(ctx context.Context, datasetID int64) 
 // UpdateStepsWithVersion 保存用户编辑，current_version 自增并留一条 source='user' 版本记录。
 func (s *ChainStandardStore) UpdateStepsWithVersion(ctx context.Context, datasetID, domainID int64, steps []model.ChainStep, changeNote string, createdBy int64) (model.ChainStandard, error) {
 	if len(steps) == 0 {
-		return model.ChainStandard{}, fmt.Errorf("chain steps must not be empty")
+		return model.ChainStandard{}, fmt.Errorf("标准步骤不能为空，请至少填写一步")
 	}
 	payload, err := encodeChainSteps(steps)
 	if err != nil {
@@ -184,7 +184,7 @@ func (s *ChainStandardStore) UpdateStepsWithVersion(ctx context.Context, dataset
     RETURNING id, current_version`, datasetID, domainID).Scan(&standardID, &nextVersion)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return model.ChainStandard{}, fmt.Errorf("chain standard not found for dataset %d domain %d", datasetID, domainID)
+			return model.ChainStandard{}, fmt.Errorf("未找到该方向的标准步骤（任务 %d / 方向 %d）", datasetID, domainID)
 		}
 		return model.ChainStandard{}, err
 	}

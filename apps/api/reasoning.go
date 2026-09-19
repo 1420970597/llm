@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
 	"time"
 
@@ -21,7 +21,7 @@ func (app *application) enqueueReasoningGeneration(w http.ResponseWriter, r *htt
 		return
 	}
 	if len(questions) == 0 {
-		app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue reasoning: dataset %d has no questions", id))
+		app.writeError(w, http.StatusConflict, errors.New(msgNoQuestions))
 		return
 	}
 
