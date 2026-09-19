@@ -45,15 +45,15 @@ type APIConfig struct {
 	//
 	// 与 provider 引导同样采用「配置不完整就跳过并告警，不阻断启动」的语义：
 	// 一个漏填的 S3_BUCKET 不应把「容器起不来」升级成整服务不可用。
-	BootstrapStorageEnabled       bool
-	BootstrapStorageName          string
-	BootstrapStorageProvider      string
-	BootstrapStorageEndpoint      string
-	BootstrapStorageRegion        string
-	BootstrapStorageBucket        string
-	BootstrapStorageAccessKeyID   string
-	BootstrapStorageSecretKey     string
-	BootstrapStorageUsePathStyle  bool
+	BootstrapStorageEnabled      bool
+	BootstrapStorageName         string
+	BootstrapStorageProvider     string
+	BootstrapStorageEndpoint     string
+	BootstrapStorageRegion       string
+	BootstrapStorageBucket       string
+	BootstrapStorageAccessKeyID  string
+	BootstrapStorageSecretKey    string
+	BootstrapStorageUsePathStyle bool
 }
 
 type WorkerConfig struct {

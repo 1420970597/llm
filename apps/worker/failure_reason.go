@@ -21,7 +21,7 @@ import (
 //     让用户/运维能在界面上直接看到第一手信息，而不用去翻容器日志。
 //
 // 不把 error.Error() 原样透出的原因：里面可能是英文技术细节
-//（例如 `no rows in result set`），对用户没有指导意义，
+// （例如 `no rows in result set`），对用户没有指导意义，
 // 但完全不透出又会让问题无法自助定位，因此采用「中文结论 + 截断的技术摘要」组合。
 func failureReason(err error) string {
 	if err == nil {
