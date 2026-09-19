@@ -3,7 +3,7 @@
 > 类型：**信息架构 / 页面设计文档**（现状事实 + 设计规范建议）
 > 对应 issue：[#90](https://github.com/1420970597/llm/issues/90)
 > 事实来源：**真实浏览器逐页采集**（真 Chromium，18 个路由），采集产物见
-> `test/artifacts/page-structure/page-structure.json` 与 `hub-and-form.json`
+> `test/artifacts/page-structure/page-structure.json` 与 `test/artifacts/page-structure/hub-and-form.json`
 > 采集脚本：`test/l15_page_structure_capture.mjs`、`test/l15_hub_and_form_capture.mjs`
 > 基线：`main` @ `080df69`（已含本轮 #70–#97 全部修复）
 >
@@ -133,7 +133,7 @@ node test/l15_hub_and_form_capture.mjs        # 枢纽页阶段卡片 + 新建�
 
 ### 3.1 实测的阶段卡片跳转目标
 
-采集脚本逐个点击 5 张卡片，记录实际落点（`hub-and-form.json`）：
+采集脚本逐个点击 5 张卡片，记录实际落点（`test/artifacts/page-structure/hub-and-form.json`）：
 
 | 卡片 | 实测跳转目标 |
 | --- | --- |
@@ -301,7 +301,7 @@ AI 服务     → 名称 / 协议 / 基础 URL / 模型 / 并发 / 超时 / 密�
 
 ### 6.6 🟠 新建任务页字段数已增至 9 个
 
-实测（`hub-and-form.json`）管理员可见字段标签：
+实测（`test/artifacts/page-structure/hub-and-form.json`）管理员可见字段标签：
 
 ```text
 任务名称（可选） / 任务主题 / 目标样本数（条） /

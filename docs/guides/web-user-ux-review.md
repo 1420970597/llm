@@ -111,7 +111,7 @@ rewards_generated:   '等待你启动导出'
 
 ### 2.4 枢纽单点依赖 [实测]
 
-**[实测]** 5 张阶段卡片实测落点（`hub-and-form.json`）：
+**[实测]** 5 张阶段卡片实测落点（`test/artifacts/page-structure/hub-and-form.json`）：
 
 ```text
 第 1 步：主题结构  -> /console/domains
