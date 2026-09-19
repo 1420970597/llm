@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { useMemo, useState } from 'react'
-import { Banner, Button, Card, Checkbox, Empty, Select, Space, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui'
+import { Button, Card, Checkbox, Empty, Select, Space, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui'
 import { PlayCircle } from 'lucide-react'
 import { consoleApi, type CleaningRule, type Dataset } from '../../lib/api'
 import { actionLabel, CLEANING_STAGES, runStatusLabel, sortRulesByPriority } from './cleaningMeta'
@@ -25,11 +25,14 @@ export function CleaningRunPanel({
   rules,
   onRulesChanged,
   onEnqueued,
+  onRequestCreateRule,
 }: {
   datasets: Dataset[]
   rules: CleaningRule[]
   onRulesChanged: () => Promise<void>
   onEnqueued: (datasetId: number) => void
+  /** 无规则时，把用户直接带到「新建规则」弹窗，而不是用文字描述那个按钮（issue #106）。 */
+  onRequestCreateRule: () => void
 }) {
   const [datasetId, setDatasetId] = useState<number | null>(datasets[0]?.id ?? null)
   const [stages, setStages] = useState<string[]>(CLEANING_STAGES.map((stage) => stage.key))
@@ -136,7 +139,32 @@ export function CleaningRunPanel({
               一条规则都没启用时，命中关键词的样本不会被丢弃，但会被标记为待复查。
             </Text>
             {orderedRules.length === 0 ? (
-              <Banner type="info" closeIcon={null} description="还没有规则。可以先到上方「清洗规则」新建一条，再回来发起清洗。" />
+              // issue #106：这里原先用 <Banner>。Semi 的 Banner 会**无条件**渲染
+              // role="alert"（见 @douyinfe/semi-ui/lib/es/banner/index.js：
+              //   React.createElement("div", { className: wrapper, style: style, role: "alert" }, ...)
+              // 且 BannerProps 没有任何 prop 可以覆盖它）。后果有三层：
+              //   1. 屏幕阅读器 / 无障碍工具在**页面加载时**就把这条静态空状态当成实时告警播报；
+              //   2. 自动化无障碍巡检（例如按 role=alert 收集通知）把它识别成“toast”，
+              //      于是表现为「打开页面就弹无关 toast」；
+              //   3. 它真的内联在本面板里，却长得像全局告警，与所在面板无关
+              //      （用户在「清洗报告」面板时也会看到这句讲“清洗规则”的话）。
+              //
+              // 空状态应当**就地**展示，并且带一个**可点击的下一步**，
+              // 而不是用文字描述一个已经在页面上的按钮（避免让用户去找）。
+              <div className="console-empty">
+                <Empty
+                  description={
+                    <span>
+                      还没有清洗规则，所以暂时不需要选。规则决定「命中多少词之后，样本该被丢弃还是先标记复查」。
+                      <br />
+                      先建一条规则再回来发起清洗。
+                    </span>
+                  }
+                />
+                <Button className="mt-3" theme="solid" type="primary" onClick={onRequestCreateRule}>
+                  去新建清洗规则
+                </Button>
+              </div>
             ) : (
               <div className="grid gap-2">
                 {orderedRules.map((rule) => (

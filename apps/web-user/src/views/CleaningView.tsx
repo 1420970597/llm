@@ -56,6 +56,11 @@ export function CleaningView({ datasets }: { datasets: Dataset[] }) {
   const [findingsLoading, setFindingsLoading] = useState(false)
   const [findingsStage, setFindingsStage] = useState('')
 
+  // issue #106：无规则时，让用户从「发起清洗」面板直达「新建规则」弹窗。
+  // 用递增计数器传递命令式意图（同一动作需要能被反复触发），
+  // 而不是用一个布尔 prop（第二次 true→true 不会触发变化）。
+  const [createRuleSignal, setCreateRuleSignal] = useState(0)
+
   const loadKeywords = useCallback(async () => {
     setKeywordsLoading(true)
     try {
@@ -292,6 +297,7 @@ export function CleaningView({ datasets }: { datasets: Dataset[] }) {
         datasets={datasets}
         rules={rules}
         onRulesChanged={loadRules}
+        onRequestCreateRule={() => setCreateRuleSignal((current) => current + 1)}
         onEnqueued={(targetDatasetId) => {
           if (targetDatasetId !== datasetId) {
             setDatasetId(targetDatasetId)
@@ -321,7 +327,7 @@ export function CleaningView({ datasets }: { datasets: Dataset[] }) {
 
       <CleaningKeywordPanel keywords={keywords} loading={keywordsLoading} onRefresh={loadKeywords} />
 
-      <CleaningRulePanel rules={rules} loading={rulesLoading} onRefresh={loadRules} />
+      <CleaningRulePanel rules={rules} loading={rulesLoading} onRefresh={loadRules} createRequestSignal={createRuleSignal} />
 
       <Card className="console-panel" bodyStyle={{ padding: 20 }}>
         <Title heading={5} className="!mb-2">清洗之后去哪里</Title>
