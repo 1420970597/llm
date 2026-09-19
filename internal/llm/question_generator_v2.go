@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sort"
 	"strings"
 	"time"
 
@@ -52,16 +51,23 @@ type questionDraft struct {
 	Difficulty string `json:"difficulty"`
 }
 
-// AllocateDifficultyMix 用最大余数法把 total 个问题按配比精确分配到各难度档。
+// AllocateDifficultyMix 按配比把 total 个问题精确分配到各难度档。
 //
-// 保证：返回的各档数量之和恰好等于 total（当 total > 0 且配比有效时）。
+// 这是 v2 生成路径的配额入口，算法实体在 allocateDifficultyQuota（difficulty.go），
+// 与 DifficultyAssigner / DifficultyFromMix 共用同一份实现，避免三条入口算出不同分布。
+//
+// 保证：
+//   - 返回的各档数量之和恰好等于 total（当 total > 0 且配比有效时）；
+//   - total >= 配比中权重 > 0 的档位数时，每档至少 1 条 —— 小 total 下不丢档；
+//   - 权重为 0 或未出现在配比中的档位恒为 0（用户可以显式要求不要某一档）。
+//
 // 例：total=10，mix={easy:0.3, medium:0.5, hard:0.2} → easy=3, medium=5, hard=2。
+// total=3 且配比含 hard 时 → hard 至少 1 条（历史缺陷见 issue #11：total<=4 时 hard 恒为 0）。
 //
 // mix 为空或无效时回退到 defaultDifficultyMix。
 func AllocateDifficultyMix(total int, mix map[string]float64) map[string]int {
-	allocation := map[string]int{DifficultyEasy: 0, DifficultyMedium: 0, DifficultyHard: 0}
 	if total <= 0 {
-		return allocation
+		return map[string]int{DifficultyEasy: 0, DifficultyMedium: 0, DifficultyHard: 0}
 	}
 
 	normalized := NormalizeDifficultyMix(mix)
@@ -69,46 +75,9 @@ func AllocateDifficultyMix(total int, mix map[string]float64) map[string]int {
 		normalized = NormalizeDifficultyMix(defaultDifficultyMix)
 	}
 	if len(normalized) == 0 {
-		allocation[DifficultyMedium] = total
-		return allocation
+		return map[string]int{DifficultyEasy: 0, DifficultyMedium: total, DifficultyHard: 0}
 	}
-
-	// 只对配比中出现的档位分配，其余档位保持 0。
-	levels := make([]string, 0, len(normalized))
-	for level := range normalized {
-		levels = append(levels, level)
-	}
-	sort.Strings(levels)
-
-	type remainder struct {
-		level string
-		frac  float64
-	}
-	remainders := make([]remainder, 0, len(levels))
-	assigned := 0
-	for _, level := range levels {
-		exact := normalized[level] * float64(total)
-		// 加极小量抵消浮点误差（0.3*10 在 float64 下为 2.9999999999999996）。
-		floored := float64(int(exact + 1e-9))
-		if floored < 0 {
-			floored = 0
-		}
-		allocation[level] = int(floored)
-		assigned += int(floored)
-		remainders = append(remainders, remainder{level: level, frac: exact - floored})
-	}
-
-	// 余数按小数部分从大到小补 1，保证总数精确等于 total。
-	sort.SliceStable(remainders, func(i, j int) bool {
-		return remainders[i].frac > remainders[j].frac
-	})
-	for index := 0; assigned < total; index++ {
-		remainders[index%len(remainders)].level = remainders[index%len(remainders)].level
-		level := remainders[index%len(remainders)].level
-		allocation[level]++
-		assigned++
-	}
-	return allocation
+	return allocateDifficultyQuota(total, normalized)
 }
 
 // ReconcileDifficulty 把模型返回的难度标签归一化到 easy/medium/hard。
@@ -166,16 +135,17 @@ func GenerateQuestionsV2(ctx context.Context, provider ProviderConfig, input Que
 
 // difficultyPlan 把难度配额展开成有序序列，供逐条分配使用。
 //
-// 顺序固定为 easy → medium → hard，使同一配比下的分配结果可重现。
+// 顺序固定为 difficultyOrder（easy → medium → hard），使同一配比下的分配结果可重现，
+// 并与 difficultyLevelAt / renderQuota 保持一致。
 // 例：allocation={easy:3,medium:5,hard:2} → [easy,easy,easy,medium×5,hard,hard]。
 func difficultyPlan(allocation map[string]int, total int) []string {
 	plan := make([]string, 0, total)
-	for _, level := range []string{DifficultyEasy, DifficultyMedium, DifficultyHard} {
+	for _, level := range difficultyOrder {
 		for count := allocation[level]; count > 0; count-- {
 			plan = append(plan, level)
 		}
 	}
-	// 配额不足 total 时（理论上不会发生，AllocateDifficultyMix 已保证相等）
+	// 配额不足 total 时（allocateDifficultyQuota 已保证相等，这里纯防御）
 	// 用 medium 补齐，避免下标越界。
 	for len(plan) < total {
 		plan = append(plan, DifficultyMedium)
@@ -185,11 +155,11 @@ func difficultyPlan(allocation map[string]int, total int) []string {
 
 // generateForDirection 为单个方向生成目标数量的问题，多轮补齐并去重。
 //
-// 难度以计划为准：`allocation` 是本方向按用户配比算出的各档数量，
-// 最终每条问题的 difficulty 由 difficultyPlan 逐条分配，而不是照抄模型自报的
-// 标签。原因：模型经常不遵守提示词里的难度要求（实测把 hard 配额 0 的请求
-// 返回成一半 hard），若照抄则用户的 difficultyMix 形同虚设。模型自报值与计划
-// 不一致时记日志，便于观察提示词遵循度。
+// 难度以计划为准：`allocation` 是本方向按用户配比算出的各档数量（由
+// AllocateDifficultyMix 保证每档至少 1 条、总数等于 target），最终每条问题的 difficulty
+// 由 difficultyPlan 逐条分配，而不是照抄模型自报的标签。原因：模型经常不遵守提示词里的
+// 难度要求（实测把 hard 配额 0 的请求返回成一半 hard），若照抄则用户的 difficultyMix 形同虚设。
+// 模型自报值与计划不一致时记日志，便于观察提示词遵循度。
 func generateForDirection(ctx context.Context, provider ProviderConfig, input QuestionGenInput,
 	direction DirectionContext, target int, allocation map[string]int) ([]model.Question, error) {
 
@@ -390,10 +360,9 @@ func renderChainSteps(steps []model.ChainStep) string {
 
 // renderQuota 把难度配额渲染成人类可读文本。
 func renderQuota(quota map[string]int) string {
-	order := []string{DifficultyEasy, DifficultyMedium, DifficultyHard}
 	labels := map[string]string{DifficultyEasy: "简单", DifficultyMedium: "中等", DifficultyHard: "困难"}
-	parts := make([]string, 0, len(order))
-	for _, level := range order {
+	parts := make([]string, 0, len(difficultyOrder))
+	for _, level := range difficultyOrder {
 		if count, ok := quota[level]; ok && count > 0 {
 			parts = append(parts, fmt.Sprintf("%s %d 个", labels[level], count))
 		}
