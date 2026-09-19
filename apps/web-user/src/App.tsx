@@ -1266,32 +1266,47 @@ export default function App() {
   const loadBootstrap = useCallback(async (successMessage?: string) => {
     setBootstrapLoading(true)
     try {
-      const [providerData, storageData, strategyData, datasetData, runtimeData] = await Promise.all([
-        consoleApi.listProviders(),
-        consoleApi.listStorageProfiles(),
-        consoleApi.listStrategies(),
+      // 关键（issue #101）：providers / storage-profiles / strategies 三个接口
+      // 是**管理员专用**（后端返 403）。此前它们与 datasets / runtime 放在同一个
+      // Promise.all 里，于普通用户下**任一 403 会让整个 Promise.all reject**：
+      //   - 弹「权限不足，操作未执行 / admin privileges required」告警；
+      //   - datasets 的返回值被丢弃 → 任务列表永远为空、侧边栏「任务 0」；
+      //   - 新建任务页的「AI 服务 / 存储配置」下拉框为空。
+      //   即普通用户拿到的是「一进首页就报错、看不到数据、也建不了任务」的空壳。
+      //
+      // 修法：按角色分组，普通用户**根本不发**这些请求（也就不会产生 403），
+      // 而不是让它们失败后再静默吞错 —— 后者会掩盖真实权限问题。
+      const [datasetData, runtimeData] = await Promise.all([
         consoleApi.listDatasets(),
         consoleApi.runtimeStatus(),
       ])
-      setProviders(providerData)
-      setStorageProfiles(storageData)
-      setStrategies(strategyData)
       setDatasets(datasetData)
       setRuntime(runtimeData)
-      setPlannerForm((current) => ({
-        ...current,
-        strategyId: current.strategyId || strategyData[0]?.id || 0,
-        providerId: current.providerId || providerData[0]?.id || 0,
-        storageProfileId: current.storageProfileId || storageData.find((item) => item.isActive)?.id || storageData[0]?.id || 0,
-      }))
-      await loadAdminData()
+
+      if (isAdmin) {
+        const [providerData, storageData, strategyData] = await Promise.all([
+          consoleApi.listProviders(),
+          consoleApi.listStorageProfiles(),
+          consoleApi.listStrategies(),
+        ])
+        setProviders(providerData)
+        setStorageProfiles(storageData)
+        setStrategies(strategyData)
+        setPlannerForm((current) => ({
+          ...current,
+          strategyId: current.strategyId || strategyData[0]?.id || 0,
+          providerId: current.providerId || providerData[0]?.id || 0,
+          storageProfileId: current.storageProfileId || storageData.find((item) => item.isActive)?.id || storageData[0]?.id || 0,
+        }))
+        await loadAdminData()
+      }
       if (successMessage) Toast.success(successMessage)
     } catch (error) {
       if (!handleRequestError(error)) Toast.error((error as Error).message)
     } finally {
       setBootstrapLoading(false)
     }
-  }, [loadAdminData])
+  }, [isAdmin, loadAdminData])
 
   const loadDatasetWorkspace = useCallback(async (datasetId: number, successMessage?: string) => {
     setWorkspaceLoading(true)
