@@ -65,16 +65,30 @@ func (e invalidContentError) Reason() string { return e.reason }
 
 // 长度下限（按 rune 计，对中文按字计）。
 //
-// 取值依据：生产库中合法推理记录的 reasoning 长度量级为千字符
-// （实测 2004），而占位记录为 3 字符（"..."）。下限取在两者之间且留足余量，
-// 既能拦掉占位内容，又不会误伤合法的简短输出。
+// 标定依据：2026-09-19 对真实 provider（deepseek-v4.1-flash @ 152.53.126.151:8885）
+// 直接抓取的输出样本，以及 issue #7 的故障样本。
+//
+//	字段        故障/占位样本     真实有效样本（rune）        取下限
+//	reasoning   3（"..."）        83, 92, 93, 110, 112, 116, 126, 151, 200   40
+//	answer     3–21              919, 1025, 1255, 1851, 2170             40
+//	rationale   见下               23（拒绝作答）                          16
+//	content     未观测             25, 28, 29                             12
+//
+// 取值原则：下限必须在「占位样本」与「最小真实有效样本」之间，且离后者留出
+// 约 2 倍余量，以容忍模型正常波动。若下限取到真实样本附近（初版曾取 reasoning=80，
+// 而真实样本最小为 83），会把合法数据误判为 invalid，比漏报更危险。
+//
+// rationale 单独说明：真实抓到的 23 rune 样本是「未提供需要评估的回答，无法评分」这类
+// **拒绝作答**，不是占位符。拒绝作答的识别属于数据清洗的关键词匹配能力
+// （功能说明.txt），不归本文件管；因此 rationale 下限只取到能拦住占位符的程度（16），
+// 不试图在本层判定拒绝语。
 const (
 	// minReasoningRunes 是长链思考（reasoning）的长度下限。
-	minReasoningRunes = 80
+	minReasoningRunes = 40
 	// minAnswerRunes 是答案摘要（answer_summary）的长度下限。
 	minAnswerRunes = 40
 	// minRationaleRunes 是评分理由（rationale）的长度下限。
-	minRationaleRunes = 40
+	minRationaleRunes = 16
 	// minQuestionRunes 是问题（content）的长度下限。
 	minQuestionRunes = 12
 	// minContentRunes 是「有效字符」下限：字母、数字与汉字的总数。

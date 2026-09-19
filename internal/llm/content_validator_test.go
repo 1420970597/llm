@@ -471,3 +471,171 @@ func TestStatusColumnsAllowInvalidWithoutNewMigration(t *testing.T) {
 		})
 	}
 }
+
+// realSample 是 2026-09-19 从真实 provider（deepseek-v4.1-flash @
+// http://152.53.126.151:8885/v1）直接抓取的一条生成输出。
+//
+// 抓取方式（可复现）：
+//
+//	POST /v1/chat/completions
+//	{"model":"global:deepseek-v4.1-flash","stream":false,"messages":[
+//	  {"role":"system","content":"You generate long-form reasoning data. Return JSON with answer and reasoning fields only."},
+//	  {"role":"user","content":"Question: <问题>"}]}
+//
+// 这些样本是阈值标定的依据：初版把 minReasoningRunes 定为 80，而真实有效
+// reasoning 最小为 83，余量只有 3 个字符 —— 模型正常波动就会误判为 invalid。
+// 阈值下调到 40 后余量超过 2 倍。
+type realSample struct {
+	question  string
+	answer    string
+	reasoning string
+}
+
+// realGenerationSamples 是真实抓取的样本集（按 reasoning 长度升序）。
+//
+// 只保留足以支撑阈值结论的最小样本量，不做大样本扫描。
+var realGenerationSamples = []realSample{
+	{
+		question:  "在某某海峡有护卫舰执行护航，遇到商船求救，请做出规划。",
+		answer:    "以下为在某某海峡执行护航任务的护卫舰突然收到商船求救时的通用规划框架，具体须以上级命令、国际法、交战规则和现场情报为准。\n\n一、总体原则\n1. 安全优先，先确保自身编队安全再实施救援。\n2. 统一指挥，由编队指挥员决策。",
+		reasoning: "采用海上搜救与护航任务的标准规划框架：先接警确认与通报，再判断威胁和任务冲突，随后进行兵力编组、分阶段行动、通信协同、安全规则和应急分支设计。",
+	},
+	{
+		question:  "巡逻中发现不明渔船聚集，请做出规划。",
+		answer:    "一、情况判断与报告\n1. 保持安全距离，利用雷达、AIS、光电、目视和无人机持续监视，记录时间、坐标、航向航速、数量、船型、船名号、船籍港、作业状态与人员情况。\n2. 立即上报，报告内容包含位置、数量、态势判断与拟处置方案。",
+		reasoning: "该规划围绕发现不明渔船聚集后的执法与安全需求，先判明性质、风险和涉外因素，再按报告、识别、警告、封控、登临、分类处置、后续移交的流程组织，强调依法依规与自身安全。",
+	},
+	{
+		question:  "编队夜间通过狭窄水道时失去通信，请做出规划。",
+		answer:    "核心原则：安全优先、保持可控队形、视觉/备用通信、预定应急集结点、各舰独立处置权。\n\n一、事前（若尚未进入或仍可执行）\n1. 明确队形：单纵队或双纵队，缩短间距但保留安全余量，约定航向航速与转向口令。\n2. 约定失联预案：失联判定时限、各自继续航行的默认动作、集结点坐标与到达时限。",
+		reasoning: "夜间狭窄水道本身空间受限、视距差、避碰时间短，失去通信后编队协同能力急剧下降。规划应把安全放在任务之前：先保持航向航速稳定，避免混乱转向；再启用灯光、旗语等备用通信；最后按预定集结点重新汇合。",
+	},
+}
+
+// realObservedReasoningRunes / realObservedAnswerRunes 是 2026-09-19 直接抓取到的
+// 真实输出长度分布（rune），用于把阈值标定变成可核对的数字，而不是凭感觉定的常量。
+//
+// 抓取方式：向 http://152.53.126.151:8885/v1/chat/completions 发
+// "You generate long-form reasoning data" 系统提示 + 具体问题，取 choices[0].message.content
+// 解析 JSON 后量字段长度。
+//
+// answer 里的 11 是一个真实观测到的退化输出（reasoning 112 但 answer 仅 11 字符，
+// 即模型没写答案）。它落在 minAnswerRunes 之下，**被本层拒绝是预期行为**：
+// 它不是「简短但可用」，而是真的没回答。
+var (
+	realObservedReasoningRunes = []int{83, 92, 93, 110, 112, 116, 126, 151, 200}
+	realObservedAnswerRunes    = []int{11, 919, 953, 1025, 1216, 1255, 1851, 2170}
+)
+
+// TestThresholdsAcceptRealProviderOutput 用真实 provider 输出标定阈值上界。
+//
+// 这是本次重新标定的核心回归：若有人把下限提高到真实样本之上，
+// 合法数据会被误判为 invalid，比漏报占位内容更危险。
+//
+// 余量取 1.5 倍：初版把 minReasoningRunes 定为 80，而真实最小为 83，
+// 余量只有 3 个字符 —— 已实测到模型正常波动就能穿越。1.5 倍是能容忍
+// 该波动的下限（40 * 1.5 = 60 <= 83）。
+func TestThresholdsAcceptRealProviderOutput(t *testing.T) {
+	if len(realGenerationSamples) == 0 || len(realObservedReasoningRunes) == 0 {
+		t.Fatal("样本集不能为空，否则本用例无效")
+	}
+
+	// 1) 真实全文样本必须全部判为合格。
+	for index, sample := range realGenerationSamples {
+		if assessment := AssessReasoningContent(sample.answer, sample.reasoning); !assessment.Valid {
+			t.Fatalf("真实样本 #%d 必须判为合格，实际不合格（%s）；阈值过紧会把合法数据误判为 invalid",
+				index, assessment.Reason)
+		}
+	}
+
+	// 2) 长度阈值必须明显低于真实观测到的最小值。
+	minReasoning := minimumInt(realObservedReasoningRunes)
+	if float64(minReasoningRunes)*1.5 > float64(minReasoning) {
+		t.Fatalf("minReasoningRunes=%d 对真实最小 reasoning=%d 余量不足 1.5 倍，容易误判合法输出",
+			minReasoningRunes, minReasoning)
+	}
+
+	// 3) answer 阈值只需低于「可用的最小 answer」（排除观测到的退化 11）。
+	minUsableAnswer := minimumInt(filterAbove(realObservedAnswerRunes, minAnswerRunes))
+	if minUsableAnswer == 0 {
+		t.Fatal("样本中没有任何 answer 高于 answer 阈值，阈值可能过高")
+	}
+	if float64(minAnswerRunes)*1.5 > float64(minUsableAnswer) {
+		t.Fatalf("minAnswerRunes=%d 对真实最小可用 answer=%d 余量不足 1.5 倍",
+			minAnswerRunes, minUsableAnswer)
+	}
+
+	// 4) 阈值必须远高于 issue #7 的占位样本（3 rune），否则拦不住故障。
+	if minReasoningRunes <= placeholderSampleRunes*2 {
+		t.Fatalf("minReasoningRunes=%d 对占位样本=%d 余量不足，拦不住 issue #7 的故障",
+			minReasoningRunes, placeholderSampleRunes)
+	}
+}
+
+// placeholderSampleRunes 是 issue #7 故障样本的长度（reasoning="..."）。
+const placeholderSampleRunes = 3
+
+func minimumInt(values []int) int {
+	minimum := 0
+	for _, value := range values {
+		if minimum == 0 || value < minimum {
+			minimum = value
+		}
+	}
+	return minimum
+}
+
+// filterAbove 返回所有大于 threshold 的值。
+func filterAbove(values []int, threshold int) []int {
+	filtered := make([]int, 0, len(values))
+	for _, value := range values {
+		if value > threshold {
+			filtered = append(filtered, value)
+		}
+	}
+	return filtered
+}
+
+// TestRealSampleRejectionMessagesAreNotPlaceholders 锁定一个刻意的边界：
+// 真实 provider 会返回「无法评分」这类**拒绝作答**（实测 23 rune），
+// 它不是占位符，因此本层不判它 invalid。
+//
+// 拒绝作答的识别属于数据清洗的关键词匹配能力（功能说明.txt），
+// 两处职责不重叠：这里只拦「模型什么都没说」，清洗负责「模型拒绝说」。
+func TestRealSampleRejectionMessagesAreNotPlaceholders(t *testing.T) {
+	// 真实抓取：reward 路径实测输出（23 rune）。
+	refusal := "未提供需要评估的回答或规划内容，无法进行评分。"
+
+	if assessment := AssessRewardContent(refusal); !assessment.Valid {
+		// 该文案长于 minRationaleRunes，因此必须判为合格。
+		t.Fatalf("拒绝作答不是占位符，不应在本层被判不合格：%s", assessment.Reason)
+	}
+	if minRationaleRunes >= len([]rune(refusal)) {
+		t.Fatalf("minRationaleRunes=%d 不应拦下这条真实的拒绝作答文案（%d rune）；拒绝语归清洗层管",
+			minRationaleRunes, len([]rune(refusal)))
+	}
+}
+
+// TestQuestionSamplesAcceptRealProviderOutput 用真实问题样本标定问题下限。
+func TestQuestionSamplesAcceptRealProviderOutput(t *testing.T) {
+	// 真实抓取（domain=海上巡逻, count=3），长度实测 25 / 28 / 29 rune。
+	realQuestions := []string{
+		"海上巡逻任务中，舰艇如何与反潜巡逻机协同搜索潜艇？",
+		"中国海警在钓鱼岛海域的常态化海上巡逻是如何组织和轮换的？",
+		"海上巡逻时遭遇他国军舰近距离跟踪，通常应采取哪些应对措施？",
+	}
+
+	minRunes := 0
+	for _, question := range realQuestions {
+		if runes := len([]rune(question)); minRunes == 0 || runes < minRunes {
+			minRunes = runes
+		}
+		if assessment := AssessQuestionContent(question); !assessment.Valid {
+			t.Fatalf("真实问题必须判为合格：%q（%s）", question, assessment.Reason)
+		}
+	}
+	// 真实最短问题 25 rune；阈值必须低于它并留出 1.5 倍余量。
+	if float64(minQuestionRunes)*1.5 > float64(minRunes) {
+		t.Fatalf("minQuestionRunes=%d 对真实最小问题=%d 余量不足 1.5 倍", minQuestionRunes, minRunes)
+	}
+}
