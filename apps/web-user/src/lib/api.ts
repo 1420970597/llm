@@ -543,7 +543,17 @@ export type ArtifactDownload = {
 export type PipelineStageStatus = {
   key: string
   label: string
-  state: 'pending' | 'queued' | 'in_progress' | 'completed' | 'failed'
+  /**
+   * 阶段状态。
+   *
+   * `skipped` 的语义是「本数据集不需要这个阶段」，不是「还没做」也不是「做完了」。
+   * 来源：SFT 分支（target_kind=sft）的数据集不会产生 reasoning_records /
+   * reward_records（见迁移 0018 把 sft_records 作为一等公民），因此当状态机已经
+   * 走到终态、而某阶段确实零产出时，后端把它标为 skipped 而不是 completed ——
+   * 否则界面会出现「推理生成 已完成 · 0 条」这种自相矛盾的展示
+   *（R11 lane 的独立评审者发现，父代理用 dataset 50 活体复现）。
+   */
+  state: 'pending' | 'queued' | 'in_progress' | 'completed' | 'skipped' | 'failed'
   count: number
   summary: string
 }
