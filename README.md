@@ -114,6 +114,36 @@ docker compose up -d --build
 > 去 `deployments/compose/` 找 `.env`，读不到仓库根的 `.env`，从而静默丢失
 > `APP_BOOTSTRAP_PROVIDER_*` 等配置（详见根 `docker-compose.yml` 注释）。
 
+#### 带版本构建（推荐）
+
+上面那条命令**不会**注入 git 版本。镜像一旦不带版本，就无法回答
+「我现在跑的是哪一版」 —— 曾经因此把一次「部署的是旧镜像」误判成产品缺陷（issue #88）。
+
+知道要重建时，请用包装脚本，它会把 HEAD 注入产物并在结束后自动校验：
+
+```bash
+./scripts/build-with-version.sh          # 只重建前端
+./scripts/build-with-version.sh --all    # 重建全部服务
+```
+
+### 4.1.1 部署版本自检（排查「行为与源码不符」时先跑这条）
+
+```bash
+./scripts/check-deployed-version.sh                      # 默认 http://localhost:3210
+./scripts/check-deployed-version.sh http://<host>:3210
+```
+
+5 秒内回答「部署中的前端是不是本地 HEAD 构建的」：
+
+| 输出 | 含义 | 处理 |
+|---|---|---|
+| `✅ 一致` | 部署的就是本地 HEAD | 可以用它做验收 |
+| `❌ 不一致` | 部署落后于本地 HEAD | **不要**用它做验收，先重建 |
+| `⚠️ 未注入版本号` | 镜像没带版本，无法判定 | 用 `./scripts/build-with-version.sh` 重建 |
+
+> 控制台「帮助」页也有「**构建版本**」与「**部署自检**」两个区块，
+> 直接显示当前页面是哪一版构建的 —— 不用翻文档就能发现自己在跑旧代码。
+
 ### 4.2 访问地址
 
 - 统一控制台：`http://<你的服务器IP>:3210`
