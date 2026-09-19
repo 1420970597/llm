@@ -106,8 +106,13 @@ deployments/
 在项目根目录执行：
 
 ```bash
-docker compose -f deployments/compose/docker-compose.yml up -d --build
+docker compose up -d --build
 ```
+
+> 根目录的 `docker-compose.yml` 通过 `include` 引入 `deployments/compose/docker-compose.yml`。
+> 请务必用上面的根入口命令：直接 `-f deployments/compose/docker-compose.yml` 会让 compose
+> 去 `deployments/compose/` 找 `.env`，读不到仓库根的 `.env`，从而静默丢失
+> `APP_BOOTSTRAP_PROVIDER_*` 等配置（详见根 `docker-compose.yml` 注释）。
 
 ### 4.2 访问地址
 
@@ -353,13 +358,13 @@ docker builder prune -af
 ## 11. 停止服务
 
 ```bash
-docker compose -f deployments/compose/docker-compose.yml down
+docker compose down
 ```
 
 如需连同卷一起删除：
 
 ```bash
-docker compose -f deployments/compose/docker-compose.yml down -v
+docker compose down -v
 ```
 
 ---
@@ -406,6 +411,6 @@ docker compose -f deployments/compose/docker-compose.yml down -v
 
 ```bash
 npm run build
-docker compose -f deployments/compose/docker-compose.yml config
+docker compose config
 docker run --rm -v /root/llm:/workspace -w /workspace --entrypoint /bin/sh golang:1.24 -lc 'export PATH=/usr/local/go/bin:$PATH && go test ./...'
 ```

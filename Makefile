@@ -1,4 +1,5 @@
-COMPOSE := docker compose -f deployments/compose/docker-compose.yml
+# 统一走仓库根入口，确保 .env 插值与 env_file 一致（见根 docker-compose.yml 注释）
+COMPOSE := docker compose
 
 .PHONY: install build web-build compose-config compose-up compose-down compose-logs docker-prune go-test-docker db-migrate-smoke
 

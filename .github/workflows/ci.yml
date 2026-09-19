@@ -7,7 +7,8 @@ on:
   workflow_dispatch:
 
 env:
-  COMPOSE_FILE: deployments/compose/docker-compose.yml
+  # 用仓库根入口，保证 .env 插值与 env_file 行为一致（见根 docker-compose.yml 注释）
+  COMPOSE_FILE: docker-compose.yml
 
 concurrency:
   group: ci-${{ github.ref }}
