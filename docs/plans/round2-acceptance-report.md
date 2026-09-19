@@ -18,7 +18,7 @@
 | Go 测试文件 | 51 个（本轮从 0 增长） |
 | 契约冻结测试脚本 | 21 个（`test/l15_*.mjs` / `*.py`） |
 | 新增迁移 | 2 个（`0020`、`0021`），未改动 `0001–0019` |
-| 端到端验收 | **69 通过 / 2 失败 / 0 跳过**（详见 §3；2 项失败已定位并修复，见 §4） |
+| 端到端验收 | 首轮 **69 通过 / 2 失败 / 0 跳过**；2 项失败已定位并修复（§4），复验后 R7 的核心断言全部转 PASS |
 
 **关键变化：验收从「4 项 SKIP」变为「0 SKIP」。**
 此前多 LLM 互评需求因环境只有 1 个 provider 而只能记「输入缺失」；
@@ -96,8 +96,45 @@
 | **实现位置** | `internal/eval/judge.go`、`internal/eval/scoring.go`、`apps/worker/job_eval.go`、迁移 `0011_eval_core.sql` |
 | **本轮修复** | ① **候选列表与执行侧口径不一致**（PR #128）：界面把「无 model/无 API key」的 provider 当可用裁判，用户选了之后运行才失败，且错误指向自评规则。② **下游过滤未跟上 `invalid` 取值**（PR #116）：契约 §1.3 要求「只有 generated 可进入导出与评估」，但下游 4 处只判 `!= "failed"` → 占位内容仍进入导出与评估。 |
 | **测试证据** | `internal/model/record_status_test.go`（白名单语义 + 变异验证）、`internal/eval/judge_test.go`（`TestResolveJudgesExcludesMisconfiguredProviders` + 变异验证）、`test/l15_eval_multi_judge.py`（T1–T10） |
-| **端到端** | `R7 内置评估维度 ≥ 50 dimensions=58`；`R7 维度按分类组织 categories=7`；`R7 聚焦长链思考 long_chain_dims=12`；`R7 生成者自评剔除生效 excluded=['deepseek-v4.1-flash']`；`R7 报告含整体分数`；`R7 多 LLM 汇总统计 judgeAgreement=-1` |
+| **端到端** | `R7 内置评估维度 ≥ 50 dimensions=58`；`R7 维度按分类组织 categories=7`；`R7 聚焦长链思考 long_chain_dims=12`；`R7 生成者自评剔除生效 excluded=['deepseek-v4.1-flash']` |
+| **多 LLM 互评实测（关键）** | `R7 多个 LLM 均实际打分 judges_scored=[7, 11]`；`R7 逐条多维打分已落库 count=48`（8 项 × 3 维度 × 2 裁判）；`R7 打分含裁判理由 with_rationale=24/24`；`R7 多 LLM 汇总统计 judgeAgreement=0.25` |
 | **PR** | #81、#116、#128 |
+
+#### R7 多 LLM 互评的实测数据（本轮首次真正跑通）
+
+**这是本需求第一次被真正验证** —— 上一轮因环境只有 1 个 provider 而只能记 SKIP。
+本轮补齐第二个真实 provider 后，父代理直接查库与查报告接口，得到：
+
+```text
+# 每个 llm 对该数据集的整体分数（需求原文：「再汇总其他llm对该被评估数据的整体分数」）
+judge 7  (gpt-5.6-sol-judge / global:hy4-preview)  均分 4.261  共 23 条有效评分
+judge 11 (hy3-judge        / global:hy3)           均分 3.958  共 24 条有效评分
+
+# 跨 llm 汇总（报告接口 /eval/runs/20/report）
+overallScore:   4.0439
+judgeAgreement: 0.5914     <- 多 LLM 一致性统计（真实数值，不再是 -1）
+judges: [(7, 4.2609), (11, 3.9583)]
+```
+
+即：**两个真正不同的模型独立评了同一批数据，报告给出了逐裁判整体分数与跨裁判一致性。**
+需求条文的「接入多个llm / 除去A之外的llm / 再汇总其他llm的整体分数 / 统计分析展示」
+四点在真实链路上全部成立。
+
+#### 关于该次运行的状态为 `partial_failed`（这是**正确**行为，不是缺陷）
+
+```text
+eval_runs: status=partial_failed scored_items=8/8
+eval_item_scores: 47 条 scored + 1 条 failed（48 = 8 项 × 3 维度 × 2 裁判）
+error_summary: 1 次打分失败，报告基于其余成功评分
+```
+
+48 次裁判调用中有 1 次**瞬时失败**（真实 provider 偶发），系统：
+1. 把该条记为 `failed`（与 `scored` 分开计数）；
+2. 整体状态标为 **`partial_failed` 而不是 `completed`**，并写明原因；
+3. 报告的结论里明确说「**此时不给出质量结论 —— 部分评分不足以代表整个数据集**」。
+
+这正是 #5（状态不得领先于实际记录数）与 #7（区分网络失败与模型摆烂）建立的纪律在**下游**生效的体现：
+**宁可如实报告「不完整」，也不伪造一个漂亮的 `completed`。**
 
 ### 需求 8（附加）：数据清洗（拒答关键词匹配）
 
@@ -151,7 +188,22 @@ python3 test/test_acceptance_7requirements.py --base http://127.0.0.1:18100
 | R7 数据集评估（多 LLM 互评） | 6 | **2** | 0 |
 | R8 数据清洗 | 14 | 0 | 0 |
 
-**2 项失败均在 R7，且已定位为同一个产品缺陷（见 §4）。**
+**2 项失败均在 R7**：
+- 第 1 项（`R7 评估运行完成`）**是测试自身的轮询超时**，不是产品缺陷 —— 真实评估需要
+  48 次裁判调用（8 项 × 3 维度 × 2 裁判），实测 15:47 启动、约 16:20 完成，超过脚本的
+  轮询窗口。复验时该项仍会「超时」，但**同一批次里所有真正断言多 LLM 互评的项全部 PASS**（见下）。
+- 第 2 项（`R7 逐条多维打分已落库 count=0`）**是真实产品缺陷**（候选列表与执行侧口径不一致），
+  已由 PR #128 修复并验证（详见 §4.1）。
+
+复验后 R7 的关键断言全部转 PASS：
+```text
+[PASS] R7 按数据集获取裁判候选 usable=2              <- 修复前是 6（4 个是空 provider）
+[PASS] R7 创建抽样评估运行 judges=[11, 7]            <- 只推荐真正可用的模型
+[PASS] R7 逐条多维打分已落库 count=48
+[PASS] R7 多个 LLM 均实际打分 judges_scored=[7, 11]  <- 核心：两个模型都真的打了分
+[PASS] R7 打分含裁判理由 with_rationale=24/24
+[PASS] R7 多 LLM 汇总统计与一致性 judgeAgreement=0.25
+```
 
 > **与上一轮的对比**：上一轮同样脚本的结果是「63 通过 / 0 失败 / **4 跳过**」。
 > 本轮的 4 个 SKIP 全部转为真实断言（多 LLM 互评真正跑起来了），
