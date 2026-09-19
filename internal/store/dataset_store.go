@@ -449,12 +449,35 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 	queuedStage := queuedStageByStatus[dataset.Status]
 	failedStage := failedStageByStatus[dataset.Status]
 
+	// stageState 判定某阶段对**用户**呈现的状态。
+	//
+	// 关键（R11 lane 的独立评审者发现，父代理用 dataset 50 活体复现）：
+	// 此前只按 `statusRank >= threshold` 就返回 "completed"，**完全不看 evidenceCount**。
+	// 于是走 SFT 分支的数据集（不产生 reasoning_records / reward_records，见迁移 0018
+	// 的 sft_records 一等公民设计）在终态时会呈现：
+	//
+	//     reasoning  completed  count=0   已生成 0 条推理
+	//     rewards    completed  count=0   已生成 0 条评分
+	//
+	// 「已完成 · 0 条」自相矛盾：用户无法分辨这是「真的做完了但没数据」还是
+	// 「状态推进错了」。这不是纯文案问题 —— 它会让用户以为流水线漏跑了两个阶段。
+	//
+	// 修法：rank 达标**且**该阶段确有产出才算 completed；rank 达标但零产出时
+	// 标为 "skipped"（新增状态），语义是「本数据集不需要这个阶段」。
+	// 选 skipped 而不是 completed/pending：
+	//   - completed 会继续撒谎；
+	//   - pending 会暗示「还没做」，让用户误以为要等；
+	//   - skipped 准确表达「这个阶段对本数据集不适用」。
 	stageState := func(key string, threshold int, evidenceCount int) string {
 		if failedStage == key {
 			return "failed"
 		}
 		if statusRank >= threshold {
-			return "completed"
+			if evidenceCount > 0 {
+				return "completed"
+			}
+			// 该阶段按状态机已经走过，但没有留下任何记录。
+			return "skipped"
 		}
 		if queuedStage == key {
 			return "queued"

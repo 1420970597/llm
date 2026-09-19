@@ -444,10 +444,14 @@ function etaLabel(status: string, queueDepth: number, acceptedAt?: string) {
   return '刷新后更新 ETA'
 }
 
-function stageStateStyle(state: 'pending' | 'queued' | 'in_progress' | 'completed' | 'failed') {
+function stageStateStyle(state: 'pending' | 'queued' | 'in_progress' | 'completed' | 'skipped' | 'failed') {
   switch (state) {
     case 'completed':
       return { label: '已完成', color: 'green' as const, percent: 100 }
+    case 'skipped':
+      // 「本数据集不需要这个阶段」——例如 SFT 分支不产生推理/评分记录。
+      // 与「已完成」区分开：否则会出现「已完成 · 0 条」的自相矛盾展示。
+      return { label: '本任务不需要', color: 'grey' as const, percent: 100 }
     case 'in_progress':
       return { label: '进行中', color: 'blue' as const, percent: 65 }
     case 'queued':
@@ -2740,7 +2744,7 @@ export default function App() {
       key: string
       label: string
       route: string
-      state: 'pending' | 'queued' | 'in_progress' | 'completed' | 'failed'
+      state: 'pending' | 'queued' | 'in_progress' | 'completed' | 'skipped' | 'failed'
       summary: string
       count: number
     }> = [
