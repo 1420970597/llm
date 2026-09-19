@@ -234,6 +234,26 @@ curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
 
 ## 8. 已验证功能
 
+### 8.1 文档索引
+
+按阅读目的选择入口：
+
+| 文档 | 用途 |
+|---|---|
+| `docs/architecture/phase-1-foundation.md` ~ `phase-8-eval-and-cleaning.md` | 各阶段架构设计（第一轮） |
+| `docs/architecture/round2-remediation.md` | **第二轮缺陷治理**：修复语义、新不变量与运维影响 |
+| `docs/guides/eval-and-cleaning-usage.md` | 评估与清洗的使用说明 |
+| `docs/plans/issue-remediation-plan.md` | 第二轮冻结契约（lane 划分与跨 lane 接口） |
+
+运维需重点读 `docs/architecture/round2-remediation.md`，它记录了本轮引入的
+**新不变量**（活跃 run 唯一约束、`invalid` 记录状态、阶段路由单一事实来源）与
+**错误契约变更**（未知子路径 404、admin 必填校验 400、`providerId` 校验 400）。
+该文档逐节标注每条修复在 `main` 上的真实合并状态，并提供自行核对命令。
+
+文档的链接、锚点与代码路径引用由 `node scripts/check-docs.mjs` 校验。
+
+### 8.2 自动化验证
+
 已做自动化/半自动验证：
 
 - `npm run build`

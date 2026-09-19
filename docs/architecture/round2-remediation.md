@@ -4,9 +4,14 @@
 > lane 看板是 `docs/plans/round2-lane-board.md`。
 > 第一轮的评估与清洗能力见 `docs/architecture/phase-8-eval-and-cleaning.md`。
 >
-> **诚实性约定**：本文逐节标注该修复在当前 `main` 上的真实状态。
-> 标注「已合并」的，读者可以直接在当前代码里找到；标注「待合并（Rx）」的，是 lane 分支上的实现，
-> 本文只描述**契约与已 push 分支的实际形状**，不写成已完成。状态汇总见 [第 9 节](#9-状态总览与已知缺口)。
+> **诚实性约定**：本文逐节标注该修复在当前 `main` 上的**真实状态**，并给出核对用的命令。
+> 标注「已合并」的，读者可以在当前代码里直接找到并用文中命令复核；
+> 标注「未合并」的，本文只描述**契约与已 push 分支的实际形状**，不写成已完成。
+> 状态汇总见 [第 9 节](#9-状态总览与已知缺口)。
+>
+> 本文的状态标注基于 `main` @ `31841a3`（含已合并的 PR #70–#80）。
+> 由于本轮是并行 lane 推进，`main` 会持续前进；**若你读到时与本文不符，以代码为准**，
+> 并用第 9.2 节给出的逐条命令自行核对。
 
 <img src="../assets/round2-remediation-states.svg" alt="第二轮治理：阶段路由、批处理状态推进、记录状态过滤与活跃运行唯一约束" width="100%">
 
@@ -28,19 +33,27 @@
 
 ## 1. 修复清单与状态
 
+> 状态列以 `main` @ `31841a3` 为准；每条最右列给出**自行核对命令**。
+
 | 编号 | Issue | 一句话 | 关键落点 | 状态 |
 |---|---|---|---|---|
-| #61 | 阶段页不可达 | 五个阶段路由是自指重定向，流水线在 `draft` 硬阻塞 | `apps/web-user/src/App.tsx` 路由表 | **主体已合并**（PR #70）；`stageRouteNavMap` 待合并（R1） |
-| #5 | 批处理状态推进 | `Insert` 在逐题循环内调用，第 1 条写完就写死数据集终态 | `apps/worker/main.go`、`internal/store/reasoning_store.go` | 待合并（R2） |
-| #7 | 占位内容被判有效 | 合法 JSON 但内容无效（`"..."`）仍记为 `generated` | `internal/llm/reasoning_generator.go` | 待合并（R3） |
-| #9 | 孤儿 `running` 记录 | `StartRun` 是 read-then-insert，并发产生永久孤儿 | 迁移 `0020`、`internal/store/generation_run_store.go` | 待合并（R4，分支已 push） |
-| #8 | 未知子路径静默 200 | `routeDatasetGet` 的 `default:` 把未知路径交给 `getDataset` | `apps/api/main.go`、`apps/api/routes.go` | 待合并（R5） |
-| #63 | admin 配置零校验 | 空 body 直接落库，可写出 `domainCount:1000` 的脏策略 | `apps/api/main.go` 四个 upsert | 待合并（R6） |
-| #58 | `providerId` 不校验 | 数据集能建出来，到生成阶段才失败 | `apps/api/datasets.go` | 待合并（R7，分支已 push） |
-| #10 / #11 | 小 total 丢难档 | `total=2` 时 `hard` 恒为 0（生产 `dataset 6` 已复现） | `internal/llm/difficulty.go` | 待合并（R9） |
-| #64 | 未选中任务静默失败 | 5 处守卫静默 `return`，无请求无提示 | `apps/web-user/src/App.tsx` | 待合并（R8） |
-| #65 | 后端能力无 UI 入口 | `lib/api.ts` 存在未被任何视图调用的方法 | `apps/web-user/src/**` | 待合并（R10） |
+| #61 | 阶段页不可达 | 五个阶段路由是自指重定向，流水线在 `draft` 硬阻塞 | `apps/web-user/src/App.tsx` 路由表 | **已合并**（PR #70 + #79） |
+| #5 | 批处理状态推进 | `Insert` 在逐题循环内调用，第 1 条写完就写死数据集终态 | `apps/worker/main.go`、`internal/store/reasoning_store.go` | **未合并**（R2） |
+| #7 | 占位内容被判有效 | 合法 JSON 但内容无效（`"..."`）仍记为 `generated` | `internal/llm/content_validator.go` | **已合并**（PR #76）；下游过滤**未合并** |
+| #9 | 孤儿 `running` 记录 | `StartRun` 是 read-then-insert，并发产生永久孤儿 | 迁移 `0020`、`internal/store/generation_run_store.go` | **已合并**（PR #74） |
+| #8 | 未知子路径静默 200 | `routeDatasetGet` 的 `default:` 把未知路径交给 `getDataset` | `apps/api/routes.go` | **已合并**（PR #75） |
+| #63 | admin 配置零校验 | 空 body 直接落库，可写出 `domainCount:1000` 的脏策略 | `internal/store/admin_validation.go` | **已合并**（PR #78） |
+| #58 | `providerId` 不校验 | 数据集能建出来，到生成阶段才失败 | `apps/api/datasets.go` | **已合并**（PR #73） |
+| #10 / #11 | 小 total 丢难档 | `total=2` 时 `hard` 恒为 0（生产 `dataset 6` 已复现） | `internal/llm/difficulty.go` | **已合并**（PR #80） |
+| #64 | 未选中任务静默失败 | 5 处守卫静默 `return`，无请求无提示 | `apps/web-user/src/App.tsx` | **未合并**（R8） |
+| #65 | 后端能力无 UI 入口 | `lib/api.ts` 存在未被任何视图调用的方法 | `apps/web-user/src/**` | **未合并**（R10） |
 | #66 | 不存在资源返回 500 | `pgx.ErrNoRows` 未降级 404 | `apps/api/main.go` 的 `writeError` | **已合并**（PR #68） |
+
+**本轮新发现的需求缺口**（不在原契约的 12 条 lane 内，由父代理新增 lane 处理）：
+
+| 缺口 | 说明 | 状态 |
+|---|---|---|
+| n/m/x 不可控 | `功能说明.txt` 步骤 1/3 逐字要求 n、m、x 用户可控，但 UI 从未暴露 | PR #85（R13）评审中 |
 
 ---
 
@@ -114,11 +127,12 @@
 > 后续如果要让按钮在失败态下有引导文案，正确做法是新增「失败态集合」判定
 > （`status === 'questions_failed'` 等），而不是复用就绪态变量。
 
-### 2.4 残余缺口：`stageRouteNavMap` 与路由不一致
+### 2.4 残余缺口：`stageRouteNavMap` 与路由不一致（**已合并**，PR #79）
 
-`stageRouteNavMap`（`App.tsx:104-110`）目前仍是：
+修复前的形状（`App.tsx:104-110`）是一张**手写常量表**：
 
 ```ts
+// 修复前
 const stageRouteNavMap: Record<string, string> = {
   '/console/planning': '/console/planning',
   '/console/domains': '/console/tasks',      // ← 把用户带离阶段页
@@ -129,13 +143,63 @@ const stageRouteNavMap: Record<string, string> = {
 }
 ```
 
-这张表用于从阶段路径反查「侧边栏高亮项」与面包屑父级。五条阶段路由既然已改为真实渲染页面，
-它们就应该映射回自身（或映射到对应的工作台分组），否则会出现「人在 `/console/domains`，
-侧边栏却高亮『我的任务』」的错位。契约 §1.4 要求一并修正，由 R1 处理。
+这张表用于从阶段路径反查「侧边栏高亮项」与面包屑父级。五条阶段路由既已改为真实渲染页面，
+若它仍指向 `/console/tasks` / `/console/results`，就会出现「人在 `/console/domains`，
+侧边栏却高亮『我的任务』」的错位。
+
+```ts
+// apps/web-user/src/App.tsx（已合并）
+type StageWorkbenchPage = NavPage & { navParent: string }
+
+const taskWorkbenchPages: StageWorkbenchPage[] = [
+  { label: '主题结构', route: '/console/domains', icon: GitBranch, caption: '生成并确认主题结构', navParent: '/console/tasks' },
+]
+
+const resultWorkbenchPages: StageWorkbenchPage[] = [
+  { label: '问题生成', route: '/console/questions', ... , navParent: '/console/results' },
+  { label: '答案内容', route: '/console/reasoning', ... , navParent: '/console/results' },
+  { label: '质量评估', route: '/console/rewards',   ... , navParent: '/console/results' },
+  { label: '导出交付', route: '/console/exports',   ... , navParent: '/console/results' },
+]
+
+// 阶段路由 → 侧边栏高亮项。从阶段工作台声明派生，任一阶段的归属只有一个来源。
+const stageRouteNavMap: Record<string, string> = Object.fromEntries(
+  [...taskWorkbenchPages, ...resultWorkbenchPages].map((page) => [page.route, page.navParent]),
+)
+```
+
+**这条修复的工程意义大于它的表面效果**：它把「路由表 / 侧边栏归属 / 面包屑」
+三处各自维护的不变量，改成了**单一事实来源 + 派生**。后续新增阶段只需在一个数组里声明一次。
+
+### 2.5 为什么这条守卫必须“双重存在”
+
+一个只有源码断言的守卫会被 CI 绕过，一个只在 CI 里的守卫看不到渲染行为。
+因此已合并的实现做了两层：
+
+| 层 | 文件 | 能否在 CI 无容器下跑 | 作用 |
+|---|---|---|---|
+| 源码级 + 渲染级 | `test/l15_stage_routes.mjs` | **能**（默认路径不需容器） | 断路由非 `<Navigate>`、`render*` 无死代码、map 确实派生自声明、`route→navParent` 取值正确 |
+| 源码级 | `test/frontend_routes_test.go` | 能 | 让 CI 的 Backend job 也能拦住同类漂移 |
+
+> 这里有一个值得写进文档的教训：`.mjs` 最初把「真实 API 登录」当作**必经前置**，
+> 而 CI 的 Backend job 只跑 `go test`、Frontend job 只跑 `tsc + vite build`，
+> 都不起候选容器 —— 于是这个脚本在 CI 里 **100% 失败**，等于一个永远跑不起来的守卫；
+> 更糟的是它把「环境不可达」表现成「断言失败」，真出回归时分不清是环境问题还是代码问题。
+> 修正后：源码级断言走默认路径并由 exit code 决定成败，
+> 需真实 API 的断言收进 `--with-api`、默认显示 `[SKIP]` 且不影响 exit code。
 
 ---
 
 ## 3. 批处理状态推进语义（#5）
+
+> **当前状态：本条修复尚未合并。** 本节描述缺陷机制与契约要求的修复形状；
+> 下文 3.2 的「修复后形状」是**契约与 lane 分支的目标形状**，不是 `main` 现状。
+> 核对命令（当前 `main` 仍会命中循环内的 `Insert`）：
+>
+> ```bash
+> grep -n "reasoningStore.Insert\|rewardStore.Insert" apps/worker/main.go
+> # 观察这两行是否包在 `for _, question := range questions` 之内
+> ```
 
 ### 3.1 缺陷的形状：不是「漏写」，是「共享入口自带状态推进」
 
@@ -259,18 +323,20 @@ if err != nil {
 
 于是模型返回 `{"answer": "……", "reasoning": "..."}` 这种**结构合法但内容是占位符**的响应时，
 记录被判为 `status="generated"`，占位数据**静默进入训练集**。`reward_generator.go`
-（`status := "generated"`，`reward_generator.go:24`）与 `question_generator.go`
-（`Status: "generated"`，`question_generator.go:89`）是同一个形状。
+与 `question_generator.go` 是同一个形状。
 
-### 4.2 修复：新增内容有效性判定与 `invalid` 状态
+### 4.2 修复：新增内容有效性判定与 `invalid` 状态（**已合并**，PR #76）
 
-契约 §1.3 冻结：
+契约 §1.3 冻结的符号与实现对上了：
 
 ```go
-// internal/llm —— #7
-// 新增内容有效性判定，不改动 GenerateReasoning 的对外签名。
-// 不合格记录返回 status = "invalid"，不返回 "generated"。
-const ReasoningStatusInvalid = "invalid"
+// internal/llm/content_validator.go（已合并）
+const ContentStatusInvalid = "invalid"
+
+// ReasoningStatusInvalid 是 ContentStatusInvalid 的别名。
+// 契约 §1.3 指定了 ReasoningStatusInvalid 这个名字，而同一取值也用于 reward_records。
+// 别名保证全仓库只有一种取值拼写，契约符号同时存在。
+const ReasoningStatusInvalid = ContentStatusInvalid
 ```
 
 状态取值集合扩展为 **`generated | failed | invalid`**，三者的语义严格区分：
@@ -287,11 +353,39 @@ const ReasoningStatusInvalid = "invalid"
 需要换模型、改提示词，或对这批数据做人工复核。混在一起计数会让「今天失败率飙升」
 无法区分到底是网关挂了还是模型退化了。
 
+### 4.2.1 阈值是**实测标定**的，不是拍脑袋定的
+
+这一点值得单独强调，因为「把真数据误判成 invalid」比「漏过占位符」更危险：
+前者会静默丢弃合法训练样本。已合并的实现把标定依据写进了代码注释：
+
+| 字段 | 故障/占位样本 | 真实有效样本（rune） | 取下限 |
+|---|---|---|---|
+| `reasoning` | 3（`"..."`） | 83, 92, 93, 110, 112, 116, 126, 151, 200 | **40** |
+| `answer` | 3–21 | 919, 1025, 1255, 1851, 2170 | **40** |
+| `rationale` | 见下 | 23（拒绝作答） | **16** |
+| `content` | 未观测 | 25, 28, 29 | **12** |
+
+取值原则：下限必须在「占位样本」与「最小真实有效样本」之间，且离后者留出约 2 倍余量。
+初版曾把 `reasoning` 下限设为 80，而真实样本最小为 83 —— **贴着最小值，会把合法数据误判**。
+
+> `rationale` 的下限刻意只到「能拦住占位符」的程度，**不在本层判定拒绝语**。
+> 「无法评分」这类拒绝作答的识别属于 `功能说明.txt` 的**数据清洗关键词匹配**职责，
+> 两处不重复实现 —— 这是刻意的职责边界，不是遗漏。
+
+**已知残留风险（如实记录）**：余量是「约 2 倍」而非绝对安全。
+一个合法但极简的思维链（例如「1. 侦察 2. 评估 3. 决策 4. 执行 5. 复盘」，约 38 rune）
+会被判为 `invalid`。不阻塞的理由：`invalid` 与 `failed` **分开计数**（可审计、可重跑），
+且标定依据已写入代码注释可复核。
+
 ### 4.3 下游过滤规则：只有 `generated` 可进入导出与评估
+
+> **当前状态：#7 的「产生端」已合并（PR #76），但「消费端过滤」尚未合并。**
+> 这意味着在本轮完全落地之前，`invalid` 记录会被下游当有效数据放行。
+> 这是**已知的中间态**，不是遗漏 —— 本节的表格就是给后续修复用的清单。
 
 契约 §1.3 明确：**只有 `generated` 可进入导出与评估；`invalid` 与 `failed` 同等看待。**
 
-这条规则的落地位置（当前 `main` 上的真实过滤点）：
+已核实的落地位置（`main` @ `31841a3`，仍未改）：
 
 | 链路 | 位置 | 当前写法 | 需要的语义 |
 |---|---|---|---|
@@ -300,10 +394,21 @@ const ReasoningStatusInvalid = "invalid"
 | 导出 | `apps/worker/job_export_multi.go:234`（奖励） | `reward.Status != "failed"` | 同上 |
 | 评估 | `internal/store/eval_store_items.go` 的 `LoadEvalSources` | **完全不看 `reasoning_records.status`** | 需要加入状态过滤 |
 
+核对命令：
+
+```bash
+grep -n 'Status != "failed"' apps/worker/job_export_multi.go
+```
+
 > ⚠️ 注意「`!= "failed"`」与「`== "generated"`」并不等价。
 > 前者是一个**白名单的反面**（除了 failed 都要），后者才是白名单。
 > 状态集合一旦扩展出 `invalid`，`!= "failed"` 会把 `invalid` 记录放行 —— 这正是
 > 契约要强调「只有 `generated`」的原因。R3 的测试必须覆盖这一点。
+>
+> **这也是一个跨 lane 的监督教训**：改「谁产生这个状态」和改「谁消费这个状态」
+> 是两个 PR，中间有一个真实存在的漏洞窗口。缺陷治理里这类「半完成的状态扩展」
+> 最容易被误认为已修好 —— 因为产生端确实不再写 `generated` 了，
+> 但脏数据仍会流到导出文件。
 
 ### 4.4 为什么这个状态扩展不需要新迁移
 
@@ -320,7 +425,10 @@ status TEXT NOT NULL DEFAULT 'generated',
 ```
 
 `TEXT` 类型 + 无 `CHECK` 约束 ⇒ 数据库层不限制取值集合，新增 `invalid` 是纯应用层的语义扩展，
-**不需要迁移**。这也符合契约 §1.2 的迁移编号纪律：本轮只允许 `0020` 一条新迁移（#9 用），
+**不需要迁移**。R3 已把这条事实写成断言（`internal/llm/content_validator_test.go`
+直接读迁移文件断言无 CHECK），防止将来有人加约束而无人发现。
+
+这也符合契约 §1.2 的迁移编号纪律：本轮只允许 `0020` 一条新迁移（#9 用），
 其余修复一律不动 schema。
 
 ---
@@ -356,20 +464,19 @@ INSERT INTO generation_runs (...) VALUES (..., 'running', ...)
 `UNIQUE (dataset_id, stage, status)`，`'pending'` 与 `'running'` 是**不同的值**，
 两条记录都能通过唯一性检查并存活。必须用**部分唯一索引**，只约束活跃态。
 
-### 5.2 修复：迁移 0020 + 单语句原子 upsert
+### 5.2 修复：迁移 0020 + 单语句原子 upsert（**已合并**，PR #74）
 
 契约 §1.2 冻结了新迁移的唯一名字与纪律：
 
-```
+```text
 sql/migrations/0020_generation_runs_active_unique.sql
 ```
 
-迁移必须**幂等**，且必须能在**已存在重复 `running` 记录的历史库**上成功执行
+迁移**幂等**，且能在**已存在重复 `running` 记录的历史库**上成功执行
 （契约 §0.3 记录线上实测有 11 条孤儿 `running`）。唯一索引会直接拒绝这类数据，
 所以**必须先清理孤儿再建索引**，且清理语句要明确写在迁移里并带注释。
 
-R4 已 push 的实现（`origin/lane/r4-generation-run-unique`）采取了
-「**终结**而非删除」的策略，理由写在迁移文件头：
+已合并的实现采取了「**终结**而非删除」的策略，理由写在迁移文件头：
 
 1. **那些记录携带真实的断点游标**。并发情况下两条记录都可能被各自的请求写过
    `SaveCursor` 进度，删除是不可逆的，会让已完成的领域丢失；
@@ -484,15 +591,24 @@ default:
    `RegisterDatasetRouter`，`apps/api/routes.go:45`），而因为 `default:` 静默兜底，
    这个文档与实现的漂移**没有任何信号**。
 
-修复要点（R5）：`default:` 改为返回 404，**同时**修正
+**已合并的修复要点**（PR #75）：“`default:` 改为返回 404，**同时**修正
 `docs/plans/eval-and-cleaning-plan.md:72-73` 里与实现不符的冻结符号，
-并新增一个**契约一致性测试**，让「文档提到的注册符号」与「实现里存在的符号」绑定，
-防止再次漂移。
+并新增一个**契约一致性测试**（`test/contract_consistency_test.go`），
+让「文档提到的注册符号」与「实现里存在的符号」绑定，防止再次漂移。
 
-### 6.3 #63：四个 admin upsert 零校验
+> **这个修复最大的回归面是「把已注册的路径也吃掉」**。典型例子：`/domains` 修复前
+> 不在 `switch` 里，靠 `default` 落到 `getDataset` 才返回数据集图（含 `domains` 字段）。
+> 改成 404 兜底后，它必须被**显式注册**保留，否则就是把 #8 的修复变成一次回归。
+> 已合并的实现对 `/domains` 做了显式分支并保留原响应形状，
+> 且 `test/l15_route_contract.py` 有专门的守卫会在该分支被删时失败。
+>
+> 另一个易错点：**「方法不匹配」不是回归**。例如 `/reward-levels` 只注册了 `PUT`，
+> `GET /datasets/{id}/reward-levels` 返回 404 是正确行为（前端用的也是 `PUT`）。
+
+### 6.3 #63：四个 admin upsert 零校验（**已合并**，PR #78）
 
 `upsertProvider` / `upsertStorageProfile` / `upsertStrategy` / `upsertPrompt`
-（`apps/api/main.go:189/213/237/261`）只检查 JSON 能否解码：
+原本只检查 JSON 能否解码：
 
 ```go
 var input model.GenerationStrategy
@@ -528,7 +644,7 @@ item, err := app.datasets.CreateDataset(r.Context(), input)
 后果：`providerId=999999` 创建返回 **201，数据集已落库**，用户拿到一个注定跑不通的任务 ——
 要到几分钟甚至几十分钟后的生成阶段才失败。
 
-R7 已 push 的实现（`origin/lane/r7-dataset-provider-exists`）明确了两个关键语义：
+R7 的已合并实现（PR #73）明确了两个关键语义：
 
 - **`providerId == 0` 必须放行**。0 表示「暂不绑定模型服务」，是既有的合法语义
   （列默认值就是 0），这类数据集仍能建出来，到具体生成阶段才由该阶段自己报错；
@@ -537,6 +653,24 @@ R7 已 push 的实现（`origin/lane/r7-dataset-provider-exists`）明确了两�
   「查库失败」（→ 500），否则用户会以为是自己填错了 id。
 
 校验放在 INSERT **之前**，确保无效 `providerId` 不会留下半成品数据集。
+
+### 6.5 启动期引导与 HTTP 校验的冲突（#63 的隐含坑）
+
+新增必填校验时有一个容易引入**停机**的陷阱：**引导（bootstrap）路径与 HTTP upsert
+共用同一个 store 入口**。`apps/api/main.go:93-103` 在启动时调
+`resolveBootstrapProvider(cfg)` + `store.EnsureProvider`，而 `APP_BOOTSTRAP_PROVIDER_MODEL`
+在默认 `config` 里可能为空。若把校验直接加在 store 入口上，
+一个**只少填一个字段**的部署会从「安全降级」升级为 **crash-loop**。
+
+已合并的实现把两者拆开了：校验放在 `internal/store/admin_validation.go`，
+引导走独立的 `apps/api/provider_bootstrap.go`，后者区分
+`bootstrapReady` 与 `bootstrapSkippedIncomplete` 两种结果 —— 配置不完整时**只打警告、服务照常启动**
+（见 `apps/api/main.go:104`）。同时 `EnsureProvider` 按 `(name, base_url, model)`
+幂等引导，**已存在时只补全缺失密钥，不覆盖管理员改过的其他字段**。
+
+> 这条对运维的意义：升级到本轮版本后，**不必**因为新增校验而补齐所有
+> `APP_BOOTSTRAP_PROVIDER_*`。只填了部分字段的部署会照常启动，
+> 只是不会自动引导 provider（日志里会有 `WARNING: 跳过默认 provider 引导`）。
 
 ---
 
@@ -578,20 +712,38 @@ return DifficultyHard
 
 ### 7.2 修复规则
 
-契约 §1.3 冻结：**签名不变**，只修实现。
+### 7.2 修复规则（**已合并**，PR #80）
+
+契约 §1.3 冻结：**签名不变**，只修实现。实测确认签名未变：
 
 ```go
 func DifficultyAssigner(index, total int) string                        // 签名不变
 func DifficultyFromMix(mix map[string]float64, index, total int) string // 签名不变
 ```
 
-必须满足的规则：
+已合并的实现把分层改为**配额分配**（最大余数法），并满足：
 
 1. **`total >= 档位数（3）` 时每档至少 1 条**。这是「保证分层」的最低含义，
    也是 issue #10 直接要求的行为；
-2. **`total < 档位数` 时给出确定且可解释的分配**，并在注释里写清规则
-   （例如 `total=2` 时如何取舍、为什么舍的那档不可能是 `hard`）；
+2. **`total < 档位数` 时给出确定且可解释的分配**，并在注释里写清规则；
 3. **配比总数守恒**：`AllocateDifficultyMix` 返回的各档数量之和恰好等于 `total`。
+
+### 7.2.1 实测校验（真机跑 Go 测试，非读代码推断）
+
+```text
+total=2  默认分配器 -> map[hard:1 medium:1]        <-- 修复前 hard=0
+total=2  mix 含 hard -> map[hard:1 medium:1]        <-- 修复前 hard=0
+total=3  默认分配器 -> map[easy:1 hard:1 medium:1]
+total=4  默认分配器 -> map[easy:1 hard:1 medium:2]
+配额守恒（total=1,2,3,4,7,10,13）-> sum 恒等于 total
+```
+
+复核命令：
+
+```bash
+cd <repo> && docker run --rm -v $PWD:/w -w /w golang:1.24-alpine \
+  sh -c "go test ./internal/llm/ -run Difficulty -v"
+```
 
 ### 7.3 #11 的剩余缺口与已落地部分
 
@@ -639,12 +791,20 @@ if (!activeDatasetId) return          // ← 静默 return
 
 ### 8.2 修复规则：5 处行为一致，统一给明确提示
 
+> **当前状态：本条修复尚未合并（R8）。**
+> 核对命令（下面两行仍在 `main` 上，说明修复未落地）：
+>
+> ```bash
+> grep -n "if (!activeDatasetId) return\b\|activeDatasetId && void loadDatasetWorkspace" \
+>   apps/web-user/src/App.tsx
+> ```
+
 契约 §1.4 要求：
 
 > `#64` 的静默守卫统一改为：未选中任务时给出明确提示（toast），不静默 return。
 > **全文 5 处同类守卫必须行为一致。**
 
-代码里**已经有正确的范本**可以参考 —— `generateDomains`（`App.tsx:1437`）：
+代码里**已经有正确的范本**可以参考 —— `generateDomains`（`App.tsx:1442`）：
 
 ```tsx
 const generateDomains = async () => {
@@ -654,8 +814,20 @@ const generateDomains = async () => {
 ```
 
 所以这条修复的实质是：**把已有的正确写法推广到其余 4 处加 2 处内联守卫**，
-使全文行为一致。`Toast` 组件已从 Semi UI 导入（`App.tsx:22`），
-`Toast.warning` / `Toast.error` / `Toast.success` 在全文广泛使用，无需引入新依赖。
+使全文行为一致。已核实的 5 处不一致点（`main` @ `31841a3`）：
+
+```text
+1442  if (!activeDatasetId) return Toast.warning('请先选择任务')        <-- 范本（已有提示）
+1522  if (!activeDatasetId) return                                    <-- 静默
+1552  if (!activeDatasetId) return                                    <-- 静默
+1582  if (!activeDatasetId) return                                    <-- 静默
+1612  if (!activeDatasetId) return                                    <-- 静默
+2562  onClick={() => activeDatasetId && void loadDatasetWorkspace(...)}  <-- 静默（刷新结构）
+2852  onClick={() => activeDatasetId && void loadDatasetWorkspace(...)}  <-- 静默（刷新结果）
+```
+
+`Toast` 组件已从 Semi UI 导入，`Toast.warning` / `Toast.error` / `Toast.success`
+在全文广泛使用，**无需引入新依赖**。
 
 **为什么「一致」是硬要求**：一个应用里「同样的前置条件不满足」这件事，如果有的地方提示、
 有的地方静默，用户会形成错误的心智模型 —— 他学到的是「点了没反应 = 系统出问题了」，
@@ -666,30 +838,52 @@ const generateDomains = async () => {
 
 ## 9. 状态总览与已知缺口
 
-### 9.1 已合并
+### 9.0 一句话状态
 
-| 项 | 落点 | 验证 |
-|---|---|---|
-| #61 主体（阶段路由可达） | `App.tsx` 5 个 `<Route>` + 4 个包装函数 | PR #70；`test/frontend_routes_test.go` 源码级守卫 |
-| #66（不存在资源 404） | `writeError`（`apps/api/main.go:294-306`） | PR #68 |
-| compose 根入口（基础设施） | `docker-compose.yml`（root，`name: llm` + `include`） | PR #71 |
+截至 `main` @ `31841a3`：**12 条 lane 中 7 条已合并**（含 2 个 P0），
+剩余 5 条（R2/R8/R10/R11/R12）仍在推进。**不要假设本轮已全部落地** ——
+每节开头的状态标注与本节命令可自行核对。
 
-### 9.2 待合并（本轮 lane 负责）
+### 9.1 已合并（可用下方命令复核）
 
-| Issue | Lane | 分支 | 交付物 |
+| 项 | 落点 | PR | 一条复核命令 |
 |---|---|---|---|
-| #9 | R4 | `lane/r4-generation-run-unique`（**已 push**） | 迁移 `0020` + `StartRun` 原子 upsert + `test/l15_worker_concurrency.py` |
-| #58 | R7 | `lane/r7-dataset-provider-exists`（**已 push**） | `resolveDatasetProvider` + Go 测试 + `test/l15_dataset_provider.py` |
-| #61 残余 | R1 | `lane/r1-stage-routes` | `stageRouteNavMap` 一致性 + `test/l15_stage_routes.mjs` |
-| #5 | R2 | `lane/r2-worker-batch-status` | 循环外整批提交 + `test/l15_worker_batch_status.py` |
-| #7 | R3 | `lane/r3-placeholder-content` | `ReasoningStatusInvalid` + 表驱动测试 |
-| #8 | R5 | `lane/r5-route-contract` | `default:` → 404 + `test/l15_route_contract.py` |
-| #63 | R6 | `lane/r6-admin-validation` | 4 个 upsert 校验 + 表驱动测试 |
-| #64 | R8 | `lane/r8-silent-guards` | 5 处守卫一致 + `test/l15_silent_guards.mjs` |
-| #10/#11 | R9 | `lane/r9-difficulty-buckets` | 算术修复 + 表驱动测试 |
-| #65 | R10 | `lane/r10-capability-entries` | UI 入口 + `test/l15_capability_entries.mjs` |
+| #61 阶段路由可达 | `App.tsx` 5 个 `<Route>` + 4 个包装函数 | #70 | `grep -c 'Navigate to={activeTaskDetailRoute}' apps/web-user/src/App.tsx` → 应为 **0** |
+| #61 `stageRouteNavMap` 派生 | `App.tsx` 的 `Object.fromEntries(...)` | #79 | `grep -n 'stageRouteNavMap' apps/web-user/src/App.tsx` → 应看到 `fromEntries` |
+| #7 `invalid` 状态（产生端） | `internal/llm/content_validator.go` | #76 | `grep -n 'ContentStatusInvalid = ' internal/llm/content_validator.go` |
+| #9 活跃 run 唯一约束 | 迁移 `0020` + `generation_run_store.go` | #74 | `ls sql/migrations/ \| tail -1` → `0020_*.sql` |
+| #8 未知子路径 404 | `apps/api/routes.go` | #75 | `grep -n '未找到该子资源' apps/api/routes.go` |
+| #63 admin 必填校验 | `internal/store/admin_validation.go` | #78 | `ls internal/store/admin_validation.go` |
+| #58 `providerId` 校验 | `apps/api/datasets.go` | #73 | `grep -n '指定的 AI 服务不存在' apps/api/datasets.go` |
+| #10/#11 难度配额分配 | `internal/llm/difficulty.go` | #80 | `go test ./internal/llm/ -run Difficulty -v` |
+| #66 不存在资源 404 | `writeError`（`apps/api/main.go`） | #68 | `grep -n 'ErrNoRows' apps/api/main.go` |
+| compose 根入口（基础设施） | `docker-compose.yml`（root） | #71 | `ls docker-compose.yml` |
 
-### 9.3 本轮**不覆盖**的既有缺口（诚实性声明）
+### 9.2 尚未合并（截至本文基线）
+
+| Issue | Lane | 交付物 | 为何重要 |
+|---|---|---|---|
+| #5 | R2 | 循环外整批提交 + `test/l15_worker_batch_status.py` | 当前 `datasets.status` 会领先于实际记录数，下游按状态消费就会拿到不完整数据 |
+| #7 消费端 | （未合并） | `job_export_multi.go` 与 `LoadEvalSources` 改为仅 `generated` | 见 [4.3](#43-下游过滤规则只有-generated-可进入导出与评估)：`invalid` 目前会被放行 |
+| #64 | R8 | 5 处守卫一致 + `test/l15_silent_guards.mjs` | 未选中任务时点击无反馈 |
+| #65 | R10 | UI 入口 + `test/l15_capability_entries.mjs` | 后端 L2–L6/R1 能力在 UI 上无入口 |
+| #37–#46 | R11 | `test/l15_issue_triage.py` | 9 条自动审查 issue 的逐条取证 |
+| n/m/x | R13 | PR #85 | `功能说明.txt` 步骤 1/3 的逐字需求（见第 10 节） |
+
+### 9.3 本文档自身的验证
+
+本文的所有链接、锚点与代码路径引用由 `scripts/check-docs.mjs` 校验：
+
+```bash
+node scripts/check-docs.mjs
+```
+
+该脚本会：解析相对链接与 `<img src>`、校验同文档锚点能对应到标题、
+并逐条核对反引号里的代码路径引用是否真实存在（含简写路径、编号前缀写法、
+指向本仓库的绝对路径）。对「指向本仓库但文件不存在」的引用会**报错退出**，
+而不是静默放过 —— 这样文档不会在代码改名后静默漂移。
+
+### 9.4 本轮**不覆盖**的既有缺口（诚实性声明）
 
 以下缺口在第二轮之前就已存在，**本轮契约没有把它们列为 lane 的交付范围**。
 写在这里是为了避免读者误以为「第二轮之后这些问题都解决了」。
@@ -716,10 +910,59 @@ const generateDomains = async () => {
 
 ---
 
+## 10. 本轮新发现的需求缺口：n / m / x 不可控
+
+本节记录一个**不在原契约 12 条 lane 内**的缺口。它由需求审计发现，
+与“缺陷治理”同属“功能已经写了但用户到不了”这一类问题。
+
+<img src="../assets/round2-nmx-params.svg" alt="n/m/x 生成参数：用户可控的三个层级与真实落库路径" width="100%">
+
+### 10.1 需求条文
+
+`功能说明.txt` 的步骤 1、3 逐字要求：
+
+> 1、用户输入指定关键词，工具调用llm模型生成关键词下属的n个领域……再根据n个领域生成m个
+> 领域下属方向……形成n*m项条目，**其中n和m是用户可控的**。
+>
+> 3、根据1、2步骤的成果，调用llm开始生成每个方向的具体问题x个……**其中x是用户可控的数量**。
+
+### 10.2 缺口：后端就绪，UI 未接线
+
+| 项 | 含义 | 后端 | 前端 UI（修复前） | 结论 |
+|---|---|---|---|---|
+| **n** | 领域数 | 支持（`estimate.domainCount`） | 仅在「生成策略」表单，且创建任务表单默认隐藏该区 | 部分可达 |
+| **m** | 每领域方向数 | **完整支持**（`DirectionCount`、`UpdateDirectionCount`） | **完全没有输入项**；生成时不传参 → 恒为 3 | **不可达** |
+| **x** | 每方向问题数 | **完整支持**（`QuestionsPerDirect`） | 策略表单有「每领域问题数」，但生成走 legacy 不传参 | 部分可达 |
+
+实测 m 的退化值来自后端默认：`if input.DirectionCount <= 0 { input.DirectionCount = 3 }`
+（`internal/store/dataset_store.go`）。也就是说，用户**无法让每个领域生成除 3 以外的方向数**。
+
+### 10.3 为什么它值得写进运维文档
+
+即使你不改 UI 只调 API，也必须知道 **m 与 x 存在两个真相源**：
+
+- `datasets.direction_count` / `datasets.questions_per_direction`（创建时落库，worker 从这里读）；
+- 入队接口的 `directionCount` 参数（可选，只影响本次运行）。
+
+因此「在任务页改一个数再重跑」与「重新建一个任务」是两种语义。
+R13 的实现选择了**只以“创建时落库的值”为真相源**（生成动作不在运行时传参），
+避免任务页改了值但任务配置没变、下次重跑又回旧值。
+
+### 10.4 残留风险
+
+- 修复只保证 n/m/x 三个参数**可达且真实生效**，未把 `showAdvancedPlanning` 改为 `true`。
+  那是“生成策略 / AI 服务 / 存储配置”三个管理员向配置项，属另一个变更范围。
+- **存量数据集**的 `direction_count` 仍是旧默认值（3），不会因本次发布而自动改变。
+  需要按需求重新生成的，请显式新建任务并设定 m。
+
+---
+
 ## 附：相关文件索引
 
 - 契约（冻结）：`docs/plans/issue-remediation-plan.md`
 - lane 看板：`docs/plans/round2-lane-board.md`
+- 需求缺口证据（n/m/x）：`docs/plans/round2-gap-nmx-params.md`
+- 数据损失事件记录：`docs/plans/round2-data-loss-incident.md`
 - 第一轮评估与清洗架构：`docs/architecture/phase-8-eval-and-cleaning.md`
 - 使用说明：`docs/guides/eval-and-cleaning-usage.md`
 - 本文配图：`docs/assets/round2-remediation-states.svg`
