@@ -1,6 +1,15 @@
 import axios from 'axios'
 
-export type ApiError = Error & { statusCode?: number }
+export type ApiError = Error & {
+  statusCode?: number
+  /**
+   * 后端返回的**原文**（可能是英文内部文案）。
+   *
+   * 为什么保留：拦截器会把给用户看的 message 本地化（issue #103 / #107），
+   * 而排查问题时需要第一手信息。原文只进 console / 埋点，**不上面向用户的界面**。
+   */
+  rawMessage?: string
+}
 
 const client = axios.create({
   baseURL: '/api',
@@ -757,9 +766,111 @@ client.interceptors.response.use(
     } else if (statusCode === 403) {
       fallbackMessage = '你没有执行该操作的权限，请联系管理员。'
     }
-    const message = error?.response?.data?.error ?? error?.message ?? fallbackMessage
+    const rawMessage: string = String(error?.response?.data?.error ?? error?.message ?? fallbackMessage)
+    // 统一在这里把后端文案转成面向中文用户的可执行提示（issue #103 / #107）。
+    //
+    // 为什么放在拦截器而不是各调用点：后端会对同一类前置条件返回不同句式
+    // （`cannot enqueue directions/...`、、`email and password are required` 等，共 10+ 处），
+    // 在各调用点分别翻译必然漂移（有的改了、有的漏了），这正是 issue #103 的成因。
+    // 拦截器是**唯一入口**，新增后端文案时只需在这里补一条。
+    const message = localizeApiMessage(rawMessage, statusCode, fallbackMessage)
     const nextError: ApiError = new Error(message)
     nextError.statusCode = statusCode
+    // 保留原文供排查：界面上不带它，但 console / 埋点可拿到第一手信息。
+    nextError.rawMessage = rawMessage
     return Promise.reject(nextError)
   },
 )
+
+/**
+ * 后端英文错误 → 面向中文用户的可执行提示。
+ *
+ * 后端把内部前置条件直接用英文报回来（含接口路径与字段名，如
+ * `cannot enqueue directions: dataset 134 has no domains, run domains/generate first`）。
+ * 直接展示给用户有三个问题：看不懂、泄漏内部实现、且给的不是他能执行的指令。
+ *
+ * 匹配策略：**先按已知句式精确翻译**（可控、可审），
+ * 再兜底「整条消息里一个汉字都没有」的情况给通用中文提示。
+ * 兜底很重要：后端将来新增一句英文文案时，界面不会再直接露英文。
+ *
+ * 原文始终保留在 `ApiError.rawMessage`，不丢排查线索。
+ */
+/**
+ * 后端英文错误 → 面向中文用户的可执行提示。
+ *
+ * 后端把内部前置条件直接用英文报回来（含接口路径与字段名，如
+ * `cannot enqueue directions: dataset 134 has no domains, run domains/generate first`）。
+ * 直接展示给用户有三个问题：看不懂、泄漏内部实现、且给的不是他能执行的指令。
+ *
+ * 实现是**有序规则表**而不是长 if 链：新增/调整文案时只改表格，不动控制流。
+ * 顺序敏感 —— 更具体的规则必须排在更宽泛的前面（例如
+ * `no directions (level=2 domains)` 要排在 `cannot enqueue questions` 之前，
+ * 因为后者的报文里可能就包含前者）。
+ *
+ * 兜底规则放在最后：整条消息里**一个汉字都没有**时给通用中文提示。
+ * 这样后端将来新增一句英文文案时，界面不会再直接露英文，
+ * 同时不会覆盖后端已经写好的中文提示。
+ *
+ * 原文始终保留在 `ApiError.rawMessage`，不丢排查线索。
+ */
+interface ApiMessageRule {
+  test: RegExp
+  /** 固定文案，或按「已完成/总数」比例生成文案。 */
+  message: string | ((ratio: RegExpMatchArray | null) => string)
+}
+
+/** 从形如 `(3/8)` 的报文里取「已完成/总数」比例。 */
+const COMPLETION_RATIO = /\((\d+)\/(\d+)\)/
+
+const API_MESSAGE_RULES: ApiMessageRule[] = [
+  // 前置条件未就绪（后端用 409 表达「上游还没做完」）。
+  // 顺序敏感：更具体的必须排在更宽泛的前面。
+  { test: /no directions \(level=2 domains\)/i, message: '请先生成方向，再生成问题。' },
+  { test: /cannot enqueue directions/i, message: '请先完成并确认主题结构，再生成方向。' },
+  {
+    test: /cannot enqueue rewards[\s\S]*incomplete/i,
+    message: (ratio) =>
+      ratio
+        ? `答案尚未全部完成（已完成 ${ratio[1]}/${ratio[2]}），请等全部完成后再做质量评估。`
+        : '答案尚未全部完成，请等全部完成后再做质量评估。',
+  },
+  {
+    test: /cannot enqueue export[\s\S]*incomplete/i,
+    message: (ratio) =>
+      ratio
+        ? `质量评估尚未全部完成（已完成 ${ratio[1]}/${ratio[2]}），请等全部完成后再导出。`
+        : '质量评估尚未全部完成，请等全部完成后再导出。',
+  },
+  { test: /cannot enqueue questions/i, message: '请先生成并确认主题结构（并确保已有方向），再生成问题。' },
+  { test: /cannot enqueue reasoning/i, message: '请先生成问题，再生成答案。' },
+  { test: /cannot enqueue rewards/i, message: '请先生成答案，再做质量评估。' },
+  { test: /cannot enqueue export/i, message: '请先完成质量评估，再导出交付文件。' },
+  { test: /cannot enqueue grpo/i, message: '请先生成问题，再生成教师评判提示词。' },
+  { test: /cannot enqueue sft/i, message: '请先生成问题，再生成 SFT 记录。' },
+  // 登录相关（issue #107）
+  { test: /email and password are required/i, message: '请输入邮箱与密码。' },
+  { test: /invalid email or password/i, message: '邮箱或密码不正确，请重新输入。' },
+]
+
+/** 整条消息不含任何汉字 —— 说明还没有中文化。 */
+function hasNoChinese(text: string): boolean {
+  return !/[\u4e00-\u9fa5]/.test(text)
+}
+
+function localizeApiMessage(raw: string, statusCode: number | undefined, fallback: string): string {
+  const text = raw.trim()
+
+  for (const rule of API_MESSAGE_RULES) {
+    if (!rule.test.test(text)) continue
+    return typeof rule.message === 'function' ? rule.message(text.match(COMPLETION_RATIO)) : rule.message
+  }
+
+  if (hasNoChinese(text)) {
+    // 401/403 已有更准确的语义，不要被通用文案覆盖。
+    if (statusCode === 401) return '登录状态已失效，请重新登录。'
+    if (statusCode === 403) return '你没有执行该操作的权限，请联系管理员。'
+    return `${fallback}（如反复出现，请联系管理员并提供时间点）`
+  }
+
+  return text
+}
