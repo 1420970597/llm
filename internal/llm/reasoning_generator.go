@@ -20,18 +20,19 @@ type reasoningPayload struct {
 //
 // 为什么从 90s 提到 300s（由 R11 lane 的取证发现，见 PR #82 的遗留风险）：
 // 直连 provider 实测一道带具体场景的题目（prompt 517 tokens）需要 **84.5s**
-//（completion_tokens=16634，其中 reasoning_tokens=14807）—— 紧贴 90s 上限，
+// （completion_tokens=16634，其中 reasoning_tokens=14807）—— 紧贴 90s 上限，
 // 实际运行中连续两次在 90s 被切断并写入 status=failed 占位行。
 //
 // 而同一代码库的其他生成阶段早就用 300s：
 //   - question_generator_v2.go:16  questionGenTimeout = 300 * time.Second
 //   - sft_generator.go:33          sftTimeout        = 300 * time.Second
+//
 // 本阶段产出的是**长链思考**，输出长度与问答/评分同级甚至更长，
 // 没有理由给它一个只有别人三分之一的上限。对齐到 300s 让四者一致。
 //
 // 注：model_providers.timeout_seconds 已配置为 300，本常量与之同值；
 // 这里不改成「读 provider 配置」是因为本阶段的调用链
-//（ResolveProvider → ProviderConfig）当前不携带该字段，
+// （ResolveProvider → ProviderConfig）当前不携带该字段，
 // 为此扩展六个调用点的签名属于超出本次修复范围的改动。
 const reasoningTimeout = 300 * time.Second
 
