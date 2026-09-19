@@ -40,6 +40,10 @@ func (s *AdminStore) ListProviders(ctx context.Context) ([]model.ModelProvider, 
 }
 
 func (s *AdminStore) UpsertProvider(ctx context.Context, input model.ModelProvider) (model.ModelProvider, error) {
+	if err := ValidateProviderInput(input); err != nil {
+		return model.ModelProvider{}, err
+	}
+
 	encryptedKey, err := s.box.Encrypt(input.APIKey)
 	if err != nil {
 		return model.ModelProvider{}, err
@@ -152,6 +156,10 @@ func (s *AdminStore) ListStorageProfiles(ctx context.Context) ([]model.StoragePr
 }
 
 func (s *AdminStore) UpsertStorageProfile(ctx context.Context, input model.StorageProfile) (model.StorageProfile, error) {
+	if err := ValidateStorageProfileInput(input); err != nil {
+		return model.StorageProfile{}, err
+	}
+
 	encryptedSecret, err := s.box.Encrypt(input.SecretAccessKey)
 	if err != nil {
 		return model.StorageProfile{}, err
@@ -233,6 +241,10 @@ func (s *AdminStore) ListStrategies(ctx context.Context) ([]model.GenerationStra
 }
 
 func (s *AdminStore) UpsertStrategy(ctx context.Context, input model.GenerationStrategy) (model.GenerationStrategy, error) {
+	if err := ValidateStrategyInput(input); err != nil {
+		return model.GenerationStrategy{}, err
+	}
+
 	var item model.GenerationStrategy
 	var err error
 	if input.ID == 0 {
@@ -312,6 +324,10 @@ func (s *AdminStore) GetActivePromptByStage(ctx context.Context, stage string) (
 }
 
 func (s *AdminStore) UpsertPrompt(ctx context.Context, input model.PromptTemplate) (model.PromptTemplate, error) {
+	if err := ValidatePromptInput(input); err != nil {
+		return model.PromptTemplate{}, err
+	}
+
 	var item model.PromptTemplate
 	var err error
 	if input.ID == 0 {
