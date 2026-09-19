@@ -25,9 +25,13 @@ type Dataset struct {
 	QuestionsPerDirect int          `json:"questionsPerDirection"`
 	RewardLevels       []string     `json:"rewardLevels"`
 	CleaningEnabled    bool         `json:"cleaningEnabled"`
-	Estimate           PlanEstimate `json:"estimate"`
-	CreatedAt          time.Time    `json:"createdAt"`
-	UpdatedAt          time.Time    `json:"updatedAt"`
+	// FailureReason 是最后一次失败的**用户可见**中文原因（issue #83）。
+	// 空串表示无失败原因。前端据此在「答案生成失败」处给出可操作提示，
+	// 而不是只能显示「系统同步中」「请排查失败原因」。
+	FailureReason string       `json:"failureReason"`
+	Estimate      PlanEstimate `json:"estimate"`
+	CreatedAt     time.Time    `json:"createdAt"`
+	UpdatedAt     time.Time    `json:"updatedAt"`
 }
 
 type Domain struct {

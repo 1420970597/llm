@@ -104,6 +104,28 @@ func main() {
 		log.Printf("WARNING: 跳过默认 provider 引导，APP_BOOTSTRAP_PROVIDER_* 配置不完整: %v（服务继续启动，可在管理后台手动添加）", validationErr)
 	}
 
+	// 从环境变量幂等引导默认结果存储配置（issue #83）。
+	//
+	// 为什么需要：全新部署下 storage_profiles 表为空，而答案/评分/导出三个阶段都要写对象存储。
+	// 没有引导时，用户能建出一个**注定在答案阶段失败**的任务，
+	// 而且失败原因只以 `no rows in result set` 出现在 worker 日志里。
+	//
+	// 与 provider 引导同样：配置不完整就跳过并告警，**不阻断启动**
+	//（详见 apps/api/storage_bootstrap.go 的说明与对应单测）。
+	storageInput, storageOutcome, storageValidationErr := resolveBootstrapStorage(cfg)
+	switch storageOutcome {
+	case storageBootstrapReady:
+		storageID, created, err := app.store.EnsureStorageProfile(ctx, storageInput)
+		if err != nil {
+			log.Fatalf("bootstrap storage profile failed: %v", err)
+		}
+		if created {
+			log.Printf("bootstrap storage profile ensured: id=%d bucket=%s", storageID, cfg.BootstrapStorageBucket)
+		}
+	case storageBootstrapSkippedIncomplete:
+		log.Printf("WARNING: 跳过默认结果存储引导，存储配置不完整: %v（服务继续启动；这会导致答案/评分/导出阶段失败，请在管理后台配置结果存储）", storageValidationErr)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", app.health)
 	mux.HandleFunc("GET /readyz", app.ready)

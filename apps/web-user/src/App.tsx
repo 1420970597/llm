@@ -2248,6 +2248,21 @@ export default function App() {
             </div>
           </Card>
 
+          {activeDataset?.failureReason ? (
+            <Banner
+              type="danger"
+              className="mt-4"
+              closeIcon={null}
+              title={`${statusLabel(activeDataset.status)}：${activeDataset.failureReason}`}
+              description={
+                <Text>
+                  这是本阶段的真实失败原因（不是「系统同步中」）。处理完上方提示后，
+                  可在下方「待办动作」重新发起本阶段。
+                </Text>
+              }
+            />
+          ) : null}
+
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
             <Title heading={4} className="!mb-0">待办动作</Title>
             <Text className="mt-2 block console-caption">按顺序执行，减少无效刷新。</Text>
@@ -2857,6 +2872,30 @@ export default function App() {
               </>
             ) : null}
           </div>
+          {activeStorageProfiles.length === 0 ? (
+            <Banner
+              type="warning"
+              className="mt-4"
+              closeIcon={null}
+              title="尚未配置结果存储，现在创建的任务会在「答案生成」阶段失败"
+              description={
+                <Space vertical align="start" spacing="tight">
+                  <Text>
+                    答案、质量评分与导出三个阶段都需要把结果写入对象存储。
+                    当前系统里没有任何可用配置，请先到「系统设置 → 结果存储」新增一条并设为可用，
+                    然后刷新本页再创建任务。
+                  </Text>
+                  {isAdmin ? (
+                    <Button size="small" theme="solid" type="primary" onClick={() => navigate('/console/admin/storage')}>
+                      去配置结果存储
+                    </Button>
+                  ) : (
+                    <Text className="console-caption">需要管理员权限：请联系管理员完成配置。</Text>
+                  )}
+                </Space>
+              }
+            />
+          ) : null}
           <Space className="mt-6" spacing="medium">
             <Button icon={<Target size={16} />} loading={actionLoading} onClick={() => void estimatePlan()}>估算规模</Button>
             <Button theme="solid" type="primary" icon={<FileOutput size={16} />} loading={actionLoading} onClick={() => void createDataset()}>创建任务</Button>

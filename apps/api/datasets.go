@@ -63,6 +63,66 @@ func resolveDatasetProvider(
 	return http.StatusBadRequest, errProviderNotFound
 }
 
+// errNoStorageProfileForDataset 是创建数据集时「没有任何可用结果存储」的用户可见提示。
+//
+// 与 store.ErrNoStorageProfile 分开：store 层的错误面向 worker 日志与内部调用，
+// 这里面向用户表单，必须直接告诉他**去哪个页面**修。
+var errNoStorageProfileForDataset = errors.New("尚未配置结果存储，请先到「系统设置 → 结果存储」创建一条可用配置")
+
+// errStorageProfileNotFoundForDataset 是指定了 storageProfileId 但它不存在/已停用时
+// 的用户可见提示。
+var errStorageProfileNotFoundForDataset = errors.New("指定的结果存储配置不存在或已停用，请重新选择")
+
+// validateDatasetStorage 校验请求里的 storageProfileId 能不能被引用，
+// 并返回应该回给客户端的 HTTP 状态码。校验通过时返回 (0, nil)。
+//
+// storageProfileId 为 0 表示「用默认存储」，这是既有的合法语义（列默认值就是 0，
+// 且 ResolveStorageProfile 会在 id=0 时挑 is_default 优先的那条）。
+// 但**库里必须至少有一条可用配置**，否则该数据集注定在答案阶段失败（issue #83）——
+// 这正是本校验要拦住的情况。
+//
+// 形状与 resolveDatasetProvider 一致：把「取列表」作为参数注入，理由相同 ——
+// 错误 -> 状态码的映射（400 + 契约文案）与错误分类（用户的错 vs 查库失败）
+// 都是本修复的可观察契约，而 apps/api 里既有测试都不连库，
+// 把 list 作为参数后全部分支都能用表驱动测试锁死。
+func resolveDatasetStorage(
+	ctx context.Context,
+	storageProfileID int64,
+	list func(context.Context) ([]model.StorageProfile, error),
+) (int, error) {
+	profiles, err := list(ctx)
+	if err != nil {
+		// 查库失败不是用户的错：报 400 会让用户以为是自己填错了。
+		return http.StatusInternalServerError, err
+	}
+
+	if storageProfileID == 0 {
+		// 用默认存储：只要存在至少一条 active 的就行。
+		for _, profile := range profiles {
+			if profile.IsActive {
+				return 0, nil
+			}
+		}
+		return http.StatusBadRequest, errNoStorageProfileForDataset
+	}
+
+	for _, profile := range profiles {
+		if profile.ID != storageProfileID {
+			continue
+		}
+		if !profile.IsActive {
+			return http.StatusBadRequest, errStorageProfileNotFoundForDataset
+		}
+		return 0, nil
+	}
+	return http.StatusBadRequest, errStorageProfileNotFoundForDataset
+}
+
+// validateDatasetStorage 把 resolveDatasetStorage 接到真实 store 上。
+func (app *application) validateDatasetStorage(ctx context.Context, storageProfileID int64) (int, error) {
+	return resolveDatasetStorage(ctx, storageProfileID, app.store.ListStorageProfiles)
+}
+
 func (app *application) estimatePlan(w http.ResponseWriter, r *http.Request) {
 	var input model.GeneratePlanRequest
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -85,6 +145,13 @@ func (app *application) createDataset(w http.ResponseWriter, r *http.Request) {
 	}
 	// 校验放在 INSERT 之前：providerId 无效时不能留下半成品数据集。
 	if status, err := app.validateDatasetProvider(r.Context(), input.ProviderID); err != nil {
+		app.writeError(w, status, err)
+		return
+	}
+	// 存储配置同理（issue #83）：答案/评分/导出三个阶段都要写对象存储。
+	// 不在这里拦住的话，用户能建出一个**注定在答案阶段失败**的任务，
+	// 而且失败原因只会以内部错误的形式出现在 worker 日志里。
+	if status, err := app.validateDatasetStorage(r.Context(), input.StorageProfileID); err != nil {
 		app.writeError(w, status, err)
 		return
 	}
