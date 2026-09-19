@@ -99,6 +99,25 @@ import { EvaluationView } from './views/EvaluationView'
 
 const { Title, Text } = Typography
 
+// 新增生成策略时的默认规模（issue #108）。
+//
+// 为什么不是 1000：原先弹窗把「领域数」预填为 1000，用户只填个名称就保存会得到一条
+// 按 1000 个领域规划的策略（这正是 issue #63 里 domainCount=1000 脏数据的来源），
+// 而用户从未做过这个决策 —— 下游估算与生成的成本会直接失控。
+//
+// 为什么不直接用 0：后端 `ValidateStrategyInput` 拒绝 domainCount < 1，
+// 默认 0 会让用户「点开、填个名称、保存」就直接拿到「领域数必须大于 0」的报错，
+// 只是把一个坏体验换成另一个。
+//
+// 取 5 的依据：
+//   1. 与仓库里既有的小规模验证实践一致（
+//      测试数据与文档示例普遍用个位数领域）；
+//   2. 5 × 10（每领域问题数）= 50 条问题，是一次真实 LLM 生成可承受的量级；
+//   3. 它是「可解释的小值」而不是「看起来像推荐的魔法值」，
+//      配合界面提示「先小规模验证，再逐步放大」引导用户主动改大。
+const DEFAULT_STRATEGY_DOMAIN_COUNT = 5
+const DEFAULT_STRATEGY_QUESTIONS_PER_DOMAIN = 10
+
 type ProviderDraft = Partial<Provider> & { apiKey?: string }
 type StorageDraft = Partial<StorageProfile> & { secretAccessKey?: string }
 
@@ -778,6 +797,40 @@ function LoginPage({
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
+  // issue #107：本地必填 / 格式校验。
+  //
+  // 原先两个字段都为空时也直接发请求，把后端的英文
+  // `email and password are required` 原样展示在告警卡与 toast 两处 ——
+  // 既绕了一圈网络，又给了用户看不懂的英文。
+  //
+  // 原则（功能说明.txt 的「符合人机交互习惯」）：
+  //   - 本地能判的不要往返服务端；
+  //   - 提示要指出**具体哪个字段**错了，而不是一句笼统的「登录失败」；
+  //   - 校验发生在提交前，错误就地显示在字段下方。
+  const [fieldError, setFieldError] = useState<{ email?: string; password?: string }>({})
+
+  const validate = (): boolean => {
+    const next: { email?: string; password?: string } = {}
+    const trimmedEmail = email.trim()
+    if (!trimmedEmail) {
+      next.email = '请输入邮箱'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      // 只做「像不像邮箱」的前置拦截；真实合法性仍由服务端判定。
+      next.email = '邮箱格式不正确，请检查是否缺少 @ 或域名'
+    }
+    if (!password) {
+      next.password = '请输入密码'
+    }
+    setFieldError(next)
+    return Object.keys(next).length === 0
+  }
+
+  const handleSubmit = () => {
+    // 本地校验没过就**不发请求**（这是 issue #107 的核心）。
+    if (!validate()) return
+    void onSubmit(email.trim(), password)
+  }
+
   return (
     <div className="console-login-shell flex items-center justify-center px-4 py-10">
       <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[1.2fr,0.8fr]">
@@ -820,13 +873,27 @@ function LoginPage({
           <div className="mt-5 grid gap-4">
             <div>
               <Text className="mb-2 block font-medium">邮箱</Text>
-              <Input value={email} onChange={setEmail} size="large" placeholder="请输入邮箱" />
+              <Input
+                value={email}
+                onChange={(value) => { setEmail(value); if (fieldError.email) setFieldError((c) => ({ ...c, email: undefined })) }}
+                size="large"
+                placeholder="请输入邮箱"
+              />
+              {fieldError.email ? <Text className="mt-2 block" type="danger">{fieldError.email}</Text> : null}
             </div>
             <div>
               <Text className="mb-2 block font-medium">密码</Text>
-              <Input value={password} onChange={setPassword} mode="password" size="large" placeholder="请输入密码" />
+              <Input
+                value={password}
+                onChange={(value) => { setPassword(value); if (fieldError.password) setFieldError((c) => ({ ...c, password: undefined })) }}
+                mode="password"
+                size="large"
+                placeholder="请输入密码"
+                onEnterPress={handleSubmit}
+              />
+              {fieldError.password ? <Text className="mt-2 block" type="danger">{fieldError.password}</Text> : null}
             </div>
-            <Button theme="solid" type="primary" size="large" loading={loading} onClick={() => void onSubmit(email, password)}>
+            <Button theme="solid" type="primary" size="large" loading={loading} onClick={handleSubmit}>
 进入我的任务
             </Button>
           </div>
@@ -939,8 +1006,12 @@ export default function App() {
   const [strategyDraft, setStrategyDraft] = useState<Partial<Strategy>>({
     name: '',
     description: '',
-    domainCount: 1000,
-    questionsPerDomain: 10,
+    // issue #108：原先默认预填 1000，用户「只填名称就保存」会得到一条按 1000 个领域
+    // 规划的策略（正是 issue #63 里 domainCount=1000 脏数据的来源），
+    // 而用户从未做过这个决策。改为小规模可解释的默认值，配合界面文案
+    //「先小规模验证，再逐步放大」——与创建任务页的规模提示保持一致。
+    domainCount: DEFAULT_STRATEGY_DOMAIN_COUNT,
+    questionsPerDomain: DEFAULT_STRATEGY_QUESTIONS_PER_DOMAIN,
     answerVariants: 1,
     rewardVariants: 1,
     planningMode: 'balanced',
@@ -1132,8 +1203,8 @@ export default function App() {
   const makeEmptyStrategyDraft = useCallback((): Partial<Strategy> => ({
     name: '',
     description: '',
-    domainCount: 1000,
-    questionsPerDomain: 10,
+    domainCount: DEFAULT_STRATEGY_DOMAIN_COUNT,
+    questionsPerDomain: DEFAULT_STRATEGY_QUESTIONS_PER_DOMAIN,
     answerVariants: 1,
     rewardVariants: 1,
     planningMode: 'balanced',
@@ -3248,7 +3319,11 @@ export default function App() {
                         })
   )
 
-  const renderResultsHub = () => (
+  const renderResultsHub = () => {
+    // 交付件（issue #104）：本页要能直接下载，所以在这里先筛出「用户主动导出的成品」。
+    // 口径与导出页一致 —— 复用同一个 artifactUsageCategory，不另立一份判定。
+    const deliveryArtifacts = artifacts.filter((item) => artifactUsageCategory(item) === 'delivery')
+    return (
     <div className="console-page-shell">
       <PageHeader
         badge="数据资产"
@@ -3300,8 +3375,58 @@ export default function App() {
           </Space>
         </Card>
       </div>
+
+      {/* issue #104：本页自我定位包含「交付文件」，却曾整页没有任何下载入口 ——
+          用户在主入口拿不到自己的交付文件。这里直接列出可下载的交付件，
+          并**复用** downloadArtifact（与导出页同一份实现，见 lib/api.ts 的 downloadArtifactBlob），
+          不在这里重写一遍 blob 下载逻辑。 */}
+      <Card className="console-panel mt-5" bodyStyle={{ padding: 20 }}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <Title heading={4} className="!mb-0">交付文件下载</Title>
+            <Text className="mt-2 block console-caption">
+              交付件是用户主动导出的成品（与「复核资料」区分），可直接下载。
+            </Text>
+          </div>
+        </div>
+        {deliveryArtifacts.length > 0 ? (
+          <div className="mt-5 console-summary-grid">
+            {deliveryArtifacts.map((artifact) => (
+              <div key={artifact.id} className="console-summary-row">
+                <span>
+                  <Tag color="violet">{artifactLabel(artifact.artifactType)}</Tag>
+                  <Text className="ml-2">{artifactDisplayName(artifact.objectKey)}</Text>
+                </span>
+                <Space>
+                  <Text className="console-caption">{formatTime(artifact.createdAt)}</Text>
+                  <Button size="small" theme="solid" type="primary" onClick={() => void downloadArtifact(artifact)}>
+                    下载结果
+                  </Button>
+                </Space>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-5">
+            <EmptyCard
+              title="暂无可下载的交付文件"
+              description={
+                activeDataset
+                  ? '本任务还没有交付件。先完成质量评估，再到「导出交付」生成文件。'
+                  : '先到「我的任务」选一个任务，或到「新建任务」创建一个。'
+              }
+            />
+            <div className="mt-4">
+              <Button onClick={() => navigate(activeDataset ? '/console/exports' : '/console/tasks')}>
+                {activeDataset ? '去生成导出交付' : '去选择任务'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
     </div>
-  )
+    )
+  }
 
   const renderOperations = () => {
     const recentAuditLogs = auditLogs.slice(0, 8)
@@ -3871,7 +3996,7 @@ export default function App() {
           <div className="console-card-grid-2">
             <div>
               <Text className="mb-2 block font-medium">领域数</Text>
-              <InputNumber value={strategyDraft.domainCount ?? 1000} onChange={(value) => setStrategyDraft((current) => ({ ...current, domainCount: Number(value ?? 0) }))} style={{ width: '100%' }} />
+              <InputNumber value={strategyDraft.domainCount ?? DEFAULT_STRATEGY_DOMAIN_COUNT} onChange={(value) => setStrategyDraft((current) => ({ ...current, domainCount: Number(value ?? 0) }))} style={{ width: '100%' }} />
             </div>
             <div>
               <Text className="mb-2 block font-medium">每领域问题数</Text>
