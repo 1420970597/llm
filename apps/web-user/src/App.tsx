@@ -880,6 +880,14 @@ export default function App() {
     targetSize: 0,
     strategyId: 0,
     providerId: 0,
+    // n / m / x：功能说明.txt 步骤 1、3 要求这三者**用户可控**。
+    // n = 领域数（domainCount，由策略/估算决定规模）
+    // m = 每个领域下的方向数（directionCount，落到 datasets.direction_count）
+    // x = 每个方向的问题数（questionsPerDirection，落到 datasets.questions_per_direction）
+    // 留 0 表示「用后端默认」，避免把「未设置」与「显式设为 0」混为一谈。
+    domainCount: 0,
+    directionCount: 0,
+    questionsPerDirection: 0,
     storageProfileId: 0,
   })
   const showAdvancedPlanning = false
@@ -1478,7 +1486,16 @@ export default function App() {
         providerId: Number(plannerForm.providerId),
         storageProfileId: Number(plannerForm.storageProfileId),
         status: 'draft',
-        estimate: estimateSnapshot,
+        // m / x 直接落到 datasets.direction_count / questions_per_direction。
+        // 传 0 时后端回退到内置默认（m=3, x=5），保持「未设置」语义。
+        directionCount: Number(plannerForm.directionCount) || 0,
+        questionsPerDirection: Number(plannerForm.questionsPerDirection) || 0,
+        // n（领域数）不在 datasets 列上，而是通过 estimate.domainCount 生效：
+        // internal/llm/domain_generator.go 的 GenerateDomains 读 dataset.Estimate.DomainCount。
+        // 用户显式填了 n 就覆盖估算值，否则用估算值（保持原行为）。
+        estimate: plannerForm.domainCount > 0
+          ? { ...estimateSnapshot, domainCount: Number(plannerForm.domainCount) }
+          : estimateSnapshot,
       })
       setActiveDatasetId(created.id)
       setTrustSignal({
@@ -1506,6 +1523,11 @@ export default function App() {
     }
   }
 
+  // 生成方向结构。
+  //
+  // m（每领域方向数）不在此处传参：worker 从 dataset.direction_count 读
+  //（见 apps/api/routes_directions.go 的 directionCount 回退链），
+  // 而该值在创建任务时由用户设定（见 createDataset 与「每领域方向数 m」输入框）。
   const generateDomains = async () => {
     const datasetId = resolveDatasetId(activeDatasetId, notifyNoActiveTask, '生成方向结构')
     if (!datasetId) return
@@ -1592,6 +1614,9 @@ export default function App() {
     if (!datasetId) return
     setActionLoading(true)
     try {
+      // x（每方向问题数）不在请求体里传：worker 从 dataset.questions_per_direction 读，
+      // 而该值在创建任务时由用户设定（见 createDataset）。在这里再传一遍会造成
+      // 「两个真相源」：任务页改了、但任务配置没变，下次重跑又回旧值。
       const result = await consoleApi.generateQuestions(datasetId)
       setStageRunMeta((current) => ({ ...current, questions: result }))
       setTrustSignal({
@@ -2802,6 +2827,21 @@ export default function App() {
               <Text className="mb-2 block font-medium">目标样本数（条）</Text>
               <InputNumber value={plannerForm.targetSize} onChange={(value) => setPlannerForm((current) => ({ ...current, targetSize: Number(value ?? 0) }))} min={1} style={{ width: '100%' }} />
               <Text className="mt-2 block console-caption">先小规模验证，再逐步放大。</Text>
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">领域数 n</Text>
+              <InputNumber value={plannerForm.domainCount} onChange={(value) => setPlannerForm((current) => ({ ...current, domainCount: Number(value ?? 0) }))} min={0} max={200} style={{ width: '100%' }} placeholder="留空用策略默认值" />
+              <Text className="mt-2 block console-caption">关键词下要生成多少个领域；留空（0）表示沿用生成策略里的领域数。</Text>
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">每领域方向数 m</Text>
+              <InputNumber value={plannerForm.directionCount} onChange={(value) => setPlannerForm((current) => ({ ...current, directionCount: Number(value ?? 0) }))} min={0} max={50} style={{ width: '100%' }} placeholder="默认 3" />
+              <Text className="mt-2 block console-caption">每个领域下再生成多少个具体方向；n × m 就是方向总条目数。留空（0）用默认值 3。</Text>
+            </div>
+            <div>
+              <Text className="mb-2 block font-medium">每方向问题数 x</Text>
+              <InputNumber value={plannerForm.questionsPerDirection} onChange={(value) => setPlannerForm((current) => ({ ...current, questionsPerDirection: Number(value ?? 0) }))} min={0} max={50} style={{ width: '100%' }} placeholder="默认 5" />
+              <Text className="mt-2 block console-caption">每个方向生成多少道具体问题；n × m × x 就是问题总量。留空（0）用默认值 5。</Text>
             </div>
             {isAdmin || showAdvancedPlanning ? (
               <>
