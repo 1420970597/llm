@@ -17,7 +17,10 @@ PSQL=(docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -q -U llm_factory -d l
 cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-fail() { echo "❌ $*" >&2; exit 1; }
+fail() {
+  echo "❌ $*" >&2
+  exit 1
+}
 
 echo "==> 起临时 Postgres ($PORT)"
 cleanup
@@ -32,7 +35,7 @@ done
 echo "==> 应用 0001..0019（模拟历史库）"
 for f in $(ls sql/migrations/*.sql | sort); do
   [[ "$f" == *0020* ]] && continue
-  "${PSQL[@]}" -f - < "$f" >/dev/null
+  "${PSQL[@]}" -f - <"$f" >/dev/null
 done
 
 echo "==> 造与线上一致的脏数据：同一 (dataset_id, stage) 多条活跃记录（孤儿）"
@@ -56,7 +59,7 @@ before=$(docker exec "$CONTAINER" psql -tA -U llm_factory -d llm_factory -c \
 echo "    迁移前活跃记录=$before（其中 2 条 running 是同阶段孤儿）"
 
 echo "==> 应用 0020（第一次）"
-"${PSQL[@]}" -f - < sql/migrations/0020_generation_runs_active_unique.sql
+"${PSQL[@]}" -f - <sql/migrations/0020_generation_runs_active_unique.sql
 
 after=$(docker exec "$CONTAINER" psql -tA -U llm_factory -d llm_factory -c \
   "SELECT count(*) FROM generation_runs WHERE status IN ('pending','running')")
@@ -75,8 +78,8 @@ total=$(docker exec "$CONTAINER" psql -tA -U llm_factory -d llm_factory -c \
 echo "    总记录数=$total（未删除，仅终结状态）✅"
 
 echo "==> 幂等：重复执行 0020 两次"
-"${PSQL[@]}" -f - < sql/migrations/0020_generation_runs_active_unique.sql >/dev/null
-"${PSQL[@]}" -f - < sql/migrations/0020_generation_runs_active_unique.sql >/dev/null
+"${PSQL[@]}" -f - <sql/migrations/0020_generation_runs_active_unique.sql >/dev/null
+"${PSQL[@]}" -f - <sql/migrations/0020_generation_runs_active_unique.sql >/dev/null
 echo "    重复执行成功 ✅"
 
 echo "==> 断言：数据库开始拒绝重复活跃记录"

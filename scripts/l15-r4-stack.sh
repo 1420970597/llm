@@ -19,7 +19,11 @@ docker run -d --name l15-r4-worker --network llm_default \
   l15-r4-worker:cand >/dev/null
 for i in $(seq 1 40); do
   code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18104/api/v1/health || true)
-  [ "$code" != "000" ] && { echo "api health=$code 就绪"; exit 0; }
+  [ "$code" != "000" ] && {
+    echo "api health=$code 就绪"
+    exit 0
+  }
   sleep 1
 done
-echo "api 未就绪" >&2; exit 1
+echo "api 未就绪" >&2
+exit 1
