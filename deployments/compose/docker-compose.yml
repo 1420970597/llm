@@ -13,34 +13,13 @@ services:
     build:
       context: ../..
       dockerfile: deployments/docker/api.Dockerfile
+    # 所有配置统一从仓库根目录的 .env 读取（可选），缺失时回落到 internal/config 的内置默认值。
+    # 注意：不要在此处用 ${VAR:-default} 重复声明同一批变量——compose 的 .env 插值
+    # 以 compose 文件所在目录为基准，读不到仓库根 .env，而 environment 的优先级高于
+    # env_file，会把根 .env 里的值（尤其是 APP_BOOTSTRAP_PROVIDER_*）覆盖成空。
     env_file:
       - path: ../../.env
         required: false
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      APP_ALLOWED_ORIGIN: ${APP_ALLOWED_ORIGIN:-*}
-      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-phase1-dev-only-32-byte-secret!!!}
-      API_PORT: 8080
-      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB:-llm_factory}
-      POSTGRES_USER: ${POSTGRES_USER:-llm_factory}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-llm_factory_dev}
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: 6379
-      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
-      WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-dataset-generation}
-      APP_DEFAULT_ADMIN_EMAIL: ${APP_DEFAULT_ADMIN_EMAIL:-admin@company.com}
-      APP_DEFAULT_ADMIN_PASSWORD: ${APP_DEFAULT_ADMIN_PASSWORD:-admin123456}
-      APP_DEFAULT_USER_EMAIL: ${APP_DEFAULT_USER_EMAIL:-user@company.com}
-      APP_DEFAULT_USER_PASSWORD: ${APP_DEFAULT_USER_PASSWORD:-user123456}
-      APP_BOOTSTRAP_PROVIDER_NAME: ${APP_BOOTSTRAP_PROVIDER_NAME:-}
-      APP_BOOTSTRAP_PROVIDER_BASE_URL: ${APP_BOOTSTRAP_PROVIDER_BASE_URL:-}
-      APP_BOOTSTRAP_PROVIDER_MODEL: ${APP_BOOTSTRAP_PROVIDER_MODEL:-}
-      APP_BOOTSTRAP_PROVIDER_API_KEY: ${APP_BOOTSTRAP_PROVIDER_API_KEY:-}
-      APP_BOOTSTRAP_PROVIDER_TYPE: ${APP_BOOTSTRAP_PROVIDER_TYPE:-openai-compatible}
-      APP_BOOTSTRAP_PROVIDER_TIMEOUT_SECONDS: ${APP_BOOTSTRAP_PROVIDER_TIMEOUT_SECONDS:-120}
-      APP_BOOTSTRAP_PROVIDER_MAX_CONCURRENCY: ${APP_BOOTSTRAP_PROVIDER_MAX_CONCURRENCY:-4}
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,21 +37,10 @@ services:
     build:
       context: ../..
       dockerfile: deployments/docker/worker.Dockerfile
+    # 同 api：统一走 env_file，缺失时回落 internal/config 默认值。
     env_file:
       - path: ../../.env
         required: false
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-phase1-dev-only-32-byte-secret!!!}
-      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB:-llm_factory}
-      POSTGRES_USER: ${POSTGRES_USER:-llm_factory}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-llm_factory_dev}
-      WORKER_PORT: 8081
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: 6379
-      WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-dataset-generation}
     depends_on:
       postgres:
         condition: service_healthy

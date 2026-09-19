@@ -1,0 +1,20 @@
+# 仓库根目录的 compose 入口。
+#
+# 为什么要这个文件：compose 的 .env 自动发现以「入口 compose 文件所在目录」为基准。
+# 直接从根目录 `docker compose -f deployments/compose/docker-compose.yml` 启动时，
+# compose 会去 deployments/compose/ 找 .env，读不到仓库根的 .env，导致
+# ${VAR:-default} 全部落到默认值，并且 environment 会覆盖 env_file 里同名变量。
+#
+# 通过根入口 include 子文件后，compose 的 project 目录就是仓库根，
+# .env 插值、env_file 相对路径、内置默认值三者行为一致。
+#
+# 统一用（在仓库根执行）：
+#   docker compose up -d --build
+#   docker compose down
+#
+# name 固定为 llm：与冻结契约 docs/plans/issue-remediation-plan.md 及 test/ 下
+# 全部脚本引用的容器名（llm-postgres-1 / llm-api-1 / llm-redis-1）与网络
+# （llm_default）保持一致。改名会让这些硬编码引用全部失效。
+name: llm
+include:
+  - deployments/compose/docker-compose.yml
