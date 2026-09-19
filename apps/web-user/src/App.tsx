@@ -192,7 +192,10 @@ function statusLabel(status: string) {
     case 'draft':
       return '待确认主题结构'
     case 'domains_confirmed':
+    case 'directions_completed':
       return '结构已确认，待生成问题'
+    case 'directions_partial_failed':
+      return '方向部分生成失败，需复核'
     case 'questions_queued':
       return '问题生成排队中'
     case 'questions_generated':
@@ -231,6 +234,8 @@ function progressPercent(status: string) {
     case 'draft':
       return 15
     case 'domains_confirmed':
+    case 'directions_completed':
+    case 'directions_partial_failed':
     case 'questions_queued':
       return 35
     case 'questions_generated':
@@ -254,6 +259,7 @@ function nextActionLabel(status: string) {
     case 'draft':
       return '先确认主题结构，再启动问题生成'
     case 'domains_confirmed':
+    case 'directions_completed':
       return '启动问题生成，补齐任务素材'
     case 'questions_queued':
       return '等待问题后进入答案生成'
@@ -284,6 +290,7 @@ function waitingStateLabel(status: string, queueDepth: number) {
     case 'draft':
       return '等待你确认主题结构'
     case 'domains_confirmed':
+    case 'directions_completed':
       return '等待你启动问题生成'
     case 'questions_queued':
       return '题目生成处理中'
@@ -316,6 +323,7 @@ function waitingReasonLabel(status: string, queueDepth: number) {
     case 'draft':
       return '结构未确认，尚未开始生成。'
     case 'domains_confirmed':
+    case 'directions_completed':
       return '结构已确认，等待你启动问题生成。'
     case 'questions_generated':
       return '问题结果已准备好，等待你启动答案生成。'
@@ -335,6 +343,7 @@ function waitingActionLabel(status: string) {
     case 'draft':
       return '前往「主题结构」'
     case 'domains_confirmed':
+    case 'directions_completed':
       return '前往「问题生成」，开始生成题目。'
     case 'questions_queued':
     case 'reasoning_queued':
@@ -392,6 +401,7 @@ function statusToActionRoute(status: string): string {
     case 'draft':
       return '/console/domains'
     case 'domains_confirmed':
+    case 'directions_completed':
     case 'questions_queued':
     case 'questions_generated':
     case 'questions_failed':

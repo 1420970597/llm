@@ -61,6 +61,11 @@ export const PIPELINE_STAGES: readonly StageDefinition[] = [
     actionLabel: '生成方向结构',
     doneStatuses: [
       'domains_confirmed',
+      // directions_completed / directions_partial_failed 由 worker 在方向生成后写入
+      // （apps/worker/job_directions.go:86/166）。它们语义上属于「区域与方向结构已完成」，
+      // 但前端状态机此前完全没有这两个分支，导致界面直接显示原始英文状态串、进度归零
+      // （issue #98）。
+      'directions_completed',
       'questions_queued',
       'questions_generated',
       'reasoning_queued',
@@ -71,7 +76,8 @@ export const PIPELINE_STAGES: readonly StageDefinition[] = [
       'export_generated',
     ],
     activeStatuses: ['draft'],
-    failedStatuses: [],
+    // 部分方向生成失败仍可继续，但需要回本阶段复核。
+    failedStatuses: ['directions_partial_failed'],
   },
   {
     key: 'questions',
