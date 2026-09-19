@@ -37,6 +37,8 @@ const (
 	ExcludeReasonSameSource = "与生成者同源（相同 BaseURL + Model），禁止自评"
 	ExcludeReasonInactive   = "provider 未启用"
 	ExcludeReasonNoAPIKey   = "provider 未配置 API Key"
+	ExcludeReasonNoBaseURL  = "provider 未配置服务地址（BaseURL）"
+	ExcludeReasonNoModel    = "provider 未配置模型名（Model）"
 )
 
 // sourceKey 归一化「模型来源」，用于识别同源 provider。
@@ -90,6 +92,23 @@ func ResolveJudges(_ context.Context, providers []model.ModelProvider, generator
 	judges := make([]JudgeRef, 0, len(providers))
 	records := make([]model.EvalRunJudge, 0, len(providers))
 	for _, provider := range providers {
+		// 剔除判定必须与 worker 执行侧（LoadJudgeRefs）**完全一致**。
+		//
+		// 为什么（父代理用真实验收发现的缺陷）：此前这里只判「生成者 / 同源 / 未启用」，
+		// 而 worker 还要求 provider 有可用的 API Key 与 BaseURL/Model。于是界面上
+		// 「可用裁判」列表里会出现**根本没有配置**的 provider（自动审查 harness 遗留的
+		// 空行：无 model、base_url=not-a-url、无 API key），用户按界面提示选了它们，
+		// 运行到 worker 才失败：
+		//
+		//   评估运行 19 没有可用裁判（已选定 2 个，环境候选 2 个）：生成者模型禁止自评；
+		//   请到「系统设置 → AI 服务」确认至少有一个非生成者的模型处于启用状态
+		//
+		// 这条错误把用户指向了**错误的方向**（让他去查自评规则），而真实原因是
+		// 「你选的 provider 没配 model/API key」。候选列表与执行侧口径不一致，
+		// 本质上是「界面承诺了做不到的事」。
+		//
+		// 判定顺序：把「配置不完整」放在「未启用」之后、「生成者」之后，
+		// 保证最具体、最可操作的原因优先展示给用户。
 		reason := ""
 		switch {
 		case generatorProviderID != 0 && provider.ID == generatorProviderID:
@@ -98,6 +117,13 @@ func ResolveJudges(_ context.Context, providers []model.ModelProvider, generator
 			reason = ExcludeReasonSameSource
 		case !provider.IsActive:
 			reason = ExcludeReasonInactive
+		case strings.TrimSpace(provider.APIKeyMasked) == "":
+			// 与 worker 的 `full.APIKey == ""` 同义：没有密钥就无法调用该模型。
+			reason = ExcludeReasonNoAPIKey
+		case strings.TrimSpace(provider.BaseURL) == "":
+			reason = ExcludeReasonNoBaseURL
+		case strings.TrimSpace(provider.Model) == "":
+			reason = ExcludeReasonNoModel
 		}
 
 		excluded := reason != ""

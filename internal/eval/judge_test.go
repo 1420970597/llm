@@ -11,6 +11,13 @@ import (
 // L7 核心需求：数据集评估用多 LLM 互评，生成该数据集的模型必须被排除。
 // 这些测试用纯函数 ResolveJudges，不依赖 DB 与网络。
 
+// provider 造一个「配置完整」的 provider。
+//
+// 必须填 APIKeyMasked：ResolveJudges 现在会剔除「没有密钥 / 没有 BaseURL / 没有模型名」
+// 的 provider —— 因为 worker 执行侧本来就要求这些（见 LoadJudgeRefs 的
+// `full.APIKey == ""` 判定）。候选列表与执行侧口径必须一致，否则界面会把
+// 「根本没法调用」的 provider 当成可用裁判，用户选了之后运行才失败
+// （父代理用真实验收复现：自动审查 harness 遗留的空 provider 被当成可用裁判）。
 func provider(id int64, name, baseURL, modelName string) model.ModelProvider {
 	return model.ModelProvider{
 		ID:           id,
@@ -19,6 +26,7 @@ func provider(id int64, name, baseURL, modelName string) model.ModelProvider {
 		Model:        modelName,
 		ProviderType: "openai-compatible",
 		IsActive:     true,
+		APIKeyMasked: "****test",
 	}
 }
 
@@ -236,5 +244,60 @@ func TestMarkExcludedTargetsOnlyGivenProvider(t *testing.T) {
 	}
 	if !records[1].Excluded || records[1].ExcludeReason != ExcludeReasonNoAPIKey {
 		t.Fatalf("provider 2 must be excluded with reason: %+v", records[1])
+	}
+}
+
+// TestResolveJudgesExcludesMisconfiguredProviders 锁定「候选列表与执行侧口径一致」。
+//
+// 背景（父代理用真实验收发现的缺陷）：界面的「可用裁判」列表此前只判
+// 「生成者 / 同源 / 未启用」，而 worker 执行侧（LoadJudgeRefs）还要求
+// provider 有可用的 API Key、BaseURL 与 Model。于是自动审查 harness 遗留的
+// 空 provider（无 model、base_url=not-a-url、无 API key）会出现在候选里，
+// 用户按界面提示选了它们，运行到 worker 才失败，且错误信息把用户指向
+// 「生成者模型禁止自评」这个**错误方向**。
+//
+// 本测试断言：配置不完整的 provider 必须在**候选阶段**就被剔除并给出可操作原因。
+func TestResolveJudgesExcludesMisconfiguredProviders(t *testing.T) {
+	full := provider(2, "B", "http://b.example/v1", "model-b")
+
+	noKey := provider(3, "C", "http://c.example/v1", "model-c")
+	noKey.APIKeyMasked = ""
+
+	noBaseURL := provider(4, "D", "", "model-d")
+
+	noModel := provider(5, "E", "http://e.example/v1", "")
+
+	providers := []model.ModelProvider{full, noKey, noBaseURL, noModel}
+
+	judges, records, err := ResolveJudges(context.Background(), providers, 0)
+	if err != nil {
+		t.Fatalf("ResolveJudges returned error: %v", err)
+	}
+
+	// 只有配置完整的 B 可用。
+	if len(judges) != 1 || judges[0].ProviderID != 2 {
+		t.Fatalf("只有配置完整的 provider 2 应可用，实际 judges=%+v", judges)
+	}
+
+	// 三个配置不完整的都必须带**可操作**的剔除原因（而不是笼统的「未启用」）。
+	wantReason := map[int64]string{
+		3: ExcludeReasonNoAPIKey,
+		4: ExcludeReasonNoBaseURL,
+		5: ExcludeReasonNoModel,
+	}
+	got := map[int64]string{}
+	for _, record := range records {
+		if record.Excluded {
+			got[record.ProviderID] = record.ExcludeReason
+		}
+	}
+	for id, reason := range wantReason {
+		if got[id] != reason {
+			t.Errorf("provider %d 的剔除原因应为 %q，实际 %q（用户需要知道**具体缺什么**才能去修）",
+				id, reason, got[id])
+		}
+	}
+	if len(got) != 3 {
+		t.Errorf("应有 3 个被剔除项，实际 %d：%+v", len(got), got)
 	}
 }
