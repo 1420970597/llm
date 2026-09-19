@@ -74,6 +74,7 @@ import {
   type Strategy,
   type User,
 } from './lib/api'
+import { withActiveDataset, resolveDatasetId } from './lib/taskGuard'
 import { CleaningView } from './views/CleaningView'
 import { EvaluationView } from './views/EvaluationView'
 
@@ -1198,6 +1199,23 @@ export default function App() {
     return false
   }, [navigate])
 
+  // 统一的「未选中任务」提示通道（issue #64）。
+  //
+  // 与 handleRequestError 的分工：那个处理「请求失败了」，这个处理「压根没法发请求 ——
+  // 缺前置条件」。两者都必须用户可见，否则就是静默失败。
+  //
+  // 同时给 Toast 与页内提示卡：Toast 负责「此刻看得见」，提示卡负责「划走之后还能找回」。
+  const notifyNoActiveTask = useCallback((message: string) => {
+    Toast.warning(message)
+    setTrustSignal({
+      tone: 'warning',
+      title: '尚未选择任务',
+      detail: message,
+      recoveryHint: '先到「我的任务」选一个任务进入详情，再回到本页执行该操作。',
+      nextStep: { label: '去选择任务', route: '/console/tasks' },
+    })
+  }, [])
+
   const loadAdminData = useCallback(async () => {
     if (!isAdmin) {
       setDashboard(null)
@@ -1439,10 +1457,11 @@ export default function App() {
   }
 
   const generateDomains = async () => {
-    if (!activeDatasetId) return Toast.warning('请先选择任务')
+    const datasetId = resolveDatasetId(activeDatasetId, notifyNoActiveTask, '生成方向结构')
+    if (!datasetId) return
     setActionLoading(true)
     try {
-      const nextGraph = await consoleApi.generateDomains(activeDatasetId)
+      const nextGraph = await consoleApi.generateDomains(datasetId)
       setGraph(nextGraph)
       Toast.success(`已生成 ${nextGraph.domains.length} 个方向`)
     } catch (error) {
@@ -1519,10 +1538,11 @@ export default function App() {
   }
 
   const generateQuestions = async () => {
-    if (!activeDatasetId) return
+    const datasetId = resolveDatasetId(activeDatasetId, notifyNoActiveTask, '生成题目')
+    if (!datasetId) return
     setActionLoading(true)
     try {
-      const result = await consoleApi.generateQuestions(activeDatasetId)
+      const result = await consoleApi.generateQuestions(datasetId)
       setStageRunMeta((current) => ({ ...current, questions: result }))
       setTrustSignal({
         tone: 'info',
@@ -1549,10 +1569,11 @@ export default function App() {
   }
 
   const generateReasoning = async () => {
-    if (!activeDatasetId) return
+    const datasetId = resolveDatasetId(activeDatasetId, notifyNoActiveTask, '生成答案')
+    if (!datasetId) return
     setActionLoading(true)
     try {
-      const result = await consoleApi.generateReasoning(activeDatasetId)
+      const result = await consoleApi.generateReasoning(datasetId)
       setStageRunMeta((current) => ({ ...current, reasoning: result }))
       setTrustSignal({
         tone: 'info',
@@ -1579,10 +1600,11 @@ export default function App() {
   }
 
   const generateRewards = async () => {
-    if (!activeDatasetId) return
+    const datasetId = resolveDatasetId(activeDatasetId, notifyNoActiveTask, '生成质量评估')
+    if (!datasetId) return
     setActionLoading(true)
     try {
-      const result = await consoleApi.generateRewards(activeDatasetId)
+      const result = await consoleApi.generateRewards(datasetId)
       setStageRunMeta((current) => ({ ...current, rewards: result }))
       setTrustSignal({
         tone: 'info',
@@ -1609,10 +1631,11 @@ export default function App() {
   }
 
   const generateExport = async () => {
-    if (!activeDatasetId) return
+    const datasetId = resolveDatasetId(activeDatasetId, notifyNoActiveTask, '导出结果')
+    if (!datasetId) return
     setActionLoading(true)
     try {
-      const result = await consoleApi.generateExport(activeDatasetId)
+      const result = await consoleApi.generateExport(datasetId)
       setStageRunMeta((current) => ({ ...current, export: result }))
       setTrustSignal({
         tone: 'info',
