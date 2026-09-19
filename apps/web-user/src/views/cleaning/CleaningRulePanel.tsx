@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Card, Empty, Input, InputNumber, Modal, Select, Space, Switch, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui'
 import { Pencil, RefreshCw } from 'lucide-react'
 import { consoleApi, type CleaningRule } from '../../lib/api'
@@ -26,14 +26,40 @@ export function CleaningRulePanel({
   rules,
   loading,
   onRefresh,
+  createRequestSignal = 0,
 }: {
   rules: CleaningRule[]
   loading: boolean
   onRefresh: () => Promise<void>
+  /**
+   * 递增计数器：值变化时打开「新建规则」弹窗（issue #106）。
+   *
+   * 为什么用计数器而不是 `openCreate={boolean}`：父组件需要能**反复**触发同一动作
+   * （用户在空状态里点了两次「去新建清洗规则」，第二次也必须打开弹窗）。
+   * 布尔 prop 在第二次把 true 改成 true 时不会触发任何变化；递增计数器的每次
+   * 自增都是新值，effect 必定重跑。这是 React 里传递命令式意图的惯用做法。
+   * 默认 0 表示父组件不使用这个入口。
+   */
+  createRequestSignal?: number
 }) {
   const [draft, setDraft] = useState<RuleDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
+
+  const openCreate = useCallback(
+    () => setDraft({ name: '', stageScope: [], minHits: 1, action: 'flag', priority: 100, isActive: true, config: {} }),
+    [],
+  )
+
+  // 响应父组件的「去新建规则」请求。跳过首渲染（signal 初始为 0），
+  // 否则页面一加载就会弹出新建弹窗。
+  const lastSignal = useRef(createRequestSignal)
+  useEffect(() => {
+    if (createRequestSignal !== lastSignal.current) {
+      lastSignal.current = createRequestSignal
+      openCreate()
+    }
+  }, [createRequestSignal, openCreate])
 
   const ordered = useMemo(() => sortRulesByPriority(rules), [rules])
 
@@ -140,7 +166,7 @@ export function CleaningRulePanel({
           <Button
             theme="solid"
             type="primary"
-            onClick={() => setDraft({ name: '', stageScope: [], minHits: 1, action: 'flag', priority: 100, isActive: true, config: {} })}
+            onClick={openCreate}
           >
             新建规则
           </Button>

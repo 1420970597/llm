@@ -130,11 +130,41 @@ export function CleaningKeywordPanel({
       Toast.warning('内置关键词不可删除，请改为停用')
       return
     }
+    // 二次确认（issue #105）。
+    //
+    // 为什么必须有：清洗关键词是清洗规则的判定依据，删错一条会直接改变后续所有清洗运行
+    // 的结果（被丢弃的样本不再进入导出），而删除不可撤销、没有回收站、也没有撤销入口。
+    // 破坏性且不可逆的操作不能直接生效。
+    //
+    // 遵循仓库既有惯例（与 views/eval/DimensionManager.tsx 的 confirmDelete 一致）：
+    // 用 Modal.confirm，而不是自定义弹窗，也不是原生 window.confirm。
+    //
+    // 确认文案要能回答三件事：删的是哪条、后果是什么、有没有替代做法。
+    Modal.confirm({
+      title: `删除关键词「${keyword.pattern}」？`,
+      content: (
+        <div className="console-stack">
+          <Text className="block">
+            删除后该词不再参与清洗匹配 —— 它原本命中的样本将不再被丢弃或标记，会随导出一起交付。
+          </Text>
+          <Text className="block console-caption">删除不可撤销，也无法恢复；若只是暂时不想用它，请改用「停用」（可随时重新启用）。</Text>
+        </div>
+      ),
+      okText: '删除',
+      cancelText: '取消',
+      onOk: async () => {
+        await performRemove(keyword)
+      },
+    })
+  }
+
+  /** 真正执行删除。抽出来是为了让确认弹窗的 onOk 保持简短，也便于测试直接驱动。 */
+  const performRemove = async (keyword: CleaningKeyword) => {
     setBusyId(keyword.id)
     try {
       await consoleApi.deleteCleaningKeyword(keyword.id)
       await onRefresh()
-      Toast.success('关键词已删除')
+      Toast.success(`已删除关键词「${keyword.pattern}」`)
     } catch (error) {
       Toast.error((error as Error).message)
     } finally {
@@ -207,6 +237,7 @@ export function CleaningKeywordPanel({
               icon={<Trash2 size={14} />}
               disabled={record.isBuiltin}
               loading={busyId === record.id}
+              title={record.isBuiltin ? '内置词是系统基线，可停用但不可删除' : '删除后不可撤销'}
               onClick={() => void removeKeyword(record)}
             >
               删除
