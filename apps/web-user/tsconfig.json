@@ -12,6 +12,12 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
+    // 死代码守卫：tsc 是 CI 的 Frontend job 唯一静态检查手段。
+    // 不开这两项时，「声明了但从未使用」的变量会被静默放行 ——
+    // 本轮实测 App.tsx 里积累了 7 个这样的变量（其中 4 个是 canGenerate*
+    // 就绪态判断，看着像在防按钮误点，其实根本没接线，属于「看起来有守卫、其实没有」）。
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]

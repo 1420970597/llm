@@ -966,10 +966,6 @@ export default function App() {
     : '请先创建任务'
   const activeTaskDetailRoute = activeDataset ? `/console/tasks/${activeDataset.id}` : '/console/tasks'
   const activeTaskNavLabel = activeDataset ? '返回当前任务' : '返回我的任务'
-  const canGenerateQuestions = activeDataset?.status === 'domains_confirmed'
-  const canGenerateReasoning = activeDataset?.status === 'questions_generated'
-  const canGenerateRewards = activeDataset?.status === 'reasoning_generated' || activeDataset?.status === 'reasoning_partial'
-  const canGenerateExport = activeDataset?.status === 'rewards_generated' || activeDataset?.status === 'rewards_partial'
   const filteredArtifacts = useMemo(() => {
     if (exportFilter === 'delivery') return artifacts.filter((item) => artifactUsageCategory(item) === 'delivery')
     if (exportFilter === 'review') return artifacts.filter((item) => artifactUsageCategory(item) === 'review')
@@ -2654,16 +2650,6 @@ export default function App() {
     const missingReasoningCount = reasoning.filter((item) => !item.reasoning.trim()).length
     const lowRewardCount = rewards.filter((item) => item.score < 0.5).length
     const deliveryArtifactCount = artifacts.filter((item) => artifactUsageCategory(item) === 'delivery').length
-    const reviewArtifactCount = artifacts.filter((item) => artifactUsageCategory(item) === 'review').length
-    const otherArtifactCount = artifacts.filter((item) => artifactUsageCategory(item) === 'other').length
-    const workbenchStats = [
-      { label: '主题结构', value: graph?.domains.length ?? 0, helper: '主题节点' },
-      { label: '问题结果', value: questions.length, helper: '问题数量' },
-      { label: '答案内容', value: reasoning.length, helper: '答案数量' },
-      { label: '质量评估', value: rewards.length, helper: '评分记录' },
-      { label: '导出文件', value: artifacts.length, helper: '交付或复核文件' },
-      { label: '等待任务', value: queueDepth, helper: '排队任务' },
-    ]
 
     return (
       <div className="console-page-shell">
