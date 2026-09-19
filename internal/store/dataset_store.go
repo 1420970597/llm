@@ -63,7 +63,7 @@ func (s *DatasetStore) Estimate(ctx context.Context, rootKeyword string, targetS
 	estimate.EstimatedQuestions = estimate.DomainCount * estimate.QuestionsPerDomain
 	estimate.EstimatedSamples = estimate.EstimatedQuestions * estimate.AnswerVariants * estimate.RewardVariants
 	if rootKeyword == "" {
-		return model.PlanEstimate{}, fmt.Errorf("root keyword is required")
+		return model.PlanEstimate{}, fmt.Errorf("请填写任务主题")
 	}
 	return estimate, nil
 }
@@ -155,7 +155,7 @@ func (s *DatasetStore) GetDataset(ctx context.Context, id int64) (model.Dataset,
 // UpdateDirectionCount 设置每个领域下生成的方向数量（m 用户可控）。
 func (s *DatasetStore) UpdateDirectionCount(ctx context.Context, datasetID int64, count int) error {
 	if count <= 0 {
-		return fmt.Errorf("direction count must be positive")
+		return fmt.Errorf("每领域方向数必须大于 0")
 	}
 	_, err := s.db.Exec(ctx, `UPDATE datasets SET direction_count = $2, updated_at = NOW() WHERE id = $1`, datasetID, count)
 	return err
@@ -164,7 +164,7 @@ func (s *DatasetStore) UpdateDirectionCount(ctx context.Context, datasetID int64
 // UpdateRewardLevels 设置 GRPO 打分档次（如 -1/0/1）。
 func (s *DatasetStore) UpdateRewardLevels(ctx context.Context, datasetID int64, levels []string) error {
 	if len(levels) < 2 {
-		return fmt.Errorf("at least two reward levels are required")
+		return fmt.Errorf("打分档次至少需要两档（例如 -1 与 1）")
 	}
 	payload, err := json.Marshal(levels)
 	if err != nil {
@@ -177,7 +177,7 @@ func (s *DatasetStore) UpdateRewardLevels(ctx context.Context, datasetID int64, 
 // UpdateQuestionsPerDirection 设置每个方向的问题数量（x 用户可控）。
 func (s *DatasetStore) UpdateQuestionsPerDirection(ctx context.Context, datasetID int64, count int) error {
 	if count <= 0 {
-		return fmt.Errorf("questions per direction must be positive")
+		return fmt.Errorf("每方向问题数必须大于 0")
 	}
 	_, err := s.db.Exec(ctx, `UPDATE datasets SET questions_per_direction = $2, updated_at = NOW() WHERE id = $1`, datasetID, count)
 	return err
@@ -186,7 +186,7 @@ func (s *DatasetStore) UpdateQuestionsPerDirection(ctx context.Context, datasetI
 // UpdateTargetKind 切换数据集训练类型（sft / grpo）。
 func (s *DatasetStore) UpdateTargetKind(ctx context.Context, datasetID int64, kind string) error {
 	if kind != "sft" && kind != "grpo" {
-		return fmt.Errorf("target kind must be sft or grpo")
+		return fmt.Errorf("训练类型只能是 sft 或 grpo")
 	}
 	_, err := s.db.Exec(ctx, `UPDATE datasets SET target_kind = $2, updated_at = NOW() WHERE id = $1`, datasetID, kind)
 	return err

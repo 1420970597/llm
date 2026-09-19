@@ -312,18 +312,126 @@ func (app *application) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 //
 // 另一个约定：5xx 不把内部错误原文回给客户端（可能含 SQL、连接串等），但也不能回
 // 英文兜底文案 —— 前端会把它直接渲染给中文用户，所以用中文。
+//
+// 第三条约定的由来（issue #102）：修复前上面两条只在 status >= 500 时生效，
+// 而 handler 常把 store 层错误直接以 **4xx** 上报（例如
+// `app.writeError(w, http.StatusNotFound, err)`，err 实际是 pgx.ErrNoRows）。
+// 那时 msg = err.Error() 会把驱动原文 `no rows in result set` 原样回给客户端。
+// 因此「不外泄内部实现」不能挂在状态码上，必须挂在**错误内容**上：
+//
+//   - 驱动层的「记录不存在」无论被上报成什么状态码，一律按 404 + 中文；
+//   - 4xx 的文案若是内部实现细节（SQL/驱动/表列名），替换为按状态码区分的
+//     安全中文，而不是原样透出；
+//   - 但 handler 已经用 userFacingError 给出的**具体**文案（例如「未找到该任务」
+//     与「未找到该评估运行」的区别）优先于上面的通用文案 —— 通用文案是兜底，
+//     不是替代品：丢弃具体文案会让用户不知道到底是哪类资源不存在。
+//
+// 为什么不逐个修 6 个调用点：`writeError` 是本包全部 ~150 个 handler 的唯一错误出口，
+// 逐个改会漏，且将来新写的 handler 会再次踩同一个坑。这里集中拦住才是根因修复。
 func (app *application) writeError(w http.ResponseWriter, status int, err error) {
-	msg := err.Error()
-	if status >= 500 {
+	// 优先级 1：handler 明确给出的用户可见文案（userFacingError）。
+	// 它已经保证不含内部细节，只需要修正可能的错误状态码。
+	var facing userFacingError
+	if errors.As(err, &facing) {
 		if errors.Is(err, pgx.ErrNoRows) {
 			status = http.StatusNotFound
-			msg = "请求的资源不存在"
-		} else {
-			log.Printf("internal error: %v", err)
-			msg = "服务暂时不可用，请稍后重试"
+		} else if status == 0 {
+			status = http.StatusBadRequest
 		}
+		app.writeJSON(w, status, map[string]string{"error": facing.Error()})
+		return
+	}
+
+	// 优先级 2：驱动层「记录不存在」。它是 404 而不是 5xx，
+	// 而且它的 Error() 就是英文驱动原文，绝不能进响应体。
+	if errors.Is(err, pgx.ErrNoRows) {
+		app.writeJSON(w, http.StatusNotFound, map[string]string{"error": msgResourceNotFound})
+		return
+	}
+
+	// 优先级 3：其余情况（5xx 隐藏细节；4xx 若是内部细节则换安全文案）。
+	msg := err.Error()
+	if status >= 500 {
+		log.Printf("internal error: %v", err)
+		msg = "服务暂时不可用，请稍后重试"
+	} else if looksLikeInternalDetail(msg) {
+		// 4xx 但文案是内部实现细节：按状态码回中文，并留下日志便于定位。
+		// 不把原文回给客户端，也不静默丢掉 —— 日志里仍可查到第一手信息。
+		log.Printf("client error with internal detail (status=%d): %v", status, err)
+		msg = clientErrorMessageFor(status)
 	}
 	app.writeJSON(w, status, map[string]string{"error": msg})
+}
+
+const msgResourceNotFound = "请求的资源不存在"
+
+// internalDetailMarkers 是「这段文案属于内部实现」的识别标记。
+//
+// 刻意只认驱动/SQL 层面的特征串，不做「含英文就替换」的宽泛判断 ——
+// 那会误伤合法的业务英文（例如用户填的模型名、导出格式名），
+// 而本仓库的产品文案本来就应当是中文（见 issue #102 的期望）。
+var internalDetailMarkers = []string{
+	"no rows in result set", // pgx.ErrNoRows 的 Error()
+	"SQLSTATE",              // Postgres 错误码前缀
+	"pq: ",                  // lib/pq 风格错误前缀
+	"pgx",
+	"sql: ",          // database/sql 风格
+	"syntax error",   // SQL 语法错误
+	"duplicate key",  // 唯一约束冲突
+	"violates ",      // constraint violation
+	"relation \"",    // 表名泄漏
+	"column \"",      // 列名泄漏
+	"does not exist", // 未映射的库层错误
+	"connection refused",
+	"i/o timeout",
+
+	// encoding/json 的错误文案会原样拼出这些英文片段。
+	// 用户提交畸形 body 时（可被轻易触发，例如 `{bad json`）
+	// 它们会经 writeError(w, 400, err) 直接渲染到界面上。
+	// `invalid character` 来自 Decoder 的 SyntaxError，
+	// `cannot unmarshal` / `unexpected end of JSON` 来自 Unmarshal/UnmarshalTypeError，
+	// 是不同代码路径，都要覆盖。
+	"looking for beginning of",
+	"unexpected end of JSON",
+	"cannot unmarshal",
+	"invalid character",
+	"json: ",
+}
+
+// looksLikeInternalDetail 判断一段错误文案是否含内部实现细节。
+//
+// 大小写不敏感：驱动文案的大小写并不稳定（`no rows in result set` 是小写，
+// 但 SQLSTATE 是大写）。
+func looksLikeInternalDetail(msg string) bool {
+	lower := strings.ToLower(msg)
+	for _, marker := range internalDetailMarkers {
+		if strings.Contains(lower, strings.ToLower(marker)) {
+			return true
+		}
+	}
+	return false
+}
+
+// clientErrorMessageFor 给出按状态码区分的安全中文文案。
+//
+// 为什么不用一句通用兜底：404 与 400 对用户意味着完全不同的下一步动作。
+// 404 要说「资源不存在」（用户应回去确认任务/记录是否还在），
+// 400 要说「请求参数有误」（用户应检查自己填的内容）。
+func clientErrorMessageFor(status int) string {
+	switch status {
+	case http.StatusNotFound:
+		return msgResourceNotFound
+	case http.StatusConflict:
+		return "当前状态不允许执行该操作，请刷新后重试"
+	case http.StatusForbidden:
+		return "没有执行该操作的权限，请联系管理员"
+	case http.StatusUnauthorized:
+		return "登录状态已失效，请重新登录"
+	case http.StatusMethodNotAllowed:
+		return "该操作不被支持，请刷新页面后重试"
+	default:
+		return "请求格式有误，请检查填写的内容后重试"
+	}
 }
 
 func (app *application) writeJSON(w http.ResponseWriter, status int, payload any) {

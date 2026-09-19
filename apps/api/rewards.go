@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
 	"time"
 
@@ -26,11 +26,11 @@ func (app *application) enqueueRewardGeneration(w http.ResponseWriter, r *http.R
 		return
 	}
 	if len(reasoning) == 0 {
-		app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue rewards: dataset %d has no reasoning records", id))
+		app.writeError(w, http.StatusConflict, errors.New(msgNoReasoning))
 		return
 	}
 	if len(reasoning) < len(questions) {
-		app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue rewards: dataset %d reasoning incomplete (%d/%d)", id, len(reasoning), len(questions)))
+		app.writeError(w, http.StatusConflict, errors.New(msgReasoningIncomplete))
 		return
 	}
 

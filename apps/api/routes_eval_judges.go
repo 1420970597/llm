@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -63,7 +64,7 @@ func (app *application) listEvalJudgeOptions(w http.ResponseWriter, r *http.Requ
 // 前端可以直接把生成者置灰并显示原因。
 func (app *application) datasetJudgeOptions(w http.ResponseWriter, r *http.Request, datasetID int64, rest string) {
 	if r.Method != http.MethodGet {
-		app.writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("GET only"))
+		app.writeError(w, http.StatusMethodNotAllowed, errors.New("该接口只支持 GET 请求"))
 		return
 	}
 
@@ -72,7 +73,7 @@ func (app *application) datasetJudgeOptions(w http.ResponseWriter, r *http.Reque
 	// 生成者未必是 id=1，写死 provider 1 会把剔除判定算错。
 	dataset, err := app.datasets.GetDataset(ctx, datasetID)
 	if err != nil {
-		app.writeError(w, http.StatusNotFound, fmt.Errorf("dataset %d not found", datasetID))
+		app.writeError(w, http.StatusNotFound, errors.New(msgDatasetNotFound))
 		return
 	}
 
@@ -114,7 +115,7 @@ func (app *application) datasetJudgeOptions(w http.ResponseWriter, r *http.Reque
 func (app *application) setEvalRunJudges(w http.ResponseWriter, r *http.Request) {
 	runID, err := strconv.ParseInt(strings.TrimSpace(r.PathValue("runId")), 10, 64)
 	if err != nil || runID <= 0 {
-		app.writeError(w, http.StatusBadRequest, fmt.Errorf("invalid eval run id"))
+		app.writeError(w, http.StatusBadRequest, errors.New("评估运行 ID 不是有效的整数"))
 		return
 	}
 
@@ -126,14 +127,14 @@ func (app *application) setEvalRunJudges(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if len(input.ProviderIDs) == 0 {
-		app.writeError(w, http.StatusBadRequest, fmt.Errorf("providerIds must not be empty"))
+		app.writeError(w, http.StatusBadRequest, errors.New("请至少选择一个评估裁判"))
 		return
 	}
 
 	judgeStore := app.evalJudgeStore()
 	generatorProviderID, err := judgeStore.GeneratorProviderID(r.Context(), runID)
 	if err != nil {
-		app.writeError(w, http.StatusNotFound, fmt.Errorf("eval run %d not found: %w", runID, err))
+		app.writeError(w, http.StatusNotFound, newUserFacingError(msgEvalRunNotFound, err))
 		return
 	}
 
@@ -173,7 +174,7 @@ func (app *application) setEvalRunJudges(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	if len(missing) > 0 {
-		app.writeError(w, http.StatusBadRequest, fmt.Errorf("unknown provider ids: %s", strings.Join(missing, ",")))
+		app.writeError(w, http.StatusBadRequest, fmt.Errorf("以下裁判不存在或已停用：%s", strings.Join(missing, "、/")))
 		return
 	}
 

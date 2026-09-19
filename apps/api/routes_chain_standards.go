@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -84,7 +85,7 @@ func (app *application) enqueueChainStandardGeneration(w http.ResponseWriter, r 
 		return
 	}
 	if dataset.ProviderID <= 0 {
-		app.writeError(w, http.StatusConflict, fmt.Errorf("dataset %d has no provider configured", id))
+		app.writeError(w, http.StatusConflict, errors.New(msgProviderUnavailable))
 		return
 	}
 
@@ -95,7 +96,7 @@ func (app *application) enqueueChainStandardGeneration(w http.ResponseWriter, r 
 	}
 	targets := filterDomainsByIDs(domains, input.DomainIDs)
 	if len(targets) == 0 {
-		app.writeError(w, http.StatusConflict, fmt.Errorf("dataset %d has no matching domains to generate chain standards for", id))
+		app.writeError(w, http.StatusConflict, errors.New(msgNoChainStepTargets))
 		return
 	}
 
@@ -137,7 +138,7 @@ func (app *application) updateChainStandard(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if len(input.Steps) == 0 {
-		app.writeError(w, http.StatusBadRequest, fmt.Errorf("steps must not be empty"))
+		app.writeError(w, http.StatusBadRequest, errors.New(msgStepsEmpty))
 		return
 	}
 
@@ -149,7 +150,7 @@ func (app *application) updateChainStandard(w http.ResponseWriter, r *http.Reque
 	updated, err := app.chainStandards().UpdateStepsWithVersion(r.Context(), id, domainID, input.Steps, input.ChangeNote, createdBy)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			app.writeError(w, http.StatusNotFound, err)
+			app.writeError(w, http.StatusNotFound, newUserFacingError(msgDatasetNotFound, err))
 			return
 		}
 		app.writeError(w, http.StatusInternalServerError, err)

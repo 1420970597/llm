@@ -87,7 +87,7 @@ func enqueueDirectionGeneration(app *application, w http.ResponseWriter, r *http
 	ctx := r.Context()
 	dataset, err := app.datasets.GetDataset(ctx, id)
 	if err != nil {
-		app.writeError(w, http.StatusNotFound, fmt.Errorf("dataset %d not found", id))
+		app.writeError(w, http.StatusNotFound, errors.New(msgDatasetNotFound))
 		return
 	}
 
@@ -105,7 +105,7 @@ func enqueueDirectionGeneration(app *application, w http.ResponseWriter, r *http
 		return
 	}
 	if len(domains) == 0 {
-		app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue directions: dataset %d has no domains, run domains/generate first", id))
+		app.writeError(w, http.StatusConflict, errors.New(msgNoDomains))
 		return
 	}
 
@@ -189,11 +189,11 @@ func listGenerationRuns(app *application, w http.ResponseWriter, r *http.Request
 // 复用的是同一条 generation_runs 记录，游标里的已完成领域会被 worker 跳过。
 func resumeGenerationRun(app *application, w http.ResponseWriter, r *http.Request, id int64, stage string) {
 	if stage == "" {
-		app.writeError(w, http.StatusBadRequest, fmt.Errorf("stage is required"))
+		app.writeError(w, http.StatusBadRequest, errors.New("缺少 stage：请指定要续跑的阶段"))
 		return
 	}
 	if !store.IsResumableStage(stage) {
-		app.writeError(w, http.StatusBadRequest, fmt.Errorf("stage %q is not resumable", stage))
+		app.writeError(w, http.StatusBadRequest, errors.New(msgRunNotResumable))
 		return
 	}
 
@@ -202,7 +202,7 @@ func resumeGenerationRun(app *application, w http.ResponseWriter, r *http.Reques
 
 	run, err := runs.ResumeTarget(ctx, id, stage)
 	if err != nil {
-		app.writeError(w, http.StatusNotFound, fmt.Errorf("no resumable run for dataset %d stage %s", id, stage))
+		app.writeError(w, http.StatusNotFound, errors.New(msgNoResumableRun))
 		return
 	}
 	// 断点续跑复用同一条运行记录，并累加 attempts 留痕。

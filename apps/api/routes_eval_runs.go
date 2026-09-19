@@ -58,7 +58,7 @@ func evalPathInt64(r *http.Request, name string) (int64, error) {
 	raw := strings.TrimSpace(r.PathValue(name))
 	value, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || value <= 0 {
-		return 0, errors.New("invalid " + name + " in path")
+		return 0, errors.New("路径里的 " + name + " 不是有效的整数")
 	}
 	return value, nil
 }
@@ -75,7 +75,7 @@ func (app *application) createEvalRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if input.DatasetID <= 0 {
-		app.writeError(w, http.StatusBadRequest, errors.New("datasetId is required"))
+		app.writeError(w, http.StatusBadRequest, errors.New("缺少 datasetId：请先选择要评估的任务"))
 		return
 	}
 
@@ -88,7 +88,7 @@ func (app *application) createEvalRun(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	dataset, err := app.datasets.GetDataset(ctx, input.DatasetID)
 	if err != nil {
-		app.writeError(w, http.StatusNotFound, errors.New("dataset not found"))
+		app.writeError(w, http.StatusNotFound, errors.New(msgDatasetNotFound))
 		return
 	}
 
@@ -237,7 +237,7 @@ func (app *application) listEvalRuns(w http.ResponseWriter, r *http.Request) {
 	if raw := strings.TrimSpace(r.URL.Query().Get("datasetId")); raw != "" {
 		parsed, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || parsed < 0 {
-			app.writeError(w, http.StatusBadRequest, errors.New("invalid datasetId"))
+			app.writeError(w, http.StatusBadRequest, errors.New("datasetId 不是有效的整数"))
 			return
 		}
 		datasetID = parsed
@@ -268,7 +268,7 @@ func (app *application) getEvalRun(w http.ResponseWriter, r *http.Request) {
 	run, err := runs.GetRun(ctx, runID)
 	if err != nil {
 		if store.IsEvalRunNotFound(err) {
-			app.writeError(w, http.StatusNotFound, errors.New("eval run not found"))
+			app.writeError(w, http.StatusNotFound, errors.New(msgEvalRunNotFound))
 			return
 		}
 		app.writeError(w, http.StatusInternalServerError, err)
@@ -311,7 +311,7 @@ func (app *application) startEvalRun(w http.ResponseWriter, r *http.Request) {
 	run, err := runs.GetRun(ctx, runID)
 	if err != nil {
 		if store.IsEvalRunNotFound(err) {
-			app.writeError(w, http.StatusNotFound, errors.New("eval run not found"))
+			app.writeError(w, http.StatusNotFound, errors.New(msgEvalRunNotFound))
 			return
 		}
 		app.writeError(w, http.StatusInternalServerError, err)
@@ -369,7 +369,7 @@ func (app *application) startEvalRun(w http.ResponseWriter, r *http.Request) {
 		// 入队本身失败（Redis 不可用）：必须把状态退回 failed，
 		// 否则运行会永远停在 queued，后续 start 只会返回「已在队列中」而永远没人执行。
 		_ = runs.UpdateRunStatus(ctx, runID, "failed", run.TotalItems, run.ScoredItems,
-			"入队失败："+err.Error())
+			msgEnqueueFailed)
 		app.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -377,7 +377,7 @@ func (app *application) startEvalRun(w http.ResponseWriter, r *http.Request) {
 		// 去重键仍在有效期内（上一次运行完成但 TTL 未过）。任务不会被执行，
 		// 必须把状态改回可重试的 failed，否则运行会永远停在 queued。
 		_ = runs.UpdateRunStatus(ctx, runID, "failed", run.TotalItems, run.ScoredItems,
-			"重复入队：去重键仍在有效期内，本次未执行")
+			msgDuplicateEnqueue)
 	}
 
 	app.audit(ctx, "start", "eval_run", strconv.FormatInt(runID, 10),
@@ -405,7 +405,7 @@ func (app *application) listEvalRunItems(w http.ResponseWriter, r *http.Request)
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed < 0 {
-			app.writeError(w, http.StatusBadRequest, errors.New("invalid limit"))
+			app.writeError(w, http.StatusBadRequest, errors.New("limit 不是有效的整数"))
 			return
 		}
 		limit = parsed
@@ -413,7 +413,7 @@ func (app *application) listEvalRunItems(w http.ResponseWriter, r *http.Request)
 	if raw := strings.TrimSpace(r.URL.Query().Get("offset")); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed < 0 {
-			app.writeError(w, http.StatusBadRequest, errors.New("invalid offset"))
+			app.writeError(w, http.StatusBadRequest, errors.New("offset 不是有效的整数"))
 			return
 		}
 		offset = parsed
@@ -426,7 +426,7 @@ func (app *application) listEvalRunItems(w http.ResponseWriter, r *http.Request)
 	// 前端无法区分「运行不存在」与「运行还没有条目」。
 	if _, err := runs.GetRun(ctx, runID); err != nil {
 		if store.IsEvalRunNotFound(err) {
-			app.writeError(w, http.StatusNotFound, errors.New("eval run not found"))
+			app.writeError(w, http.StatusNotFound, errors.New(msgEvalRunNotFound))
 			return
 		}
 		app.writeError(w, http.StatusInternalServerError, err)

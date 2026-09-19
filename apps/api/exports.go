@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -30,11 +30,11 @@ func (app *application) enqueueExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(rewards) == 0 {
-		app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue export: dataset %d has no reward records", id))
+		app.writeError(w, http.StatusConflict, errors.New(msgNoRewardRecords))
 		return
 	}
 	if len(rewards) < len(questions) {
-		app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue export: dataset %d rewards incomplete (%d/%d)", id, len(rewards), len(questions)))
+		app.writeError(w, http.StatusConflict, errors.New(msgRewardsIncomplete))
 		return
 	}
 
@@ -77,7 +77,7 @@ func (app *application) downloadArtifact(w http.ResponseWriter, r *http.Request)
 	}
 	artifactID := r.URL.Query().Get("artifactId")
 	if artifactID == "" {
-		app.writeError(w, http.StatusBadRequest, fmt.Errorf("missing required query parameter: artifactId"))
+		app.writeError(w, http.StatusBadRequest, errors.New("缺少必要的查询参数 artifactId，请从导出页面重新发起下载"))
 		return
 	}
 	items, err := app.artifacts.List(r.Context(), id)

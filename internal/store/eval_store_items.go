@@ -31,7 +31,7 @@ func NewEvalRunStore(db *pgxpool.Pool) *EvalRunStore {
 //
 // 用哨兵错误而非 pgx.ErrNoRows 直接外泄，使 HTTP 层能稳定映射到 404，
 // 不必依赖 pgx 的错误类型（那会把存储实现细节泄漏到 API 层）。
-var ErrEvalRunNotFound = errors.New("eval run not found")
+var ErrEvalRunNotFound = errors.New("未找到该评估运行")
 
 // IsEvalRunNotFound 判断错误是否为「运行不存在」。
 func IsEvalRunNotFound(err error) bool {
@@ -73,7 +73,7 @@ func scanEvalRun(row pgx.Row) (model.EvalRun, error) {
 // 用户可以先创建再配置裁判，最后才启动。
 func (s *EvalRunStore) CreateRun(ctx context.Context, input model.EvalRunCreateRequest) (model.EvalRun, error) {
 	if input.DatasetID <= 0 {
-		return model.EvalRun{}, fmt.Errorf("dataset id must be positive, got %d", input.DatasetID)
+		return model.EvalRun{}, fmt.Errorf("datasetId 必须为正整数，当前为 %d", input.DatasetID)
 	}
 
 	dimensionKeys := input.DimensionKeys

@@ -97,7 +97,11 @@ func executeEvalRun(ctx context.Context, jc *jobContext, runs *store.EvalRunStor
 		return err
 	}
 	if len(dimensions) == 0 {
-		err := fmt.Errorf("评估运行 %d 没有可用维度（dimension_keys=%v）", run.ID, run.DimensionKeys)
+		// 文案改造（issue #109 同类）：原串把内部字段名 dimension_keys 及其原始值
+		// 直接拼进用户可见的「错误摘要」。用户需要知道的是「怎么修」，
+		// 而不是列名；维度的具体键名对排查有用的部分由日志承载。
+		err := fmt.Errorf("该评估运行没有可用的评估维度（已配置 %d 个）。请到「质量评估 → 评估维度」确认维度处于启用状态后重试",
+			len(run.DimensionKeys))
 		_ = runs.UpdateRunStatus(ctx, run.ID, "failed", 0, 0, err.Error())
 		finish("failed", err.Error())
 		return err
@@ -126,7 +130,7 @@ func executeEvalRun(ctx context.Context, jc *jobContext, runs *store.EvalRunStor
 		// 两种成因都如实报错，不伪造一份空报告：
 		//   - 环境里只有生成者 provider（全部候选被自评规则剔除）
 		//   - 运行选定的裁判已被停用 / 移出环境
-		err := fmt.Errorf("评估运行 %d 没有可用裁判（已选定 %d 个，环境候选 %d 个）：生成者模型禁止自评，请确认裁判 provider 处于启用状态",
+		err := fmt.Errorf("评估运行 %d 没有可用裁判（已选定 %d 个，环境候选 %d 个）：生成者模型禁止自评；请到「系统设置 → AI 服务」确认至少有一个非生成者的模型处于启用状态",
 			run.ID, len(selectedJudgeIDs), len(candidates))
 		_ = runs.UpdateRunStatus(ctx, run.ID, "failed", 0, 0, err.Error())
 		finish("failed", err.Error())

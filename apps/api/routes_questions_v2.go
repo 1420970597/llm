@@ -52,7 +52,7 @@ func init() {
 func routeQuestionsV2(w http.ResponseWriter, r *http.Request, id int64, rest string) {
 	app := questionsAPI
 	if app == nil {
-		app.writeError(w, http.StatusInternalServerError, fmt.Errorf("application not initialized"))
+		app.writeError(w, http.StatusInternalServerError, errors.New("服务暂时不可用，请稍后重试"))
 		return
 	}
 
@@ -113,8 +113,9 @@ func enqueueQuestionsV2(w http.ResponseWriter, r *http.Request, app *application
 		return
 	}
 	if len(directions) == 0 {
-		app.writeError(w, http.StatusConflict, fmt.Errorf(
-			"cannot enqueue questions: dataset %d has no directions (level=2 domains); generate directions first", id))
+		// 文案改造（issue #102）：原英文串还把内部实现泄漏给用户
+		//（"level=2 domains"、"generate directions first" 指的都是库表结构）。
+		app.writeError(w, http.StatusConflict, errors.New(msgNoDirections))
 		return
 	}
 

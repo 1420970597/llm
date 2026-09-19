@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -83,11 +84,11 @@ func (app *application) enqueueSftGeneration(w http.ResponseWriter, r *http.Requ
 
 	dataset, err := app.datasets.GetDataset(r.Context(), id)
 	if err != nil {
-		app.writeError(w, http.StatusNotFound, err)
+		app.writeError(w, http.StatusNotFound, newUserFacingError(msgDatasetNotFound, err))
 		return
 	}
 	if dataset.ProviderID <= 0 {
-		app.writeError(w, http.StatusConflict, fmt.Errorf("dataset %d has no provider configured", id))
+		app.writeError(w, http.StatusConflict, errors.New(msgProviderUnavailable))
 		return
 	}
 
@@ -97,7 +98,7 @@ func (app *application) enqueueSftGeneration(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if len(questions) == 0 {
-		app.writeError(w, http.StatusConflict, fmt.Errorf("cannot enqueue sft generation: dataset %d has no questions", id))
+		app.writeError(w, http.StatusConflict, errors.New(msgNoQuestions))
 		return
 	}
 

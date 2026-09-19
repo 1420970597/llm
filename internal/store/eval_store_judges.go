@@ -111,7 +111,7 @@ func (s *EvalJudgeStore) ListRunJudges(ctx context.Context, runID int64) ([]mode
 // 整个操作在一个事务里，避免「删了旧的、新的没写进去」的中间态。
 func (s *EvalJudgeStore) UpsertRunJudges(ctx context.Context, runID int64, judges []model.EvalRunJudge) ([]model.EvalRunJudge, error) {
 	if runID <= 0 {
-		return nil, fmt.Errorf("eval run id must be positive, got %d", runID)
+		return nil, fmt.Errorf("评估运行 ID 必须为正整数，当前为 %d", runID)
 	}
 
 	tx, err := s.db.Begin(ctx)
@@ -126,10 +126,10 @@ func (s *EvalJudgeStore) UpsertRunJudges(ctx context.Context, runID int64, judge
 	seen := make(map[int64]struct{}, len(judges))
 	for _, judge := range judges {
 		if judge.ProviderID <= 0 {
-			return nil, fmt.Errorf("judge provider id must be positive, got %d", judge.ProviderID)
+			return nil, fmt.Errorf("评估裁判 ID 必须为正整数，当前为 %d", judge.ProviderID)
 		}
 		if _, duplicated := seen[judge.ProviderID]; duplicated {
-			return nil, fmt.Errorf("duplicate judge provider id %d", judge.ProviderID)
+			return nil, fmt.Errorf("评估裁判重复：ID %d 出现了多次", judge.ProviderID)
 		}
 		seen[judge.ProviderID] = struct{}{}
 		providerIDs = append(providerIDs, judge.ProviderID)
