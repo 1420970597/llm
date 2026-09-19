@@ -2747,6 +2747,93 @@ export default function App() {
     </div>
   )
 
+  const renderQuestionStage = () => (
+    renderRecordPage({ badge: '结果中心 / 题目结果', title: '题目生成结果中心', description: '查看题目生成质量、异常状态，并决定是否进入答案生成。', actionLabel: '开始生成题目', onGenerate: generateQuestions, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '问题结果已刷新') }, records: questions, emptyTitle: '尚未生成题目', emptyDescription: '请先确认主题，再开始生成题目。', summaryTitle: '题目阶段摘要', summaryCards: [{ icon: Layers3, label: '题目总数', value: questions.length, helper: '当前可用于后续步骤的题目数量' }, { icon: ShieldCheck, label: '状态正常', value: questions.filter((item) => item.status === 'generated').length, helper: '状态为“已生成”的题目数量' }, { icon: Bell, label: '待关注', value: questions.filter((item) => item.status !== 'generated').length, helper: '状态异常或处理中，建议优先复查' }], nextStepTips: ['优先复核“待关注”题目，确认是否需要重跑。', '抽检不同方向题目，避免主题覆盖不均。', '确认题目质量后再进入答案生成。'], exceptionHint: '若状态长时间停留在“处理中/排队中”，通常是等待任务较多或上游任务未完成，先刷新并查看等待任务数。', renderRecord: (record: Question) => { const state = questionStatusLabel(record.status); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="blue">{record.domainName}</Tag><Tag color={state.color}>{state.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.content}</Text></div> } })
+  )
+
+  const renderReasoningStage = () => (
+    renderRecordPage({ badge: '结果中心 / 答案结果', title: '答案与思路结果中心', description: '聚焦答案摘要质量，而非底层对象字段。', actionLabel: '开始生成答案', onGenerate: generateReasoning, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '推理结果已刷新') }, records: reasoning, emptyTitle: '尚未生成答案', emptyDescription: '请先完成题目生成，再开始生成答案。', summaryTitle: '答案阶段摘要', summaryCards: [{ icon: BrainCircuit, label: '答案总数', value: reasoning.length, helper: '已返回的答案与思路记录' }, { icon: ShieldCheck, label: '完整摘要', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '完整').length, helper: '摘要信息完整，可直接进入评估' }, { icon: Bell, label: '待补充', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '待补充').length, helper: '摘要过短，建议重试或人工复核' }], nextStepTips: ['先处理“待补充”答案，再批量进入质量评估。', '检查答案是否覆盖题目核心要点。', '确认摘要稳定后再触发奖励评估。'], exceptionHint: '若摘要内容明显过短或重复，通常是模型输出被截断或输入上下文不足，建议重跑该批次。', renderRecord: (record: ReasoningRecord) => { const quality = reasoningQualityLabel(record.answerSummary); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="cyan">答案摘要</Tag><Tag color={quality.color}>{quality.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.answerSummary}</Text><Text className="mt-2 block console-caption">{quality.note}</Text><Text className="mt-2 block console-caption">题目：{record.questionText}</Text></div> } })
+  )
+
+  const renderRewardStage = () => (
+    renderRecordPage({ badge: '结果中心 / 质量评估', title: '质量评分结果中心', description: '展示评分等级、风险提示与建议动作，支持快速决策。', actionLabel: '开始质量评估', onGenerate: generateRewards, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '奖励结果已刷新') }, records: rewards, emptyTitle: '尚未生成质量评估', emptyDescription: '先完成答案生成，再触发质量评估。', summaryTitle: '评估阶段摘要', summaryCards: [{ icon: ShieldCheck, label: '评分记录', value: rewards.length, helper: '已生成的质量评分条目' }, { icon: Sparkles, label: '高质量', value: rewards.filter((item) => item.score >= 0.85).length, helper: '可直接进入导出候选' }, { icon: Bell, label: '风险项', value: rewards.filter((item) => item.score < 0.5).length, helper: '建议先回修再继续流程' }], nextStepTips: ['优先处理“风险”与“待优化”记录。', '对“可交付”记录执行抽样复核。', '高质量样本可直接推进导出。'], exceptionHint: '若低分记录突然增多，通常意味着上游答案质量波动，建议回看答案阶段并抽样检查。', renderRecord: (record: RewardRecord) => { const quality = rewardQualityLabel(record.score); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color={quality.color}>{quality.text}</Tag><Tag color="green">评分 {record.score.toFixed(2)}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.questionText}</Text><Text className="mt-2 block console-caption">{quality.note}</Text></div> } })
+  )
+
+  const renderExportStage = () => (
+    renderRecordPage({
+                          badge: '结果中心 / 导出交付',
+                          title: '导出结果中心',
+                          description: '展示交付用途、来源版本与下载建议，帮助快速决定交付动作。',
+                          actionLabel: '开始导出结果',
+                          onGenerate: generateExport,
+                          onRefresh: async () => {
+                            if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '导出结果已刷新')
+                          },
+                          records: filteredArtifacts,
+                          emptyTitle: '尚未生成导出结果',
+                          emptyDescription: '完成质量评估后，即可触发导出。',
+                          summaryTitle: '导出阶段摘要',
+                          summaryCards: [
+                            {
+                              icon: HardDriveDownload,
+                              label: '可见导出文件',
+                              value: filteredArtifacts.length,
+                              helper: '按当前筛选展示的可处理文件数量',
+                            },
+                            {
+                              icon: FileOutput,
+                              label: '交付优先',
+                              value: artifacts.filter((item) => artifactUsageCategory(item) === 'delivery').length,
+                              helper: '推荐优先下载并交付下游的标准文件',
+                            },
+                            {
+                              icon: Bell,
+                              label: '需先确认',
+                              value: artifacts.filter((item) => artifactUsageCategory(item) !== 'delivery').length,
+                              helper: '建议先做复核或兼容性确认',
+                            },
+                          ],
+                          nextStepTips: [
+                            '先看“来源与版本”确认是否为当前任务的最新导出。',
+                            '根据“交付说明”判断文件用于正式交付还是内部复核。',
+                            '下载前按“下载建议”确认优先级，避免误发非目标格式。',
+                            '交付后同步文件标识，并要求下游反馈验收结果。',
+                          ],
+                          exceptionHint:
+                            '若导出后列表为空，多数是任务仍在队列中或上游质量评估未完成；若多次刷新仍为空，请先回到质量评分页确认已完成。',
+                          renderRecord: (record: Artifact) => {
+                            const usageCategory = artifactUsageCategory(record)
+                            return (
+                              <div key={record.id} className="console-record-item">
+                                <div className="flex items-center justify-between gap-3">
+                                  <Space>
+                                    <Tag color="violet">{artifactLabel(record.artifactType)}</Tag>
+                                    <Tag color={usageCategory === 'delivery' ? 'green' : usageCategory === 'review' ? 'blue' : 'grey'}>{artifactUsageLabel(usageCategory)}</Tag>
+                                  </Space>
+                                  <Text className="console-caption">{formatTime(record.createdAt)}</Text>
+                                </div>
+                                <Text className="mt-3 block">{artifactDisplayName(record.objectKey)}</Text>
+                                <Text className="mt-2 block console-caption">交付格式：{artifactContentTypeLabel(record.contentType)}</Text>
+                                <Text className="mt-1 block console-caption">来源与版本：{artifactSourceVersionHint(record)}</Text>
+                                <Text className="mt-1 block console-caption">格式说明：{artifactContentTypeHint(record.contentType)}</Text>
+                                <Text className="mt-1 block console-caption">交付说明：{artifactDeliveryNote(record)}</Text>
+                                <Text className="mt-1 block console-caption">下载建议：{artifactDownloadDecisionHint(record)}</Text>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <Button size="small" theme={exportFilter === 'all' ? 'solid' : 'light'} onClick={() => setExportFilter('all')}>查看全部</Button>
+                                  <Button size="small" theme={exportFilter === 'delivery' ? 'solid' : 'light'} onClick={() => setExportFilter('delivery')}>交付优先</Button>
+                                  <Button size="small" theme={exportFilter === 'review' ? 'solid' : 'light'} onClick={() => setExportFilter('review')}>复核资料</Button>
+                                  <Button size="small" theme={exportFilter === 'other' ? 'solid' : 'light'} onClick={() => setExportFilter('other')}>其他格式</Button>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <Button size="small" theme="solid" type="primary" onClick={() => downloadArtifact(record)}>下载结果</Button>
+                                  <Button size="small" theme="light" onClick={() => void copyArtifactKey(record.objectKey)}>复制交付标识</Button>
+                                </div>
+                              </div>
+                            )
+                          },
+                        })
+  )
+
   const renderResultsHub = () => (
     <div className="console-page-shell">
       <PageHeader
@@ -3644,11 +3731,11 @@ export default function App() {
                       <Route path="/console/evaluation" element={<EvaluationView datasets={datasets} />} />
                       <Route path="/console/cleaning" element={<CleaningView datasets={datasets} />} />
                       {isAdmin ? <Route path="/console/operations" element={renderOperations()} /> : null}
-                      <Route path="/console/domains" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/questions" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/reasoning" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/rewards" element={<Navigate to={activeTaskDetailRoute} replace />} />
-                      <Route path="/console/exports" element={<Navigate to={activeTaskDetailRoute} replace />} />
+                      <Route path="/console/domains" element={renderDomains()} />
+                      <Route path="/console/questions" element={renderQuestionStage()} />
+                      <Route path="/console/reasoning" element={renderReasoningStage()} />
+                      <Route path="/console/rewards" element={renderRewardStage()} />
+                      <Route path="/console/exports" element={renderExportStage()} />
                       <Route path="/console/help" element={renderHelp()} />
                       {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
                       {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
