@@ -82,6 +82,17 @@ import {
   type User,
 } from './lib/api'
 import { withActiveDataset, resolveDatasetId } from './lib/taskGuard'
+import {
+  DATASET_STATUS_PROGRESS,
+  DATASET_STATUS_ROUTE,
+  describeDatasetStatus,
+  type DatasetStatus,
+} from './lib/datasetStatus'
+import {
+  describeArtifactContentType,
+  describeArtifactType,
+  describeDomainReviewStatus,
+} from './lib/enumLabels'
 import { CleaningView } from './views/CleaningView'
 import { EvaluationView } from './views/EvaluationView'
 
@@ -142,66 +153,26 @@ const adminPages: NavPage[] = [
   { label: '操作记录', route: '/console/admin/audit', icon: Settings, caption: '查看变更记录', adminOnly: true },
 ]
 
+// 状态文案改由 lib/datasetStatus.ts 提供（单一事实来源，见该文件头部的 issue #98 说明）。
+// 函数签名保持不变，因此所有调用点无需改动。
+//
+// 关键变化：**default 不再返回原始状态串**。原实现 `default: return status`
+// 会把 directions_completed 这类内部英文标识直接显示给用户；现在未知状态走
+// describeDatasetStatus 的中性兜底文案。
 function statusLabel(status: string) {
-  switch (status) {
-    case 'draft':
-      return '待确认主题结构'
-    case 'domains_confirmed':
-      return '结构已确认，待生成问题'
-    case 'questions_queued':
-      return '问题生成排队中'
-    case 'questions_generated':
-      return '问题已就绪，待生成答案'
-    case 'questions_failed':
-      return '问题生成失败'
-    case 'reasoning_queued':
-      return '答案生成排队中'
-    case 'reasoning_generated':
-      return '答案已就绪，待质量评估'
-    case 'reasoning_partial':
-      return '答案部分生成，需复核'
-    case 'reasoning_failed':
-      return '答案生成失败'
-    case 'rewards_queued':
-      return '质量评分排队中'
-    case 'rewards_generated':
-      return '评估完成，可导出交付'
-    case 'rewards_partial':
-      return '评分部分完成，需复核'
-    case 'rewards_failed':
-      return '质量评分失败'
-    case 'export_queued':
-      return '导出任务排队中'
-    case 'export_generated':
-      return '导出已完成'
-    case 'export_failed':
-      return '导出失败'
-    default:
-      return status
-  }
+  return describeDatasetStatus(status).label
 }
 
 function progressPercent(status: string) {
-  switch (status) {
-    case 'draft':
-      return 15
-    case 'domains_confirmed':
-    case 'questions_queued':
-      return 35
-    case 'questions_generated':
-    case 'reasoning_queued':
-      return 55
-    case 'reasoning_generated':
-    case 'rewards_queued':
-      return 75
-    case 'rewards_generated':
-    case 'export_queued':
-      return 90
-    case 'export_generated':
-      return 100
-    default:
-      return 10
+  if (status in DATASET_STATUS_PROGRESS) {
+    return DATASET_STATUS_PROGRESS[status as DatasetStatus]
   }
+  // 已知后缀的未知状态：至少给一个「已经开始」的非零值，
+  // 不要像原实现那样落 default=10 却被 pipeline 的 completionPercent 盖成 0%。
+  if (status.endsWith('_generated') || status.endsWith('_completed')) return 100
+  if (status.endsWith('_queued')) return 35
+  if (status.endsWith('_failed') || status.endsWith('_partial_failed')) return 35
+  return 15
 }
 
 function nextActionLabel(status: string) {
@@ -209,7 +180,15 @@ function nextActionLabel(status: string) {
     case 'draft':
       return '先确认主题结构，再启动问题生成'
     case 'domains_confirmed':
+    case 'directions_completed':
       return '启动问题生成，补齐任务素材'
+    case 'directions_partial_failed':
+      return '先复核方向结果，再继续下一步'
+    case 'directions_queued':
+    case 'chain_standards_queued':
+    case 'grpo_queued':
+    case 'sft_queued':
+      return '等待后台处理完成后继续'
     case 'questions_queued':
       return '等待问题后进入答案生成'
     case 'questions_generated':
@@ -239,7 +218,16 @@ function waitingStateLabel(status: string, queueDepth: number) {
     case 'draft':
       return '等待你确认主题结构'
     case 'domains_confirmed':
+    case 'directions_completed':
       return '等待你启动问题生成'
+    case 'directions_queued':
+    case 'chain_standards_queued':
+      return '方向生成处理中'
+    case 'directions_partial_failed':
+      return '方向结果不完整，等待你复核'
+    case 'grpo_queued':
+    case 'sft_queued':
+      return '等待后台处理中'
     case 'questions_queued':
       return '题目生成处理中'
     case 'questions_generated':
@@ -271,7 +259,11 @@ function waitingReasonLabel(status: string, queueDepth: number) {
     case 'draft':
       return '结构未确认，尚未开始生成。'
     case 'domains_confirmed':
-      return '结构已确认，等待你启动问题生成。'
+      return '结构已确认，等待你启动方向与问题生成。'
+    case 'directions_completed':
+      return '方向结果已生成，等待你启动问题生成。'
+    case 'directions_partial_failed':
+      return '部分方向生成失败，建议复核后再继续。'
     case 'questions_generated':
       return '问题结果已准备好，等待你启动答案生成。'
     case 'reasoning_generated':
@@ -290,7 +282,10 @@ function waitingActionLabel(status: string) {
     case 'draft':
       return '前往「主题结构」'
     case 'domains_confirmed':
+    case 'directions_completed':
       return '前往「问题生成」，开始生成题目。'
+    case 'directions_partial_failed':
+      return '回到「主题结构」复核方向结果。'
     case 'questions_queued':
     case 'reasoning_queued':
     case 'rewards_queued':
@@ -343,31 +338,16 @@ function trustMessageLabel(status: string) {
 type StageKey = 'questions' | 'reasoning' | 'rewards' | 'export'
 
 function statusToActionRoute(status: string): string {
-  switch (status) {
-    case 'draft':
-      return '/console/domains'
-    case 'domains_confirmed':
-    case 'questions_queued':
-    case 'questions_generated':
-    case 'questions_failed':
-      return '/console/questions'
-    case 'reasoning_queued':
-    case 'reasoning_generated':
-    case 'reasoning_partial':
-    case 'reasoning_failed':
-      return '/console/reasoning'
-    case 'rewards_queued':
-    case 'rewards_generated':
-    case 'rewards_partial':
-    case 'rewards_failed':
-      return '/console/rewards'
-    case 'export_queued':
-    case 'export_generated':
-    case 'export_failed':
-      return '/console/exports'
-    default:
-      return '/console/domains'
+  if (status in DATASET_STATUS_ROUTE) {
+    return DATASET_STATUS_ROUTE[status as DatasetStatus]
   }
+  // 未知状态的去向：按后缀推断阶段，而不是一律回主题结构。
+  // 一律回主题结构是 issue #98 的第四个症状（方向已生成却把用户送回起点）。
+  if (status.includes('reasoning')) return '/console/reasoning'
+  if (status.includes('rewards') || status.includes('eval')) return '/console/rewards'
+  if (status.includes('export')) return '/console/exports'
+  if (status.includes('question')) return '/console/questions'
+  return '/console/domains'
 }
 
 function statusStageKey(status: string): StageKey | null {
@@ -399,6 +379,10 @@ function minutesSince(value?: string) {
 
 function etaBaseWindow(status: string) {
   switch (status) {
+    case 'directions_queued':
+      return { min: 3, max: 10 }
+    case 'chain_standards_queued':
+      return { min: 2, max: 8 }
     case 'questions_queued':
       return { min: 2, max: 8 }
     case 'reasoning_queued':
@@ -414,7 +398,8 @@ function etaBaseWindow(status: string) {
 
 function etaLabel(status: string, queueDepth: number, acceptedAt?: string) {
   if (status === 'export_generated') return '已完成，可立即下载交付'
-  if (status.endsWith('_generated')) return '阶段已完成，可进入下一步'
+  if (status.endsWith('_generated') || status.endsWith('_completed')) return '阶段已完成，可进入下一步'
+  if (status.endsWith('_partial_failed')) return '部分失败，需复核后重试'
   if (status.endsWith('_queued')) {
     const base = etaBaseWindow(status)
     if (!base) return '预计处理中'
@@ -454,6 +439,9 @@ function stageStateStyle(state: 'pending' | 'queued' | 'in_progress' | 'complete
   }
 }
 
+// 阶段名文案。取值域来自 internal/store/dataset_store.go:438-442 的 5 个 Key，
+// 当前被完整覆盖；但 `default: return key` 与 issue #98 是同一形态
+// （后端新增阶段时会把英文 key 显示给用户），因此兜底改为中文。
 function stageKeyLabel(key: string) {
   switch (key) {
     case 'domains':
@@ -467,7 +455,7 @@ function stageKeyLabel(key: string) {
     case 'export':
       return '导出交付'
     default:
-      return key
+      return '其他阶段'
   }
 }
 
@@ -483,33 +471,39 @@ function isForbiddenError(error: unknown) {
   return asApiError(error).statusCode === 403
 }
 
+// 领域来源文案。后端当前只写 "ai"（internal/llm/domain_generator.go:123）
+// 且 migration 默认也是 'ai'（0003_dataset_graph.sql:15），因此今天不会泄漏。
+// 但保留 `default: return source` 会让后端将来新增来源时再次暴露英文标识，
+// 故与 #98 一并消除该形态。
 function sourceLabel(source: string) {
   switch (source) {
     case 'ai':
       return '模型生成'
     default:
-      return source
+      return '其他来源'
   }
 }
 
+// 复核状态文案改由 lib/enumLabels.ts 提供（单一事实来源）。
+//
+// 这是 issue #98 的**同类缺陷**，父代理在检查同族函数时发现：
+// 旧实现只处理 approved / pending，而 `draft` 是数据库默认值
+// （sql/migrations/0003_dataset_graph.sql:16 的 DEFAULT 'draft'），
+// 于是落到 `default: return status`，把英文 "draft" 显示给用户。
+// 实测：库里全部 230 个 domain 的 review_status 都是 draft。
 function reviewStatusLabel(status: string) {
-  switch (status) {
-    case 'approved':
-      return '已确认'
-    case 'pending':
-      return '待复核'
-    default:
-      return status || '待复核'
-  }
+  return describeDomainReviewStatus(status)
 }
 
+// 工件类型文案同样改为单一事实来源。
+//
+// 旧实现只处理 'jsonl-export'，但 artifact_type 的实际取值是
+// `spec.Format + "-export"`（apps/worker/job_export_multi.go:113），
+// 格式取 internal/exporter/exporter.go:48 的 canonicalFormats
+// = [jsonl csv parquet alpaca sharegpt]。
+// 实测：库里已有 sharegpt-export 与 alpaca-export，用户看到的就是英文原始串。
 function artifactLabel(type: string) {
-  switch (type) {
-    case 'jsonl-export':
-      return 'JSONL 导出包'
-    default:
-      return type
-  }
+  return describeArtifactType(type)
 }
 
 function formatTime(value?: string) {
@@ -561,17 +555,10 @@ function artifactDisplayName(objectKey: string) {
   return objectKey.split('/').pop() || objectKey
 }
 
+// 内容类型文案同样收敛到单一事实来源：旧 default 是 `return contentType || '未知类型'`，
+// 会把 `application/octet-stream` 这类原始 MIME 头展示给用户。
 function artifactContentTypeLabel(contentType: string) {
-  switch (contentType) {
-    case 'application/jsonl':
-      return '训练数据（JSONL）'
-    case 'application/x-ndjson':
-      return '训练数据（NDJSON）'
-    case 'application/json':
-      return '结构化数据（JSON）'
-    default:
-      return contentType || '未知类型'
-  }
+  return describeArtifactContentType(contentType)
 }
 
 function artifactContentTypeHint(contentType: string) {
