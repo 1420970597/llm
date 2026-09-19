@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"time"
 
 	"github.com/1420970597/llm/internal/model"
 	"github.com/jackc/pgx/v5"
@@ -43,28 +42,35 @@ func scanGenerationRun(row pgx.Row) (model.GenerationRun, error) {
 }
 
 // StartRun 开启（或复用）一个阶段的运行记录。已存在未完成记录时返回该记录，实现断点续跑。
+//
+// 并发正确性（issue #9）：这里必须是**单语句原子 upsert**。历史实现是
+// SELECT(ActiveRun) → 无则 INSERT，两步之间没有任何互斥，两个并发请求都会
+// 查到 pgx.ErrNoRows 并各插一条 running，其中一条成为永久孤儿（ActiveRun 的
+// ORDER BY id DESC LIMIT 1 永远读不到它，FinishRun 也永远不会被调用）。
+//
+// 现在由数据库仲裁：部分唯一索引 uniq_generation_runs_active
+// （见 sql/migrations/0020_generation_runs_active_unique.sql）约束
+// 「同一 (dataset_id, stage) 至多一条活跃记录」，本语句用 ON CONFLICT
+// 命中该索引并把复用逻辑写进 DO UPDATE。
+//
+// 复用时刻意**不覆盖** cursor / total_units / done_units：那是断点续跑的进度，
+// 覆盖会让已完成的领域全部重跑。只重置活跃态、累加 attempts、清 finished_at。
 func (s *GenerationRunStore) StartRun(ctx context.Context, datasetID int64, stage string, totalUnits int) (model.GenerationRun, error) {
-	existing, err := s.ActiveRun(ctx, datasetID, stage)
-	if err == nil {
-		if _, updateErr := s.db.Exec(ctx, `
-      UPDATE generation_runs SET status = 'running', attempts = attempts + 1, updated_at = NOW()
-      WHERE id = $1`, existing.ID); updateErr != nil {
-			return model.GenerationRun{}, updateErr
-		}
-		return s.GetRun(ctx, existing.ID)
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return model.GenerationRun{}, err
-	}
-
-	now := time.Now()
 	return scanGenerationRun(s.db.QueryRow(ctx, `
     INSERT INTO generation_runs (dataset_id, stage, status, cursor, total_units, done_units, attempts, started_at, updated_at)
-    VALUES ($1, $2, 'running', '{}'::jsonb, $3, 0, 1, $4, NOW())
-    RETURNING `+generationRunColumns, datasetID, stage, totalUnits, now))
+    VALUES ($1, $2, 'running', '{}'::jsonb, $3, 0, 1, NOW(), NOW())
+    ON CONFLICT (dataset_id, stage) WHERE status IN ('pending', 'running')
+    DO UPDATE SET status = 'running',
+                  attempts = generation_runs.attempts + 1,
+                  finished_at = NULL,
+                  updated_at = NOW()
+    RETURNING `+generationRunColumns, datasetID, stage, totalUnits))
 }
 
 // ActiveRun 查询某阶段未结束的运行记录。
+//
+// ORDER BY id DESC 现在只是唯一的确定性排序：部分唯一索引保证匹配行至多 1 条，
+// 因此「读到哪一条」不再依赖索引里的 id 顺序，也不可能漏下孤儿。
 func (s *GenerationRunStore) ActiveRun(ctx context.Context, datasetID int64, stage string) (model.GenerationRun, error) {
 	return scanGenerationRun(s.db.QueryRow(ctx, `
     SELECT `+generationRunColumns+` FROM generation_runs
