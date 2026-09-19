@@ -73,8 +73,17 @@ func generateQuestionsForDomain(ctx context.Context, provider ProviderConfig, da
 
 	questions := make([]model.Question, 0, len(texts))
 	for index, text := range texts {
-		level, score := AssignDifficulty(index, len(texts))
 		content := strings.TrimSpace(text)
+		// 结构层通过不代表内容可用：模型会返回 ["...", "N/A"] 这类占位数组。
+		//
+		// 问题不能像推理记录那样标 invalid 落库：questions.status 由 store 层
+		// 硬编码为 'generated'（pipeline_store.go / question_store_v2.go），没有
+		// invalid 通道。因此对不合格的问题直接丢弃，不入库。
+		if assessment := AssessQuestionContent(content); !assessment.Valid {
+			log.Printf("questions.generate.content.invalid domain_id=%d reason=%s", domain.ID, assessment.Reason)
+			continue
+		}
+		level, score := AssignDifficulty(index, len(texts))
 		questions = append(questions, model.Question{
 			DatasetID:         dataset.ID,
 			DomainID:          domain.ID,
@@ -87,6 +96,14 @@ func generateQuestionsForDomain(ctx context.Context, provider ProviderConfig, da
 			DifficultyScore:   score,
 			Source:            "ai",
 			Status:            "generated",
+		})
+	}
+	if len(questions) == 0 {
+		// 全部被内容校验拦下：不能返回空切片，否则调用方会把数据集
+		// 推进到 questions_generated 却一条问题都没有。
+		return nil, newInvalidContentError(LongTextAssessment{
+			Field:  "content",
+			Reason: fmt.Sprintf("领域 %q 的 %d 条问题全部为占位内容", domain.Name, len(texts)),
 		})
 	}
 	return questions, nil
