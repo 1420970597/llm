@@ -1552,7 +1552,7 @@ export default function App() {
         nextStep: { label: '查看题目页', route: '/console/questions' },
       })
       Toast.success(result.message)
-      await loadDatasetWorkspace(activeDatasetId)
+      await loadDatasetWorkspace(datasetId)
     } catch (error) {
       const message = (error as Error).message
       setTrustSignal({
@@ -1583,7 +1583,7 @@ export default function App() {
         nextStep: { label: '查看推理页', route: '/console/reasoning' },
       })
       Toast.success(result.message)
-      await loadDatasetWorkspace(activeDatasetId)
+      await loadDatasetWorkspace(datasetId)
     } catch (error) {
       const message = (error as Error).message
       setTrustSignal({
@@ -1614,7 +1614,7 @@ export default function App() {
         nextStep: { label: '查看质量评估', route: '/console/rewards' },
       })
       Toast.success(result.message)
-      await loadDatasetWorkspace(activeDatasetId)
+      await loadDatasetWorkspace(datasetId)
     } catch (error) {
       const message = (error as Error).message
       setTrustSignal({
@@ -1645,7 +1645,7 @@ export default function App() {
         nextStep: { label: '前往结果交付', route: '/console/exports' },
       })
       Toast.success(result.message)
-      await loadDatasetWorkspace(activeDatasetId)
+      await loadDatasetWorkspace(datasetId)
     } catch (error) {
       const message = (error as Error).message
       setTrustSignal({
@@ -2582,7 +2582,7 @@ export default function App() {
             <>
               <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button>
               <Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>
-              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '方向结构已刷新')}>刷新结构</Button>
+              <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => withActiveDataset(activeDatasetId, notifyNoActiveTask, (id) => loadDatasetWorkspace(id, '方向结构已刷新'))}>刷新结构</Button>
               <Button theme="solid" type="primary" icon={<GitBranch size={16} />} loading={workspaceLoading} onClick={() => void generateDomains()}>生成方向结构</Button>
             </>
           }
@@ -2776,15 +2776,15 @@ export default function App() {
   )
 
   const renderQuestionStage = () => (
-    renderRecordPage({ badge: '结果中心 / 题目结果', title: '题目生成结果中心', description: '查看题目生成质量、异常状态，并决定是否进入答案生成。', actionLabel: '开始生成题目', onGenerate: generateQuestions, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '问题结果已刷新') }, records: questions, emptyTitle: '尚未生成题目', emptyDescription: '请先确认主题，再开始生成题目。', summaryTitle: '题目阶段摘要', summaryCards: [{ icon: Layers3, label: '题目总数', value: questions.length, helper: '当前可用于后续步骤的题目数量' }, { icon: ShieldCheck, label: '状态正常', value: questions.filter((item) => item.status === 'generated').length, helper: '状态为“已生成”的题目数量' }, { icon: Bell, label: '待关注', value: questions.filter((item) => item.status !== 'generated').length, helper: '状态异常或处理中，建议优先复查' }], nextStepTips: ['优先复核“待关注”题目，确认是否需要重跑。', '抽检不同方向题目，避免主题覆盖不均。', '确认题目质量后再进入答案生成。'], exceptionHint: '若状态长时间停留在“处理中/排队中”，通常是等待任务较多或上游任务未完成，先刷新并查看等待任务数。', renderRecord: (record: Question) => { const state = questionStatusLabel(record.status); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="blue">{record.domainName}</Tag><Tag color={state.color}>{state.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.content}</Text></div> } })
+    renderRecordPage({ badge: '结果中心 / 题目结果', title: '题目生成结果中心', description: '查看题目生成质量、异常状态，并决定是否进入答案生成。', actionLabel: '开始生成题目', onGenerate: generateQuestions, onRefresh: async () => { withActiveDataset(activeDatasetId, notifyNoActiveTask, (id) => loadDatasetWorkspace(id, '问题结果已刷新')) }, records: questions, emptyTitle: '尚未生成题目', emptyDescription: '请先确认主题，再开始生成题目。', summaryTitle: '题目阶段摘要', summaryCards: [{ icon: Layers3, label: '题目总数', value: questions.length, helper: '当前可用于后续步骤的题目数量' }, { icon: ShieldCheck, label: '状态正常', value: questions.filter((item) => item.status === 'generated').length, helper: '状态为“已生成”的题目数量' }, { icon: Bell, label: '待关注', value: questions.filter((item) => item.status !== 'generated').length, helper: '状态异常或处理中，建议优先复查' }], nextStepTips: ['优先复核“待关注”题目，确认是否需要重跑。', '抽检不同方向题目，避免主题覆盖不均。', '确认题目质量后再进入答案生成。'], exceptionHint: '若状态长时间停留在“处理中/排队中”，通常是等待任务较多或上游任务未完成，先刷新并查看等待任务数。', renderRecord: (record: Question) => { const state = questionStatusLabel(record.status); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="blue">{record.domainName}</Tag><Tag color={state.color}>{state.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.content}</Text></div> } })
   )
 
   const renderReasoningStage = () => (
-    renderRecordPage({ badge: '结果中心 / 答案结果', title: '答案与思路结果中心', description: '聚焦答案摘要质量，而非底层对象字段。', actionLabel: '开始生成答案', onGenerate: generateReasoning, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '推理结果已刷新') }, records: reasoning, emptyTitle: '尚未生成答案', emptyDescription: '请先完成题目生成，再开始生成答案。', summaryTitle: '答案阶段摘要', summaryCards: [{ icon: BrainCircuit, label: '答案总数', value: reasoning.length, helper: '已返回的答案与思路记录' }, { icon: ShieldCheck, label: '完整摘要', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '完整').length, helper: '摘要信息完整，可直接进入评估' }, { icon: Bell, label: '待补充', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '待补充').length, helper: '摘要过短，建议重试或人工复核' }], nextStepTips: ['先处理“待补充”答案，再批量进入质量评估。', '检查答案是否覆盖题目核心要点。', '确认摘要稳定后再触发奖励评估。'], exceptionHint: '若摘要内容明显过短或重复，通常是模型输出被截断或输入上下文不足，建议重跑该批次。', renderRecord: (record: ReasoningRecord) => { const quality = reasoningQualityLabel(record.answerSummary); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="cyan">答案摘要</Tag><Tag color={quality.color}>{quality.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.answerSummary}</Text><Text className="mt-2 block console-caption">{quality.note}</Text><Text className="mt-2 block console-caption">题目：{record.questionText}</Text></div> } })
+    renderRecordPage({ badge: '结果中心 / 答案结果', title: '答案与思路结果中心', description: '聚焦答案摘要质量，而非底层对象字段。', actionLabel: '开始生成答案', onGenerate: generateReasoning, onRefresh: async () => { withActiveDataset(activeDatasetId, notifyNoActiveTask, (id) => loadDatasetWorkspace(id, '推理结果已刷新')) }, records: reasoning, emptyTitle: '尚未生成答案', emptyDescription: '请先完成题目生成，再开始生成答案。', summaryTitle: '答案阶段摘要', summaryCards: [{ icon: BrainCircuit, label: '答案总数', value: reasoning.length, helper: '已返回的答案与思路记录' }, { icon: ShieldCheck, label: '完整摘要', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '完整').length, helper: '摘要信息完整，可直接进入评估' }, { icon: Bell, label: '待补充', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '待补充').length, helper: '摘要过短，建议重试或人工复核' }], nextStepTips: ['先处理“待补充”答案，再批量进入质量评估。', '检查答案是否覆盖题目核心要点。', '确认摘要稳定后再触发奖励评估。'], exceptionHint: '若摘要内容明显过短或重复，通常是模型输出被截断或输入上下文不足，建议重跑该批次。', renderRecord: (record: ReasoningRecord) => { const quality = reasoningQualityLabel(record.answerSummary); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="cyan">答案摘要</Tag><Tag color={quality.color}>{quality.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.answerSummary}</Text><Text className="mt-2 block console-caption">{quality.note}</Text><Text className="mt-2 block console-caption">题目：{record.questionText}</Text></div> } })
   )
 
   const renderRewardStage = () => (
-    renderRecordPage({ badge: '结果中心 / 质量评估', title: '质量评分结果中心', description: '展示评分等级、风险提示与建议动作，支持快速决策。', actionLabel: '开始质量评估', onGenerate: generateRewards, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '奖励结果已刷新') }, records: rewards, emptyTitle: '尚未生成质量评估', emptyDescription: '先完成答案生成，再触发质量评估。', summaryTitle: '评估阶段摘要', summaryCards: [{ icon: ShieldCheck, label: '评分记录', value: rewards.length, helper: '已生成的质量评分条目' }, { icon: Sparkles, label: '高质量', value: rewards.filter((item) => item.score >= 0.85).length, helper: '可直接进入导出候选' }, { icon: Bell, label: '风险项', value: rewards.filter((item) => item.score < 0.5).length, helper: '建议先回修再继续流程' }], nextStepTips: ['优先处理“风险”与“待优化”记录。', '对“可交付”记录执行抽样复核。', '高质量样本可直接推进导出。'], exceptionHint: '若低分记录突然增多，通常意味着上游答案质量波动，建议回看答案阶段并抽样检查。', renderRecord: (record: RewardRecord) => { const quality = rewardQualityLabel(record.score); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color={quality.color}>{quality.text}</Tag><Tag color="green">评分 {record.score.toFixed(2)}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.questionText}</Text><Text className="mt-2 block console-caption">{quality.note}</Text></div> } })
+    renderRecordPage({ badge: '结果中心 / 质量评估', title: '质量评分结果中心', description: '展示评分等级、风险提示与建议动作，支持快速决策。', actionLabel: '开始质量评估', onGenerate: generateRewards, onRefresh: async () => { withActiveDataset(activeDatasetId, notifyNoActiveTask, (id) => loadDatasetWorkspace(id, '奖励结果已刷新')) }, records: rewards, emptyTitle: '尚未生成质量评估', emptyDescription: '先完成答案生成，再触发质量评估。', summaryTitle: '评估阶段摘要', summaryCards: [{ icon: ShieldCheck, label: '评分记录', value: rewards.length, helper: '已生成的质量评分条目' }, { icon: Sparkles, label: '高质量', value: rewards.filter((item) => item.score >= 0.85).length, helper: '可直接进入导出候选' }, { icon: Bell, label: '风险项', value: rewards.filter((item) => item.score < 0.5).length, helper: '建议先回修再继续流程' }], nextStepTips: ['优先处理“风险”与“待优化”记录。', '对“可交付”记录执行抽样复核。', '高质量样本可直接推进导出。'], exceptionHint: '若低分记录突然增多，通常意味着上游答案质量波动，建议回看答案阶段并抽样检查。', renderRecord: (record: RewardRecord) => { const quality = rewardQualityLabel(record.score); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color={quality.color}>{quality.text}</Tag><Tag color="green">评分 {record.score.toFixed(2)}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.questionText}</Text><Text className="mt-2 block console-caption">{quality.note}</Text></div> } })
   )
 
   const renderExportStage = () => (
@@ -2795,7 +2795,7 @@ export default function App() {
                           actionLabel: '开始导出结果',
                           onGenerate: generateExport,
                           onRefresh: async () => {
-                            if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '导出结果已刷新')
+                            withActiveDataset(activeDatasetId, notifyNoActiveTask, (id) => loadDatasetWorkspace(id, '导出结果已刷新'))
                           },
                           records: filteredArtifacts,
                           emptyTitle: '尚未生成导出结果',
@@ -2872,7 +2872,7 @@ export default function App() {
           <>
             <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button>
             <Button onClick={() => navigate('/console/tasks')}>返回我的任务</Button>
-            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => activeDatasetId && void loadDatasetWorkspace(activeDatasetId, '数据资产页已刷新')}>刷新结果</Button>
+            <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => withActiveDataset(activeDatasetId, notifyNoActiveTask, (id) => loadDatasetWorkspace(id, '数据资产页已刷新'))}>刷新结果</Button>
           </>
         }
       />
@@ -3073,7 +3073,17 @@ export default function App() {
                 {activeDataset ? <Button onClick={() => navigate(activeTaskDetailRoute)}>返回当前任务</Button> : null}
                 <Button onClick={() => navigate('/console/planning')}>去新建任务</Button>
                 <Button onClick={() => navigate('/console/results')}>查看数据资产</Button>
-                <Button onClick={() => activeDatasetId ? void loadDatasetWorkspace(activeDatasetId, '当前任务状态已刷新') : void loadBootstrap('控制台数据已刷新')}>刷新当前任务状态</Button>
+                <Button onClick={() => {
+                  // 这一处在修复前就有可见反馈（回退刷新控制台数据 + Toast），但文案说的是
+                  // 「控制台数据已刷新」，而按钮写的是「刷新当前任务状态」—— 用户以为刷了新任务，
+                  // 其实刷的是控制台，属「反馈与意图不符」。
+                  // 这里先走统一守卫发出明确提示；未选中任务时保留原有的控制台刷新回退能力，
+                  // 但**不再谎报成功**（删掉回退的 successMessage）：
+                  // 用户只看到一条真话（当前没任务），数据依旧被刷新，不会出现两条互相矛盾的 Toast。
+                  if (!withActiveDataset(activeDatasetId, notifyNoActiveTask, (id) => loadDatasetWorkspace(id, '当前任务状态已刷新'))) {
+                    void loadBootstrap()
+                  }
+                }}>刷新当前任务状态</Button>
               </Space>
             </Card>
           </Card>
