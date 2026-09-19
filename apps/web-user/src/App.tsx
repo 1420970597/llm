@@ -79,8 +79,8 @@ import { EvaluationView } from './views/EvaluationView'
 import { StageNextStep } from './views/flow/StageNextStep'
 import { StageProgressDetail } from './views/flow/StageProgressDetail'
 import { TaskTemplatePicker, type TaskTemplate } from './views/flow/TaskTemplatePicker'
+import { resolveDownloadTarget, resolveDownloadPath } from './views/flow/downloadTarget'
 import {
-  PIPELINE_STAGES,
   currentStageFor,
   isStageDone,
   isStageFailed,
@@ -1722,22 +1722,19 @@ export default function App() {
   }
 
   const downloadArtifact = async (artifact: Artifact) => {
-    // 严格校验为正整数，而不是仅判断真值：datasetId/id 来自后端 JSON，
-    // 若因数据异常拿到非数字，拼接出的 URL 会变成 /api/v1/datasets/NaN/...，
-    // 请求必然失败且错误信息难以定位。此处提前拦住。
-    const datasetId = Number(artifact.datasetId)
-    const artifactId = Number(artifact.id)
-    if (!Number.isInteger(datasetId) || datasetId <= 0 || !Number.isInteger(artifactId) || artifactId <= 0) {
+    // 校验规则集中在 views/flow/downloadTarget 中（带单元测试），此处只负责与 UI 交互。
+    // 动机：datasetId/id 来自后端 JSON，若因数据异常拿到非数字，拼接出的 URL
+    // 会变成 /api/v1/datasets/NaN/...，请求必然失败且错误信息难以定位。
+    const target = resolveDownloadTarget(artifact.datasetId, artifact.id)
+    if (!target) {
       Toast.error('结果文件标识无效，请刷新结果页后重试')
       return
     }
     try {
-      // 同源白名单校验：只允许 /api/ 开头的相对路径。
-      // 该 URL 由 consoleApi.artifactDownloadUrl 用两个已校验的正整数拼成，
-      // 本就无法指向外部主机；这里再加一道断言，防止日后重构意外产出
-      // 绝对 URL（例如有人改成直接读后端返回的 downloadUrl 字段）。
-      const downloadPath = consoleApi.artifactDownloadUrl(datasetId, artifactId)
-      if (!downloadPath.startsWith('/api/')) {
+      const downloadPath = resolveDownloadPath(
+        consoleApi.artifactDownloadUrl(target.datasetId, target.artifactId),
+      )
+      if (!downloadPath) {
         Toast.error('结果文件下载地址异常，已阻止本次请求')
         return
       }
