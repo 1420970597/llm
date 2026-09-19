@@ -23,10 +23,35 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+/**
+ * 仓库的「主 checkout」目录名（如 `llm`）。
+ *
+ * 为什么不用 `path.basename(REPO_ROOT)`：本脚本可能在 git worktree 里运行
+ * （父代理为每条 lane 建了 worktree），此时 `REPO_ROOT` 的 basename 是 worktree
+ * 目录名（如 `r12`），不等于作者写文档时用的仓库目录名。
+ *
+ * 文档里写绝对路径（`/root/llm/docker-compose.yml`）时，前缀必然是**主 checkout**
+ * 的绝对路径。git 的 common dir 指向主 checkout 的 `.git`，其父目录正是该路径。
+ */
+function canonicalRepoPath() {
+  try {
+    const commonDir = execFileSync('git', ['rev-parse', '--git-common-dir'], {
+      cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+    return path.resolve(REPO_ROOT, path.dirname(path.resolve(REPO_ROOT, commonDir)))
+  } catch {
+    // 非 git 环境（或 git 不可用）时退回当前目录：宁可少报也不要报错。
+    return REPO_ROOT
+  }
+}
+
+const CANONICAL_REPO_PATH = canonicalRepoPath()
 
 /** 收集需要检查的 markdown 文件：README.md + docs/ 下全部 .md。 */
 function collectMarkdownFiles() {
@@ -79,6 +104,8 @@ const codeRefForward = []
 const codeRefResolvedViaShorthand = []
 const codeRefResolvedViaBasename = []
 const codeRefResolvedViaNumbered = []
+const codeRefResolvedViaAbsoluteTail = []
+const codeRefOutOfRepo = []
 
 function checkRelativeTarget(fromFile, rawTarget) {
   // 去掉可能的行内锚点与标题后缀
@@ -151,6 +178,9 @@ const CONTRACT_FORWARD_REFS = new Set([
   // R7 自选的测试文件名（契约 §2 只要求「Go 测试 + test/」，未冻结具体名字）。
   // 已核对 origin/lane/r7-dataset-provider-exists 上真实存在（+222 行）。
   'test/l15_dataset_provider.py',
+  // 多 LLM 互评需求验证 lane 的测试文件名（同样未在契约 §6.1 冻结）。
+  // 已核对 origin/lane/eval-multi-judge 上真实存在，PR #81 尚在评审中。
+  'test/l15_eval_multi_judge.py',
 ])
 
 /**
@@ -163,7 +193,7 @@ const isSuffixPattern = (ref) => ref.startsWith('_') || ref.includes('*')
  * 形似路径但不是「本仓库真实文件引用」的写法，显式跳过。
  *
  * 与 CONTRACT_FORWARD_REFS 的区别：白名单是「契约冻结、尚未创建」的**前向引用**
- * （会被单独列出让人审查）；这里是**从来就不打算指向具体文件**的写法，
+ * （会被单独列出让人审查）；这里是**从来就不打算指向仓库内具体文件**的写法，
  * 列入后静默跳过。写入这里必须有理由，不能拿来掩盖真实的路径漂移。
  */
 const CODE_REF_IGNORE = [
@@ -175,6 +205,17 @@ const CODE_REF_IGNORE = [
   // CODE_REF_PATTERN 切成两段，这里按「文档标题里的省略写法」跳过。
   /^\.\.\./,
 ]
+
+/**
+ * 仓库外的编排产物（**有意不入库**），无法用仓库相对路径校验。
+ *
+ * 父代理的编排脚本放在 /root/pi-waves/ 而不是仓库里（它是一次性的编排参数，
+ * 不是产品交付物）。docs/plans/round2-lane-board.md 引用它时用的是裸文件名。
+ * 列入此处会在摘要里单独列出，便于审查者确认「未校验的仓库外引用只有这些」。
+ */
+const OUT_OF_REPO_REFS = new Set([
+  'wave1.js', // /root/pi-waves/wave1.js（父代理的 wave1 orchestration script）
+])
 
 /**
  * 仓库内全部文件的 basename 索引（只建一次）。
@@ -206,7 +247,40 @@ function buildBasenameIndex() {
  * 按多基准解析一个相对路径。
  * 返回 { path, how } 或 null；how 取值：exact / shorthand / basename / numbered。
  */
+/** 判断一个绝对路径是否落在当前仓库内。 */
+function isInsideRepo(ref) {
+  const rel = path.relative(REPO_ROOT, ref)
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
+}
+
 function resolveRef(ref) {
+  // 绝对路径：先判断是否落在仓库内。
+  //
+  // 文档里会写运行环境中的绝对路径（例如 `docker inspect` 输出的
+  // `/root/llm/docker-compose.yml`），也可能写仓库外的编排产物
+  // （`/root/pi-waves/wave1.js`）。前者能用仓库相对路径校验，后者不能
+  // （CI 里根本没有 /root/pi-waves）。
+  if (path.isAbsolute(ref)) {
+    if (isInsideRepo(ref)) {
+      return existsSync(ref) ? { path: path.relative(REPO_ROOT, ref), how: 'exact' } : null
+    }
+    // 仓库根的绝对路径写法：文档引用运行环境时会把仓库根写成绝对形式
+    //（例如 board 里 `docker inspect` 的输出 `/root/llm/docker-compose.yml`）。
+    // 逐级剥掉前缀，把尾巴当仓库相对路径再解析 —— 这样仍能捕获
+    // 「被绝对路径引用的仓库文件被改名/删除」的真实漂移，而不是一律放行。
+    // 注意：这里命中说明「仓库里存在同名尾巴」，不能因为 /root/llm 不等于
+    // 当前 worktree 就判定失败 —— 但也不能跳过校验（删掉文件就应报错）。
+    let tail = ref.replace(/^\/+/, '')
+    while (tail.includes('/')) {
+      tail = tail.slice(tail.indexOf('/') + 1)
+      const resolved = resolveRef(tail)
+      if (resolved) return { path: resolved.path, how: 'absolute-tail' }
+    }
+    // 确实在仓库外且在仓库里找不到同名尾巴（如 /root/pi-waves/wave1.js）：
+    // 不谎报可解析，交上层归类为「仓库外引用」。
+    return null
+  }
+
   for (const root of RESOLVE_ROOTS) {
     const candidate = root ? path.join(REPO_ROOT, root, ref) : path.join(REPO_ROOT, ref)
     if (existsSync(candidate)) {
@@ -224,14 +298,6 @@ function resolveRef(ref) {
     if (dirMatches.length > 0) return { path: dirMatches[0], how: 'basename' }
   }
 
-  // 编号前缀写法的解析。
-  //
-  // 仓库的迁移文件命名是 `<NNNN>_<name>.sql`，而文档（包括已冻结的
-  // docs/plans/eval-and-cleaning-plan.md 的编号归属表）习惯把编号与文件名分列引用：
-  // 表格里写 `0011` 与 `eval_core.sql` 两列，指向同一个文件 0011_eval_core.sql。
-  // 这是既有写作惯例，不是路径漂移，因此按「带编号前缀的 basename 唯一匹配」解析。
-  // 只在唯一命中时接受：多份同名变体（0001_x.sql 与 0002_x.sql）会被判为歧义而不解析，
-  // 避免用一个看似合理的猜测掩盖真实的引用错误。
   // 编号前缀写法的解析。
   //
   // 仓库的迁移文件命名是 `<NNNN>_<name>.sql`，而文档（包括已冻结的
@@ -265,6 +331,12 @@ function checkCodeRefs(fromFile, markdown) {
       continue
     }
 
+    // 仓库外的编排产物（有意不入库）：单独列出供审查，不算失败也不算通过。
+    if (OUT_OF_REPO_REFS.has(ref)) {
+      codeRefOutOfRepo.push(ref)
+      continue
+    }
+
     const resolved = resolveRef(ref)
     if (resolved) {
       codeRefChecked.push(ref)
@@ -274,7 +346,28 @@ function checkCodeRefs(fromFile, markdown) {
         codeRefResolvedViaBasename.push(`${ref} -> ${resolved.path}`)
       } else if (resolved.how === 'numbered') {
         codeRefResolvedViaNumbered.push(`${ref} -> ${resolved.path}`)
+      } else if (resolved.how === 'absolute-tail') {
+        codeRefResolvedViaAbsoluteTail.push(`${ref} -> ${resolved.path}`)
       }
+      continue
+    }
+
+    // 未解析的绝对路径：区分「指向仓库根、但文件不存在」与「确实在仓库外」。
+    //
+    // 关键区分依据：主 checkout 的绝对路径（CANONICAL_REPO_PATH，如 `/root/llm`）。
+    //   - 以它开头  → 作者本意是指向本仓库，解析失败就是**真实漂移**
+    //     （文件被改名/删除），必须报错；
+    //   - 不以它开头 → 确实在仓库外（如 `/root/pi-waves/...`），
+    //     归为「仓库外引用」列出供审查，不阻断。
+    // 这样 CI 里的 `/root/llm/...` 仍然有效，同时不会把任意绝对路径放行。
+    if (path.isAbsolute(ref)) {
+      if (ref === CANONICAL_REPO_PATH || ref.startsWith(CANONICAL_REPO_PATH + '/')) {
+        problems.push(
+          `${path.relative(REPO_ROOT, fromFile)}: 代码引用路径不存在 -> \`${ref}\`（指向本仓库的绝对路径，文件已改名或删除？）`,
+        )
+        continue
+      }
+      codeRefOutOfRepo.push(ref)
       continue
     }
 
@@ -328,9 +421,14 @@ console.log(`  代码路径引用：${codeRefChecked.length} 条`)
 console.log(`    · 其中简写路径按基准解析命中：${new Set(codeRefResolvedViaShorthand).size} 条`)
 console.log(`    · 其中裸文件名按 basename 回查命中：${new Set(codeRefResolvedViaBasename).size} 条`)
 console.log(`    · 其中编号前缀写法命中：${new Set(codeRefResolvedViaNumbered).size} 条`)
+console.log(`    · 其中绝对路径尾巴命中：${new Set(codeRefResolvedViaAbsoluteTail).size} 条`)
 console.log(`    · 跳过非仓库路径写法 / 后缀模式：${codeRefSkipped.length} 条`)
 console.log(`    · 契约冻结的前向引用（文件尚未创建，符合契约 §6.1）：${[...new Set(codeRefForward)].length} 条`)
 for (const ref of [...new Set(codeRefForward)].sort()) {
+  console.log(`        ~ ${ref}`)
+}
+console.log(`    · 仓库外引用（有意不入库的运行环境路径，不参与校验）：${[...new Set(codeRefOutOfRepo)].length} 条`)
+for (const ref of [...new Set(codeRefOutOfRepo)].sort()) {
   console.log(`        ~ ${ref}`)
 }
 
