@@ -389,6 +389,16 @@ type EvalSourceItem struct {
 //
 // 只取 cleaning_status <> 'dropped' 的问题：已被清洗判定丢弃的数据
 // 不应再占用评估资源，否则报告会掺入已知的脏数据。
+//
+// 状态过滤（契约 §1.3「只有 generated 可进入导出与评估」）：
+// 谓词写在 **JOIN 条件里而不是 WHERE 里**，两者语义不同：
+//   - 写在 JOIN 条件里：状态不合格的记录不会被带入，但问题行本身仍保留
+//     （上面 COALESCE 到空串，回退链与「该阶段还没跑」一致）；
+//   - 写在 WHERE 里：会把问题行一起滤掉，让「没有可评估数据」与
+//     「数据全被判定无效」两种情形无法区分。
+//
+// 注意 `invalid`（模型返回占位内容，issue #7）必须与 failed 同等看待，
+// 否则占位内容会进入评估、污染报告。
 func (s *EvalRunStore) LoadEvalSources(ctx context.Context, datasetID int64) ([]EvalSourceItem, error) {
 	rows, err := s.db.Query(ctx, `
     SELECT q.id, q.content,
@@ -397,7 +407,8 @@ func (s *EvalRunStore) LoadEvalSources(ctx context.Context, datasetID int64) ([]
            q.difficulty, q.domain_id
     FROM questions q
     LEFT JOIN sft_records s ON s.dataset_id = q.dataset_id AND s.question_id = q.id
-    LEFT JOIN reasoning_records r ON r.question_id = q.id
+                              AND s.status = 'generated'
+    LEFT JOIN reasoning_records r ON r.question_id = q.id AND r.status = 'generated'
     WHERE q.dataset_id = $1 AND q.cleaning_status <> 'dropped'
     ORDER BY q.id ASC`, datasetID)
 	if err != nil {
