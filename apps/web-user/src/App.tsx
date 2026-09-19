@@ -537,6 +537,35 @@ function formatTime(value?: string) {
   }).format(new Date(value))
 }
 
+// stageRouteDatasetId 从**阶段路由**的查询串里取任务 id（?taskId=NN）。
+//
+// 为什么需要它（issue #104 的隐藏成因）：
+// 阶段路由（/console/results|questions|reasoning|rewards|exports）本身不携带任务 id，
+// 而 taskRouteDatasetId 只匹配 /console/tasks/{id}。于是用户**直接打开或刷新**
+// 一个阶段路由时 activeDatasetId 为空，页面显示「当前任务：未选择」与空列表 ——
+// 即使他刚在任务详情页看过该任务。
+//
+// 典型受害场景正是 #104：「数据资产」页自我定位包含「交付文件」，
+// 用户直接访问它却拿不到任何交付文件（因为压根没加载任务）。
+//
+// 约定：阶段页链接统一带 ?taskId=NN；没有该参数时退回全局导航行为（不改状态）。
+function stageRouteDatasetId(search: string) {
+  const raw = new URLSearchParams(search).get('taskId')
+  if (!raw) return null
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+// stageRouteWithTask 把当前任务 id 附到阶段路由上（?taskId=NN）。
+//
+// 这样用户从任务详情页跳到阶段页后，**刷新或直接访问该 URL 仍能恢复任务上下文**；
+// 没有选中任务时原样返回路由（保持全局导航语义，不伪造 taskId）。
+function stageRouteWithTask(route: string, datasetId: number | null | undefined) {
+  if (!route.startsWith('/console/')) return route
+  if (!datasetId) return route
+  return `${route}${route.includes('?') ? '&' : '?'}taskId=${datasetId}`
+}
+
 function taskRouteDatasetId(pathname: string) {
   const matched = pathname.match(/^\/console\/tasks\/(\d+)(?:\/)?$/)
   if (!matched) return null
@@ -1467,7 +1496,10 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return
-    const routeDatasetId = taskRouteDatasetId(location.pathname)
+    // 优先认任务详情路由（/console/tasks/{id}）；
+    // 其次认阶段路由上的 ?taskId=NN —— 否则直接打开/刷新阶段路由会丢上下文
+    //（这正是 #104「数据资产页拿不到交付文件」的隐藏成因）。
+    const routeDatasetId = taskRouteDatasetId(location.pathname) ?? stageRouteDatasetId(location.search)
     if (!routeDatasetId) return
     if (routeDatasetId === activeDatasetId && graph?.dataset.id === routeDatasetId) return
     void loadDatasetWorkspace(routeDatasetId)
@@ -2798,7 +2830,7 @@ export default function App() {
                 key={stage.key}
                 className="console-panel"
                 style={{ cursor: 'pointer', borderRadius: 20, border: '1px solid rgba(var(--semi-grey-2), 0.12)', background: 'color-mix(in srgb, var(--semi-color-bg-1) 86%, white 14%)' }}
-                onClick={() => navigate(stage.route)}
+                onClick={() => navigate(stageRouteWithTask(stage.route, activeDataset?.id))}
               >
                 <div style={{ padding: 18 }}>
                   <div className="flex items-center justify-between gap-3">
@@ -4243,7 +4275,7 @@ export default function App() {
                           icon={<page.icon size={18} />}
                           theme={activeNav === page.route ? 'light' : 'borderless'}
                           type={activeNav === page.route ? 'primary' : 'tertiary'}
-                          onClick={() => navigate(page.route)}
+                          onClick={() => navigate(stageRouteWithTask(page.route, activeDataset?.id))}
                         />
                       ))}
                       {isAdmin ? (
