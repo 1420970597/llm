@@ -16,6 +16,15 @@ type rewardPayload struct {
 	Rationale string  `json:"rationale"`
 }
 
+// rewardTimeout 是本阶段单次 LLM 调用的超时。
+//
+// 原为 60s，是四个生成阶段里最短的 —— 而评分要求模型写出多维度中文理由，
+// 输出长度与问答/长链思考同级。R11 lane 实测一道带具体场景的题目的评分调用
+// 容易逼近这个上限（同批次的 reasoning 阶段实测需 84.5s）。
+// 对齐到与 question_generator_v2.go / sft_generator.go / reasoning_generator.go
+// 一致的 300s，消除「同一代码库四个阶段三个不同上限」的不一致。
+const rewardTimeout = 300 * time.Second
+
 func GenerateRewards(ctx context.Context, provider ProviderConfig, dataset model.Dataset, questions []model.Question, promptTemplate *model.PromptTemplate) ([]model.RewardRecord, map[int64]rewardPayload, error) {
 	records := make([]model.RewardRecord, 0, len(questions))
 	payloads := map[int64]rewardPayload{}
@@ -78,7 +87,7 @@ func generateRewardForQuestion(ctx context.Context, provider ProviderConfig, dat
 		},
 	}
 	applyReasoningEffort(payload, provider)
-	decoded, err := requestChatCompletion(ctx, provider, payload, 60*time.Second)
+	decoded, err := requestChatCompletion(ctx, provider, payload, rewardTimeout)
 	if err != nil {
 		return rewardPayload{}, err
 	}
