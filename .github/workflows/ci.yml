@@ -14,6 +14,19 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# 最小权限：CI 只读仓库内容。
+#
+# 为什么要显式声明：不声明时，仓库/组织的默认 GITHUB_TOKEN 权限可能是「读写全部」
+# （取决于仓库设置），而本工作流的**每个 job 都只需要读代码** ——
+# backend/frontend 是纯构建与测试，stack 是本地起 compose。
+# 显式收紧到 contents: read 后，即使某个第三方 action 被投毒，
+# 它也拿不到写权限去改代码/发 release。
+#
+# 注意：cd.yml 需要 push 镜像（packages: write）与写部署状态，因此**不在**这里统一收紧，
+# 而是在该工作流内部按 job 声明其所需权限。
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend (go build + test)
@@ -50,6 +63,33 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build -w apps/web-user
+
+      # 契约冻结的 UI 守卫（test/l15_*.mjs）。
+      #
+      # 为什么必须在这里跑：这些脚本的默认路径是**源码级 + esbuild 渲染**断言，
+      # 不需要任何容器，但此前**没有任何 CI job 执行它们** —— 于是它们只在
+      # 人工运行时才有防回归作用。
+      #
+      # 实测代价：合并 PR #112 时，buildInfo.ts 引入 `import.meta.env` 的直接访问，
+      # `npm run build`（tsc + vite build）**完全通过**（Vite 下它是正常的），
+      # 却让两个 esbuild 渲染腿脚本崩溃（`Cannot read properties of undefined`）。
+      # 若当时 CI 跑了这些脚本，那个回归会在合并前被拦住。
+      #
+      # 每个脚本默认路径都设计为「无容器可跑、exit code 决定成败」；
+      # 需要真实 API/浏览器的断言在各自脚本里是 --with-api / --with-browser 可选分支，
+      # 默认 [SKIP] 且不影响 exit code（详见各脚本头部说明）。
+      - name: UI guards (frozen l15 tests, no container needed)
+        run: |
+          set -uo pipefail
+          failed=0
+          for t in stage_routes silent_guards capability_entries nmx_params \
+                   artifact_download dataset_status app_ux cleaning_ux; do
+            f="test/l15_${t}.mjs"
+            [ -f "$f" ] || { echo "缺少冻结测试 $f"; failed=1; continue; }
+            echo "=== $f ==="
+            node "$f" || failed=1
+          done
+          exit $failed
 
   stack:
     name: Stack (compose up + migrate + healthz)
