@@ -76,6 +76,18 @@ import {
 } from './lib/api'
 import { CleaningView } from './views/CleaningView'
 import { EvaluationView } from './views/EvaluationView'
+import { StageNextStep } from './views/flow/StageNextStep'
+import { StageProgressDetail } from './views/flow/StageProgressDetail'
+import { TaskTemplatePicker, type TaskTemplate } from './views/flow/TaskTemplatePicker'
+import {
+  PIPELINE_STAGES,
+  currentStageFor,
+  isStageDone,
+  isStageFailed,
+  nextStageOf,
+  stageByKey,
+  type StageKey as PipelineStageKey,
+} from './views/flow/stageFlow'
 
 const { Title, Text } = Typography
 
@@ -107,6 +119,47 @@ type StageWorkbenchPage = NavPage & { navParent: string }
 
 const taskWorkbenchPages: StageWorkbenchPage[] = [
   { label: '主题结构', route: '/console/domains', icon: GitBranch, caption: '生成并确认主题结构', navParent: '/console/tasks' },
+]
+
+// 任务模板（issue #84/#90 的「渐进披露」落地）。
+//
+// 新建任务页原本一次平铺 6 个字段（含 3 个管理员配置），而页面自己写着
+// 「只填任务主题和目标规模即可」，文案与界面矛盾。同类项目（Dify 的 Built-in
+// Pipeline、Argilla 的任务模板）都用「选一个模板即预置参数」降低上手成本。
+// 模板只是预填表单，不引入新接口，因此不违反本轮「不新增 HTTP 路由」的约束。
+const TASK_TEMPLATES: TaskTemplate[] = [
+  {
+    id: 'industry-qa',
+    name: '行业研究问答',
+    description: '围绕一个行业主题，生成概念、方法、案例多层次的问答样本。',
+    rootKeyword: '行业研究',
+    targetSize: 50,
+    tags: ['SFT', '问答'],
+  },
+  {
+    id: 'support-sft',
+    name: '客服对话 SFT',
+    description: '面向客服场景，覆盖常见问题、边界情形与拒答处理。',
+    rootKeyword: '客服对话',
+    targetSize: 30,
+    tags: ['SFT', '对话'],
+  },
+  {
+    id: 'code-instruction',
+    name: '代码指令集',
+    description: '围绕编程任务，生成需求描述与实现思路成对的指令样本。',
+    rootKeyword: '代码指令',
+    targetSize: 30,
+    tags: ['SFT', '代码'],
+  },
+  {
+    id: 'reasoning-grpo',
+    name: '长链推理（GRPO）',
+    description: '侧重多步推理与自我校验，适合作为强化学习的偏好数据。',
+    rootKeyword: '长链推理',
+    targetSize: 20,
+    tags: ['GRPO', '推理'],
+  },
 ]
 
 const resultWorkbenchPages: StageWorkbenchPage[] = [
@@ -866,6 +919,8 @@ export default function App() {
     storageProfileId: 0,
   })
   const showAdvancedPlanning = false
+  // 当前选中的任务模板（issue #84 渐进披露：模板只预填表单，不提交后端）。
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>(undefined)
   const [trustSignal, setTrustSignal] = useState<TrustSignal | null>(null)
 
   const [providerDraft, setProviderDraft] = useState<ProviderDraft>({
@@ -941,10 +996,19 @@ export default function App() {
     : '请先创建任务'
   const activeTaskDetailRoute = activeDataset ? `/console/tasks/${activeDataset.id}` : '/console/tasks'
   const activeTaskNavLabel = activeDataset ? '返回当前任务' : '返回我的任务'
-  const canGenerateQuestions = activeDataset?.status === 'domains_confirmed'
-  const canGenerateReasoning = activeDataset?.status === 'questions_generated'
-  const canGenerateRewards = activeDataset?.status === 'reasoning_generated' || activeDataset?.status === 'reasoning_partial'
-  const canGenerateExport = activeDataset?.status === 'rewards_generated' || activeDataset?.status === 'rewards_partial'
+  // 当前应做的阶段：由 stageFlow 的单一来源派生（issue #90）。
+  const activeStage = useMemo(() => currentStageFor(activeDataset?.status), [activeDataset?.status])
+  const activeStageDef = useMemo(() => stageByKey(activeStage.key), [activeStage.key])
+  // 阶段主操作按钮是否可用。
+  //
+  // 判定 = 上一阶段已完成（可以开始）或本阶段失败（可以重试）。
+  // 原先这四个变量只判断「就绪态」（如 questions 只认 domains_confirmed），
+  // 未包含 *_failed，直接接线会禁用失败后的重试按钮。这里改为从 stageFlow
+  // 的单一来源派生，同时修正该缺陷（issue #84：避免用户点击必然失败的按钮）。
+  const canGenerateQuestions = isStageDone('domains', activeDataset?.status) || isStageFailed('questions', activeDataset?.status)
+  const canGenerateReasoning = isStageDone('questions', activeDataset?.status) || isStageFailed('reasoning', activeDataset?.status)
+  const canGenerateRewards = isStageDone('reasoning', activeDataset?.status) || isStageFailed('rewards', activeDataset?.status)
+  const canGenerateExport = isStageDone('rewards', activeDataset?.status) || isStageFailed('export', activeDataset?.status)
   const filteredArtifacts = useMemo(() => {
     if (exportFilter === 'delivery') return artifacts.filter((item) => artifactUsageCategory(item) === 'delivery')
     if (exportFilter === 'review') return artifacts.filter((item) => artifactUsageCategory(item) === 'review')
@@ -2345,16 +2409,10 @@ export default function App() {
     const missingReasoningCount = reasoning.filter((item) => !item.reasoning.trim()).length
     const lowRewardCount = rewards.filter((item) => item.score < 0.5).length
     const deliveryArtifactCount = artifacts.filter((item) => artifactUsageCategory(item) === 'delivery').length
-    const reviewArtifactCount = artifacts.filter((item) => artifactUsageCategory(item) === 'review').length
-    const otherArtifactCount = artifacts.filter((item) => artifactUsageCategory(item) === 'other').length
-    const workbenchStats = [
-      { label: '主题结构', value: graph?.domains.length ?? 0, helper: '主题节点' },
-      { label: '问题结果', value: questions.length, helper: '问题数量' },
-      { label: '答案内容', value: reasoning.length, helper: '答案数量' },
-      { label: '质量评估', value: rewards.length, helper: '评分记录' },
-      { label: '导出文件', value: artifacts.length, helper: '交付或复核文件' },
-      { label: '等待任务', value: queueDepth, helper: '排队任务' },
-    ]
+    // reviewArtifactCount / otherArtifactCount / workbenchStats 已移除：
+    // 它们计算了却从未渲染（issue #61 重构后遗留的死代码）。
+    // 任务详情页的关键统计已由上方 stageCards 与「质量与交付」区展示，
+    // 保留未使用的计算只会误导后续维护者。
 
     return (
       <div className="console-page-shell">
@@ -2366,21 +2424,25 @@ export default function App() {
             <>
               <Button onClick={() => navigate('/console/tasks')}>返回列表</Button>
               <Button icon={<RefreshCw size={16} />} loading={workspaceLoading} onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务已刷新')}>刷新</Button>
-              <Button theme="solid" type="primary" onClick={() => navigate(statusToActionRoute(activeDataset.status))}>{nextActionLabel(activeDataset.status)}</Button>
+              <Button theme="solid" type="primary" onClick={() => navigate(activeStageDef?.route ?? statusToActionRoute(activeDataset.status))}>{nextActionLabel(activeDataset.status)}</Button>
             </>
           }
         />
 
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
-          <div className="flex flex-wrap items-center gap-2">
-            <Tag color="blue">{currentStageLabel}</Tag>
-            <Tag color="cyan">进度 {progressValue}%</Tag>
-            {queueDepth > 0 ? <Tag color="orange">排队 {queueDepth}</Tag> : null}
-            <Tag color="grey">ETA: {activeEta}</Tag>
+          {/* 把已有的进度数据真正展示出来（issue #84）：
+              原先等待/失败期间只给静态文案「系统同步中，请稍后刷新」，
+              而 NN/g 的进度指示器研究明确反对静态指示器。
+              pipeline/progress 已提供 completionPercent/stages，此处直接消费。 */}
+          <StageProgressDetail
+            completionPercent={progressValue}
+            stages={activePipeline?.stages ?? []}
+            queueDepth={queueDepth}
+            eta={activeEta}
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <Tag color="grey">更新 {formatTime(activeDataset.updatedAt)}</Tag>
           </div>
-          <Progress percent={progressValue} showInfo={false} stroke="#3b82f6" className="mt-4" />
-          <Text className="mt-3 block console-caption">{waitingReasonLabel(activeDataset.status, queueDepth)}</Text>
         </Card>
 
         <div className="console-card-grid-2">
@@ -2470,7 +2532,24 @@ export default function App() {
       <div className="console-card-grid-2">
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <Title heading={4} className="!mb-0">任务基础信息</Title>
-          <Text className="mt-2 block console-caption">先填任务主题和目标规模，再决定是否估算或创建。</Text>
+          <Text className="mt-2 block console-caption">选一个模板快速开始，或直接填写主题与规模。</Text>
+          {/* 模板选择：降低上手成本（issue #84 调研 Dify/Argilla 的做法）。选模板只预填表单。 */}
+          <div className="mt-4">
+            <TaskTemplatePicker
+              templates={TASK_TEMPLATES}
+              selectedId={selectedTemplateId}
+              onSelect={(template) => {
+                setSelectedTemplateId(template.id)
+                setPlannerForm((current) => ({
+                  ...current,
+                  name: current.name || template.name,
+                  rootKeyword: template.rootKeyword,
+                  targetSize: template.targetSize,
+                }))
+              }}
+            />
+          </div>
+          <Text className="mt-4 block console-caption">任务主题和目标规模是必填项；其余按需展开。</Text>
           <div className="console-card-grid-2 mt-5">
             <div>
               <Text className="mb-2 block font-medium">任务名称（可选）</Text>
@@ -2564,6 +2643,19 @@ export default function App() {
             </>
           }
         />
+        {/* 阶段间直达导航：解决 issue #84 的 5 次往返。 */}
+        <Card className="console-panel" bodyStyle={{ padding: 16 }}>
+          <StageNextStep
+            nextLabel={nextStageOf('domains')?.label ?? '问题生成'}
+            nextRoute={nextStageOf('domains')?.route ?? '/console/questions'}
+            currentStageDone={isStageDone('domains', activeDataset?.status)}
+            onNavigate={(route) => {
+              navigate(route)
+              if (activeDatasetId) void loadDatasetWorkspace(activeDatasetId)
+            }}
+            blockedHint="先「生成方向结构」并点「确认结构」，即可进入问题生成。"
+          />
+        </Card>
 
         <div className="console-card-grid-2">
           <Card className="console-panel" bodyStyle={{ padding: 20 }}>
@@ -2684,6 +2776,7 @@ export default function App() {
     nextStepTips,
     exceptionHint,
     renderRecord,
+    stageKey,
   }: {
     badge: string
     title: string
@@ -2700,7 +2793,12 @@ export default function App() {
     nextStepTips: string[]
     exceptionHint: string
     renderRecord: (record: any) => React.ReactNode
-  }) => (
+    /** 本阶段在流水线中的标识，用于渲染「下一步」直达按钮（issue #84）。 */
+    stageKey: PipelineStageKey
+  }) => {
+    // 下一阶段由 stageFlow 的单一来源派生，避免此处再写一份阶段顺序（issue #90）。
+    const nextStage = nextStageOf(stageKey)
+    return (
     <div className="console-page-shell">
       <PageHeader
         badge={badge}
@@ -2715,6 +2813,30 @@ export default function App() {
           </>
         }
       />
+      {/* 阶段间直达导航：解决 issue #84 的 5 次往返。
+          此前用户完成本阶段后只能点「返回当前任务」绕回任务详情页再点下一张卡片。 */}
+      {nextStage ? (
+        <Card className="console-panel" bodyStyle={{ padding: 16 }}>
+          <StageNextStep
+            nextLabel={nextStage.label}
+            nextRoute={nextStage.route}
+            currentStageDone={isStageDone(stageKey, activeDataset?.status)}
+            onNavigate={(route) => {
+              navigate(route)
+              if (activeDatasetId) void loadDatasetWorkspace(activeDatasetId)
+            }}
+            blockedHint={`完成本阶段（${stageByKey(stageKey)?.label ?? ''}）后可进入「${nextStage.label}」。`}
+          />
+        </Card>
+      ) : (
+        <Card className="console-panel" bodyStyle={{ padding: 16 }}>
+          <Space align="center" spacing="medium" wrap>
+            <Text strong>已是最后一步</Text>
+            <Text className="console-caption">导出完成后，可到「数据资产」下载交付文件。</Text>
+            <Button onClick={() => navigate('/console/results')}>前往数据资产</Button>
+          </Space>
+        </Card>
+      )}
       <div className="console-card-grid-3">
         {summaryCards.map((item) => <StatCard key={item.label} {...item} />)}
       </div>
@@ -2750,22 +2872,25 @@ export default function App() {
         </Card>
       </div>
     </div>
-  )
+    )
+  }
 
   const renderQuestionStage = () => (
-    renderRecordPage({ badge: '结果中心 / 题目结果', title: '题目生成结果中心', description: '查看题目生成质量、异常状态，并决定是否进入答案生成。', actionLabel: '开始生成题目', onGenerate: generateQuestions, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '问题结果已刷新') }, records: questions, emptyTitle: '尚未生成题目', emptyDescription: '请先确认主题，再开始生成题目。', summaryTitle: '题目阶段摘要', summaryCards: [{ icon: Layers3, label: '题目总数', value: questions.length, helper: '当前可用于后续步骤的题目数量' }, { icon: ShieldCheck, label: '状态正常', value: questions.filter((item) => item.status === 'generated').length, helper: '状态为“已生成”的题目数量' }, { icon: Bell, label: '待关注', value: questions.filter((item) => item.status !== 'generated').length, helper: '状态异常或处理中，建议优先复查' }], nextStepTips: ['优先复核“待关注”题目，确认是否需要重跑。', '抽检不同方向题目，避免主题覆盖不均。', '确认题目质量后再进入答案生成。'], exceptionHint: '若状态长时间停留在“处理中/排队中”，通常是等待任务较多或上游任务未完成，先刷新并查看等待任务数。', renderRecord: (record: Question) => { const state = questionStatusLabel(record.status); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="blue">{record.domainName}</Tag><Tag color={state.color}>{state.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.content}</Text></div> } })
+    renderRecordPage({ stageKey: 'questions', generateDisabled: !canGenerateQuestions, badge: '结果中心 / 题目结果', title: '题目生成结果中心', description: '查看题目生成质量、异常状态，并决定是否进入答案生成。', actionLabel: '开始生成题目', onGenerate: generateQuestions, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '问题结果已刷新') }, records: questions, emptyTitle: '尚未生成题目', emptyDescription: '请先确认主题，再开始生成题目。', summaryTitle: '题目阶段摘要', summaryCards: [{ icon: Layers3, label: '题目总数', value: questions.length, helper: '当前可用于后续步骤的题目数量' }, { icon: ShieldCheck, label: '状态正常', value: questions.filter((item) => item.status === 'generated').length, helper: '状态为“已生成”的题目数量' }, { icon: Bell, label: '待关注', value: questions.filter((item) => item.status !== 'generated').length, helper: '状态异常或处理中，建议优先复查' }], nextStepTips: ['优先复核“待关注”题目，确认是否需要重跑。', '抽检不同方向题目，避免主题覆盖不均。', '确认题目质量后再进入答案生成。'], exceptionHint: '若状态长时间停留在“处理中/排队中”，通常是等待任务较多或上游任务未完成，先刷新并查看等待任务数。', renderRecord: (record: Question) => { const state = questionStatusLabel(record.status); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="blue">{record.domainName}</Tag><Tag color={state.color}>{state.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.content}</Text></div> } })
   )
 
   const renderReasoningStage = () => (
-    renderRecordPage({ badge: '结果中心 / 答案结果', title: '答案与思路结果中心', description: '聚焦答案摘要质量，而非底层对象字段。', actionLabel: '开始生成答案', onGenerate: generateReasoning, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '推理结果已刷新') }, records: reasoning, emptyTitle: '尚未生成答案', emptyDescription: '请先完成题目生成，再开始生成答案。', summaryTitle: '答案阶段摘要', summaryCards: [{ icon: BrainCircuit, label: '答案总数', value: reasoning.length, helper: '已返回的答案与思路记录' }, { icon: ShieldCheck, label: '完整摘要', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '完整').length, helper: '摘要信息完整，可直接进入评估' }, { icon: Bell, label: '待补充', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '待补充').length, helper: '摘要过短，建议重试或人工复核' }], nextStepTips: ['先处理“待补充”答案，再批量进入质量评估。', '检查答案是否覆盖题目核心要点。', '确认摘要稳定后再触发奖励评估。'], exceptionHint: '若摘要内容明显过短或重复，通常是模型输出被截断或输入上下文不足，建议重跑该批次。', renderRecord: (record: ReasoningRecord) => { const quality = reasoningQualityLabel(record.answerSummary); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="cyan">答案摘要</Tag><Tag color={quality.color}>{quality.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.answerSummary}</Text><Text className="mt-2 block console-caption">{quality.note}</Text><Text className="mt-2 block console-caption">题目：{record.questionText}</Text></div> } })
+    renderRecordPage({ stageKey: 'reasoning', generateDisabled: !canGenerateReasoning, badge: '结果中心 / 答案结果', title: '答案与思路结果中心', description: '聚焦答案摘要质量，而非底层对象字段。', actionLabel: '开始生成答案', onGenerate: generateReasoning, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '推理结果已刷新') }, records: reasoning, emptyTitle: '尚未生成答案', emptyDescription: '请先完成题目生成，再开始生成答案。', summaryTitle: '答案阶段摘要', summaryCards: [{ icon: BrainCircuit, label: '答案总数', value: reasoning.length, helper: '已返回的答案与思路记录' }, { icon: ShieldCheck, label: '完整摘要', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '完整').length, helper: '摘要信息完整，可直接进入评估' }, { icon: Bell, label: '待补充', value: reasoning.filter((item) => reasoningQualityLabel(item.answerSummary).text === '待补充').length, helper: '摘要过短，建议重试或人工复核' }], nextStepTips: ['先处理“待补充”答案，再批量进入质量评估。', '检查答案是否覆盖题目核心要点。', '确认摘要稳定后再触发奖励评估。'], exceptionHint: '若摘要内容明显过短或重复，通常是模型输出被截断或输入上下文不足，建议重跑该批次。', renderRecord: (record: ReasoningRecord) => { const quality = reasoningQualityLabel(record.answerSummary); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color="cyan">答案摘要</Tag><Tag color={quality.color}>{quality.text}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.answerSummary}</Text><Text className="mt-2 block console-caption">{quality.note}</Text><Text className="mt-2 block console-caption">题目：{record.questionText}</Text></div> } })
   )
 
   const renderRewardStage = () => (
-    renderRecordPage({ badge: '结果中心 / 质量评估', title: '质量评分结果中心', description: '展示评分等级、风险提示与建议动作，支持快速决策。', actionLabel: '开始质量评估', onGenerate: generateRewards, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '奖励结果已刷新') }, records: rewards, emptyTitle: '尚未生成质量评估', emptyDescription: '先完成答案生成，再触发质量评估。', summaryTitle: '评估阶段摘要', summaryCards: [{ icon: ShieldCheck, label: '评分记录', value: rewards.length, helper: '已生成的质量评分条目' }, { icon: Sparkles, label: '高质量', value: rewards.filter((item) => item.score >= 0.85).length, helper: '可直接进入导出候选' }, { icon: Bell, label: '风险项', value: rewards.filter((item) => item.score < 0.5).length, helper: '建议先回修再继续流程' }], nextStepTips: ['优先处理“风险”与“待优化”记录。', '对“可交付”记录执行抽样复核。', '高质量样本可直接推进导出。'], exceptionHint: '若低分记录突然增多，通常意味着上游答案质量波动，建议回看答案阶段并抽样检查。', renderRecord: (record: RewardRecord) => { const quality = rewardQualityLabel(record.score); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color={quality.color}>{quality.text}</Tag><Tag color="green">评分 {record.score.toFixed(2)}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.questionText}</Text><Text className="mt-2 block console-caption">{quality.note}</Text></div> } })
+    renderRecordPage({ stageKey: 'rewards', generateDisabled: !canGenerateRewards, badge: '结果中心 / 质量评估', title: '质量评分结果中心', description: '展示评分等级、风险提示与建议动作，支持快速决策。', actionLabel: '开始质量评估', onGenerate: generateRewards, onRefresh: async () => { if (activeDatasetId) await loadDatasetWorkspace(activeDatasetId, '奖励结果已刷新') }, records: rewards, emptyTitle: '尚未生成质量评估', emptyDescription: '先完成答案生成，再触发质量评估。', summaryTitle: '评估阶段摘要', summaryCards: [{ icon: ShieldCheck, label: '评分记录', value: rewards.length, helper: '已生成的质量评分条目' }, { icon: Sparkles, label: '高质量', value: rewards.filter((item) => item.score >= 0.85).length, helper: '可直接进入导出候选' }, { icon: Bell, label: '风险项', value: rewards.filter((item) => item.score < 0.5).length, helper: '建议先回修再继续流程' }], nextStepTips: ['优先处理“风险”与“待优化”记录。', '对“可交付”记录执行抽样复核。', '高质量样本可直接推进导出。'], exceptionHint: '若低分记录突然增多，通常意味着上游答案质量波动，建议回看答案阶段并抽样检查。', renderRecord: (record: RewardRecord) => { const quality = rewardQualityLabel(record.score); return <div key={record.id} className="console-record-item"><div className="flex items-center justify-between gap-3"><Space><Tag color={quality.color}>{quality.text}</Tag><Tag color="green">评分 {record.score.toFixed(2)}</Tag></Space><Text className="console-caption">{formatTime(record.createdAt)}</Text></div><Text className="mt-3 block">{record.questionText}</Text><Text className="mt-2 block console-caption">{quality.note}</Text></div> } })
   )
 
   const renderExportStage = () => (
     renderRecordPage({
+                          stageKey: 'export',
+                          generateDisabled: !canGenerateExport,
                           badge: '结果中心 / 导出交付',
                           title: '导出结果中心',
                           description: '展示交付用途、来源版本与下载建议，帮助快速决定交付动作。',
