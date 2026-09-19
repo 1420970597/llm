@@ -587,8 +587,30 @@ function artifactContentTypeHint(contentType: string) {
   }
 }
 
+// artifactUsageCategory 把工件归入「交付 / 复核 / 其他」，供导出页筛选与统计使用。
+//
+// 为什么以 artifactType 的 `-export` 后缀为主判据（而不是 content_type）：
+//
+// 之前只看 content_type，写成「`application/jsonl` 或 artifactType === 'jsonl-export' 才是交付」，
+// 而**没有任何导出器产出 `application/jsonl`** —— 后端 5 个导出器的实际类型是：
+//   alpaca   -> application/x-ndjson   （供交付用）
+//   jsonl    -> application/x-ndjson   （供交付用）
+//   sharegpt -> application/x-ndjson   （供交付用）
+//   csv      -> text/csv
+//   parquet  -> application/x-parquet-jsonl
+// 于是交付类**永远为空**；而导出页默认筛选恰好是「交付优先」，
+// 用户导出成功后打开导出页看到的是「尚未生成导出」—— 明明文件已经落盘。
+// （父代理实测：dataset 50 的 status=export_generated 且有 1 个 artifact，
+//   但 /console/exports 默认视图渲染出空状态。）
+//
+// 后端在 apps/worker/job_export_multi.go:113 构造 `artifactType = spec.Format + "-export"`，
+// legacy 路径（apps/worker/main.go:464）也用 "jsonl-export"。
+// 因此「用户主动触发的导出产物」有一个**可靠标记**：artifactType 以 `-export` 结尾。
+// 以它为主判据，content_type 只用于在「其他」里细分，语义与后端一致且不会再漂移。
 function artifactUsageCategory(artifact: Artifact): 'delivery' | 'review' | 'other' {
-  if (artifact.contentType === 'application/jsonl' || artifact.artifactType === 'jsonl-export') return 'delivery'
+  // 导出产物 = 交付件。所有格式（jsonl/alpaca/sharegpt/csv/parquet）都算交付。
+  if (artifact.artifactType?.endsWith('-export')) return 'delivery'
+  // 非导出产物：JSON 类可读记录作为复核资料。
   if (artifact.contentType === 'application/json' || artifact.contentType === 'application/x-ndjson') return 'review'
   return 'other'
 }
@@ -1744,17 +1766,18 @@ export default function App() {
   const downloadArtifact = async (artifact: Artifact) => {
     if (!artifact.datasetId || !artifact.id) return
     try {
-      const response = await fetch(consoleApi.artifactDownloadUrl(artifact.datasetId, artifact.id), {
-        credentials: 'include',
-      })
-      if (!response.ok) {
-        const message = await response.text()
-        throw new Error(message || '下载失败，请稍后重试')
+      // 走共享的 axios client（见 lib/api.ts 的 downloadArtifactBlob）：
+      // 它带 withCredentials 与响应拦截器，会话过期时会得到「登录状态已失效」
+      // 而不是裸 HTTP 错误。之前的裸 fetch 绕过了整个拦截器。
+      const response = await consoleApi.downloadArtifactBlob(artifact.datasetId, artifact.id)
+      const blob = response.data
+      if (!(blob instanceof Blob) || blob.size === 0) {
+        throw new Error('交付文件为空，请先在结果页确认导出已完成')
       }
-      const blob = await response.blob()
-      const disposition = response.headers.get('Content-Disposition') || ''
-      const matched = disposition.match(/filename="?([^";]+)"?/)
-      const fileName = matched?.[1] || artifactDisplayName(artifact.objectKey)
+      const fileName = consoleApi.artifactFileName(
+        response.headers?.['content-disposition'],
+        artifact.objectKey,
+      )
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url

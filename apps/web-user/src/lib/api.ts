@@ -605,6 +605,32 @@ export const consoleApi = {
   generateExport: (id: number) => unwrap(client.post<StageEnqueueResult>(`/v1/datasets/${id}/export`)),
   listArtifacts: (id: number) => unwrap(client.get<Artifact[]>(`/v1/datasets/${id}/export`)),
   artifactDownloadUrl: (datasetId: number, artifactId: number) => `/api/v1/datasets/${datasetId}/export/download?artifactId=${artifactId}`,
+  /**
+   * 下载导出工件（二进制响应）。
+   *
+   * 为什么走共享的 axios client 而不是裸 fetch：
+   * 本模块全部 74 个接口都走 `client`，它带着
+   *   - `withCredentials: true`（同源 Cookie）
+   *   - 响应拦截器（401 → 「登录状态已失效」、403 → 权限提示、统一中文错误文案）
+   * 而裸 fetch 会**绕过整个拦截器**：会话过期时用户看到的是裸 HTTP 错误，
+   * 而不是可理解的中文提示；错误文案也与全站不一致。
+   *
+   * `responseType: 'blob'`：工件是二进制（jsonl 等），不能按 JSON 解析。
+   * 拦截器对 blob 错误体的处理已在下面注释说明。
+   */
+  downloadArtifactBlob: (datasetId: number, artifactId: number) =>
+    client
+      .get<Blob>(`/v1/datasets/${datasetId}/export/download`, {
+        params: { artifactId },
+        responseType: 'blob',
+      })
+      .then((response) => response),
+  /** 从 Content-Disposition 解析文件名；缺失时回退到对象键的末段。 */
+  artifactFileName: (disposition: string | undefined, fallbackObjectKey: string) => {
+    const matched = (disposition ?? '').match(/filename="?([^";]+)"?/)
+    if (matched?.[1]) return matched[1]
+    return fallbackObjectKey.split('/').pop() || 'dataset-export.jsonl'
+  },
   pipelineProgress: (id: number) => unwrap(client.get<PipelineProgress>(`/v1/datasets/${id}/pipeline/progress`)),
   runtimeStatus: () => unwrap(client.get<RuntimeStatus>('/v1/platform/runtime')),
 
