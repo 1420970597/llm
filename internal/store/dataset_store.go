@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	appcrypto "github.com/1420970597/llm/internal/crypto"
@@ -10,6 +11,28 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// 结果存储配置的哨兵错误（issue #83）。
+//
+// 为什么要有它们：worker 的三个阶段（答案/评分/导出）都要写对象存储。
+// 此前表为空时返回裸 pgx.ErrNoRows，上层只能把它当普通错误上抛，
+// 日志里是英文的 `no rows in result set`，界面上是「答案生成失败 / 系统同步中」。
+// 用户既不知原因也不知怎么修。
+//
+// 分开两个错误是因为「怎么修」不同：
+//   - ErrNoStorageProfile：一条可用配置都没有（全新部署没配过）→ 去「系统设置 → 结果存储」建一条；
+//   - ErrStorageProfileNotFound：任务绑定的那条已经不在了（被删/停用）→ 重新选一条存储。
+var (
+	// ErrNoStorageProfile 表示库里没有任何可用的结果存储配置。
+	ErrNoStorageProfile = errors.New("尚未配置可用的结果存储")
+	// ErrStorageProfileNotFound 表示指定的存储配置不存在或已停用。
+	ErrStorageProfileNotFound = errors.New("指定的结果存储配置不存在或已停用")
+)
+
+// IsStorageConfigError 判断错误是否属于「存储配置缺失」类，供上层翻译成可操作提示。
+func IsStorageConfigError(err error) bool {
+	return errors.Is(err, ErrNoStorageProfile) || errors.Is(err, ErrStorageProfileNotFound)
+}
 
 type DatasetStore struct {
 	db  *pgxpool.Pool
@@ -48,7 +71,7 @@ func (s *DatasetStore) Estimate(ctx context.Context, rootKeyword string, targetS
 // datasetColumns 是 datasets 表的统一查询列，供所有扫描复用，避免多处漂移。
 const datasetColumns = `id, name, root_keyword, target_size, status, strategy_id, provider_id, storage_profile_id,
 	target_kind, direction_count, questions_per_direction, reward_levels, cleaning_enabled,
-	estimate_json, created_at, updated_at`
+	estimate_json, created_at, updated_at, failure_reason`
 
 // scanDataset 统一扫描 datasets 行（顺序必须与 datasetColumns 一致）。
 func scanDataset(row pgx.Row) (model.Dataset, error) {
@@ -58,7 +81,7 @@ func scanDataset(row pgx.Row) (model.Dataset, error) {
 	err := row.Scan(&item.ID, &item.Name, &item.RootKeyword, &item.TargetSize, &item.Status,
 		&item.StrategyID, &item.ProviderID, &item.StorageProfileID,
 		&item.TargetKind, &item.DirectionCount, &item.QuestionsPerDirect, &rewardPayload, &item.CleaningEnabled,
-		&estimatePayload, &item.CreatedAt, &item.UpdatedAt)
+		&estimatePayload, &item.CreatedAt, &item.UpdatedAt, &item.FailureReason)
 	if err != nil {
 		return model.Dataset{}, err
 	}
@@ -336,7 +359,24 @@ func (s *DatasetStore) ConfirmDomains(ctx context.Context, datasetID int64) erro
 }
 
 func (s *DatasetStore) UpdateStatus(ctx context.Context, datasetID int64, status string) error {
-	_, err := s.db.Exec(ctx, `UPDATE datasets SET status = $2, updated_at = NOW() WHERE id = $1`, datasetID, status)
+	// 推进到任何新状态都清空上一次的失败原因（issue #83）：
+	// 否则用户重试成功之后，界面上会继续挂着一条旧的失败提示。
+	_, err := s.db.Exec(ctx, `UPDATE datasets SET status = $2, failure_reason = '', updated_at = NOW() WHERE id = $1`, datasetID, status)
+	return err
+}
+
+// MarkFailed 把数据集标为失败状态，并记录**用户可见**的中文原因（issue #83）。
+//
+// 与 UpdateStatus 的区别：后者只改状态（且会清空原因），用于成功/排队等路径；
+// MarkFailed 同时写入原因，用于失败路径。
+//
+// 为什么原因要进库而不是只写日志：前端只能拿到状态字符串，看不到 worker 日志。
+// 原因不落库，界面就只能显示「系统同步中」「请排查失败原因」——
+// 用户既不知原因也不知道去哪修（见 issue #83 的原始现象）。
+func (s *DatasetStore) MarkFailed(ctx context.Context, datasetID int64, status, reason string) error {
+	_, err := s.db.Exec(ctx,
+		`UPDATE datasets SET status = $2, failure_reason = $3, updated_at = NOW() WHERE id = $1`,
+		datasetID, status, reason)
 	return err
 }
 
@@ -548,6 +588,9 @@ func (s *DatasetStore) ResolveStorageProfile(ctx context.Context, storageProfile
 	row := s.db.QueryRow(ctx, query, args...)
 	err = row.Scan(&endpoint, &region, &bucket, &accessKeyID, &encryptedSecret, &usePathStyle)
 	if err != nil && storageProfileID != 0 && err == pgx.ErrNoRows {
+		// 指定的配置不存在/已停用时回退到默认配置 —— 这是**既有行为**，本修复不改它：
+		// 管理员删掉一条存储配置不应该让所有引用它的历史任务全部停摆。
+		// 注意回退查询必须仍然只在 is_active 里选。
 		row = s.db.QueryRow(ctx, `
 	      SELECT endpoint, region, bucket, access_key_id, COALESCE(encrypted_secret_key, ''), use_path_style
 	      FROM storage_profiles
@@ -556,6 +599,24 @@ func (s *DatasetStore) ResolveStorageProfile(ctx context.Context, storageProfile
 		err = row.Scan(&endpoint, &region, &bucket, &accessKeyID, &encryptedSecret, &usePathStyle)
 	}
 	if err != nil {
+		// 把「没有可用存储配置」翻译成可识别的哨兵错误（issue #83）。
+		// 裸 pgx.ErrNoRows 传到 worker 会变成英文日志 `no rows in result set`，
+		// 上层无法把它翻译成「请先配置结果存储」这类可操作提示。
+		//
+		// 走到这里只有一种语义：**库里一条可用配置都没有**。
+		//   - storageProfileID == 0：直接查不到（全新部署没配过）；
+		//   - storageProfileID != 0：先按 id 查不到、回退到默认也查不到 ——
+		//     同样是「一条可用都没有」，而不是「指定的那条没了」。
+		//
+		// 之所以不单独报 ErrStorageProfileNotFound：回退行为使「指定的 id 不存在」
+		// **不算错误**（只要存在任一可用配置）。因此真正的失败原因只有一个，
+		// 就是完全没有可用配置 —— 用户的可操作动作就是去配置一个。
+		//
+		// 该事实由 internal/store/storage_profile_resolve_integration_test.go 用
+		// 真实 Postgres 钉死：指定不存在的 id 时若存在其他可用配置，必须回退成功（err=nil）。
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", "", "", "", "", false, ErrNoStorageProfile
+		}
 		return
 	}
 	secretKey, err = s.box.Decrypt(encryptedSecret)

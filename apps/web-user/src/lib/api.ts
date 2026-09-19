@@ -141,6 +141,8 @@ export type Dataset = {
   questionsPerDirection: number
   rewardLevels: string[]
   cleaningEnabled: boolean
+  /** 最后一次失败的**用户可见**中文原因（issue #83）；空串表示无失败原因。 */
+  failureReason: string
   estimate: Estimate
   createdAt: string
   updatedAt: string

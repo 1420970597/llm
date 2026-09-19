@@ -36,6 +36,24 @@ type APIConfig struct {
 	BootstrapProviderType           string
 	BootstrapProviderTimeoutSeconds int
 	BootstrapProviderMaxConcurrency int
+
+	// 首次启动时从环境变量引导写入的默认结果存储 profile（issue #83）。
+	//
+	// 为什么需要它：全新部署下 storage_profiles 表为空，而答案/评分/导出三个阶段
+	// 都要写对象存储。没有默认配置时，任务能建成功、却要到答案阶段才以
+	// `no rows in result set` 这种内部错误失败，用户既不知原因也不知怎么修。
+	//
+	// 与 provider 引导同样采用「配置不完整就跳过并告警，不阻断启动」的语义：
+	// 一个漏填的 S3_BUCKET 不应把「容器起不来」升级成整服务不可用。
+	BootstrapStorageEnabled      bool
+	BootstrapStorageName         string
+	BootstrapStorageProvider     string
+	BootstrapStorageEndpoint     string
+	BootstrapStorageRegion       string
+	BootstrapStorageBucket       string
+	BootstrapStorageAccessKeyID  string
+	BootstrapStorageSecretKey    string
+	BootstrapStorageUsePathStyle bool
 }
 
 type WorkerConfig struct {
@@ -89,6 +107,19 @@ func LoadAPIConfig() APIConfig {
 		BootstrapProviderType:           getenv("APP_BOOTSTRAP_PROVIDER_TYPE", "openai-compatible"),
 		BootstrapProviderTimeoutSeconds: getenvInt("APP_BOOTSTRAP_PROVIDER_TIMEOUT_SECONDS", 120),
 		BootstrapProviderMaxConcurrency: getenvInt("APP_BOOTSTRAP_PROVIDER_MAX_CONCURRENCY", 4),
+
+		// 结果存储引导：字段直接复用 compose 里已有的 S3_* 变量。
+		// 默认开启（enabled），但只有四项必需信息齐全时才真正写入 —— 见 storage_bootstrap.go。
+		// 这样「什么都不配」的全新部署也能开箱可用，而「只配了一半」不会被静默当成成功。
+		BootstrapStorageEnabled:      getenvBool("APP_BOOTSTRAP_STORAGE_ENABLED", true),
+		BootstrapStorageName:         getenv("APP_BOOTSTRAP_STORAGE_NAME", "默认结果存储"),
+		BootstrapStorageProvider:     getenv("S3_PROVIDER", "minio"),
+		BootstrapStorageEndpoint:     getenv("S3_ENDPOINT", "http://minio:9000"),
+		BootstrapStorageRegion:       getenv("S3_REGION", "us-east-1"),
+		BootstrapStorageBucket:       getenv("S3_BUCKET", "llm-factory-dev"),
+		BootstrapStorageAccessKeyID:  getenv("S3_ACCESS_KEY", "minioadmin"),
+		BootstrapStorageSecretKey:    getenv("S3_SECRET_KEY", "minioadmin"),
+		BootstrapStorageUsePathStyle: getenvBool("S3_USE_PATH_STYLE", true),
 	}
 }
 
@@ -133,4 +164,22 @@ func getenvInt(key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+// getenvBool 解析布尔配置。
+//
+// 只把「显式的假」当作假（false/0/no/off），其余一律用 fallback ——
+// 与 getenvInt 同样的思路：拼错的配置不应该静默变成「关掉了某个功能」。
+func getenvBool(key string, fallback bool) bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch value {
+	case "":
+		return fallback
+	case "true", "1", "yes", "on":
+		return true
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return fallback
+	}
 }

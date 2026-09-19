@@ -124,8 +124,7 @@ func consumeJobs(ctx context.Context, jc *jobContext) {
 					log.Printf("job retrying dataset=%d type=%s next_retry=%d err=%v", job.DatasetID, job.Type, next.Retry, err)
 					continue
 				}
-				_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, job.Type+"_failed")
-				log.Printf("job failed dataset=%d type=%s retry=%d err=%v", job.DatasetID, job.Type, job.Retry, err)
+				markStageFailed(ctx, jc.datasets, job.DatasetID, job.Type+"_failed", err)
 			}
 			continue
 		}
@@ -133,8 +132,7 @@ func consumeJobs(ctx context.Context, jc *jobContext) {
 		switch job.Type {
 		case "questions.generate":
 			if err := handleQuestionGeneration(ctx, job.DatasetID, jc.datasets, jc.pipeline, jc.prompts); err != nil {
-				_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, "questions_failed")
-				log.Printf("question generation failed dataset=%d err=%v", job.DatasetID, err)
+				markStageFailed(ctx, jc.datasets, job.DatasetID, "questions_failed", err)
 			}
 		case "reasoning.generate":
 			if err := handleReasoningGeneration(ctx, job.DatasetID, jc.datasets, jc.pipeline, jc.prompts, jc.reasoning); err != nil {
@@ -142,15 +140,13 @@ func consumeJobs(ctx context.Context, jc *jobContext) {
 					next := job
 					next.Retry++
 					if requeueErr := requeueJob(ctx, jc.redis, jc.queue, next); requeueErr != nil {
-						_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, "reasoning_failed")
-						log.Printf("reasoning generation failed dataset=%d retry=%d err=%v requeue_err=%v", job.DatasetID, job.Retry, err, requeueErr)
+						markStageFailed(ctx, jc.datasets, job.DatasetID, "reasoning_failed", err)
 						continue
 					}
 					log.Printf("reasoning generation retrying dataset=%d next_retry=%d err=%v", job.DatasetID, next.Retry, err)
 					continue
 				}
-				_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, "reasoning_failed")
-				log.Printf("reasoning generation failed dataset=%d retry=%d err=%v", job.DatasetID, job.Retry, err)
+				markStageFailed(ctx, jc.datasets, job.DatasetID, "reasoning_failed", err)
 			}
 		case "rewards.generate":
 			if err := handleRewardGeneration(ctx, job.DatasetID, jc.datasets, jc.pipeline, jc.prompts, jc.rewards); err != nil {
@@ -158,20 +154,17 @@ func consumeJobs(ctx context.Context, jc *jobContext) {
 					next := job
 					next.Retry++
 					if requeueErr := requeueJob(ctx, jc.redis, jc.queue, next); requeueErr != nil {
-						_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, "rewards_failed")
-						log.Printf("reward generation failed dataset=%d retry=%d err=%v requeue_err=%v", job.DatasetID, job.Retry, err, requeueErr)
+						markStageFailed(ctx, jc.datasets, job.DatasetID, "rewards_failed", err)
 						continue
 					}
 					log.Printf("reward generation retrying dataset=%d next_retry=%d err=%v", job.DatasetID, next.Retry, err)
 					continue
 				}
-				_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, "rewards_failed")
-				log.Printf("reward generation failed dataset=%d retry=%d err=%v", job.DatasetID, job.Retry, err)
+				markStageFailed(ctx, jc.datasets, job.DatasetID, "rewards_failed", err)
 			}
 		case "export.generate":
 			if err := handleExportGeneration(ctx, job.DatasetID, jc.datasets, jc.pipeline, jc.reasoning, jc.rewards, jc.artifacts); err != nil {
-				_ = jc.datasets.UpdateStatus(ctx, job.DatasetID, "export_failed")
-				log.Printf("export generation failed dataset=%d err=%v", job.DatasetID, err)
+				markStageFailed(ctx, jc.datasets, job.DatasetID, "export_failed", err)
 			}
 		default:
 			log.Printf("worker ignored job type=%s", job.Type)
