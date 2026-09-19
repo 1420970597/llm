@@ -194,3 +194,43 @@ GET  /api/v1/datasets/999999999  -> 404 {"error":"请求的资源不存在"}
 ```text
 
 修复前为 500 + 英文 `internal server error`。已附证据关单。
+
+---
+
+## 9. 第五波（#102–#109：自动审查发现的 8 个用户可见缺陷）
+
+自动审查守护用「真浏览器点击测试」在本轮合并产物上发现了 8 个新缺陷。
+父代理逐条复核后**确认全部成立**，并按**文件分区**编为 3 条并行 lane（互不重叠）：
+
+| Lane | Issue | 认领文件 | 分支 | 状态 |
+|---|---|---|---|---|
+| R19 | #102 #109 | `apps/api/**` | `lane/r19-api-error-leak` | running |
+| R20 | #105 #106 | `apps/web-user/src/views/cleaning/**` | `lane/r20-cleaning-ux` | running |
+| R22 | #103 #104 #107 #108 | `apps/web-user/src/App.tsx` | `lane/r22-app-ux` | running |
+
+编排脚本：`/root/pi-waves/wave5.js`（`runs.all` 三条并行，`globalConcurrencyLimit=3`，
+每条显式 `timeoutMs=75min`）。
+
+### 为什么 #109 没有归入前端 lane（一次纠正）
+父代理最初的分配把 #109（评估运行列表展示内部术语「去重键仍在有效期内」）当成前端渲染问题。
+核对源码后确认它的根源在 **`apps/api/routes_eval_runs.go:380` 的 `error_summary` 文案**，
+属后端文案问题，因此改归 R19 —— 避免「同一类问题被两个 lane 各修一半」。
+（`r21` 的 worktree 已建但本波次不发任务，避免空跑消耗预算。）
+
+### 本波次的验证强化（针对已发现的评审弱点）
+第二轮评审（R10 的独立评审者）指出过一个真实弱点：**变异用例被写成恒真式**。
+反例形如 `record('变异:… -> 断言失败', !mutated.includes(label))` ——
+若源码本来就没有该 label，`replaceAll` 是 no-op，`!false = true` 直接 PASS，证明不了任何事。
+
+因此 wave5 的任务书里明确要求：
+1. 把断言抽成**谓词函数**，把变异后的源码**喂进谓词**，断言返回的问题列表非空
+   （参照 `test/l15_stage_routes.mjs` 的 `problemsWithNavDerivation(mutatedMap)`）；
+2. 每条缺陷都要给出**修复前后的真浏览器对比**（同一脚本跑两次），只贴修复后不算证据。
+
+## 10. 已合并但仍有未尽事项的 lane（诚实登记）
+
+| Lane | 已合并 | 未尽事项 |
+|---|---|---|
+| R10 (#65) | PR #92 | 评审者提出 8 条 finding。**最重要的一条（F1：`invalid` 未进入下游过滤）已由父代理单独修复为 PR #116**。其余为 P2：渲染腿实际只渲染 Spin 占位（`sessionLoading` 为真时 SSR 拿不到真实页面）、4 条变异用例是恒真式、`--with-api` 的清理不在 `finally`、`generateQuestionsV2` 仍是孤儿、L6 入口文案承诺了做不到的选择能力、`R1 评估裁判配置`标签编号错标、测试残留未使用 import。 |
+| R3 (#7) | PR #76 | 评审者提出 F2：`question_generator.go` 的占位拦截落在**运行时不可达**的 legacy 路径（活路径是 `question_generator_v2.go`，它只跳过 `content == ""`，仍会入库占位问题）。属 P2（#7 的主体验证项 reasoning 已达成）。 |
+| R11 (#37–#46) | PR #82 | 评审者提出：`reasoning` 阶段 90s 超时与同族不一致（已由 PR #93 修复为 300s）；`pipeline/progress` 的完成度口径（`export_generated` 的 rank 会把前面的阶段都标成 completed，用户会看到「推理生成 已完成 · 0 条」这种自相矛盾的展示）。**未修，如实登记。** |
