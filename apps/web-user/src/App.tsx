@@ -100,25 +100,30 @@ const userPages: NavPage[] = [
   { label: '账户与帮助', route: '/console/help', icon: Users, caption: '帮助与恢复' },
 ]
 
-const stageRouteNavMap: Record<string, string> = {
-  '/console/planning': '/console/planning',
-  '/console/domains': '/console/tasks',
-  '/console/questions': '/console/results',
-  '/console/reasoning': '/console/results',
-  '/console/rewards': '/console/results',
-  '/console/exports': '/console/results',
-}
+// 阶段工作台页面。阶段路由不是侧边栏项，用户是从任务详情页的阶段卡片进入的，
+// 因此每个阶段必须额外声明它在侧边栏里的归属父项（navParent），否则处于该阶段时
+// 侧边栏会高亮到不相关的默认项。
+type StageWorkbenchPage = NavPage & { navParent: string }
 
-const taskWorkbenchPages: NavPage[] = [
-  { label: '主题结构', route: '/console/domains', icon: GitBranch, caption: '生成并确认主题结构' },
+const taskWorkbenchPages: StageWorkbenchPage[] = [
+  { label: '主题结构', route: '/console/domains', icon: GitBranch, caption: '生成并确认主题结构', navParent: '/console/tasks' },
 ]
 
-const resultWorkbenchPages: NavPage[] = [
-  { label: '问题生成', route: '/console/questions', icon: Layers3, caption: '查看问题覆盖' },
-  { label: '答案内容', route: '/console/reasoning', icon: BrainCircuit, caption: '查看答案完整性' },
-  { label: '质量评估', route: '/console/rewards', icon: ShieldCheck, caption: '查看评分状态' },
-  { label: '导出交付', route: '/console/exports', icon: HardDriveDownload, caption: '查看导出与交付' },
+const resultWorkbenchPages: StageWorkbenchPage[] = [
+  { label: '问题生成', route: '/console/questions', icon: Layers3, caption: '查看问题覆盖', navParent: '/console/results' },
+  { label: '答案内容', route: '/console/reasoning', icon: BrainCircuit, caption: '查看答案完整性', navParent: '/console/results' },
+  { label: '质量评估', route: '/console/rewards', icon: ShieldCheck, caption: '查看评分状态', navParent: '/console/results' },
+  { label: '导出交付', route: '/console/exports', icon: HardDriveDownload, caption: '查看导出与交付', navParent: '/console/results' },
 ]
+
+// 阶段路由 → 侧边栏高亮项。
+//
+// 这张表必须与阶段路由表保持一致：5b90c2e 把阶段路由改成自指重定向、又只改了路由没改这里，
+// 于是三处（路由表 / 侧边栏归属 / 面包屑）各写一份、互相漂移（issue #61）。
+// 现在改为从阶段工作台声明派生，任一阶段路由的归属只能有一个来源。
+const stageRouteNavMap: Record<string, string> = Object.fromEntries(
+  [...taskWorkbenchPages, ...resultWorkbenchPages].map((page) => [page.route, page.navParent]),
+)
 
 const adminPages: NavPage[] = [
   { label: '运营监控', route: '/console/operations', icon: ServerCog, caption: '查看队列与运行状态', adminOnly: true },

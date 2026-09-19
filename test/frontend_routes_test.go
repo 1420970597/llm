@@ -139,3 +139,156 @@ func TestWorkbenchNavRoutesAreReachable(t *testing.T) {
 		t.Fatal("未从工作台导航定义中解析出任何 route，断言失效")
 	}
 }
+
+// stageWorkbenchArrayNames 是声明阶段工作台页面（及其侧边栏归属）的数组。
+var stageWorkbenchArrayNames = []string{"taskWorkbenchPages", "resultWorkbenchPages"}
+
+// TestStageNavMapMustBeDerived 断言阶段路由的侧边栏归属由单一来源派生。
+//
+// issue #61 的成因之一是同一个「阶段路由归属」被写了三份（路由表 / 侧边栏高亮 /
+// 面包屑）。修好路由后，只要 stageRouteNavMap 还能被手写成常量表，
+// 下一次改路由就会再次漂移。因此这里锁定「必须是派生」这一结构。
+func TestStageNavMapMustBeDerived(t *testing.T) {
+	source := readAppSource(t)
+
+	block := regexp.MustCompile(`(?s)const\s+stageRouteNavMap[^=]*=\s*(.*?)\n\n`).FindStringSubmatch(source)
+	if block == nil {
+		t.Fatal("未找到 stageRouteNavMap 定义，断言失效")
+	}
+	expression := block[1]
+
+	for _, arrayName := range stageWorkbenchArrayNames {
+		if !strings.Contains(expression, arrayName) {
+			t.Errorf("stageRouteNavMap 的取值表达式未引用 %s：\n%s\n"+
+				"  阶段路由归属必须从阶段工作台声明派生，否则会与路由表再次漂移（见 issue #61）",
+				arrayName, strings.TrimSpace(expression))
+		}
+	}
+	if !strings.Contains(expression, "navParent") {
+		t.Errorf("stageRouteNavMap 的派生未使用 navParent：\n%s",
+			strings.TrimSpace(expression))
+	}
+}
+
+// TestStageWorkbenchPagesMustDeclareNavParent 断言每个阶段工作台页面都声明了
+// navParent，且该父项是真实存在的侧边栏路由。
+//
+// navParent 决定了处于某个阶段页时侧边栏高亮哪一项。缺失或指向不存在的路由，
+// 用户就会看到侧边栏高亮到不相干的默认项。
+func TestStageWorkbenchPagesMustDeclareNavParent(t *testing.T) {
+	source := readAppSource(t)
+
+	// 收集侧边栏（userPages）已声明的路由，作为合法的归属父项。
+	sidebarBlock := regexp.MustCompile(`(?s)const\s+userPages[^=]*=\s*\[(.*?)\n\]`).FindStringSubmatch(source)
+	if sidebarBlock == nil {
+		t.Fatal("未找到 userPages 声明，断言失效")
+	}
+	sidebarRoutes := map[string]bool{}
+	for _, m := range regexp.MustCompile(`route:\s*'([^']+)'`).FindAllStringSubmatch(sidebarBlock[1], -1) {
+		sidebarRoutes[m[1]] = true
+	}
+	if len(sidebarRoutes) == 0 {
+		t.Fatal("未从 userPages 解析出任何路由，断言失效")
+	}
+
+	pages := 0
+	for _, arrayName := range stageWorkbenchArrayNames {
+		block := regexp.MustCompile(
+			`(?s)const\s+` + arrayName + `[^=]*=\s*\[(.*?)\n\]`).FindStringSubmatch(source)
+		if block == nil {
+			t.Fatalf("未找到 %s 声明，断言失效", arrayName)
+		}
+
+		// 以对象为单位切分，避免 route 与 navParent 跨条目错位配对。
+		entries := regexp.MustCompile(`\{([^{}]*)\}`).FindAllStringSubmatch(block[1], -1)
+		if len(entries) == 0 {
+			t.Fatalf("%s 中未解析出任何条目", arrayName)
+		}
+		for _, entry := range entries {
+			pages++
+			route := regexp.MustCompile(`route:\s*'([^']+)'`).FindStringSubmatch(entry[1])
+			parent := regexp.MustCompile(`navParent:\s*'([^']+)'`).FindStringSubmatch(entry[1])
+			if route == nil {
+				t.Errorf("%s 中有条目缺少 route", arrayName)
+				continue
+			}
+			if parent == nil {
+				t.Errorf("阶段工作台页面 %s 缺少 navParent：\n  处于该阶段时侧边栏会高亮到默认项",
+					route[1])
+				continue
+			}
+			if !sidebarRoutes[parent[1]] {
+				t.Errorf("阶段工作台页面 %s 的 navParent=%s 不是 userPages 中声明的侧边栏路由",
+					route[1], parent[1])
+			}
+		}
+	}
+	if pages == 0 {
+		t.Fatal("未解析出任何阶段工作台页面，断言失效")
+	}
+}
+
+// stageRouteNavParent 是 5 个阶段路由各自的**期望**侧边栏归属，来自
+// docs/plans/issue-remediation-plan.md §1.4 与 test/l15_stage_routes.mjs 的冻结表。
+//
+// 为什么要单独断言「取值」而不只是「合法性」：
+// TestStageWorkbenchPagesMustDeclareNavParent 只检查 navParent 指向 userPages 里
+// 真实存在的路由。而 /console/tasks 与 /console/results 都是合法侧边栏项，因此把
+// /console/domains 的归属错写成 /console/results 仍然「合法」—— 那正是 issue #61
+// 的漂移形态本身（父代理用变异测试实测确认过：改错归属后本包测试仍然全绿）。
+// 所以必须把期望值冻结在测试里。
+var stageRouteNavParent = map[string]string{
+	"/console/domains":   "/console/tasks",
+	"/console/questions": "/console/results",
+	"/console/reasoning": "/console/results",
+	"/console/rewards":   "/console/results",
+	"/console/exports":   "/console/results",
+}
+
+// TestStageRouteNavParentValuesAreFrozen 断言每个阶段路由的 navParent 取值正确。
+//
+// 这条断言与 test/l15_stage_routes.mjs 的「阶段声明的 route→navParent/label 与契约
+// 冻结值一一对应」是同一不变量的两个入口：Go 侧让 CI 的 Backend job 能拦住它，
+// .mjs 侧让渲染级证据也能拦住它。两侧都必须独立成立，不能互相替代。
+func TestStageRouteNavParentValuesAreFrozen(t *testing.T) {
+	source := readAppSource(t)
+
+	// route -> navParent，按对象切分以免 route 与 navParent 跨条目错位配对。
+	actual := map[string]string{}
+	for _, arrayName := range stageWorkbenchArrayNames {
+		block := regexp.MustCompile(
+			`(?s)const\s+` + arrayName + `[^=]*=\s*\[(.*?)\n\]`).FindStringSubmatch(source)
+		if block == nil {
+			t.Fatalf("未找到 %s 声明，断言失效", arrayName)
+		}
+		for _, entry := range regexp.MustCompile(`\{([^{}]*)\}`).FindAllStringSubmatch(block[1], -1) {
+			route := regexp.MustCompile(`route:\s*'([^']+)'`).FindStringSubmatch(entry[1])
+			parent := regexp.MustCompile(`navParent:\s*'([^']+)'`).FindStringSubmatch(entry[1])
+			if route == nil || parent == nil {
+				continue
+			}
+			actual[route[1]] = parent[1]
+		}
+	}
+
+	// 5 个阶段路由必须全部出现在声明里，缺一个就说明阶段工作台声明被删减。
+	for route, wantParent := range stageRouteNavParent {
+		gotParent, ok := actual[route]
+		if !ok {
+			t.Errorf("阶段路由 %s 未在阶段工作台声明中出现（期望 navParent=%s）", route, wantParent)
+			continue
+		}
+		if gotParent != wantParent {
+			t.Errorf("阶段路由 %s 的 navParent=%s，期望 %s：\n"+
+				"  归属错误会让处于该阶段的用户看到侧边栏高亮到不相干的项（issue #61 的漂移形态）",
+				route, gotParent, wantParent)
+		}
+	}
+
+	// 反向：阶段工作台不得声明冻结表之外的阶段路由，否则冻结表本身已过期。
+	for route := range actual {
+		if _, ok := stageRouteNavParent[route]; !ok {
+			t.Errorf("阶段工作台声明了冻结表之外的路由 %s：请同步更新 stageRouteNavParent 与本测试的契约来源", route)
+		}
+	}
+}
