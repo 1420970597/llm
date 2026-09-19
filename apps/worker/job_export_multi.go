@@ -213,12 +213,12 @@ func loadExportRecords(ctx context.Context, jc *jobContext, datasetID int64, fil
 		}
 
 		// SFT 记录是问题→思维链→答案的一等公民载体，优先采用。
-		if sft, ok := sftByQuestion[question.ID]; ok && sft.Status != "failed" {
+		if sft, ok := sftByQuestion[question.ID]; ok && model.RecordStatusUsableForDownstream(sft.Status) {
 			record.ChainOfThought = sft.ChainOfThought
 			record.Answer = sft.Answer
 		}
 		if record.ChainOfThought == "" && record.Answer == "" {
-			if reasoning, ok := reasoningByQuestion[question.ID]; ok && reasoning.Status != "failed" {
+			if reasoning, ok := reasoningByQuestion[question.ID]; ok && model.RecordStatusUsableForDownstream(reasoning.Status) {
 				record.ChainOfThought = reasoning.Reasoning
 				record.Answer = reasoning.AnswerSummary
 			}
@@ -231,7 +231,7 @@ func loadExportRecords(ctx context.Context, jc *jobContext, datasetID int64, fil
 			}
 		}
 
-		if reward, ok := rewardByQuestion[question.ID]; ok && reward.Status != "failed" {
+		if reward, ok := rewardByQuestion[question.ID]; ok && model.RecordStatusUsableForDownstream(reward.Status) {
 			record.RewardScore = reward.Score
 			record.HasReward = true
 		}

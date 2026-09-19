@@ -422,7 +422,12 @@ func handleExportGeneration(ctx context.Context, datasetID int64, datasets *stor
 	for _, question := range questions {
 		reasoning, hasReasoning := reasoningByQuestion[question.ID]
 		reward, hasReward := rewardByQuestion[question.ID]
-		if !hasReasoning || !hasReward || reasoning.Status == "failed" || reward.Status == "failed" {
+		// 契约 §1.3：只有 generated 可进入导出。用 model 里的统一判定而不是
+		// 逐个比较字符串 —— `!= "failed"` 会把新增的 `invalid`（占位内容）放行，
+		// 这正是 issue #7 在出口处失守的原因。
+		if !hasReasoning || !hasReward ||
+			!model.RecordStatusUsableForDownstream(reasoning.Status) ||
+			!model.RecordStatusUsableForDownstream(reward.Status) {
 			continue
 		}
 		payload := map[string]any{
