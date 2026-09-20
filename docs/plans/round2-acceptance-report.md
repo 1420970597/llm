@@ -394,3 +394,121 @@ datasets 266–271）在 2026-09-19 04:57 / 05:06Z 被两条 `docker compose dow
 
 **最诚实的一句话**：本轮修好了大量缺陷，但更重要的是**把「发现缺陷的能力」本身补强了** ——
 验收从 4 项 SKIP 变成 0 SKIP，就是最直接的证据：不是问题变少了，而是**我们终于能看见它们了**。
+
+---
+
+## 8. 追加轮次：剩余 5 个 issue 的处置与复验
+
+本节记录主线 PR 合并后，对 GitHub 上**最后 5 个 open issue** 的修复与复验。
+全部以「真实容器 + 真实 API + 真实 DB」取证，无一例无证据关单。
+
+### 8.1 处置清单
+
+| issue | 标题要点 | PR | 根因一句话 |
+| --- | --- | --- | --- |
+| **#138** | 存储配置「设为默认」不互斥（实测 20 条同时默认） | #150 | `Upsert*` 直接写 `is_default`，从不清理其他行的默认标记 |
+| **#139** | 数据已产出但数据集状态不推进（GRPO 卡 23 小时） | #146 | 处理器不 `UpdateStatus`；进度接口也没有 grpo/sft 完成态映射 |
+| **#141** | 方向阶段进度单位不一致（领域数 vs 方向数） | #151 + #152 | `SaveCursor` 传 `len(CompletedDomainIDs)`，与 `total_units`（方向数）不同单位 |
+| **#142** | 评估已 8/8 打完分却停在「已入队」 | #151 | `/start` **无条件**写 `queued`，把并发完成的运行打回起点 |
+| **#143** | Redis 队列不持久化，重启丢在途任务 | #146 | `--appendonly no` + BRPOP 破坏性读取，无 ack 无恢复 |
+
+### 8.2 两处「根因比表象更深」的发现
+
+**#142 的竞态本质。** 表面看是「状态没更新」，实际是**写入顺序 + 无条件覆盖**：
+
+```text
+worker 日志:  02:38:46 eval.run.done run=22 ... status=completed
+数据库:       status=queued  scored_items=8/8  updated_at=03:24:35
+```text
+
+`updated_at` 比 worker 完成时间**晚 46 分钟** —— 期间有人对这条**已完成**的运行
+再次调了 `/start`。旧代码「先标 queued 再入队」，若 worker 正在并发完成，
+最终落库的就是 `queued`，而队列里已无任务 → **永久卡住**。
+注释给出的理由（「否则 worker 先到查不到运行」）**不成立**：
+`enqueueJob` 是同步 LPUSH，顺序对调不会丢任务。
+
+修法是把「不覆盖终态」写成 **SQL 的 WHERE 条件**，让判定与写入在同一条语句里完成，
+而不是「先读后写」。
+
+**#141 为什么长期没被发现。** 缺陷需要「领域数 ≠ 方向数」才显形：
+
+| id | total_units | done_units | level1(领域) | level2(方向) | 是否暴露 |
+| --- | --- | --- | --- | --- | --- |
+| 247 | 100 | 100 | 100 | 100 | ✗ 每领域仅 1 方向，恰好相等 |
+| 248 | 100 | 100 | 100 | 100 | ✗ 同上 |
+| 219 | 30 | **10** | 10 | 30 | ✓ |
+| 218 | 30 | **10** | 10 | 30 | ✓ |
+| 216 | 30 | **10** | 10 | 30 | ✓ |
+
+只靠集成测试会被 247/248 这类数据骗过去 —— 因此补的是**不依赖容器**的单元断言，
+并且断言落在**调用点**（纯函数无法发现调用者传错单位）。
+
+### 8.3 关键复验证据
+
+#### #138 互斥（真实 API）
+
+```text
+A -> id=36 name=l15v138-455092-A default=True
+B -> id=37 name=l15v138-455092-B default=True
+该前缀下的行:
+  36 l15v138-455092-A default=false   ← 被自动清掉
+  37 l15v138-455092-B default=true
+全表默认行: 37 l15v138-455092-B       ← 恰好 1 条
+```text
+
+**#143 Redis 持久化对比实验**（写任务 → 重启容器）
+
+| Redis 配置 | 重启前 LLEN | 重启后 LLEN |
+| --- | --- | --- |
+| 修复前 `--appendonly no` | 1 | **0** ← 任务永久消失 |
+| 修复后 `--appendonly yes --appendfsync everysec` | 1 | **1** ← 任务保留 |
+
+任务内容完整保留：`{"type":"eval.run","datasetId":1}`。
+
+#### #139/#143 启动恢复
+
+```text
+2026/09/20 15:32:40 recover.stalled.requeued dataset=185 status=reasoning_queued type=reasoning.generate
+2026/09/20 15:32:40 recover.stalled.done stalled=1 recovered=1
+```text
+
+#### #142 终态不被覆盖
+
+| | run 22 状态 |
+| --- | --- |
+| 修复前 | `queued` 8/8 ← 永久卡住 |
+| 修复后 | `completed` 8/8 ← 终态未被覆盖 |
+
+**#139 真实数据自愈**：dataset 87 由 `grpo_queued`（停留 23 小时）变为 `grpo_generated`。
+
+### 8.4 变异验证（证明守卫非空转）
+
+| 守卫 | 变异操作 | 结果 |
+| --- | --- | --- |
+| `eval_mark_queued_test.go` | 去掉 SQL 的 `AND status NOT IN (...)` | 3 条终态断言全部 FAIL |
+| `direction_units_test.go` | 调用点改回 `len(CompletedDomainIDs)` | `TestDirectionDoneUnitsCallSiteUsesDirectionCount` FAIL |
+
+### 8.5 门禁与复验
+
+- **Go**：新增 `scripts/go-gate.sh`，按**输出**判定 `gofmt`
+  （`gofmt -l` 列出问题时仍返回 exit 0，本仓库已因此漏过两次：#94 与 #151）→ `GO GATE OK`。
+- **前端**：`npm run build -w apps/web-user` 通过。
+- **CI 的 8 个冻结 UI 守卫**：逐一复跑，**8/8 通过**（共 189 项断言）。
+- **全量端到端验收**：`test_acceptance_7requirements.py` →
+  **通过 73 · 失败 0 · 跳过 0**（真实 LLM、真实 worker、真实 MinIO、真实 DB）。
+- **多 LLM 互评**（本次验收真实数据）：
+  `judges_scored=[7, 11]`（两个裁判均实际打分）、`count=48` 条多维打分、
+  `with_rationale=48/48`（全部含裁判理由）、`judgeAgreement=0.637`，
+  报告给出中文结论：「整体质量良好（归一化得分 75/100），但存在明显短板维度」。
+
+### 8.6 收尾状态
+
+- **GitHub 积压清零**：`open issues = 0`，`open PRs = 0`。
+- main 最新提交：`f2fed44 test(worker): 为 #141 方向进度单位补回归守卫，并抽出可测纯函数 (#152)`。
+- **如实登记的残留**：`llm-redis-1` 运行容器的 `appendonly` 仍为 `no`
+  （该容器创建于本次 compose 改动之前）—— 下次 `docker compose up -d` 重建即生效。
+  已在 #143 的关单评论中写明，未谎称已生效。
+- 两个非 CI 门禁的浏览器脚本在本机失败，原因均为**环境依赖**而非代码缺陷：
+  `test/l14_ui_smoke.mjs` 期望 `127.0.0.1:18093`（未运行）；
+  `test/l15_page_structure_capture.mjs` 驱动的前端由**另一并行会话**的 worktree 提供。
+  两者都不在 CI 门禁列表内，且未被本轮改动触及。
