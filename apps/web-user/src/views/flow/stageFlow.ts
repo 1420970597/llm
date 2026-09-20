@@ -202,3 +202,122 @@ export function currentStageFor(datasetStatus: string | undefined): StageDefinit
   }
   return PIPELINE_STAGES[PIPELINE_STAGES.length - 1]
 }
+
+/* ------------------------------------------------------------------ *
+ * 任务上下文导航（本文件无 import，因此这些纯函数可以在 Node 下直接单测）
+ *
+ * 解决的问题
+ * ----------
+ * 阶段页本来就是从任务详情页进入的，侧边栏里并不存在这 5 个阶段：
+ * App.tsx 的 `navParent` 只用于「高亮哪个菜单」，不生成菜单项（见 stageRouteNavMap）。
+ *
+ * 由此产生一个真实缺口：**同一条流水线的两个阶段页，侧边栏看起来完全一样**，
+ * 用户看不出「我在第几步 / 哪几步已完成 / 下一步去哪」。
+ *
+ * 修法不是把阶段塞进侧边栏（那会让全局菜单承担流程语义，正是 NN/g 反对的
+ * staged disclosure 混进 progressive navigation），而是在阶段页内部提供任务
+ * 上下文导航：5 步 + 当前高亮 + 已完成可点 + 未完成锁死 + 下一步。
+ * ------------------------------------------------------------------ */
+
+/** 任务上下文导航里单个步骤的展示状态。 */
+export type StepState = 'done' | 'current' | 'todo' | 'failed'
+
+/** 计算后的单个步骤（供渲染层直接消费）。 */
+export type ContextStep = {
+  key: StageKey
+  step: number
+  label: string
+  route: string
+  state: StepState
+  /** 该步是否已完成（与 state 分开：当前步的 state 是 current，但仍可能已完成）。 */
+  done: boolean
+  /** 该步是否失败。 */
+  failed: boolean
+  /** 是否可点击跳转。 */
+  clickable: boolean
+  /** 不可点击时给用户的理由（hover 提示用）。 */
+  lockedReason: string
+}
+
+/**
+ * 构建任务上下文步骤条。
+ *
+ * 规则（对齐 NN/g《Wizards》准则 2/3/4/5）：
+ *   - 准则 2：显示步骤列表并高亮当前步
+ *   - 准则 3：**强制顺序** —— 不得跳过尚未完成的前置步骤
+ *   - 准则 5：**可中断恢复** —— 退回去看已完成/已到达的步骤永远不应被阻止
+ *
+ * 可点性判据（两条并集，缺一会出真 bug）：
+ *   1. `done` —— 已完成的步骤可随时回看；
+ *   2. `step <= 当前页面步` —— **回退永不被锁**。
+ * 只保留第 1 条会造成「在阶段 3 时回不到阶段 2」；只保留第 2 条会造成
+ * 「在阶段 3 时可以跳到尚未完成的阶段 5」。
+ *
+ * 注意：不能拿 `state === 'done'` 判断完成与否 —— 当前步的 state 是 `current`，
+ * 会掩盖它其实已完成的事实（曾因此导致已完成阶段页的「下一步」按钮恒为禁用）。
+ * 因此完成与否单独放在 `done` 字段。
+ *
+ * @param datasetStatus 当前任务状态（如 `directions_completed`）
+ * @param currentKey    当前所在阶段页（由路由决定，可能因失败回退而早于 active 步）
+ */
+export function buildContextSteps(
+  datasetStatus: string | undefined,
+  currentKey: StageKey | undefined,
+): ContextStep[] {
+  const currentStepNo = stageByKey(currentKey as StageKey)?.step ?? 0
+
+  return PIPELINE_STAGES.map((stage) => {
+    const done = isStageDone(stage.key, datasetStatus)
+    const failed = isStageFailed(stage.key, datasetStatus)
+    const isCurrent = stage.key === currentKey
+
+    let state: StepState = 'todo'
+    // 失败优先于「当前」：当前阶段刚失败时，显示失败态比显示「进行中」有用。
+    if (failed) state = 'failed'
+    else if (isCurrent) state = 'current'
+    else if (done) state = 'done'
+
+    // 已完成 → 可回看；不超过当前页 → 回退永远放行（准则 5）。
+    const clickable = done || (currentStepNo > 0 && stage.step <= currentStepNo)
+
+    return {
+      key: stage.key,
+      step: stage.step,
+      label: stage.label,
+      route: stage.route,
+      state,
+      done,
+      failed,
+      clickable,
+      lockedReason: clickable
+        ? ''
+        : `完成「${firstIncompleteBefore(stage.step, datasetStatus)}」后可进入`,
+    }
+  })
+}
+
+/**
+ * 给锁死步骤找「卡在哪一步」——取序号小于该步、且尚未完成的第一个阶段名。
+ *
+ * 独立成函数是为了可测：锁死提示必须指向**真正的前置缺口**，而不是笼统的
+ * 「请先完成上一步」。例如第 3 步锁死时，若第 2 步其实已完成、真正缺的是第 1 步，
+ * 提示就必须写第 1 步。
+ */
+export function firstIncompleteBefore(step: number, datasetStatus: string | undefined): string {
+  for (const stage of PIPELINE_STAGES) {
+    if (stage.step >= step) break
+    if (!isStageDone(stage.key, datasetStatus)) return stage.label
+  }
+  return '前置步骤'
+}
+
+/**
+ * 判断任务上下文步骤条是否应显示。
+ *
+ * 只在「确实处于某个任务上下文」时显示：阶段页 + 任务详情页。
+ * 非任务相关页面（数据资产、质量评估、管理页）不显示，避免把流程语义扩散到全局。
+ */
+export function shouldShowTaskContext(pathname: string): boolean {
+  if (/^\/console\/tasks\/\d+$/.test(pathname)) return true
+  return PIPELINE_STAGES.some((stage) => pathname === stage.route)
+}

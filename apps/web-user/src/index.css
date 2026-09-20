@@ -562,3 +562,154 @@ a {
     justify-content: flex-start;
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * 任务上下文步骤导航（StageContextNav）
+ *
+ * 阶段页属于同一条 5 步流水线，但这些阶段不在全局侧边栏里，因此此前
+ * 两个阶段页的侧边栏看起来完全一样，用户看不出「我在第几步」。
+ * 这里在页内补上任务上下文：5 步 + 当前高亮 + 已完成可点 + 未完成锁死。
+ * ------------------------------------------------------------------ */
+
+.stage-context-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stage-context-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stage-context-step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stage-context-step-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--semi-color-text-1);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.stage-context-step-btn:hover:not(:disabled) {
+  background: var(--semi-color-fill-0);
+}
+
+/* 未完成的后续步骤：锁死。禁用态必须明显区别于可用态，
+   否则用户会反复点击无效目标（NN/g 准则 3：强制顺序）。 */
+.stage-context-step-btn:disabled {
+  cursor: not-allowed;
+  color: var(--semi-color-text-3);
+  opacity: 0.55;
+}
+
+.stage-context-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.stage-context-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.25;
+}
+
+.stage-context-label {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.stage-context-state {
+  font-size: 11px;
+  color: var(--semi-color-text-3);
+}
+
+.stage-context-arrow {
+  color: var(--semi-color-text-3);
+  flex: none;
+}
+
+/* 已完成 */
+.stage-context-step.is-done .stage-context-icon {
+  background: var(--semi-color-success-light-default);
+  color: var(--semi-color-success);
+}
+
+/* 当前步：高亮 */
+.stage-context-step.is-current .stage-context-step-btn {
+  background: var(--semi-color-primary-light-default);
+  border-color: var(--semi-color-primary-light-active);
+}
+
+.stage-context-step.is-current .stage-context-icon {
+  background: var(--semi-color-primary);
+  color: #fff;
+}
+
+.stage-context-step.is-current .stage-context-label {
+  font-weight: 600;
+  color: var(--semi-color-primary);
+}
+
+/* 失败：必须显眼，并提供回去重试的入口 */
+.stage-context-step.is-failed .stage-context-icon {
+  background: var(--semi-color-danger-light-default);
+  color: var(--semi-color-danger);
+}
+
+.stage-context-step.is-failed .stage-context-state {
+  color: var(--semi-color-danger);
+}
+
+.stage-context-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 9px;
+  background: var(--semi-color-primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.stage-context-next.is-disabled,
+.stage-context-next:disabled {
+  background: var(--semi-color-fill-1);
+  color: var(--semi-color-text-3);
+  cursor: not-allowed;
+  font-weight: 400;
+}
+
+/* 最后一步：不再显示按钮，改为静态说明 */
+.stage-context-next.is-final {
+  background: var(--semi-color-success-light-default);
+  color: var(--semi-color-success);
+  cursor: default;
+}

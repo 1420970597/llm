@@ -76,7 +76,7 @@ import {
 } from './lib/api'
 import { CleaningView } from './views/CleaningView'
 import { EvaluationView } from './views/EvaluationView'
-import { StageNextStep } from './views/flow/StageNextStep'
+import { StageContextNav } from './views/flow/StageContextNav'
 import { StageProgressDetail } from './views/flow/StageProgressDetail'
 import { TaskTemplatePicker, type TaskTemplate } from './views/flow/TaskTemplatePicker'
 import { resolveDownloadTarget, resolveDownloadPath } from './views/flow/downloadTarget'
@@ -84,7 +84,6 @@ import {
   currentStageFor,
   isStageDone,
   isStageFailed,
-  nextStageOf,
   stageByKey,
   type StageKey as PipelineStageKey,
 } from './views/flow/stageFlow'
@@ -2667,17 +2666,16 @@ export default function App() {
             </>
           }
         />
-        {/* 阶段间直达导航：解决 issue #84 的 5 次往返。 */}
+        {/* 任务上下文导航：与其余 4 个阶段页一致，让用户始终知道「我在第几步」
+            以及下一步去哪（issue #84 / #90）。 */}
         <Card className="console-panel" bodyStyle={{ padding: 16 }}>
-          <StageNextStep
-            nextLabel={nextStageOf('domains')?.label ?? '问题生成'}
-            nextRoute={nextStageOf('domains')?.route ?? '/console/questions'}
-            currentStageDone={isStageDone('domains', activeDataset?.status)}
+          <StageContextNav
+            datasetStatus={activeDataset?.status}
+            currentStageKey="domains"
             onNavigate={(route) => {
               navigate(route)
               if (activeDatasetId) void loadDatasetWorkspace(activeDatasetId)
             }}
-            blockedHint="先「生成方向结构」并点「确认结构」，即可进入问题生成。"
           />
         </Card>
 
@@ -2817,11 +2815,9 @@ export default function App() {
     nextStepTips: string[]
     exceptionHint: string
     renderRecord: (record: any) => React.ReactNode
-    /** 本阶段在流水线中的标识，用于渲染「下一步」直达按钮（issue #84）。 */
+    /** 本阶段在流水线中的标识，用于渲染任务上下文导航（issue #84 / #90）。 */
     stageKey: PipelineStageKey
   }) => {
-    // 下一阶段由 stageFlow 的单一来源派生，避免此处再写一份阶段顺序（issue #90）。
-    const nextStage = nextStageOf(stageKey)
     return (
     <div className="console-page-shell">
       <PageHeader
@@ -2837,30 +2833,20 @@ export default function App() {
           </>
         }
       />
-      {/* 阶段间直达导航：解决 issue #84 的 5 次往返。
-          此前用户完成本阶段后只能点「返回当前任务」绕回任务详情页再点下一张卡片。 */}
-      {nextStage ? (
-        <Card className="console-panel" bodyStyle={{ padding: 16 }}>
-          <StageNextStep
-            nextLabel={nextStage.label}
-            nextRoute={nextStage.route}
-            currentStageDone={isStageDone(stageKey, activeDataset?.status)}
-            onNavigate={(route) => {
-              navigate(route)
-              if (activeDatasetId) void loadDatasetWorkspace(activeDatasetId)
-            }}
-            blockedHint={`完成本阶段（${stageByKey(stageKey)?.label ?? ''}）后可进入「${nextStage.label}」。`}
-          />
-        </Card>
-      ) : (
-        <Card className="console-panel" bodyStyle={{ padding: 16 }}>
-          <Space align="center" spacing="medium" wrap>
-            <Text strong>已是最后一步</Text>
-            <Text className="console-caption">导出完成后，可到「数据资产」下载交付文件。</Text>
-            <Button onClick={() => navigate('/console/results')}>前往数据资产</Button>
-          </Space>
-        </Card>
-      )}
+      {/* 任务上下文导航：本阶段页属于同一条 5 步流水线，但侧边栏里没有这 5 步，
+          因此此前两个阶段页的侧边栏看起来完全一样，用户看不出「我在第几步 /
+          哪几步已完成 / 下一步去哪」。这里在页内补上任务上下文。
+          它同时取代了原先单独的「下一步」按钮卡（避免一页出现两个下一步）。 */}
+      <Card className="console-panel" bodyStyle={{ padding: 16 }}>
+        <StageContextNav
+          datasetStatus={activeDataset?.status}
+          currentStageKey={stageKey}
+          onNavigate={(route) => {
+            navigate(route)
+            if (activeDatasetId) void loadDatasetWorkspace(activeDatasetId)
+          }}
+        />
+      </Card>
       <div className="console-card-grid-3">
         {summaryCards.map((item) => <StatCard key={item.label} {...item} />)}
       </div>
