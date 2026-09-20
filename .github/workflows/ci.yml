@@ -64,6 +64,20 @@ jobs:
       - run: npm ci
       - run: npm run build -w apps/web-user
 
+      # 文档一致性门禁（scripts/check-docs.mjs）。
+      #
+      # 为什么必须在这里跑：这个脚本早已存在，却**没有任何 CI job 执行它** ——
+      # 于是它只在人工运行时才有作用（与「UI 守卫未进 CI」是同一类漏洞，见 PR #124）。
+      #
+      # 实测代价：设计交付物 docs/design/2026-09-20-console-rebuild/06-page-atlas.md
+      # 的页面索引表里 64 个锚点全部写成了 `#g01` 这种短码，而真实标题是
+      # `### G01 · 登录`（slug 为 `g01-登录`）—— 索引表在 GitHub 上**点了不跳转**，
+      # 而 64 处失效没有任何自动化发现，直到本步骤把它接入 CI。
+      #
+      # 校验内容：相对链接可解析、同文档锚点有对应标题、代码引用路径真实存在。
+      - name: Docs consistency (links + anchors)
+        run: node scripts/check-docs.mjs
+
       # 契约冻结的 UI 守卫（test/l15_*.mjs）。
       #
       # 为什么必须在这里跑：这些脚本的默认路径是**源码级 + esbuild 渲染**断言，

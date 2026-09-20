@@ -1,0 +1,4279 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><link rel="icon" href="data:,"><meta name="description" content="LLM 数据工厂：产品调研后的完整交互原型。演示数据，不连接业务接口。"><title>序列数据工厂 · 交互原型</title><style>:root {
+  --ink: #172b35;
+  --muted: #677981;
+  --line: #dce5e7;
+  --bg: #f4f7f8;
+  --brand: #087f75;
+  --soft: #e7f4ef;
+  --danger: #b83d38;
+  --amber: #9b6508;
+  --sidebar: 216px;
+  font-family:
+    Inter, "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+  color: var(--ink);
+  font-size: 14px;
+  background: var(--bg);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+a {
+  color: var(--brand);
+  text-decoration: none;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button,
+a,
+input,
+select,
+textarea {
+  outline-offset: 4px;
+}
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #158aaf;
+}
+button,
+.button {
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--ink);
+  border-radius: 7px;
+  padding: 9px 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  line-height: 20px;
+  font-weight: 550;
+}
+button:hover,
+.button:hover {
+  background: #f0f7f5;
+  border-color: #92b7ad;
+}
+button.primary,
+.button.primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: white;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+button.quiet,
+.button.quiet {
+  border: 0;
+  background: transparent;
+  padding: 5px 8px;
+  color: var(--brand);
+}
+button.danger {
+  color: var(--danger);
+  border-color: #edceca;
+}
+input,
+select,
+textarea {
+  border: 1px solid #c7d6d8;
+  border-radius: 6px;
+  background: white;
+  color: var(--ink);
+  padding: 10px 12px;
+  min-height: 42px;
+  width: 100%;
+}
+input[type="checkbox"],
+input[type="radio"] {
+  width: 17px;
+  height: 17px;
+  min-height: 0;
+  accent-color: var(--brand);
+}
+textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+h1 {
+  font-size: 28px;
+  letter-spacing: -0.6px;
+  line-height: 1.4;
+  margin-bottom: 7px;
+}
+h2 {
+  font-size: 17px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+h3 {
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+p {
+  line-height: 1.8;
+}
+small,
+.muted {
+  color: var(--muted);
+  line-height: 1.65;
+}
+small {
+  font-size: 12px;
+}
+strong {
+  font-weight: 650;
+}
+.mono,
+code {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.sidebar {
+  position: fixed;
+  inset: 0 auto 42px 0;
+  width: var(--sidebar);
+  background: #102d31;
+  color: #abc4c4;
+  display: flex;
+  flex-direction: column;
+  padding: 25px 16px;
+  z-index: 20;
+}
+.brand {
+  white-space: nowrap;
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  margin-bottom: 28px;
+  color: white;
+  font-size: 17px;
+  font-weight: 700;
+}
+.brandmark {
+  flex-shrink: 0;
+  width: 35px;
+  height: 35px;
+  background: #b8e6d0;
+  color: #173e3b;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 21px;
+}
+.workspace {
+  border: 1px solid #355357;
+  padding: 11px;
+  border-radius: 7px;
+  margin-bottom: 25px;
+  color: #d8e8e5;
+  font-size: 12px;
+}
+.navlabel {
+  font-size: 10px;
+  color: #96b4b3;
+  letter-spacing: 1.4px;
+  padding: 10px 12px;
+}
+.navitem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  margin: 3px 0;
+  border-radius: 6px;
+  color: #d2e0de;
+  font-size: 13px;
+}
+.navitem .symbol {
+  font-size: 17px;
+  width: 19px;
+  text-align: center;
+  color: #9abdb6;
+}
+.navitem.active {
+  background: #26544f;
+  color: white;
+}
+.navitem.active .symbol {
+  color: #b7efd8;
+}
+.navitem:hover {
+  background: #204441;
+}
+.nav-spacer {
+  flex: 1;
+}
+.navfoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 9px 0;
+  border-top: 1px solid #365153;
+  color: #e1eeec;
+}
+.avatar {
+  background: #deeee8;
+  border: 1px solid #bfdbd2;
+  color: #20574e;
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 12px;
+}
+.topbar {
+  height: 64px;
+  position: sticky;
+  top: 0;
+  margin-left: var(--sidebar);
+  background: #ffffffee;
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 36px;
+  z-index: 12;
+}
+.crumb {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.topactions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+}
+.main {
+  margin-left: var(--sidebar);
+  padding: 30px 36px 88px;
+  max-width: 1800px;
+}
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 25px;
+}
+.eyebrow {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--brand);
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.panel {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 22px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 3px #142f3803;
+}
+.panel.flush {
+  padding: 0;
+  overflow: hidden;
+}
+.panel-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.panel-title h2 {
+  margin: 0;
+}
+.grid {
+  display: grid;
+  gap: 20px;
+}
+.grid.two {
+  grid-template-columns: 1fr 1fr;
+}
+.grid.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.grid.four {
+  grid-template-columns: repeat(4, 1fr);
+}
+.grid.split {
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+.grid.editor {
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+.metric {
+  padding: 19px 20px;
+  border-radius: 8px;
+  background: white;
+  border: 1px solid var(--line);
+}
+.metric span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.metric b {
+  display: block;
+  font-size: 29px;
+  letter-spacing: -0.9px;
+  margin: 12px 0 5px;
+}
+.metrics {
+  margin-bottom: 24px;
+}
+.badge {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  border-radius: 5px;
+  background: #edf1f3;
+  color: #52666d;
+  padding: 4px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.badge.good {
+  background: #e6f4eb;
+  color: #267448;
+}
+.badge.warn {
+  background: #fff2db;
+  color: #946416;
+}
+.badge.bad {
+  background: #fdecec;
+  color: #b24743;
+}
+.badge.blue {
+  background: #eaf0ff;
+  color: #4866ad;
+}
+.badge.dot:before {
+  content: "●";
+  font-size: 8px;
+}
+.banner {
+  padding: 14px 17px;
+  border: 1px solid #bcdccd;
+  background: #eef8f3;
+  border-radius: 7px;
+  line-height: 1.8;
+  margin-bottom: 20px;
+}
+.banner.warn {
+  background: #fff9ed;
+  border-color: #f0d49e;
+}
+.banner.bad {
+  background: #fff2f1;
+  border-color: #ecc5c1;
+}
+.banner p:last-child {
+  margin: 0;
+}
+.tabs {
+  display: flex;
+  gap: 27px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 24px;
+  overflow-x: auto;
+}
+.tab {
+  padding: 12px 0;
+  color: var(--muted);
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+}
+.tab.active {
+  color: var(--brand);
+  border-color: var(--brand);
+  font-weight: 650;
+}
+.toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.toolbar input {
+  width: 260px;
+}
+.toolbar select {
+  width: auto;
+  min-width: 120px;
+}
+.toolbar .grow {
+  flex: 1;
+}
+.table-scroll {
+  overflow: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+th {
+  font-size: 11px;
+  font-weight: 550;
+  color: var(--muted);
+  background: #f9fbfb;
+  padding: 13px 20px;
+  white-space: nowrap;
+}
+td {
+  padding: 16px 20px;
+  border-bottom: 1px solid #edf1f2;
+  font-size: 12px;
+  line-height: 1.65;
+}
+tr:last-child td {
+  border: 0;
+}
+tr:hover td {
+  background: #fbfdfc;
+}
+td a {
+  font-weight: 600;
+}
+td small {
+  display: block;
+  margin-top: 4px;
+}
+td .button {
+  font-size: 12px;
+  padding: 5px 9px;
+}
+.pagination {
+  padding: 13px 20px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 12px;
+}
+.progress {
+  background: #e9efed;
+  height: 7px;
+  border-radius: 5px;
+  overflow: hidden;
+  margin: 11px 0;
+}
+.progress i {
+  height: 100%;
+  display: block;
+  background: var(--brand);
+  border-radius: 5px;
+}
+.step-line {
+  display: flex;
+  gap: 0;
+  margin: 24px 0 30px;
+}
+.step {
+  flex: 1;
+  position: relative;
+  padding: 0 12px 0 0;
+  min-width: 0;
+}
+.step:after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 35px;
+  right: 10px;
+  border-top: 1px solid #bed5cb;
+}
+.step:last-child:after {
+  display: none;
+}
+.step-num {
+  border-radius: 50%;
+  height: 29px;
+  width: 29px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #c5d8d4;
+  background: white;
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+  color: var(--muted);
+}
+.step.active .step-num {
+  color: white;
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.step.done .step-num {
+  background: var(--soft);
+  color: var(--brand);
+}
+.step-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin: 12px 0 3px;
+}
+.step small {
+  font-size: 10px;
+}
+.field {
+  margin-bottom: 21px;
+}
+.field > label,
+.field > .label {
+  display: block;
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 9px;
+}
+.field small {
+  display: block;
+  margin-top: 7px;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.radio-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.radio-card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.radio-card:has(input:checked) {
+  background: #f0faf5;
+  border-color: #58a68d;
+}
+.radio-card strong {
+  display: block;
+  margin-bottom: 6px;
+}
+.checkbox-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 0;
+  font-size: 13px;
+}
+.check-list {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 16px;
+}
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  margin-top: 26px;
+}
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #edf1f2;
+  font-size: 12px;
+}
+.summary-row:last-child {
+  border: 0;
+}
+.summary-row > span:first-child {
+  color: var(--muted);
+}
+.hero {
+  padding: 28px 30px;
+  background: #e6f3ed;
+  border: 1px solid #d2e7dc;
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+.hero h2 {
+  font-size: 21px;
+  margin-bottom: 9px;
+}
+.hero p {
+  font-size: 13px;
+  color: #466f62;
+  margin-bottom: 18px;
+}
+.hero-art {
+  width: 180px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+}
+.hero-art span {
+  background: #ffffffab;
+  border: 1px solid #c0dfd2;
+  width: 45px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  height: 70px;
+  color: #478574;
+}
+.hero-art span:nth-child(2) {
+  height: 110px;
+  transform: translateY(-7px);
+}
+.link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 17px 0;
+  border-bottom: 1px solid #edf1f2;
+  gap: 20px;
+}
+.link-row:last-child {
+  border: 0;
+}
+.link-row p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 5px 0 0;
+}
+.timeline {
+  border-left: 2px solid #dce8e2;
+  padding-left: 21px;
+  margin-left: 7px;
+}
+.timeline-item {
+  position: relative;
+  padding: 0 0 24px;
+}
+.timeline-item:before {
+  content: "";
+  position: absolute;
+  left: -27px;
+  top: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #6aa78e;
+  border: 2px solid white;
+}
+.timeline-item p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.tree-item {
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.tree-item.active {
+  background: #e9f5ee;
+  color: #22654c;
+  border-color: #c4dece;
+}
+.tree-child {
+  margin-left: 20px;
+  padding: 10px 12px;
+  border-left: 1px solid #dce7e0;
+  font-size: 12px;
+}
+.sample-text {
+  line-height: 1.95;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+.sample-title {
+  font-size: 11px;
+  color: var(--brand);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin: 20px 0 10px;
+}
+.sample-text mark {
+  background: #ffe4a6;
+  padding: 2px 3px;
+  border-radius: 3px;
+}
+.bar-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 38px;
+  gap: 13px;
+  align-items: center;
+  font-size: 12px;
+  padding: 11px 0;
+}
+.bar {
+  background: #edf1ef;
+  height: 10px;
+  border-radius: 3px;
+}
+.bar i {
+  display: block;
+  background: #64a690;
+  height: 100%;
+  border-radius: 3px;
+}
+.empty {
+  text-align: center;
+  padding: 64px 20px;
+}
+.empty .empty-icon {
+  font-size: 30px;
+  color: #70a290;
+  margin-bottom: 20px;
+}
+.empty h2 {
+  font-size: 20px;
+}
+.empty p {
+  font-size: 13px;
+  color: var(--muted);
+}
+.loading {
+  min-height: 330px;
+  display: grid;
+  place-items: center;
+}
+.skeleton {
+  height: 18px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #edf2f0, #f7f9f8, #edf2f0);
+  background-size: 200%;
+  animation: load 1.5s infinite;
+  margin: 15px 0;
+}
+@keyframes load {
+  to {
+    background-position: -200%;
+  }
+}
+.resource-card {
+  padding: 22px;
+  border: 1px solid var(--line);
+  background: white;
+  border-radius: 9px;
+}
+.resource-icon {
+  font-size: 22px;
+  color: var(--brand);
+  background: #eaf5ef;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  margin-bottom: 18px;
+}
+.resource-card p {
+  font-size: 12px;
+  color: var(--muted);
+  min-height: 45px;
+}
+.sticky-note {
+  position: sticky;
+  top: 85px;
+  align-self: start;
+}
+.prototype-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  background: #fff;
+  border-top: 1px solid #cbd8d5;
+  padding: 0 18px;
+  z-index: 60;
+  font-size: 11px;
+  color: var(--muted);
+}
+.prototype-bar select {
+  min-height: 28px;
+  padding: 2px 8px;
+  font-size: 11px;
+  width: auto;
+}
+.prototype-bar a {
+  font-size: 11px;
+}
+.prototype-controls {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.toast {
+  position: fixed;
+  top: 77px;
+  right: 30px;
+  padding: 14px 22px;
+  color: #205e43;
+  border: 1px solid #b5d9c5;
+  background: #f1fff6;
+  box-shadow: 0 7px 24px #17302918;
+  border-radius: 8px;
+  z-index: 90;
+  max-width: 440px;
+  line-height: 1.7;
+}
+.toast[hidden] {
+  display: none;
+}
+dialog {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0;
+  width: min(620px, 92vw);
+  color: var(--ink);
+  box-shadow: 0 20px 80px #112d3433;
+}
+dialog::backdrop {
+  background: #15303766;
+  backdrop-filter: blur(2px);
+}
+.modal-head {
+  padding: 23px 26px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+.modal-head h2 {
+  margin: 0;
+}
+.modal-body {
+  padding: 24px 26px;
+}
+.modal-foot {
+  padding: 16px 26px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.pill-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 20px;
+}
+.cover {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 45px 0;
+}
+.catalog-section {
+  margin-bottom: 32px;
+}
+.catalog-link {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  font-size: 12px;
+}
+.catalog-link small {
+  font-size: 10px;
+}
+.login-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: calc(100vh - 42px);
+  background: white;
+}
+.login-story {
+  background: #103b3a;
+  color: #e6f4ee;
+  padding: 90px 65px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.login-story h1 {
+  font-size: 39px;
+  line-height: 1.5;
+}
+.login-story p {
+  color: #b2d5c7;
+  margin-top: 20px;
+}
+.login-form {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+.login-form form {
+  width: 360px;
+}
+.edit-step {
+  padding: 17px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  margin-bottom: 13px;
+}
+.edit-step h3 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.muted-box {
+  padding: 14px;
+  background: #f5f8f7;
+  border-radius: 6px;
+  border: 1px dashed #cdded6;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.85;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.mobile-nav-toggle {
+  display: none;
+}
+.score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+.selected-bar {
+  padding: 12px 20px;
+  background: #edf7f1;
+  border-bottom: 1px solid #c8dfcf;
+  display: flex;
+  gap: 15px;
+  align-items: center;
+}
+.selected-bar[hidden] {
+  display: none;
+}
+.sample-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 20px;
+}
+.code-block {
+  padding: 18px;
+  background: #173735;
+  color: #d3efe2;
+  border-radius: 7px;
+  white-space: pre-wrap;
+  line-height: 1.9;
+  font-size: 12px;
+  overflow: auto;
+}
+.helper {
+  padding: 20px;
+  background: #f7faf8;
+  border: 1px solid #dce8df;
+  border-radius: 8px;
+  margin-top: 18px;
+}
+.helper p {
+  font-size: 12px;
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+.definition {
+  display: grid;
+  grid-template-columns: 135px 1fr;
+  gap: 14px;
+  padding: 13px 0;
+  border-bottom: 1px solid #edf1f2;
+  font-size: 12px;
+}
+.definition dt {
+  color: var(--muted);
+}
+.definition dd {
+  margin: 0;
+}
+.subnav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+.subnav a {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--muted);
+  background: white;
+  font-size: 12px;
+}
+.subnav a.active {
+  color: var(--brand);
+  border-color: #a2cbbb;
+  background: #edf7f1;
+}
+.no-margin {
+  margin: 0;
+}
+.gap-top {
+  margin-top: 22px;
+}
+@media (min-width: 1600px) {
+  .main {
+    padding: 36px 50px 90px;
+  }
+  .topbar {
+    padding: 0 50px;
+  }
+}
+@media (max-width: 1150px) {
+  .brand small {
+    display: none;
+  }
+  :root {
+    --sidebar: 188px;
+  }
+  .main {
+    padding: 24px 24px 85px;
+  }
+  .topbar {
+    padding: 0 24px;
+  }
+  .grid.split,
+  .sample-layout {
+    grid-template-columns: minmax(0, 1fr) 255px;
+  }
+  .grid.four {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .grid.three {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .page-head {
+    flex-wrap: wrap;
+  }
+  .hero-art {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  :root {
+    --sidebar: 0px;
+  }
+  .sidebar {
+    transform: translateX(-100%);
+    width: 216px;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .mobile-nav-toggle {
+    display: inline-flex;
+  }
+  .topbar {
+    padding: 0 16px;
+  }
+  .topactions .muted {
+    display: none;
+  }
+  .main {
+    padding: 23px 16px 100px;
+  }
+  .grid.two,
+  .grid.three,
+  .grid.split,
+  .grid.editor,
+  .sample-layout,
+  .form-row,
+  .login-layout {
+    grid-template-columns: 1fr;
+  }
+  .grid.four {
+    gap: 10px;
+  }
+  .metric {
+    padding: 14px;
+  }
+  .metric b {
+    font-size: 25px;
+  }
+  .hero {
+    padding: 23px;
+  }
+  .radio-cards {
+    grid-template-columns: 1fr;
+  }
+  .login-story {
+    display: none;
+  }
+  .prototype-bar {
+    height: 60px;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 12px;
+  }
+  .prototype-bar > span {
+    font-size: 10px;
+  }
+  .prototype-controls {
+    gap: 8px;
+  }
+  .tabs {
+    gap: 21px;
+  }
+  .step small {
+    display: none;
+  }
+  .step-label {
+    font-size: 10px;
+  }
+  .step-line {
+    overflow: auto;
+  }
+  .step {
+    min-width: 65px;
+  }
+  .toolbar input {
+    width: 100%;
+  }
+  .sticky-note {
+    position: static;
+  }
+  .page-head h1 {
+    font-size: 24px;
+  }
+  .panel {
+    padding: 18px;
+  }
+  .topbar .crumb {
+    max-width: 210px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .form-actions {
+    flex-wrap: wrap;
+  }
+  .panel-title {
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .cover {
+    padding: 16px 0;
+  }
+  dialog {
+    max-height: 85vh;
+    overflow: auto;
+  }
+}
+</style></head>
+<body><div id="app"></div><footer class="prototype-bar"><span><strong>交互原型 / 演示数据</strong> · <span id="screen-id"></span></span><div class="prototype-controls"><a href="#/catalog">全站目录</a><label>场景 <select id="scenario"><option value="normal">正常</option><option value="empty">空数据</option><option value="loading">加载中</option><option value="error">请求失败</option><option value="offline">断网</option><option value="denied">无权限</option><option value="missing">404</option></select></label><label>身份 <select id="role"><option value="admin">管理员</option><option value="member">成员</option></select></label><button id="reset-demo" class="quiet" style="font-size:11px">重置演示</button></div></footer><div class="toast" id="toast" role="status" aria-live="polite" hidden></div><dialog id="modal" aria-labelledby="modal-title"><div class="modal-head"><h2 id="modal-title"></h2><button id="modal-close" aria-label="关闭对话框">×</button></div><div class="modal-body" id="modal-body"></div><div class="modal-foot"><button id="modal-cancel">取消</button><button id="modal-confirm" class="primary">确认</button></div></dialog><script>/* 页面字典是原型目录与路由验收的共同来源；示例 ID 均为演示数据。 */
+const UX_PAGES = [
+  ["G01", "/login", "登录", "全局", "邮箱登录，回到登录前访问的对象"],
+  [
+    "G02",
+    "/home",
+    "工作台",
+    "全局",
+    "待办、近期任务和最近交付，直接进入处理对象",
+  ],
+  ["G03", "/notifications", "通知中心", "全局", "任务完成、异常和待处理提醒"],
+  ["G04", "/account", "账户", "全局", "当前身份、偏好与退出登录"],
+  ["G05", "/help", "帮助中心", "全局", "按业务问题查找操作指引"],
+  [
+    "G06",
+    "/help/first-dataset",
+    "创建第一份训练数据",
+    "全局",
+    "从目标到交付的完整教程",
+  ],
+  ["D01", "/datasets", "数据集", "数据集", "跨任务检索内容资产"],
+  [
+    "D02",
+    "/datasets/24",
+    "仓储调度 · SFT",
+    "数据集",
+    "内容、来源、质量与交付概览",
+  ],
+  [
+    "D03",
+    "/datasets/24/samples",
+    "样本浏览",
+    "数据集",
+    "按状态、方向和质量筛选样本",
+  ],
+  [
+    "D04",
+    "/datasets/24/samples/1024",
+    "样本 #1024",
+    "数据集",
+    "问题、推理、答案及评估证据",
+  ],
+  [
+    "D05",
+    "/datasets/24/exports",
+    "导出记录",
+    "数据集",
+    "查看同一数据集的每次交付",
+  ],
+  [
+    "D06",
+    "/datasets/24/exports/new",
+    "创建导出",
+    "数据集",
+    "范围、格式、字段预览及完整性检查",
+  ],
+  [
+    "D07",
+    "/datasets/24/exports/81",
+    "导出 #81",
+    "数据集",
+    "可追溯的导出配置、状态和下载",
+  ],
+  ["T01", "/tasks", "生产任务", "生产任务", "按状态筛选执行任务并进入详情"],
+  [
+    "T02",
+    "/tasks/new",
+    "创建生产任务",
+    "生产任务",
+    "目标、结构规模、生成方案三步向导",
+  ],
+  [
+    "T03",
+    "/tasks/24",
+    "仓储调度 · 生产任务",
+    "生产任务",
+    "进度、当前待办和最近运行",
+  ],
+  [
+    "T04",
+    "/tasks/24/structure",
+    "领域与方向",
+    "生产任务",
+    "生成、编辑、校验并确认结构",
+  ],
+  [
+    "T05",
+    "/tasks/24/standards",
+    "思维标准",
+    "生产任务",
+    "按方向管理长链思维步骤",
+  ],
+  [
+    "T06",
+    "/tasks/24/standards/12",
+    "订单分配 · 思维标准",
+    "生产任务",
+    "逐步编辑、保存版本并比较历史",
+  ],
+  [
+    "T07",
+    "/tasks/24/questions",
+    "问题集",
+    "生产任务",
+    "生成、难度分布及问题预览",
+  ],
+  [
+    "T08",
+    "/tasks/24/output",
+    "训练产物",
+    "生产任务",
+    "根据训练类型查看 SFT 或 GRPO 产物",
+  ],
+  [
+    "T09",
+    "/tasks/24/runs",
+    "运行记录",
+    "生产任务",
+    "每个阶段的执行历史、错误及恢复",
+  ],
+  [
+    "T10",
+    "/tasks/24/runs/104",
+    "运行 #104",
+    "生产任务",
+    "失败影响、已完成范围和续跑入口",
+  ],
+  [
+    "T11",
+    "/tasks/24/scoring",
+    "自动评分（历史流程）",
+    "生产任务",
+    "承接既有 rewards 记录，与多模型评估分开",
+  ],
+  ["E01", "/evaluations", "质量评估", "质量评估", "默认进入评估运行列表"],
+  [
+    "E02",
+    "/evaluations/new",
+    "新建评估",
+    "质量评估",
+    "数据范围、维度和独立裁判配置",
+  ],
+  [
+    "E03",
+    "/evaluations/36",
+    "仓储调度 · 双模型评估",
+    "质量评估",
+    "运行状态、配置和当前结论",
+  ],
+  [
+    "E04",
+    "/evaluations/36/scores",
+    "逐条评分",
+    "质量评估",
+    "按样本、裁判、维度定位分歧",
+  ],
+  [
+    "E05",
+    "/evaluations/36/items/1024",
+    "样本 #1024 · 评分证据",
+    "质量评估",
+    "多裁判理由并排对照",
+  ],
+  [
+    "E06",
+    "/evaluations/36/report",
+    "评估报告",
+    "质量评估",
+    "分布、覆盖范围及改进建议",
+  ],
+  ["C01", "/cleaning", "数据清洗", "数据清洗", "清洗运行列表与报告入口"],
+  [
+    "C02",
+    "/cleaning/new",
+    "新建清洗",
+    "数据清洗",
+    "阶段、规则、预览命中与执行",
+  ],
+  [
+    "C03",
+    "/cleaning/18",
+    "仓储调度 · 清洗 #18",
+    "数据清洗",
+    "扫描、命中、隔离及复查统计",
+  ],
+  [
+    "C04",
+    "/cleaning/18/findings",
+    "命中明细",
+    "数据清洗",
+    "筛选规则和处置状态，进入单条复查",
+  ],
+  [
+    "C05",
+    "/cleaning/18/findings/7",
+    "命中 #7 · 人工复查",
+    "数据清洗",
+    "上下文高亮及保留/隔离决策",
+  ],
+  [
+    "R01",
+    "/resources",
+    "资源库",
+    "资源库",
+    "生成模板、指令、维度、规则、关键词与字段映射",
+  ],
+  [
+    "R02",
+    "/resources/templates",
+    "生成模板",
+    "资源库",
+    "复用目标类型、规模和生成偏好",
+  ],
+  [
+    "R03",
+    "/resources/templates/1",
+    "标准 SFT 模板",
+    "资源库",
+    "查看参数、用于新任务或编辑",
+  ],
+  [
+    "R04",
+    "/resources/dimensions",
+    "评估维度",
+    "资源库",
+    "内置 58 项与自定义维度分别检索",
+  ],
+  [
+    "R05",
+    "/resources/dimensions/1",
+    "逻辑一致性",
+    "资源库",
+    "评分细则、分值与权重",
+  ],
+  [
+    "R06",
+    "/resources/rules",
+    "清洗规则",
+    "资源库",
+    "规则执行范围、动作和启用状态",
+  ],
+  [
+    "R07",
+    "/resources/rules/1",
+    "拒答文本复查",
+    "资源库",
+    "命中条件、阶段和处置配置",
+  ],
+  [
+    "R08",
+    "/resources/keywords",
+    "关键词库",
+    "资源库",
+    "匹配模式、类别及启用状态",
+  ],
+  [
+    "R09",
+    "/resources/keywords/1",
+    "关键词 · 对不起",
+    "资源库",
+    "查看和编辑单个匹配项",
+  ],
+  [
+    "R10",
+    "/resources/keywords/import",
+    "批量导入关键词",
+    "资源库",
+    "逐行解析、去重预览后导入",
+  ],
+  ["R11", "/resources/prompts", "生成指令", "资源库", "按生成阶段管理提示词"],
+  [
+    "R12",
+    "/resources/prompts/1",
+    "仓储问题生成指令",
+    "资源库",
+    "系统指令、用户指令及版本",
+  ],
+  [
+    "R13",
+    "/resources/mappings",
+    "导出字段映射",
+    "资源库",
+    "按训练类型与格式管理映射",
+  ],
+  [
+    "R14",
+    "/resources/mappings/1",
+    "SFT · Alpaca 映射",
+    "资源库",
+    "源字段、目标字段和导出预览",
+  ],
+  ["A01", "/admin", "系统管理", "系统管理", "服务就绪、队列和配置问题"],
+  ["A02", "/admin/providers", "模型服务", "系统管理", "连接配置与可用性"],
+  [
+    "A03",
+    "/admin/providers/1",
+    "模型服务 · Atlas",
+    "系统管理",
+    "连接、测试、模型列表及密钥管理",
+  ],
+  ["A04", "/admin/storage", "结果存储", "系统管理", "可用存储与默认落点"],
+  ["A05", "/admin/storage/1", "主存储", "系统管理", "连接配置和历史产物关联"],
+  ["A06", "/admin/audit", "操作记录", "系统管理", "按对象、时间和动作检索"],
+  [
+    "A07",
+    "/admin/audit/91",
+    "操作记录 #91",
+    "系统管理",
+    "变更前后对比与对象跳转",
+  ],
+];
+const UX_RESOURCE_TYPES = {
+  templates: {
+    label: "生成模板",
+    one: "标准 SFT 模板",
+    description: "让同类任务复用一套业务参数。",
+    fields: [
+      ["名称", "标准 SFT 模板"],
+      ["训练类型", "SFT", "select", "SFT|GRPO"],
+      ["领域数 n", "3", "number"],
+      ["每领域方向数 m", "4", "number"],
+      ["每方向问题数 x", "100", "number"],
+    ],
+    api: "部分：generation-strategies；targetKind / m / x 的模板快照待补",
+  },
+  dimensions: {
+    label: "评估维度",
+    one: "逻辑一致性",
+    description: "评分关注什么、如何评分，以及怎样计算权重。",
+    fields: [
+      ["名称", "逻辑一致性"],
+      ["标识", "logic_consistency"],
+      ["分类", "推理质量", "select", "推理质量|答案质量|稳健性"],
+      ["最小分", "1", "number"],
+      ["最大分", "5", "number"],
+      ["权重", "1.5", "number"],
+      [
+        "评分细则",
+        "1 分：前后矛盾，无法形成有效结论。\n3 分：主线成立，存在部分推理跳跃。\n5 分：推导完整，前提、过程与结论一致。",
+        "textarea",
+      ],
+    ],
+    api: "已有：eval/dimensions",
+  },
+  rules: {
+    label: "清洗规则",
+    one: "拒答文本复查",
+    description: "把匹配结果转为明确处置，避免仅凭关键词误删有效样本。",
+    fields: [
+      ["名称", "拒答文本复查"],
+      ["生效阶段", "答案", "select", "问题|思维链|答案"],
+      ["最少命中数", "1", "number"],
+      ["动作", "标记复查", "select", "标记复查|隔离|建议重生成"],
+      ["优先级", "10", "number"],
+    ],
+    api: "已有：cleaning/rules；隔离可撤销、人工复查处置待补",
+  },
+  keywords: {
+    label: "关键词库",
+    one: "对不起",
+    description: "关键词仅产生疑似命中，是否无效需要结合上下文判断。",
+    fields: [
+      ["匹配文本", "对不起"],
+      ["匹配模式", "包含", "select", "包含|前缀|正则表达式"],
+      ["类别", "拒答", "select", "拒答|格式异常|自定义"],
+      ["严重程度", "复查", "select", "复查|拦截"],
+      ["说明", "可能是拒答，也可能是问题中的引用。", "textarea"],
+    ],
+    api: "已有：cleaning/keywords",
+  },
+  prompts: {
+    label: "生成指令",
+    one: "仓储问题生成指令",
+    description: "每条指令有明确的适用阶段，修改前检查影响范围。",
+    fields: [
+      ["名称", "仓储问题生成指令"],
+      [
+        "适用阶段",
+        "问题生成",
+        "select",
+        "领域生成|方向生成|思维标准|问题生成|SFT|GRPO",
+      ],
+      ["版本", "v2"],
+      [
+        "系统指令",
+        "你是一名训练数据设计者。依据指定方向生成包含条件、约束和目标的问题。",
+        "textarea",
+      ],
+      [
+        "用户指令",
+        "方向：{{direction}}\n思维标准：{{chain_standard}}\n生成 {{count}} 个不同问题。",
+        "textarea",
+      ],
+    ],
+    api: "已有：admin/prompts；不可变版本引用待补",
+  },
+  mappings: {
+    label: "导出字段映射",
+    one: "SFT · Alpaca 映射",
+    description: "导出之前确认训练框架期望的字段结构。",
+    fields: [
+      ["名称", "SFT · Alpaca 映射"],
+      ["格式", "Alpaca", "select", "JSONL|Alpaca|ShareGPT|CSV"],
+      ["数据类型", "SFT", "select", "SFT|GRPO"],
+      ["问题字段", "instruction"],
+      ["推理字段", "input"],
+      ["答案字段", "output"],
+    ],
+    api: "已有：admin/export-mappings",
+  },
+  providers: {
+    label: "模型服务",
+    one: "Atlas · 生成模型",
+    description: "配置模型连接，在保存之前可测试连通性。",
+    fields: [
+      ["名称", "Atlas · 生成模型"],
+      ["协议", "OpenAI 兼容", "select", "OpenAI 兼容"],
+      ["服务地址", "https://models.example.com/v1", "url"],
+      ["模型名称", "atlas-instruct"],
+      ["API 密钥", "", "password"],
+      ["超时（秒）", "120", "number"],
+      ["并发数", "4", "number"],
+      ["推理强度", "high", "select", "low|medium|high|xhigh"],
+    ],
+    api: "已有：admin/providers/models、test、providers",
+  },
+  storage: {
+    label: "结果存储",
+    one: "主存储",
+    description: "默认配置只影响新产物，历史导出继续读取原来的存储位置。",
+    fields: [
+      ["名称", "主存储"],
+      ["类型", "S3 兼容", "select", "S3 兼容|MinIO"],
+      ["端点", "https://objects.example.com", "url"],
+      ["区域", "eu-central-1"],
+      ["存储桶", "training-data"],
+      ["Access Key", "", "password"],
+      ["Secret Key", "", "password"],
+    ],
+    api: "已有：admin/storage-profiles；连接预检待补",
+  },
+};
+UX_PAGES.push(
+  ['D08','/datasets/25','仓储调度 · GRPO','数据集','GRPO 资产、教师评判标准与交付'],
+  ['D09','/datasets/25/samples','GRPO 样本列表','数据集','问题与教师提示词的完整性'],
+  ['D10','/datasets/25/samples/2024','GRPO 样本 #2024','数据集','教师提示词、奖励档位与框架引用'],
+  ['D11','/datasets/25/exports/new','创建 GRPO 导出','数据集','GRPO 字段预览和类型完整性'],
+  ['D12','/datasets/25/exports/82','GRPO 导出 #82','数据集','教师评判训练文件下载'],
+  ['T12','/tasks/24/standards/12/versions/2','思维标准 · v2 快照','生产任务','只读历史版本，与当前编辑页分开'],
+  ['E07','/evaluations/36/dimensions/logic-v1','评估维度 · 运行快照','质量评估','本次评分使用的量表、权重和细则']
+);
+UX_PAGES.push(['C06','/cleaning/19','GRPO 问题清洗 #19','数据清洗','只扫描 GRPO 问题，教师提示词适配待补']);
+
+/* 纯本地交互原型：不会连接产品 API。 */
+const $ = (s, root = document) => root.querySelector(s);
+const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+const esc = (v) =>
+  String(v ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
+  );
+const read = (key, fallback) => {
+  try {
+    return JSON.parse(sessionStorage.getItem("ux." + key)) ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+const save = (key, value) => {
+  try {
+    sessionStorage.setItem("ux." + key, JSON.stringify(value));
+  } catch {}
+};
+const DEMO_SAMPLES = {
+  1024: {
+    question:
+      "仓库收到 240 单，其中 60 单要求当日发货。现有 8 名拣货员，冷链区仅允许 2 人同时作业。请给出人员和订单分配方案，说明约束冲突时的处理顺序。",
+    reasoning:
+      "明确截止时间、人员与冷链容量约束，先分组处理急单，再校验人员占用和订单覆盖。",
+    answer:
+      "先安排 2 人处理冷链急单，4 人处理常温急单，2 人处理补货与异常。客服话术中引用“对不起”，需复查语境。",
+  },
+  1025: {
+    question: "补货优先级如何同时考虑缺货风险和订单截止时间？",
+    reasoning: "先识别急单缺料，再按补货耗时和缺货影响排序。",
+    answer: "优先补齐急单物料，在截止窗口前预留复核时间。",
+  },
+  1026: {
+    question: "月台和车辆安排如何避免高峰期装卸冲突？",
+    reasoning: "核对车辆到场窗口、月台容量和装卸耗时，错峰分配占用区间。",
+    answer: "按时效要求预约月台，保留一个缓冲时段处理延误车辆。",
+  },
+  1027: {
+    question: "当成本和交付目标冲突时，如何调整调度方案？",
+    reasoning: "",
+    answer: "缺少完整推导，已隔离，不能直接用于交付。",
+  },
+};
+const exportIds = () =>
+  (query.get("selection")?.split(",") || ["1025", "1026"]).filter(
+    (id) => DEMO_SAMPLES[id],
+  );
+const exportRecords = (ids) =>
+  ids.map((id) => ({
+    instruction: DEMO_SAMPLES[id].question,
+    input: DEMO_SAMPLES[id].reasoning,
+    output: DEMO_SAMPLES[id].answer,
+  }));
+const mappingControl = () => button("查看映射规则 →", "view-mapping", "quiet");
+let route = "",
+  query = new URLSearchParams(),
+  role = read("role", "admin"),
+  scenario = "normal",
+  modalCallback = null,
+  opener = null;
+let wizard = read("wizard", {
+  name: "仓储调度 · SFT",
+  topic: "仓储调度与订单分配",
+  kind: "SFT",
+  n: "3",
+  m: "4",
+  x: "100",
+  levels: "-1, 0, 1",
+  mode: "自动执行，结构确认后继续",
+});
+const nav = [
+  ["⌂", "工作台", "/home"],
+  ["▤", "数据集", "/datasets"],
+  ["▷", "生产任务", "/tasks"],
+  ["◎", "质量评估", "/evaluations"],
+  ["◇", "数据清洗", "/cleaning"],
+  ["▦", "资源库", "/resources"],
+];
+const icons = ["◫", "◎", "◇", "⌕", "✦", "⇄"];
+const reviewLabel = () =>
+  read("reviewed", false)
+    ? read("reviewDecision", "keep") === "isolate"
+      ? "已隔离"
+      : "已保留"
+    : "待复查";
+const reviewColor = () =>
+  read("reviewed", false)
+    ? read("reviewDecision", "keep") === "isolate"
+      ? "bad"
+      : "good"
+    : "warn";
+const badge = (text, type = "") =>
+  `<span class="badge ${type}">${esc(text)}</span>`;
+const link = (text, to, cls = "") =>
+  `<a class="${cls}" href="#${esc(to)}">${esc(text)}</a>`;
+const button = (text, action, cls = "", attrs = "") =>
+  `<button type="button" class="${cls}" data-action="${action}" ${attrs}>${esc(text)}</button>`;
+const field = (label, value = "", type = "text", extra = "") =>
+  `<div class="field"><label>${esc(label)}<input aria-label="${esc(label)}" name="${esc(label)}" type="${type}" value="${esc(value)}" ${extra}></label></div>`;
+const select = (label, options, value, attrs = "") =>
+  `<label class="field"><span class="label">${esc(label)}</span><select aria-label="${esc(label)}" ${attrs}>${options.map((o) => `<option ${o === value ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></label>`;
+const panel = (title, body, action = "") =>
+  `<section class="panel"><div class="panel-title"><h2>${title}</h2>${action}</div>${body}</section>`;
+const metrics = (items) =>
+  `<div class="grid four metrics">${items.map(([label, value, note]) => `<div class="metric"><span>${label}</span><b>${value}</b><small>${note}</small></div>`).join("")}</div>`;
+const header = (
+  title,
+  desc,
+  actions = "",
+  eyebrow = "TRAINING DATA WORKSPACE",
+) =>
+  `<div class="page-head"><div><div class="eyebrow">${eyebrow}</div><h1 tabindex="-1" id="page-title">${title}</h1><p class="muted no-margin">${desc}</p></div><div class="actions">${actions}</div></div>`;
+const tabs = (items) =>
+  `<nav class="tabs" aria-label="对象子页面">${items.map(([name, to]) => link(name, to, `tab ${route === to ? "active" : ""}`)).join("")}</nav>`;
+const datasetTabs = () =>
+  tabs([
+    ["概览", "/datasets/24"],
+    ["样本", "/datasets/24/samples"],
+    ["导出记录", "/datasets/24/exports"],
+  ]);
+const taskTabs = () =>
+  tabs([
+    ["概览", "/tasks/24"],
+    ["领域与方向", "/tasks/24/structure"],
+    ["思维标准", "/tasks/24/standards"],
+    ["问题集", "/tasks/24/questions"],
+    ["训练产物", "/tasks/24/output"],
+    ["运行记录", "/tasks/24/runs"],
+  ]);
+const evalTabs = () =>
+  tabs([
+    ["概览", "/evaluations/36"],
+    ["逐条评分", "/evaluations/36/scores"],
+    ["评估报告", "/evaluations/36/report"],
+  ]);
+const cleaningTabs = () =>
+  tabs([
+    ["报告概览", "/cleaning/18"],
+    ["命中明细", "/cleaning/18/findings"],
+  ]);
+const summary = (items) =>
+  items
+    .map(
+      ([k, v]) =>
+        `<div class="summary-row"><span>${k}</span><strong>${v}</strong></div>`,
+    )
+    .join("");
+const resourceBase = (key) =>
+  `/${["providers", "storage"].includes(key) ? "admin" : "resources"}/${key}`;
+const table = (
+  heads,
+  rows,
+  {
+    search = "搜索名称或编号",
+    filter = "全部状态",
+    filters = ["全部状态", "进行中", "已完成", "待处理"],
+    selectable = false,
+    footer = true,
+  } = {},
+) =>
+  `<section class="panel flush"><div class="toolbar"><label class="sr-only" for="table-search">${search}</label><input id="table-search" placeholder="${search}" data-search value="${esc(query.get("q") || "")}"><label class="sr-only" for="table-filter">筛选状态</label><select id="table-filter" data-filter>${filters.map((v) => `<option ${v === (query.get("filter") || filter) ? "selected" : ""}>${v}</option>`).join("")}</select><span class="grow"></span>${button("刷新", "refresh", "quiet")}</div>${selectable ? '<div class="selected-bar" hidden><span id="selection-count"></span>' + button("导出选中项", "export-selected") + button("清空选择", "clear-selection", "quiet") + "</div>" : ""}<div class="table-scroll"><table><thead><tr>${selectable ? '<th><input type="checkbox" aria-label="选择本页全部" data-select-all></th>' : ""}${heads.map((h) => `<th scope="col">${h}</th>`).join("")}</tr></thead><tbody>${rows.map((r, i) => `<tr data-row data-state="${esc(r.join(" ").replace(/<[^>]+>/g, ""))}">${selectable ? `<td><input type="checkbox" aria-label="选择样本 ${1024 + i}" data-select="${1024 + i}"></td>` : ""}${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table><div class="empty" id="filter-empty" hidden><h2>没有符合条件的记录</h2><p>试着调整关键词或筛选条件。</p>${button("清空筛选", "clear-filter")}</div></div>${footer ? `<div class="pagination"><span id="row-count">共 ${rows.length} 条演示记录</span><div class="actions"><span>第 1 / 1 页</span><button disabled aria-label="上一页">‹</button><button disabled aria-label="下一页">›</button></div></div>` : ""}</section>`;
+const sampleRows = () => [
+  [
+    link("多订单并发时如何分配拣货资源？", "/datasets/24/samples/1024") +
+      "<small>#1024 · 仓储 / 订单分配</small>",
+    badge("SFT"),
+    badge(reviewLabel(), reviewColor()),
+    '<span class="score">3.6 / 5</span>',
+    "刚刚",
+    link("查看详情 →", "/datasets/24/samples/1024"),
+  ],
+  [
+    link("临时缺货时，如何调整补货优先级？", "/datasets/24/samples/1025") +
+      "<small>#1025 · 仓储 / 补货计划</small>",
+    badge("SFT"),
+    badge("已通过", "good"),
+    '<span class="score">4.5 / 5</span>',
+    "10 分钟前",
+    link("查看详情 →", "/datasets/24/samples/1025"),
+  ],
+  [
+    link("订单波峰下如何安排月台和车辆？", "/datasets/24/samples/1026") +
+      "<small>#1026 · 运输 / 运力分配</small>",
+    badge("SFT"),
+    badge("已通过", "good"),
+    '<span class="score">4.3 / 5</span>',
+    "12 分钟前",
+    link("查看详情 →", "/datasets/24/samples/1026"),
+  ],
+  [
+    link("两项交付目标冲突时如何排序？", "/datasets/24/samples/1027") +
+      "<small>#1027 · 调度 / 约束分析</small>",
+    badge("SFT"),
+    badge("已隔离", "bad"),
+    "—",
+    "15 分钟前",
+    link("查看详情 →", "/datasets/24/samples/1027"),
+  ],
+];
+function home() {
+  return (
+    header(
+      "每一份数据，都有清晰的下一步。",
+      "今天有 2 项工作需要你处理。",
+      link("＋ 创建生产任务", "/tasks/new", "button primary"),
+      "WORKSPACE / 工作台",
+    ) +
+    `<section class="hero"><div><span class="eyebrow">继续上次的工作</span><h2>仓储调度数据已生成，等待质量复查</h2><p>1,200 条 SFT 样本 · 48 条待复查 · 最近更新于 10:42</p><div class="actions">${link("处理待复查样本 →", "/datasets/24/samples?filter=待复查", "button primary")}${link("查看生产任务", "/tasks/24", "button")}</div></div><div class="hero-art" aria-hidden="true"><span>▤</span><span>◎</span><span>✓</span></div></section>` +
+    metrics([
+      ["进行中的生产任务", "3", "1 项需要处理"],
+      ["待复查样本", "48", "来自仓储调度数据集"],
+      ["已完成评估", "12", "最近 7 天"],
+      ["可下载导出", "5", "已就绪"],
+    ]) +
+    `<div class="grid split"><div>${panel("需要你处理", `<div class="link-row"><div>${badge("失败恢复", "bad")}<h3 class="gap-top">12 条训练产物生成失败</h3><p>模型连接超时，已完成的 1,188 条内容保留。</p></div>${link("查看失败原因 →", "/tasks/24/runs/104")}</div><div class="link-row"><div>${badge("人工复查", "warn")}<h3 class="gap-top">清洗发现 48 条疑似异常样本</h3><p>结合命中上下文决定保留或隔离。</p></div>${link("开始复查 →", "/cleaning/18/findings")}</div>`)}${panel("最近的数据集", `<div class="link-row"><div><strong>仓储调度 · SFT</strong><p>3 个领域 · 12 个方向 · 1,200 条样本</p></div>${link("打开数据集 →", "/datasets/24")}</div>`, link("查看全部", "/datasets"))}</div><div>${panel("从这里开始", `<div class="link-row">${link("创建第一份训练数据", "/help/first-dataset")}<span>↗</span></div><div class="link-row">${link("选用生成模板", "/resources/templates")}<span>↗</span></div><div class="link-row">${link("查看评估报告示例", "/evaluations/36/report")}<span>↗</span></div>`)}${panel("近期动态", `<div class="timeline"><div class="timeline-item"><strong>导出文件已准备好</strong><p>09:48 · ${link("下载 Alpaca 数据", "/datasets/24/exports/81")}</p></div><div class="timeline-item"><strong>双模型评估已完成</strong><p>09:31 · ${link("查看评估结论", "/evaluations/36/report")}</p></div><div class="timeline-item"><strong>思维标准更新至 v2</strong><p>昨天 · 订单分配</p></div></div>`)}</div></div>`
+  );
+}
+function datasets() {
+  return (
+    header(
+      "数据集",
+      "以内容资产为中心，查看样本、质量与交付。",
+      link("＋ 创建生产任务", "/tasks/new", "button primary"),
+      "LIBRARY / 数据集",
+    ) +
+    metrics([
+      ["数据集", "1", "本原型提供 1 份完整演示资产"],
+      ["训练样本", "1,200", "目标样本总量"],
+      ["可交付样本", "1,128", "排除待复查与隔离样本"],
+      ["质量评估", "4.2 / 5", "抽样 120 条，仅代表样本"],
+    ]) +
+    table(
+      ["名称", "类型", "样本数", "质量状态", "最近更新", "操作"],
+      [
+        [
+          link("仓储调度 · SFT", "/datasets/24") +
+            "<small>仓储调度与订单分配</small>",
+          badge("SFT"),
+          "1,200",
+          badge("待处理", "warn"),
+          "2026-09-20 10:42",
+          link("查看数据集 →", "/datasets/24"),
+        ],
+      ],
+    )
+  );
+}
+function datasetOverview() {
+  return (
+    header(
+      "仓储调度 · SFT",
+      "数据集 #24 · 仓储调度与订单分配 · 创建于 2026-09-18",
+      link("新建评估", "/evaluations/new?dataset=24", "button") +
+        link("创建导出", "/datasets/24/exports/new", "button primary"),
+    ) +
+    datasetTabs() +
+    metrics([
+      ["样本总数", "1,200", "目标规模：3 × 4 × 100"],
+      ["可交付", "1,128", "94% · 口径为样本去重数"],
+      ["待复查", "48", "命中不等于无效"],
+      ["已隔离", "24", "保留原始内容"],
+    ]) +
+    `<div class="grid split"><div>${panel(
+      "内容与来源",
+      summary([
+        ["训练类型", "SFT · 思维链 + 答案"],
+        ["领域覆盖", "仓储 / 运输 / 调度"],
+        ["生成来源", link("生产任务 #24 →", "/tasks/24")],
+        ["思维标准", link("12 份标准 · 查看 →", "/tasks/24/standards")],
+        ["生成模型", "Atlas · atlas-instruct"],
+      ]),
+    )}${panel("质量记录", `<div class="link-row"><div><strong>双模型互评 · 平均 4.2 / 5</strong><p>120 / 1,200 条抽样 · 6 个维度 · 2 个独立裁判</p></div>${link("查看报告 →", "/evaluations/36/report")}</div><div class="link-row"><div><strong>文本异常清洗 · 72 条命中</strong><p>48 条待复查，24 条隔离</p></div>${link("查看命中明细 →", "/cleaning/18/findings")}</div>`)}</div><aside>${panel("建议下一步", `<p class="muted">先复查疑似异常，再决定哪些样本进入训练文件。</p><div class="actions">${link("复查 48 条样本", "/datasets/24/samples?filter=待复查", "button primary")}${link("新建清洗", "/cleaning/new?dataset=24", "button")}</div>`)}${panel("最近导出", `<h3>仓储调度_alpaca.jsonl</h3><p class="muted">1,128 条 · 3.8 MB · 已就绪</p>${link("查看并下载 →", "/datasets/24/exports/81")}`)}</aside></div>`
+  );
+}
+function samples() {
+  return (
+    header(
+      "样本浏览",
+      "仓储调度 · SFT / 每条样本都能追溯到来源和质量判断。",
+      link(
+        "导出当前范围",
+        "/datasets/24/exports/new?scope=filtered",
+        "button primary",
+      ),
+    ) +
+    datasetTabs() +
+    table(
+      ["样本问题", "类型", "状态", "评估分数", "更新时间", "操作"],
+      sampleRows(),
+      {
+        search: "搜索问题或样本编号",
+        filters: ["全部状态", "已通过", "待复查", "已隔离"],
+        selectable: true,
+      },
+    )
+  );
+}
+function sampleDetail() {
+  const id = Number(route.split("/").pop()) || 1024;
+  if (!DEMO_SAMPLES[id]) return statePage("missing");
+  return (
+    header(
+      `样本 #${id}`,
+      "仓储调度 · SFT / 完整样本",
+      link("← 返回样本列表", "/datasets/24/samples", "button") +
+        (id === 1024
+          ? link("查看评分证据", "/evaluations/36/items/1024", "button primary")
+          : link("查看评估运行", "/evaluations/36", "button")),
+    ) +
+    `<div class="pill-row">${badge(id === 1024 ? reviewLabel() : id === 1027 ? "已隔离" : "已通过", id === 1024 ? reviewColor() : id === 1027 ? "bad" : "good")}${badge("中等难度")}${badge("SFT")}</div><div class="sample-layout"><section class="panel"><div class="panel-title"><h2>样本内容</h2>${button("复制内容", "copy-sample", "quiet")}</div><div class="sample-title">QUESTION / 问题</div><p class="sample-text">${esc(DEMO_SAMPLES[id]?.question || "样本不存在")}</p><div class="sample-title">REASONING / 推理过程</div><p class="sample-text">${esc(DEMO_SAMPLES[id]?.reasoning || "内容不完整，需复查")}</p><div class="sample-title">ANSWER / 答案</div><p class="sample-text">${esc(DEMO_SAMPLES[id]?.answer || "")}</p></section><aside>${panel(
+      "质量与追溯",
+      summary([
+        [
+          "评估得分",
+          { 1024: "3.6 / 5", 1025: "4.5 / 5", 1026: "4.3 / 5", 1027: "—" }[id],
+        ],
+        ["生成模型", "Atlas"],
+        ["生成运行", link("#104", "/tasks/24/runs/104")],
+        [
+          "思维标准",
+          id === 1024
+            ? link("订单分配 · v2", "/tasks/24/standards/12/versions/2")
+            : link("查看标准列表", "/tasks/24/standards"),
+        ],
+        [
+          "清洗命中",
+          id === 1024
+            ? link("疑似拒答 · 查看上下文", "/cleaning/18/findings/7")
+            : id === 1027
+              ? "内容不完整，已隔离"
+              : "未命中",
+        ],
+      ]),
+    )}${id === 1024 ? panel("复查建议", `<p class="muted">关键词出现在引用语境中。先看全文，再决定是否影响训练。</p>${link("进入清洗复查 →", "/cleaning/18/findings/7", "button primary")}`) : panel("内容状态", id === 1027 ? "缺少推理内容，不进入默认导出范围。" : "本条样本已通过质量检查。")}<div class="actions">${id > 1024 ? link("← 上一条", `/datasets/24/samples/${id - 1}`, "button") : button("← 上一条", "none", "", "disabled")}${id < 1027 ? link("下一条 →", `/datasets/24/samples/${id + 1}`, "button") : button("下一条 →", "none", "", "disabled")}</div></aside></div>`
+  );
+}
+function taskList() {
+  return (
+    header(
+      "生产任务",
+      "追踪每次生产的目标、进度和需要处理的问题。",
+      link("＋ 创建生产任务", "/tasks/new", "button primary"),
+      "PRODUCTION / 生产任务",
+    ) +
+    `<div class="banner warn">${badge("待处理", "warn")} 仓储调度任务有 12 条失败记录。${link("查看原因与恢复方式 →", "/tasks/24/runs/104")}</div>` +
+    table(
+      ["任务名称", "目标类型", "阶段 / 进度", "状态", "最近更新", "操作"],
+      [
+        [
+          link("仓储调度 · SFT", "/tasks/24") +
+            "<small>3 个领域 × 4 个方向 × 100 个问题</small>",
+          badge("SFT"),
+          '<strong>训练产物</strong><div class="progress"><i style="width:99%"></i></div><small>1,188 / 1,200 条 · 当前阶段</small>',
+          badge("待处理", "warn"),
+          "今天 10:42",
+          link("查看任务 →", "/tasks/24"),
+        ],
+      ],
+    )
+  );
+}
+function wizardPage() {
+  const step = Number(query.get("step") || 1);
+  return (
+    header(
+      "创建生产任务",
+      "先明确训练目标，再检查生产规模与执行方案。",
+      link("取消", "/tasks", "button"),
+      "NEW PRODUCTION / 创建任务",
+    ) +
+    `<div class="step-line">${["定义目标", "规划结构", "检查并创建"].map((v, i) => `<div class="step ${step === i + 1 ? "active" : step > i + 1 ? "done" : ""}"><span class="step-num">${step > i + 1 ? "✓" : i + 1}</span><span class="step-label">${v}</span></div>`).join("")}</div><div class="grid split"><form id="wizard-form" class="panel" data-form="wizard">${
+      step === 1
+        ? `<h2>你要制备哪种训练数据？</h2><div class="field"><label for="task-name">任务名称</label><input id="task-name" name="name" value="${esc(wizard.name)}" required maxlength="80"><small>用业务主题命名，方便后续检索。</small></div><div class="field"><label for="task-topic">主题与范围</label><textarea id="task-topic" name="topic" required maxlength="2000">${esc(wizard.topic)}</textarea><small>例如：仓储调度中的订单分配、补货策略与运力协同。</small></div><div class="field"><span class="label">训练类型</span><div class="radio-cards">${[
+            ["SFT", "生成思维链与答案，适合监督微调。"],
+            ["GRPO", "生成教师评判提示词与各奖励档位标准。"],
+          ]
+            .map(
+              ([k, d]) =>
+                `<label class="radio-card"><input type="radio" name="kind" value="${k}" ${wizard.kind === k ? "checked" : ""}><span><strong>${k}</strong><small>${d}</small></span></label>`,
+            )
+            .join(
+              "",
+            )}</div></div><div id="reward-levels" ${wizard.kind === "GRPO" ? "" : "hidden"}>${field("奖励档位", wizard.levels, "text", 'name-alias="levels"')}<small>至少 2 个不同数值；例：-1, 0, 1。系统为每个档位生成判断标准。</small></div>`
+        : step === 2
+          ? `<h2>设定领域、方向与问题规模</h2><p class="muted">三个参数始终可见，总规模随输入更新。</p><div class="form-row">${[
+              ["领域数 n", "n"],
+              ["每领域方向数 m", "m"],
+              ["每方向问题数 x", "x"],
+            ]
+              .map(
+                ([label, key]) =>
+                  `<div class="field"><label for="scale-${key}">${label}</label><input id="scale-${key}" type="number" name="${key}" value="${wizard[key]}" required min="1" max="1000" step="1"></div>`,
+              )
+              .join(
+                "",
+              )}</div><div class="banner"><strong id="scale-total">${Number(wizard.n) * Number(wizard.m) * Number(wizard.x)} 个问题</strong><br>每个方向先建立思维标准，再生成具体问题与训练产物。</div><div class="field"><label for="execution-mode">执行方式</label><select id="execution-mode" name="mode"><option ${wizard.mode.startsWith("自动") ? "selected" : ""}>自动执行，结构确认后继续</option><option ${wizard.mode.startsWith("逐步") ? "selected" : ""}>逐步执行，每阶段手动启动</option></select><small>自动执行是目标设计，需后端编排能力上线。当前改造第一阶段保留逐步执行。</small></div>`
+          : `<h2>检查这次生产的范围</h2>${summary([["名称", esc(wizard.name)], ["主题", esc(wizard.topic)], ["训练类型", wizard.kind], ["问题总量", `${wizard.n} × ${wizard.m} × ${wizard.x} = ${Number(wizard.n) * Number(wizard.m) * Number(wizard.x)}`], ["执行方式", esc(wizard.mode)], ...(wizard.kind === "GRPO" ? [["奖励档位", esc(wizard.levels)]] : [])])}<div class="banner gap-top">模型与存储已就绪。创建后先生成领域与方向，由你确认后再继续。</div><div class="muted-box">耗时与费用：暂无法可靠估算。此处不使用虚构的倒计时或价格。生成规模和使用模型将随任务记录保存。</div>`
+    }<div class="form-actions"><div>${step > 1 ? link("← 上一步", `/tasks/new?step=${step - 1}`, "button") : link("从模板开始", "/resources/templates")}</div><button class="primary" type="submit">${step === 3 ? "创建并规划结构" : "下一步 →"}</button></div></form><aside class="sticky-note">${panel(
+      "本次生产",
+      summary([
+        ["训练类型", wizard.kind],
+        ["领域数", wizard.n],
+        ["方向总数", String(Number(wizard.n) * Number(wizard.m))],
+        [
+          "目标问题数",
+          String(Number(wizard.n) * Number(wizard.m) * Number(wizard.x)),
+        ],
+      ]),
+    )}<div class="helper"><strong>一次只做一个决定</strong><p>模型密钥、对象存储和指令维护有独立的管理页面。这里选择已经配置好的生成方案。</p></div></aside></div>`
+  );
+}
+function taskOverview() {
+  const created = read("created", false);
+  return (
+    header(
+      created ? esc(wizard.name) : "仓储调度 · 生产任务",
+      "任务 #24 · SFT · 数据集 " + (created ? "创建中" : "仓储调度"),
+      link("查看数据集", "/datasets/24", "button") +
+        link(
+          created ? "确认领域与方向" : "处理失败记录",
+          created ? "/tasks/24/structure" : "/tasks/24/runs/104",
+          "button primary",
+        ),
+    ) +
+    taskTabs() +
+    `<div class="banner ${created ? "" : "warn"}"><strong>${created ? "领域与方向已规划，等待你确认。" : "训练产物部分失败，已完成内容已保留。"}</strong><br>${created ? "确认结构后才会进入思维标准和后续生成。" : "当前阶段完成 1,188 / 1,200 条；12 条连接超时。可以只恢复失败部分。"}</div><section class="panel"><h2>生产流程</h2><div class="step-line">${[
+      ["领域与方向", "已确认", "structure"],
+      ["思维标准", "12 / 12", "standards"],
+      ["问题集", "1,200 / 1,200", "questions"],
+      ["训练产物", "1,188 / 1,200", "output"],
+    ]
+      .map(
+        ([l, d, p], i) =>
+          `<a href="#/tasks/24/${p}" class="step ${created ? (i === 0 ? "active" : "") : i === 3 ? "active" : "done"}"><span class="step-num">${created ? i + 1 : i < 3 ? "✓" : "!"}</span><span class="step-label">${l}</span><small>${created ? (i === 0 ? "待确认" : "尚未开始") : d}</small></a>`,
+      )
+      .join(
+        "",
+      )}</div><div class="muted-box">进度按当前阶段的真实工作单位计算。领域、方向、问题和样本使用各自的分母，不能合成虚假的总百分比。</div></section><div class="grid two">${panel(
+      "生产目标",
+      summary([
+        ["主题", "仓储调度与订单分配"],
+        ["目标问题数", "3 × 4 × 100 = 1,200"],
+        ["训练产物", "SFT · 思维链 + 答案"],
+        ["使用模板", link("标准 SFT", "/resources/templates/1")],
+      ]),
+    )}${panel("最近运行", `<div class="timeline"><div class="timeline-item"><strong>训练产物 · 部分失败</strong><p>10:42 · ${link("查看运行 #104", "/tasks/24/runs/104")}</p></div><div class="timeline-item"><strong>问题生成 · 完成</strong><p>10:20 · 1,200 条问题</p></div><div class="timeline-item"><strong>思维标准 · 完成</strong><p>09:55 · 12 个方向</p></div></div>`, link("全部运行 →", "/tasks/24/runs"))}</div>`
+  );
+}
+function structure() {
+  return (
+    header(
+      "领域与方向",
+      "仓储调度 · 3 个领域 / 12 个方向。修改后先保存，再确认。",
+      button("重新生成", "generate-structure") +
+        button("确认结构并继续", "confirm-structure", "primary"),
+    ) +
+    taskTabs() +
+    `<div class="grid editor"><section class="panel"><div class="panel-title"><h2>结构目录</h2>${button("＋", "add-domain", "quiet", 'aria-label="新增领域"')}</div><label class="sr-only" for="tree-search">搜索领域或方向</label><input id="tree-search" placeholder="搜索领域或方向" data-tree-search><div class="gap-top">${["仓储", "运输", "调度"].map((v, i) => `<button class="tree-item ${i === 0 ? "active" : ""}" data-action="select-domain" data-name="${v}" style="width:100%;text-align:left">▾ ${v} <small>4 个方向</small></button>${i === 0 ? ["订单分配", "补货计划", "库位优化", "波次规划"].map((x) => `<div class="tree-child">${x}</div>`).join("") : ""}`).join("")}</div></section><form class="panel" data-form="structure"><div class="panel-title"><h2 id="domain-title">仓储</h2>${badge("待确认", "warn")}</div><div class="field"><label for="domain-name">领域名称</label><input id="domain-name" value="仓储" required></div><h3>下属方向</h3><div id="direction-fields">${["订单分配", "补货计划", "库位优化", "波次规划"].map((v, i) => `<div class="actions field"><span class="muted">0${i + 1}</span><input aria-label="方向 ${i + 1}" value="${v}" required style="flex:1">${button("移除", "remove-direction", "quiet", `aria-label="移除方向 ${i + 1}"`)}</div>`).join("")}</div>${button("＋ 添加方向", "add-direction")}<div class="banner gap-top">已覆盖 4 个方向。重复名称、空名称和没有方向的领域会阻止确认。</div><div class="form-actions"><span class="muted" id="structure-dirty">当前修改尚未保存</span><button type="submit" class="primary">保存结构</button></div></form></div>`
+  );
+}
+function standards() {
+  return (
+    header(
+      "思维标准",
+      "先定义每个方向的推理步骤，再生成符合标准的问题。",
+      button("生成缺失标准", "generate-standards") +
+        link("下一步：问题集 →", "/tasks/24/questions", "button primary"),
+    ) +
+    taskTabs() +
+    table(
+      ["方向", "步骤数", "当前版本", "状态", "最近修改", "操作"],
+      [
+        [
+          "订单分配",
+          "5",
+          "v2",
+          badge("已完成", "good"),
+          "今天 09:55",
+          link("编辑标准 →", "/tasks/24/standards/12"),
+        ],
+        [
+          "补货计划",
+          "4",
+          "v1",
+          badge("已完成", "good"),
+          "今天 09:54",
+          link("查看标准 →", "/tasks/24/standards/12"),
+        ],
+      ],
+      { search: "搜索方向", filters: ["全部状态", "已完成", "待处理"] },
+    )
+  );
+}
+function standardEditor() {
+  return (
+    header(
+      "订单分配 · 思维标准",
+      "所属任务：仓储调度 / 当前版本 v2",
+      link("返回标准列表", "/tasks/24/standards", "button") +
+        button("版本历史", "standard-history"),
+    ) +
+    `<div class="grid split"><form class="panel" data-form="standard"><h2>长链思维步骤</h2><div id="standard-steps">${["识别目标与已知条件", "提取资源与时序约束", "构建候选方案", "比较方案与约束冲突", "验证结论并说明边界"].map((v, i) => `<div class="edit-step"><h3>步骤 ${i + 1}<div class="actions">${button("↑", "move-step", "quiet", `aria-label="上移步骤 ${i + 1}" ${i === 0 ? "disabled" : ""}`)}${button("移除", "remove-step", "quiet")}</div></h3><div class="field"><label>标题<input aria-label="步骤 ${i + 1} 标题" value="${v}" required></label></div><label>检查点<textarea aria-label="步骤 ${i + 1} 检查点" required>说明依据、约束和需要验证的条件，避免跳过关键推导。</textarea></label></div>`).join("")}</div>${button("＋ 添加步骤", "add-step")}<div class="field gap-top"><label for="change-note">变更说明</label><input id="change-note" required placeholder="例如：增加冷链区域容量检查"></div><div class="form-actions"><small>保存新版本不会自动改写历史样本。</small><button type="submit" class="primary">保存为新版本</button></div></form><aside>${panel("修改影响", `<p class="muted">该标准被当前方向的 100 个问题引用。新版本用于后续生产；已生成内容保留原始版本关联。</p><div class="banner warn">完整的样本版本追溯属于后端待补能力，见方案依赖表。</div>`)}</aside></div>`
+  );
+}
+function questions() {
+  return (
+    header(
+      "问题集",
+      "仓储调度 / 按领域、方向和难度检查问题覆盖。",
+      button("生成问题", "generate-questions") +
+        link("下一步：训练产物 →", "/tasks/24/output", "button primary"),
+    ) +
+    taskTabs() +
+    metrics([
+      ["问题数", "1,200", "12 个方向"],
+      ["简单", "240", "20%"],
+      ["中等", "600", "50%"],
+      ["困难", "360", "30%"],
+    ]) +
+    table(
+      ["问题", "方向", "难度", "状态", "操作"],
+      sampleRows()
+        .slice(0, 3)
+        .map((r, i) => [
+          r[0],
+          ["订单分配", "补货计划", "运力分配"][i],
+          badge(["中等", "简单", "困难"][i]),
+          badge("已完成", "good"),
+          link("查看完整内容", "/datasets/24/samples/" + (1024 + i)),
+        ]),
+      { search: "搜索问题或方向" },
+    )
+  );
+}
+function output() {
+  const kind = query.get("type") || wizard.kind;
+  return (
+    header(
+      "训练产物",
+      "仓储调度 / 根据训练类型检查最终内容。",
+      button(
+        kind === "GRPO" ? "生成教师评判提示词" : "生成思维链与答案",
+        "generate-output",
+      ) + link("查看数据集 →", "/datasets/24", "button primary"),
+    ) +
+    taskTabs() +
+    `<div class="subnav">${link("SFT · 思维链与答案", "/tasks/24/output?type=SFT", kind === "SFT" ? "active" : "")}${link("GRPO · 教师评判提示词", "/tasks/24/output?type=GRPO", kind === "GRPO" ? "active" : "")}</div><div class="banner">${kind === "GRPO" ? "GRPO 输出每条问题对应的教师评判提示词与奖励等级标准。" : "SFT 输出问题、思维链与答案。"} ${link("历史自动评分 →", "/tasks/24/scoring")}</div>` +
+    (kind === "SFT"
+      ? table(
+          ["问题", "内容完整性", "状态", "操作"],
+          sampleRows()
+            .slice(0, 3)
+            .map((r) => [
+              r[0],
+              "思维链 ✓ · 答案 ✓",
+              badge("已完成", "good"),
+              r[5],
+            ]),
+        )
+      : panel(
+          "问题 #1024 · 教师评判提示词",
+          `<p class="sample-text">请根据订单分配问题的目标、资源约束和思维标准判断候选方案。先检查可执行性，再依据下面的奖励等级给出分数和理由。</p>${summary(
+            [
+              ["−1 · 不合格", "遗漏关键约束，方案不可执行"],
+              ["0 · 部分满足", "主要方向合理，但关键细节缺失"],
+              ["1 · 满足", "满足约束、步骤完整，说明适用边界"],
+            ],
+          )}<div class="actions gap-top">${button("调整奖励档位", "reward-levels")}${button("复制提示词", "copy-sample")}</div>`,
+        ))
+  );
+}
+function runs(detail = false) {
+  const resumed = read("resumed", false);
+  if (detail)
+    return (
+      header(
+        "运行 #104 · 训练产物",
+        "仓储调度 / 2026-09-20 10:20 开始",
+        link("返回运行记录", "/tasks/24/runs", "button") +
+          button(
+            resumed ? "已请求续跑" : "仅重试失败部分",
+            "retry",
+            "primary",
+            resumed ? "disabled" : "",
+          ),
+      ) +
+      `<div class="banner ${resumed ? "" : "bad"}"><strong>${resumed ? "续跑已入队，原有成功记录保留。" : "12 条失败：模型连接超时。"}</strong><br>影响范围：训练产物阶段；此前已完成的思维标准和问题集可继续使用。</div>` +
+      metrics([
+        ["计划样本", "1,200", "按样本计数"],
+        ["成功", "1,188", "已保留"],
+        ["失败", "12", "仅此范围需要恢复"],
+        ["尝试次数", resumed ? "2" : "1", "含初次执行"],
+      ]) +
+      `<div class="grid two">${panel("恢复操作", `<p>恢复会从失败位置续跑，沿用本次运行的模型、指令与参数。连续点击不会创建重复任务。</p><p class="muted">如再次失败，管理员可以检查服务连接。恢复接口当前按阶段接收，精确的失败记录预览仍需后端补充。</p>${role === "admin" ? link("检查模型服务 →", "/admin/providers/1") : link("查看恢复指引 →", "/help/first-dataset")}`)}${panel("运行事件", `<div class="timeline"><div class="timeline-item"><strong>10:42 · 部分失败</strong><p>12 次模型请求超时</p></div><div class="timeline-item"><strong>10:20 · 开始执行</strong><p>目标 1,200 条 SFT 产物</p></div><div class="timeline-item"><strong>10:19 · 已入队</strong><p>等待执行资源</p></div></div>`)}</div>`
+    );
+  return (
+    header("运行记录", "仓储调度 / 每次执行分别记录状态、计数和错误。") +
+    taskTabs() +
+    table(
+      ["运行", "阶段", "完成 / 总数", "状态", "开始时间", "操作"],
+      [
+        [
+          link("#104", "/tasks/24/runs/104"),
+          "训练产物",
+          "1,188 / 1,200",
+          badge("待处理", "warn"),
+          "今天 10:20",
+          link("查看原因 →", "/tasks/24/runs/104"),
+        ],
+        [
+          "#103",
+          "问题集",
+          "1,200 / 1,200",
+          badge("已完成", "good"),
+          "今天 09:58",
+          button("查看执行摘要", "run-summary", "quiet"),
+        ],
+      ],
+    )
+  );
+}
+function evalList() {
+  return (
+    header(
+      "质量评估",
+      "比较多个独立裁判的判断，先看运行，再进入证据。",
+      link("评估维度库", "/resources/dimensions", "button") +
+        link("＋ 新建评估", "/evaluations/new", "button primary"),
+      "EVALUATION / 质量评估",
+    ) +
+    table(
+      ["评估名称", "数据集 / 范围", "裁判", "状态", "平均分", "操作"],
+      [
+        [
+          link("仓储调度 · 双模型评估", "/evaluations/36") +
+            "<small>#36 · 今天 09:31</small>",
+          link("仓储调度 · SFT", "/datasets/24") +
+            "<small>按条数抽样 · 120 / 1,200</small>",
+          "Orion / Nova",
+          badge("已完成", "good"),
+          "4.2 / 5",
+          link("查看报告 →", "/evaluations/36/report"),
+        ],
+      ],
+    )
+  );
+}
+function evalNew() {
+  return (
+    header(
+      "新建评估",
+      "选定数据范围后，再选择维度和独立裁判。",
+      link("返回评估列表", "/evaluations", "button"),
+    ) +
+    `<div class="grid split"><form class="panel" data-form="evaluation"><h2>01 / 数据与抽样</h2>${field("评估名称", "仓储调度 · 双模型评估", "text", "required")}${select("数据集", ["仓储调度 · SFT"], "仓储调度 · SFT", 'name="dataset"')}<div class="form-row">${select("抽样方式", ["按条数", "按比例", "全量"], "按条数", 'name="sampling" data-sampling')}<div class="field" id="sampling-number"><label for="sample-number">抽样数量</label><input id="sample-number" type="number" name="sampleSize" value="120" required min="1" max="1200"><small id="sampling-hint">最多 1,200 条；同一次运行中各裁判使用相同的样本集合。</small></div></div><h2 class="gap-top">02 / 评估维度</h2><div class="check-list">${["逻辑一致性", "约束识别", "推理完整性", "答案正确性", "可执行性", "边界条件"].map((v) => `<label class="checkbox-row"><input type="checkbox" name="dimension" value="${v}" checked> ${v} <small>1–5 分</small></label>`).join("")}</div><p class="muted gap-top">${link("查看全部 58 个内置维度 →", "/resources/dimensions")} · 可维护自定义维度</p><h2>03 / 裁判模型</h2><div class="check-list"><label class="checkbox-row"><input type="checkbox" disabled> Atlas · atlas-instruct ${badge("生成者，禁止自评", "warn")}</label>${["Orion · orion-reasoning", "Nova · nova-judge"].map((v) => `<label class="checkbox-row"><input type="checkbox" name="judge" value="${v}" checked> ${v}</label>`).join("")}</div><div class="form-actions"><small>启动后配置冻结；需要调整时新建一次评估。</small><button class="primary" type="submit">创建并启动评估</button></div></form><aside class="sticky-note">${panel(
+      "工作量预览",
+      summary([
+        ["样本", "120 条"],
+        ["评估维度", "6 个"],
+        ["裁判模型", "2 个"],
+        ["评分单元", "120 × 6 × 2 = 1,440"],
+      ]),
+    )}<div class="helper"><strong>避免虚假的质量结论</strong><p>抽样结论明确标记覆盖范围。不同量表先归一化，失败的评分单元不参与均值，同时展示覆盖率。</p></div></aside></div>`
+  );
+}
+function evalOverview() {
+  const started = read("evalStarted", false);
+  return (
+    header(
+      "仓储调度 · 双模型评估",
+      `评估 #36 · ${started ? "已入队，等待执行" : "已完成"} · 数据集 #24`,
+      link("查看数据集", "/datasets/24", "button") +
+        link("查看完整报告 →", "/evaluations/36/report", "button primary"),
+    ) +
+    evalTabs() +
+    (started
+      ? '<div class="banner">演示评估已入队。下方报告为预置的完成态样例，真实运行需要完成后才显示结论。</div>'
+      : "") +
+    metrics([
+      ["平均分", "4.2 / 5", "归一化后加权，示例值"],
+      ["已评样本", "120 / 120", "总集 1,200 条的 10%"],
+      ["评分完成", "1,440 / 1,440", "6 个维度 × 2 个裁判"],
+      ["低分样本", "12", "阈值 < 3 / 5"],
+    ]) +
+    `<div class="grid two">${panel(
+      "裁判表现",
+      summary([
+        ["Orion", "4.3 / 5 · 120 条"],
+        ["Nova", "4.1 / 5 · 120 条"],
+        ["分歧较大", "8 条"],
+        ["被排除模型", "Atlas · 生成者"],
+      ]),
+    )}${panel(
+      "运行配置",
+      summary([
+        ["数据集", link("仓储调度 · SFT", "/datasets/24")],
+        ["范围", "按条数抽样 120 条"],
+        ["维度", "6 个 · 配置已冻结"],
+        ["创建时间", "2026-09-20 09:12"],
+      ]),
+    )}</div>`
+  );
+}
+function evalScores() {
+  return (
+    header(
+      "逐条评分",
+      "评估 #36 / 点击样本查看多裁判的评分理由。",
+      link("报告概览", "/evaluations/36/report", "button"),
+    ) +
+    evalTabs() +
+    table(
+      ["样本", "Orion", "Nova", "平均分", "分歧", "操作"],
+      [
+        [
+          link("#1024 · 订单与人员分配", "/evaluations/36/items/1024"),
+          "4.2",
+          "3.0",
+          "3.6",
+          badge("需关注", "warn"),
+          link("比较评分理由 →", "/evaluations/36/items/1024"),
+        ],
+        [
+          "#1025 · 补货优先级",
+          "4.6",
+          "4.4",
+          "4.5",
+          badge("一致", "good"),
+          link("查看原始样本", "/datasets/24/samples/1025"),
+        ],
+      ],
+      { search: "搜索问题或样本编号", filters: ["全部状态", "需关注", "一致"] },
+    )
+  );
+}
+function evalItem() {
+  return (
+    header(
+      "样本 #1024 · 评分证据",
+      "评估 #36 / 两个裁判对“约束完整性”存在明显分歧。",
+      link("返回逐条评分", "/evaluations/36/scores", "button") +
+        link("查看原始样本", "/datasets/24/samples/1024", "button"),
+    ) +
+    `<div class="banner warn">分歧不自动代表某个裁判正确。请对照样本中的约束与各自评分细则。</div>` +
+    panel(
+      "被评样本摘要",
+      '<p class="sample-text">240 个订单，60 单当日交付；8 名拣货员；冷链区同时最多 2 人。方案需要同时满足时效与容量限制。</p>',
+    ) +
+    `<div class="grid two">${panel(
+      "Orion · 4.2 / 5",
+      `<div class="sample-title">约束识别 · 4 / 5</div><p class="sample-text">回答识别了冷链容量与人员上限，给出分组方案，但缺少各订单组预计处理时长。</p>${summary(
+        [
+          ["推理完整性", "4.5 / 5"],
+          ["答案正确性", "4.2 / 5"],
+          ["可执行性", "4.1 / 5"],
+        ],
+      )}`,
+    )}${panel(
+      "Nova · 3.0 / 5",
+      `<div class="sample-title">约束识别 · 2 / 5</div><p class="sample-text">分配人数看似合理，但没有检查急单工作量是否能在截止时间前完成，因此无法验证交付目标。</p>${summary(
+        [
+          ["推理完整性", "3.1 / 5"],
+          ["答案正确性", "3.2 / 5"],
+          ["可执行性", "3.0 / 5"],
+        ],
+      )}`,
+    )}</div>` +
+    panel(
+      "下一步",
+      `<p>建议补充订单组处理时间、截止时刻和资源冲突检查。修订思维标准后，用新的运行验证改善。</p><div class="actions">${link("打开思维标准", "/tasks/24/standards/12", "button primary")}${link("查看该维度细则", "/resources/dimensions/1", "button")}</div>`,
+    )
+  );
+}
+function evalReport() {
+  return (
+    header(
+      "评估报告",
+      "仓储调度 · SFT / 评估 #36 / 按条数抽样 120 条",
+      button("复制报告链接", "copy-link") +
+        link("逐条查看证据", "/evaluations/36/scores", "button primary"),
+    ) +
+    evalTabs() +
+    `<div class="banner"><strong>样本整体表现较好，约束检查仍需加强。</strong><br>本结论覆盖 120 / 1,200 条样本，不能等同于对全部样本的质量保证。评分完成率 100%。</div>` +
+    metrics([
+      ["综合得分", "4.2 / 5", "2 个独立裁判"],
+      ["覆盖范围", "10%", "按条数抽样"],
+      ["低分样本", "12", "10% · 阈值 < 3"],
+      ["明显分歧", "8", "两裁判均分差 ≥ 1"],
+    ]) +
+    `<div class="grid two">${panel(
+      "维度得分分布",
+      `${[
+        ["逻辑一致性", 4.5],
+        ["约束识别", 3.6],
+        ["推理完整性", 4.3],
+        ["答案正确性", 4.4],
+        ["可执行性", 4.1],
+        ["边界条件", 3.8],
+      ]
+        .map(
+          ([l, v]) =>
+            `<div class="bar-row"><span>${l}</span><div class="bar"><i style="width:${v * 20}%"></i></div><strong>${v}</strong></div>`,
+        )
+        .join("")}<small>统一到 1–5 分显示；源量表保留在评分证据中。</small>`,
+    )}${panel("从结论到行动", `<div class="link-row"><div><h3>补齐资源冲突与时间约束</h3><p>低分集中在订单分配和运力分配方向。</p></div>${link("修订标准 →", "/tasks/24/standards/12")}</div><div class="link-row"><div><h3>复核裁判分歧</h3><p>8 条样本对同一约束的判断不一致。</p></div>${link("查看评分 →", "/evaluations/36/scores?filter=需关注")}</div><div class="link-row"><div><h3>验证改进效果</h3><p>复用相同配置新建评估，不改写旧报告。</p></div>${link("新建评估 →", "/evaluations/new?dataset=24")}</div>`)}</div>`
+  );
+}
+function cleanList() {
+  return (
+    header(
+      "数据清洗",
+      "运行清洗、追踪命中和复查结论。规则配置在资源库独立维护。",
+      link("规则库", "/resources/rules", "button") +
+        link("＋ 新建清洗", "/cleaning/new", "button primary"),
+      "CLEANING / 数据清洗",
+    ) +
+    table(
+      ["运行", "数据集", "扫描 / 命中", "处置", "状态", "操作"],
+      [
+        [
+          link("仓储调度 · 清洗 #18", "/cleaning/18") +
+            "<small>今天 10:30</small>",
+          link("仓储调度 · SFT", "/datasets/24"),
+          "1,200 / 72",
+          "48 待复查 · 24 隔离",
+          badge("已完成", "good"),
+          link("查看报告 →", "/cleaning/18"),
+        ],
+      ],
+    )
+  );
+}
+function cleanNew() {
+  return (
+    header(
+      "新建清洗",
+      "先检查命中样例，再决定运行范围和规则。",
+      link("返回清洗列表", "/cleaning", "button"),
+    ) +
+    `<div class="grid split"><form class="panel" data-form="cleaning">${select("数据集", ["仓储调度 · SFT"], "仓储调度 · SFT")}<h2>检查哪些内容</h2><div class="check-list">${["问题", "思维链", "答案"].map((v) => `<label class="checkbox-row"><input type="checkbox" name="stage" value="${v}" checked>${v}</label>`).join("")}</div><h2 class="gap-top">选择清洗规则</h2><label class="checkbox-row"><input type="checkbox" name="rule" checked value="1">拒答文本复查 ${badge("标记复查", "warn")}</label><label class="checkbox-row"><input type="checkbox" name="rule" value="2">空内容检测 ${badge("隔离", "bad")}</label><p>${link("查看规则细节 →", "/resources/rules/1")} <span class="muted">·</span> ${link("维护关键词库 →", "/resources/keywords")}</p><div class="banner warn">关键词命中可能只是引用、否定或正常道歉。默认标记复查，不把关键词命中直接等同于无效。</div><div id="clean-preview" class="muted-box">尚未预览。先检查 20 条样例中的疑似命中。</div><div class="form-actions">${button("预览 20 条样例", "preview-clean")}<button class="primary" type="submit" id="start-clean">开始清洗</button></div></form><aside>${panel(
+      "本次影响",
+      summary([
+        ["范围", "1,200 条样本"],
+        ["阶段", "问题 / 思维链 / 答案"],
+        ["默认处置", "标记复查"],
+        ["原始内容", "保留"],
+      ]),
+    )}<div class="helper"><strong>能力边界</strong><p>预览、可撤销隔离和人工复查是目标设计，需补后端接口。现有接口只支持直接执行和读取报告。</p></div></aside></div>`
+  );
+}
+function cleanOverview() {
+  return (
+    header(
+      "仓储调度 · 清洗 #18",
+      "已完成 · 今天 10:30 / 数据集 #24",
+      link("查看数据集", "/datasets/24", "button") +
+        link("处理待复查 →", "/cleaning/18/findings", "button primary"),
+    ) +
+    cleaningTabs() +
+    metrics([
+      ["扫描样本", "1,200", "按问题 ID 去重"],
+      ["命中样本", "72", "6% · 按样本去重"],
+      ["待复查", "48", "需要结合上下文判断"],
+      ["已隔离", "24", "原始数据保留"],
+    ]) +
+    `<div class="grid two">${panel(
+      "命中来源",
+      `${[
+        ["问题", 6],
+        ["思维链", 18],
+        ["答案", 60],
+      ]
+        .map(
+          ([l, v]) =>
+            `<div class="bar-row"><span>${l}</span><div class="bar"><i style="width:${(v / 60) * 100}%"></i></div><strong>${v}</strong></div>`,
+        )
+        .join(
+          "",
+        )}<small>阶段计数允许重复，同一样本可在不同阶段命中，不能直接相加当作样本总数。</small>`,
+    )}${panel(
+      "规则与建议",
+      summary([
+        ["拒答文本复查", "48 条待复查"],
+        ["空内容检测", "24 条已隔离"],
+        ["关键词高频命中", "对不起 / 无法提供"],
+      ]) +
+        `<p class="muted gap-top">优先处理正文引用和正常道歉，避免误判。</p>${link("查看命中明细 →", "/cleaning/18/findings")}`,
+    )}</div>`
+  );
+}
+function findings() {
+  return (
+    header(
+      "命中明细",
+      "清洗 #18 / 从命中词跳到原始上下文。",
+      link("报告概览", "/cleaning/18", "button"),
+    ) +
+    cleaningTabs() +
+    table(
+      ["样本 / 命中内容", "阶段", "规则", "处置", "操作"],
+      [
+        [
+          link("#1024 · “对不起” 出现在引用中", "/cleaning/18/findings/7"),
+          "答案",
+          "拒答文本复查",
+          badge(reviewLabel(), reviewColor()),
+          link("人工复查 →", "/cleaning/18/findings/7"),
+        ],
+        [
+          "#1027 · 内容为空",
+          "思维链",
+          "空内容检测",
+          badge("已隔离", "bad"),
+          link("查看原始样本", "/datasets/24/samples/1027"),
+        ],
+      ],
+      {
+        search: "搜索样本编号或命中词",
+        filters: ["全部状态", "待复查", "已保留", "已隔离"],
+      },
+    )
+  );
+}
+function finding() {
+  return (
+    header(
+      "命中 #7 · 人工复查",
+      "样本 #1024 / 答案 / 拒答文本复查规则",
+      link("返回命中列表", "/cleaning/18/findings", "button"),
+    ) +
+    `<div class="sample-layout"><section class="panel"><div class="panel-title"><h2>命中上下文</h2>${badge(read("reviewed", false) ? "已保留" : "待复查", read("reviewed", false) ? "good" : "warn")}</div><p class="sample-text">建议先安排 2 人处理冷链急单，4 人处理常温急单，2 人处理补货与异常。<br><br>当配送延迟时，客服可以使用“<mark>对不起</mark>，我们将优先处理您的订单”的说明，但调度方案本身仍需满足约束。</p><div class="banner">匹配文本：对不起 · 匹配方式：包含 · 此处可能是正常客服话术引用。</div>${link("展开完整问题、思维链与答案 →", "/datasets/24/samples/1024")}</section><form class="panel" data-form="review"><h2>记录你的判断</h2><label class="checkbox-row"><input type="radio" name="decision" value="keep" checked>保留：有效样本</label><label class="checkbox-row"><input type="radio" name="decision" value="isolate">隔离：不用于当前交付</label><div class="field gap-top"><label for="review-note">判断说明</label><textarea id="review-note" required placeholder="例如：关键词来自示例话术，答案本身有效"></textarea></div><small>只更新处置状态，不修改原始生成内容。判断及操作者写入记录。</small><div class="form-actions"><button type="submit" class="primary">保存判断并返回</button></div></form></div>`
+  );
+}
+function exportsPage() {
+  const config = read("exportConfig", null);
+  return (
+    header(
+      "导出记录",
+      "仓储调度 / 每次导出的范围与格式独立留存。",
+      link("＋ 创建导出", "/datasets/24/exports/new", "button primary"),
+    ) +
+    datasetTabs() +
+    table(
+      ["文件", "范围", "格式", "大小", "状态", "操作"],
+      [
+        [
+          link(
+            config
+              ? "prototype-sft-demo." +
+                  (config.format === "CSV" ? "csv" : "jsonl")
+              : "仓储调度_alpaca.jsonl",
+            "/datasets/24/exports/81",
+          ),
+          config
+            ? `${config.ids.length} 条演示 · ${esc(config.scope)}`
+            : "1,128 条 · 已通过",
+          config ? esc(config.format) : "Alpaca",
+          config ? "本地演示文件" : "3.8 MB",
+          badge("已完成", "good"),
+          link("查看并下载 →", "/datasets/24/exports/81"),
+        ],
+      ],
+    )
+  );
+}
+function exportNew() {
+  return (
+    header(
+      "创建导出",
+      "仓储调度 / 将准备好的样本转换为训练文件。",
+      link("取消", "/datasets/24/exports", "button"),
+    ) +
+    `<div class="grid split"><form class="panel" data-form="export">${select("导出范围", ["仅已通过的样本", "当前筛选范围", "已勾选的样本"], query.get("selection") ? "已勾选的样本" : query.get("scope") === "filtered" ? "当前筛选范围" : "仅已通过的样本", 'name="scope"')}${select("输出格式", ["Alpaca", "ShareGPT", "JSONL", "CSV"], "Alpaca", 'name="format" data-format')}${select("字段映射", ["SFT · Alpaca 映射"], "SFT · Alpaca 映射")}<p>${mappingControl()}</p><h2>文件内容预览</h2><pre id="export-code" class="code-block">${esc(JSON.stringify(exportRecords(exportIds())[0], null, 2))}</pre><div class="banner">按选中 ID 预览；默认范围只导出已通过样本。包含待复查样本时请先确认判断；缺少推理内容的样本将阻止提交。</div><div class="form-actions"><small>生成新文件，不覆盖历史导出。</small><button type="submit" class="primary">创建导出文件</button></div></form><aside>${panel(
+      "交付摘要",
+      summary([
+        [
+          "样本范围",
+          query.get("selection")
+            ? esc(query.get("selection").split(",").length) + " 条已选"
+            : "1,128 条已通过",
+        ],
+        ["数据类型", "SFT"],
+        ["格式", "Alpaca"],
+        ["目标", "下载到本地"],
+      ]),
+    )}<div class="helper"><strong>筛选与预览需要快照</strong><p>真实导出必须锁定提交时的样本 ID 与字段映射版本，防止下载内容和预览不一致。</p></div></aside></div>`
+  );
+}
+function exportDetail() {
+  const config = read("exportConfig", null);
+  if (config)
+    return (
+      header(
+        "本次演示导出",
+        "仓储调度 / 已按提交的格式和范围生成演示文件。",
+        link("返回导出记录", "/datasets/24/exports", "button") +
+          button("下载演示文件", "download", "primary"),
+      ) +
+      panel(
+        `prototype-sft-demo.${config.format === "CSV" ? "csv" : "jsonl"}`,
+        summary([
+          ["格式", esc(config.format)],
+          ["范围", esc(config.scope)],
+          ["选中 ID", esc(config.ids.join(", "))],
+          ["文件规模", `${config.ids.length} 条演示记录`],
+          ["字段映射", mappingControl()],
+        ]),
+      ) +
+      '<div class="banner">演示文件验证格式与交互，不代表真实完整数据集。</div>'
+    );
+  return (
+    header(
+      "导出 #81",
+      "仓储调度 / 创建于 2026-09-20 09:48",
+      link("返回导出记录", "/datasets/24/exports", "button") +
+        button("下载演示文件", "download", "primary"),
+    ) +
+    `<div class="banner"><strong>文件已准备好。</strong> 本原型下载 2 条演示 JSONL；正式产品下载完整交付文件。</div><div class="grid split">${panel(
+      "仓储调度_alpaca.jsonl",
+      summary([
+        ["状态", badge("可下载", "good")],
+        ["生产文件规模", "1,128 条 · 3.8 MB（示意）"],
+        ["原型文件规模", "2 条演示样本"],
+        ["格式", "Alpaca / JSONL"],
+        ["筛选范围", "仅已通过"],
+        ["字段映射", mappingControl()],
+        ["来源数据集", link("仓储调度 · SFT", "/datasets/24")],
+      ]),
+    )}${panel("交付与复现", `<p class="muted">历史文件绑定生成当时的存储位置。后续更改默认存储，不应影响历史文件下载。</p>${button("复制此页链接", "copy-link")}`)}</div>`
+  );
+}
+function resources() {
+  return (
+    header(
+      "资源库",
+      "把可复用的规则和配置放在明确的位置。执行任务时只做选择。",
+      "",
+      "RESOURCES / 资源库",
+    ) +
+    `<div class="grid three">${Object.entries(UX_RESOURCE_TYPES)
+      .filter(
+        ([k]) =>
+          !["providers", "storage"].includes(k) &&
+          (role === "admin" ||
+            !["templates", "prompts", "mappings"].includes(k)),
+      )
+      .map(
+        ([k, v], i) =>
+          `<section class="resource-card"><div class="resource-icon">${icons[i]}</div><h2>${v.label}</h2><p>${v.description}</p>${link("进入" + v.label + " →", resourceBase(k))}</section>`,
+      )
+      .join("")}</div>`
+  );
+}
+function resourceList(key) {
+  const info = UX_RESOURCE_TYPES[key],
+    base = resourceBase(key);
+  return (
+    header(
+      info.label,
+      info.description,
+      (key === "keywords" ? link("批量导入", base + "/import", "button") : "") +
+        link("＋ 新建" + info.label, base + "/new", "button primary"),
+    ) +
+    `<nav class="subnav">${Object.entries(UX_RESOURCE_TYPES)
+      .filter(([k]) =>
+        ["providers", "storage"].includes(key)
+          ? ["providers", "storage"].includes(k)
+          : !["providers", "storage"].includes(k),
+      )
+      .filter(
+        ([k]) =>
+          role === "admin" || !["templates", "prompts", "mappings"].includes(k),
+      )
+      .map(([k, v]) =>
+        link(v.label, resourceBase(k), k === key ? "active" : ""),
+      )
+      .join("")}</nav>` +
+    (key === "dimensions"
+      ? '<div class="banner">内置维度 58 项，覆盖 7 类能力。本原型展示代表项；真实产品按类别筛选和分页，不把全部评分细则铺满首页。</div>'
+      : "") +
+    table(
+      ["名称", "来源 / 类型", "状态", "更新", "操作"],
+      key === "keywords" && read("keywordDeleted", false)
+        ? []
+        : [
+            [
+              link(read("resource." + key, info.fields[0][1]), base + "/1"),
+              key === "dimensions"
+                ? "内置 · 推理质量"
+                : key === "providers"
+                  ? "OpenAI 兼容"
+                  : "自定义",
+              badge(
+                read("disabled." + key, false) ? "已停用" : "已启用",
+                read("disabled." + key, false) ? "" : "good",
+              ),
+              "2026-09-20",
+              link("查看详情 →", base + "/1"),
+            ],
+          ].concat(
+            key === "dimensions" && read("dimensionCopy", null)
+              ? [
+                  [
+                    link(esc(read("dimensionCopy", {})["名称"]), base + "/2"),
+                    "自定义 · 副本",
+                    badge(
+                      read("disabled.dimensions.2", false)
+                        ? "已停用"
+                        : "已启用",
+                      read("disabled.dimensions.2", false) ? "" : "good",
+                    ),
+                    "2026-09-20",
+                    link("查看详情 →", base + "/2"),
+                  ],
+                ]
+              : [],
+          ),
+      {
+        search: "搜索" + info.label,
+        filters: ["全部状态", "已启用", "已停用"],
+      },
+    )
+  );
+}
+function resourceDetail(key) {
+  const info = UX_RESOURCE_TYPES[key],
+    base = resourceBase(key),
+    isNew = route.endsWith("/new"),
+    copied = key === "dimensions" && route.endsWith("/2"),
+    objectPath = base + (copied ? "/2" : "/1"),
+    builtin = key === "dimensions" && !isNew && !copied,
+    editing = !builtin && (isNew || query.get("mode") === "edit");
+  return (
+    header(
+      isNew
+        ? "新建" + info.label
+        : esc(
+            copied
+              ? read("dimensionCopy", {})["名称"] || info.one
+              : read("resource." + key, info.one),
+          ),
+      info.description,
+      link("返回" + info.label, base, "button") +
+        (!editing
+          ? builtin
+            ? link("复制为自定义维度", base + "/new?copy=1", "button primary")
+            : link("编辑", objectPath + "?mode=edit", "button primary")
+          : ""),
+    ) +
+    `<div class="grid split"><form class="panel" data-form="resource" data-resource="${key}"><h2>${editing ? "编辑配置" : "配置详情"}</h2>${builtin ? '<div class="banner">内置维度的评分细则只读。可以停用，或复制为自定义维度后修改。</div>' : ""}${info.fields
+      .map(([label, value, type = "text", options]) => {
+        if (type !== "password" && !isNew)
+          value =
+            (copied ? read("dimensionCopy", {}) : read("fields." + key, {}))[
+              label
+            ] ?? value;
+        if (type === "password" && !editing)
+          return `<div class="definition"><dt>${label}</dt><dd>已配置 · 不回显</dd></div>`;
+        if (!editing)
+          return `<div class="definition"><dt>${label}</dt><dd style="white-space:pre-wrap">${esc(label === "名称" ? read("resource." + key, value) : value)}</dd></div>`;
+        const required = type === "password" ? "" : "required";
+        return type === "select"
+          ? select(label, options.split("|"), value, `name="${label}"`)
+          : type === "textarea"
+            ? `<div class="field"><label>${label}<textarea aria-label="${label}" name="${label}" required>${isNew ? "" : esc(value)}</textarea></label></div>`
+            : field(
+                label,
+                isNew
+                  ? ""
+                  : label === "名称"
+                    ? read("resource." + key, value)
+                    : value,
+                type,
+                `${required} ${type === "number" ? 'min="0" step="any"' : ""} ${type === "password" ? 'autocomplete="new-password" placeholder="留空保留已有密钥"' : ""}`,
+              );
+      })
+      .join(
+        "",
+      )}${editing ? `<div class="form-actions">${link("取消", isNew ? base : objectPath, "button")}<button class="primary" type="submit">保存${info.label}</button></div>` : `<div class="actions gap-top">${button(read("disabled." + key + (copied ? ".2" : ""), false) ? "启用" : "停用", "toggle-resource", "", 'data-resource="' + key + (copied ? ".2" : "") + '"')}${key === "templates" ? link("使用此模板创建任务", "/tasks/new?template=1", "button primary") : ""}${key === "providers" ? button("测试连通性", "test-provider") + button("查看模型列表", "model-list") : ""}${key === "storage" ? button("设为默认存储", "default-storage") : ""}${key === "keywords" ? button("删除关键词", "delete-keyword", "danger") : ""}</div>`}</form><aside>${panel("使用说明", `<p class="muted">${key === "providers" ? "测试结果只代表本次请求，不是长期可用性保证。留空密钥不覆盖已有配置。" : key === "storage" ? "更改默认存储只影响新任务；不迁移、清空或改写历史产物。" : "修改共享资源影响后续任务。正在执行的任务应使用创建时的配置快照。"}</p>`)}${key === "rules" ? panel("验证规则", `<p class="muted">回到清洗向导查看命中样例。</p>${link("用此规则新建清洗 →", "/cleaning/new?rule=1")}`) : ""}</aside></div>`
+  );
+}
+function keywordImport() {
+  return (
+    header(
+      "批量导入关键词",
+      "每行一个匹配项，先预览去重结果，再导入。",
+      link("返回关键词库", "/resources/keywords", "button"),
+    ) +
+    `<form class="panel" data-form="keywords"><div class="field"><label for="keyword-lines">关键词（每行一条）</label><textarea id="keyword-lines" name="patterns" required rows="8">无法提供\n不能完成\n无法提供</textarea></div><div class="form-row">${select("类别", ["拒答", "格式异常", "自定义"], "拒答")}${select("严重程度", ["复查", "拦截"], "复查")}</div><div id="import-preview" class="muted-box">尚未解析。</div><div class="form-actions">${button("解析并预览", "preview-import")}<button class="primary" type="submit">导入关键词</button></div></form>`
+  );
+}
+function admin() {
+  return (
+    header(
+      "系统管理",
+      "管理员在这里维护运行环境；业务操作保留在各自工作区。",
+      "",
+      "ADMINISTRATION / 系统管理",
+    ) +
+    metrics([
+      ["模型服务", "3", "3 个可用"],
+      ["结果存储", "1", "默认存储已配置"],
+      ["队列等待", "0", "最近检查 10:45"],
+      ["需关注运行", "1", "训练产物超时"],
+    ]) +
+    `<div class="grid two">${panel("环境就绪", `<div class="link-row"><div><strong>模型服务</strong><p>Atlas / Orion / Nova</p></div>${link("管理连接 →", "/admin/providers")}</div><div class="link-row"><div><strong>结果存储</strong><p>新产物写入主存储，历史文件按原位置读取。</p></div>${link("管理存储 →", "/admin/storage")}</div><div class="link-row"><div><strong>操作记录</strong><p>查看共享配置变更与操作者。</p></div>${link("查看记录 →", "/admin/audit")}</div>`)}${panel("需要关注", `<div class="banner warn">仓储调度的 SFT 生成出现 12 条超时。</div><div class="actions">${link("查看运行 #104", "/tasks/24/runs/104", "button")}${link("测试模型连接", "/admin/providers/1", "button")}</div>`)}</div>`
+  );
+}
+function audit(detail = false) {
+  if (detail)
+    return (
+      header(
+        "操作记录 #91",
+        "2026-09-20 09:50 · 管理员 · 更新生成指令",
+        link("返回操作记录", "/admin/audit", "button"),
+      ) +
+      panel(
+        "变更内容",
+        summary([
+          ["对象", link("仓储问题生成指令", "/resources/prompts/1")],
+          ["动作", "更新"],
+          ["操作者", "管理员"],
+          ["结果", badge("成功", "good")],
+        ]) +
+          '<div class="grid two gap-top"><div class="muted-box">修改前：版本 v1<br>仅按方向生成问题。</div><div class="banner">修改后：版本 v2<br>加入思维标准、约束与问题差异性要求。</div></div>',
+      )
+    );
+  return (
+    header("操作记录", "追溯配置变更，查看具体对象和变更内容。") +
+    table(
+      ["时间", "操作者", "动作", "对象", "结果", "操作"],
+      [
+        [
+          "2026-09-20 09:50",
+          "管理员",
+          "更新生成指令",
+          link("仓储问题生成指令", "/resources/prompts/1"),
+          badge("成功", "good"),
+          link("查看变更 →", "/admin/audit/91"),
+        ],
+      ],
+      { search: "搜索对象或操作者", filters: ["全部状态", "成功", "失败"] },
+    )
+  );
+}
+function globalPage() {
+  if (route === "/notifications")
+    return (
+      header(
+        "通知中心",
+        "从消息直接进入需要处理的对象。",
+        button("全部标为已读", "read-all"),
+      ) +
+      panel(
+        "最近通知",
+        `<div class="link-row"><div><strong>训练产物部分失败</strong><p>12 条模型请求超时 · 10:42</p></div>${link("查看失败运行 →", "/tasks/24/runs/104")}</div><div class="link-row"><div><strong>清洗完成，有样本需要复查</strong><p>48 条待复查 · 10:30</p></div>${link("处理命中 →", "/cleaning/18/findings")}</div><div class="link-row"><div><strong>导出文件已准备好</strong><p>Alpaca · 09:48</p></div>${link("查看交付 →", "/datasets/24/exports/81")}</div>`,
+      )
+    );
+  if (route === "/account")
+    return (
+      header("账户", "查看当前身份与使用偏好。") +
+      panel(
+        "账号信息",
+        summary([
+          ["显示名称", "林知"],
+          ["当前身份", role === "admin" ? "管理员" : "成员"],
+          ["工作区", "训练数据实验室"],
+          ["时区", "Asia/Shanghai"],
+        ]) +
+          `<div class="actions gap-top">${button("退出登录", "logout", "danger")}</div>`,
+      )
+    );
+  if (route === "/help/first-dataset")
+    return (
+      header(
+        "创建第一份训练数据",
+        "操作指南 / 预计阅读 5 分钟",
+        link("返回帮助中心", "/help", "button"),
+      ) +
+      panel(
+        "从目标到交付",
+        `<div class="timeline">${[
+          [
+            "1. 定义训练目标",
+            "选择 SFT 或 GRPO，填写主题和 n/m/x。",
+            "/tasks/new",
+          ],
+          [
+            "2. 确认领域与方向",
+            "检查覆盖、重名和缺失方向。",
+            "/tasks/24/structure",
+          ],
+          [
+            "3. 检查标准与问题",
+            "复核思维标准，然后检查问题质量。",
+            "/tasks/24/standards",
+          ],
+          [
+            "4. 查看训练产物",
+            "SFT 查看思维链和答案；GRPO 查看教师评判标准。",
+            "/tasks/24/output",
+          ],
+          [
+            "5. 做质量验证",
+            "选择独立裁判进行互评，必要时清洗并复查。",
+            "/evaluations/new",
+          ],
+          [
+            "6. 导出训练文件",
+            "检查范围、字段映射与完整性。",
+            "/datasets/24/exports/new",
+          ],
+        ]
+          .map(
+            ([t, d, p]) =>
+              `<div class="timeline-item"><strong>${t}</strong><p>${d} ${link("打开页面 →", p)}</p></div>`,
+          )
+          .join("")}</div>`,
+      )
+    );
+  return (
+    header("帮助中心", "按你要完成的事情查找答案。") +
+    `<div class="grid two">${panel("第一次使用", `<p class="muted">从训练目标开始，了解每个阶段的产出。</p>${link("创建第一份训练数据 →", "/help/first-dataset")}`)}${panel("常见问题", `<div class="link-row">${link("任务部分失败后如何继续？", "/tasks/24/runs/104")}</div><div class="link-row">${link("为什么生成模型不能当裁判？", "/evaluations/new")}</div><div class="link-row">${link("关键词命中就要删除吗？", "/cleaning/18/findings/7")}</div>`)}</div>`
+  );
+}
+function login() {
+  return `<div class="login-layout"><section class="login-story"><div class="brand"><span class="brandmark">▥</span>序列 · 数据工厂</div><h1>从一个主题，<br>到一份可验证的<br>训练数据。</h1><p>规划领域与方向，制备 SFT / GRPO 数据，<br>用独立评估与清洗保障交付质量。</p></section><section class="login-form"><form data-form="login"><div class="eyebrow">WELCOME BACK</div><h1>登录工作区</h1><p class="muted">继续你的训练数据工作。</p>${field("邮箱", "", "email", 'required autocomplete="username"')}${field("密码", "", "password", 'required autocomplete="current-password"')}<button class="primary" type="submit" style="width:100%">登录</button><p class="muted gap-top">原型演示：填写任意有效邮箱及非空密码即可体验，不进行真实认证。</p></form></section></div>`;
+}
+function catalog() {
+  return (
+    header(
+      "全站原型目录",
+      `${UX_PAGES.length} 个页面示例 · 所有导航与操作均在本地演示。`,
+      "",
+      "DESIGN REVIEW / 原型总览",
+    ) +
+    `<div class="banner">阅读顺序：工作台 → 创建任务 → 任务详情 → 数据集 → 评估 → 清洗 → 导出。底部可切换异常场景和身份。带“新建”的资源表单使用同一模板，字段随资源类型变化。</div>` +
+    [...new Set(UX_PAGES.map((p) => p[3]))]
+      .map(
+        (area) =>
+          `<section class="catalog-section"><h2>${area}</h2><div class="grid three">${UX_PAGES.filter(
+            (p) => p[3] === area,
+          )
+            .map(
+              ([id, path, title, , desc]) =>
+                `<a class="catalog-link" href="#${path}"><span class="badge">${id}</span><span><strong>${title}</strong><br><small>${desc}</small></span></a>`,
+            )
+            .join("")}</div></section>`,
+      )
+      .join("") +
+    `<section class="catalog-section"><h2>新增与编辑表单</h2><div class="grid three">${Object.entries(
+      UX_RESOURCE_TYPES,
+    )
+      .map(([k, v]) =>
+        link("新建" + v.label, resourceBase(k) + "/new", "catalog-link"),
+      )
+      .join("")}</div></section>`
+  );
+}
+function currentPage() {
+  return (
+    UX_PAGES.find((p) => p[1] === route) ||
+    UX_PAGES.find(
+      (p) => p[1] === route.replace(/\/samples\/\d+$/, "/samples/1024"),
+    )
+  );
+}
+function content() {
+  if (route === "/evaluations/new" && query.get("datasetId") === "25")
+    return (
+      header(
+        "评估 GRPO 数据集",
+        "仓储调度 · GRPO / 保留当前训练类型，不回退为 SFT。",
+        link("返回数据集", "/datasets/25", "button"),
+      ) +
+      panel(
+        "教师提示词评估尚未就绪",
+        '<div class="banner warn">当前评分样本加载主要读取 SFT / legacy reasoning 内容。GRPO 教师提示词与奖励标准的评价需补 payload 和适用维度，暂不允许启动。</div><p>目标配置应包括：档位可区分性、判据可执行性、约束覆盖和教师提示词一致性。</p>',
+      )
+    );
+  if (route === "/cleaning/19")
+    return (
+      header(
+        "GRPO 问题清洗 #19",
+        "仓储调度 · GRPO / 已完成问题文本扫描。",
+        link("返回 GRPO 数据集", "/datasets/25", "button primary"),
+      ) +
+      metrics([
+        ["扫描问题", "1,200", "仅问题阶段"],
+        ["命中问题", "0", "演示结果"],
+        ["教师提示词", "未扫描", "待专用内容适配"],
+        ["奖励标准", "未扫描", "不误算为 SFT 答案"],
+      ]) +
+      panel(
+        "扫描范围",
+        "<p>本次只检查 question 内容。教师提示词和奖励档位标准不属于 reasoning / answer 阶段；未将未检查内容标记为合格。</p>",
+      )
+    );
+  if (route.startsWith("/datasets/25")) return grpoDataset();
+  if (route === "/tasks/24/standards/12/versions/2")
+    return (
+      header(
+        "订单分配 · 思维标准 v2",
+        "只读历史快照 / 样本使用的版本，不跟随当前配置变化。",
+        link("编辑当前版本", "/tasks/24/standards/12", "button"),
+      ) +
+      panel(
+        "版本内容",
+        summary([
+          ["版本", "v2 · 已冻结"],
+          ["步骤", "目标 → 资源约束 → 方案 → 冲突检查 → 验证"],
+          ["变更说明", "增加冷链容量与时间窗口检查"],
+          ["引用样本", link("#1024", "/datasets/24/samples/1024")],
+        ]),
+      )
+    );
+  if (route === "/evaluations/36/dimensions/logic-v1")
+    return (
+      header(
+        "逻辑一致性 · 运行 #36 的维度快照",
+        "此页展示评分时的细则。当前资源的后续修改不会改变这份证据。",
+        link("返回评分证据", "/evaluations/36/items/1024", "button") +
+          link("查看当前维度", "/resources/dimensions/1", "button"),
+      ) +
+      panel(
+        "冻结的评分契约",
+        summary([
+          ["量表", "1–5 分"],
+          ["权重", "1.5"],
+          ["1 分", "前后矛盾，无法形成有效结论"],
+          ["3 分", "主线成立，存在部分推理跳跃"],
+          ["5 分", "推导完整，前提、过程与结论一致"],
+        ]),
+      ) +
+      '<div class="banner warn">目标设计：维度/裁判的完整运行快照需后端补充，不能用当前维度查询代替。</div>'
+    );
+  if (route.startsWith("/evaluations/36") && read("evalStarted", false))
+    return (
+      header(
+        "评估 #36 · 已入队",
+        "等待独立裁判开始评分，完成后才能查看最终结论。",
+        link("返回评估列表", "/evaluations", "button"),
+      ) +
+      evalTabs() +
+      metrics([
+        ["样本", "0 / 120", "尚未评分"],
+        ["评分单元", "0 / 1,440", "尚未完成"],
+        ["平均分", "—", "未就绪"],
+        ["最终报告", "未就绪", "原型约 2 秒后演示完成态"],
+      ]) +
+      panel(
+        "运行进度",
+        '<div class="banner">任务已保存，可以离开页面。页面刷新后会保留本次运行状态。</div>',
+      )
+    );
+  if (route === "/catalog") return catalog();
+  if (route === "/home") return home();
+  if (route === "/datasets") return datasets();
+  if (route === "/datasets/24") return datasetOverview();
+  if (route === "/datasets/24/samples") return samples();
+  if (/^\/datasets\/24\/samples\/\d+$/.test(route)) return sampleDetail();
+  if (route === "/datasets/24/exports") return exportsPage();
+  if (route === "/datasets/24/exports/new") return exportNew();
+  if (route === "/datasets/24/exports/81") return exportDetail();
+  if (route === "/tasks") return taskList();
+  if (route === "/tasks/new") return wizardPage();
+  if (route === "/tasks/24") return taskOverview();
+  if (route === "/tasks/24/structure") return structure();
+  if (route === "/tasks/24/standards") return standards();
+  if (route === "/tasks/24/standards/12") return standardEditor();
+  if (route === "/tasks/24/questions") return questions();
+  if (route === "/tasks/24/output") return output();
+  if (route === "/tasks/24/runs") return runs();
+  if (route === "/tasks/24/runs/104") return runs(true);
+  if (route === "/tasks/24/scoring")
+    return (
+      header(
+        "自动评分（历史流程）",
+        "这里承接旧 rewards 评分，独立的多裁判评估位于质量评估菜单。",
+        link("返回训练产物", "/tasks/24/output", "button"),
+      ) +
+      table(
+        ["样本", "奖励得分", "说明", "操作"],
+        [
+          [
+            "#1024",
+            "0.72",
+            "历史评分结果",
+            link("查看样本", "/datasets/24/samples/1024"),
+          ],
+        ],
+        { filters: ["全部状态"] },
+      )
+    );
+  if (route === "/evaluations") return evalList();
+  if (route === "/evaluations/new") return evalNew();
+  if (route === "/evaluations/36") return evalOverview();
+  if (route === "/evaluations/36/scores") return evalScores();
+  if (route === "/evaluations/36/items/1024") return evalItem();
+  if (route === "/evaluations/36/report") return evalReport();
+  if (route === "/cleaning") return cleanList();
+  if (route === "/cleaning/new") return cleanNew();
+  if (route === "/cleaning/18") return cleanOverview();
+  if (route === "/cleaning/18/findings") return findings();
+  if (route === "/cleaning/18/findings/7") return finding();
+  if (route === "/resources") return resources();
+  if (route === "/resources/keywords/import") return keywordImport();
+  const match =
+    route.match(/^\/(?:resources|admin)\/([^/]+)(?:\/(1|new))?$/) ||
+    route.match(/^\/resources\/(dimensions)\/(2)$/);
+  if (match && UX_RESOURCE_TYPES[match[1]])
+    return match[2] ? resourceDetail(match[1]) : resourceList(match[1]);
+  if (route === "/admin") return admin();
+  if (route === "/admin/audit") return audit();
+  if (route === "/admin/audit/91") return audit(true);
+  if (
+    ["/notifications", "/account", "/help", "/help/first-dataset"].includes(
+      route,
+    )
+  )
+    return globalPage();
+  return statePage("missing");
+}
+function grpoDataset() {
+  const base = "/datasets/25";
+  if (route === base)
+    return (
+      header(
+        "仓储调度 · GRPO",
+        "数据集 #25 / 问题、教师评判提示词与奖励等级标准。",
+        link("创建导出", base + "/exports/new", "button primary"),
+      ) +
+      metrics([
+        ["问题", "1,200", "3 × 4 × 100"],
+        ["教师提示词", "1,200", "每问题一份"],
+        ["奖励档位", "−1 / 0 / 1", "三个档位"],
+        ["完整性", "100%", "演示样例"],
+      ]) +
+      panel(
+        "训练内容",
+        `<p>GRPO 产物为候选回答提供教师评判依据，不生成固定的 SFT 标准答案。</p><div class="actions">${link("浏览 GRPO 样本", base + "/samples", "button primary")}${link("评估该类型", "/evaluations/new?datasetId=25", "button")}${link("清洗问题文本", "/cleaning/new?datasetId=25", "button")}</div>`,
+      ) +
+      panel(
+        "能力边界",
+        '<p class="muted">教师提示词的独立多模型评估和清洗需要专用内容适配。原型保留类型并展示未就绪原因，不切回 SFT。</p>',
+      )
+    );
+  if (route === base + "/samples")
+    return (
+      header(
+        "GRPO 样本列表",
+        "问题与教师评判标准，始终保留 GRPO 训练类型。",
+        link("返回数据集", base, "button") +
+          link("创建导出", base + "/exports/new", "button primary"),
+      ) +
+      table(
+        ["问题", "教师提示词", "奖励档位", "状态", "操作"],
+        [
+          [
+            link("#2024 · 多订单资源分配", base + "/samples/2024"),
+            "已生成",
+            "−1 / 0 / 1",
+            badge("已完成", "good"),
+            link("查看样本 →", base + "/samples/2024"),
+          ],
+        ],
+      )
+    );
+  if (route === base + "/samples/2024")
+    return (
+      header(
+        "GRPO 样本 #2024",
+        "仓储调度 / 订单分配 / 奖励等级 −1、0、1",
+        link("返回样本列表", base + "/samples", "button"),
+      ) +
+      `<div class="grid split">${panel(
+        "问题与教师评判提示词",
+        '<div class="sample-title">问题</div><p class="sample-text">240 个订单，其中 60 个急单；8 名拣货员，冷链区域同时最多 2 人。请制定满足交付时效的人员分配方案。</p><div class="sample-title">教师评判提示词</div><p class="sample-text">对候选方案先检查约束识别、资源分配、冲突处理和边界验证，再依据奖励档位评分。给出具体依据，不能仅按回答长度判断质量。</p>' +
+          summary([
+            ["−1", "遗漏关键容量或时间约束，方案不可执行"],
+            ["0", "基本可行，但缺关键细节或验证"],
+            ["1", "满足约束，推理完整且边界清楚"],
+          ]) +
+          button("复制提示词", "copy-sample"),
+      )}${panel(
+        "框架引用",
+        summary([
+          ["训练类型", "GRPO"],
+          [
+            "关联标准",
+            link("订单分配 · v2", "/tasks/24/standards/12/versions/2"),
+          ],
+          ["教师评判档位", "−1 / 0 / 1"],
+          ["内容完整性", "问题、提示词、三档标准齐备"],
+        ]),
+      )}</div>`
+    );
+  if (route === base + "/exports/new")
+    return (
+      header(
+        "创建 GRPO 导出",
+        "数据集 #25 / 导出问题、教师提示词和奖励标准。",
+        link("返回数据集", base, "button"),
+      ) +
+      `<form class="panel" data-form="grpo-export">${select("导出格式", ["JSONL"], "JSONL")}<div class="banner">已选 GRPO 映射。不会使用 Alpaca 的 instruction / output 作为默认结构。</div><pre class="code-block">{"question":"如何分配拣货资源？","judge_prompt":"检查约束、方案与边界","levels":[-1,0,1],"rubrics":["不可执行","部分满足","满足"]}</pre><div class="form-actions"><small>检查问题、教师提示词、档位与规则对应关系。</small><button type="submit" class="primary">创建 GRPO 导出</button></div></form>`
+    );
+  if (route === base + "/exports/82")
+    return (
+      header(
+        "GRPO 导出 #82",
+        "仓储调度 / 教师评判训练数据",
+        link("返回数据集", base, "button") +
+          button("下载 GRPO 演示文件", "download-grpo", "primary"),
+      ) +
+      panel(
+        "交付详情",
+        summary([
+          ["文件", "prototype-grpo-demo.jsonl"],
+          ["训练类型", "GRPO"],
+          ["格式", "JSONL"],
+          ["演示文件", "1 条问题 + 教师提示词 + 档位与标准"],
+          ["原始内容", "未修改"],
+        ]),
+      ) +
+      '<div class="banner">下载内容仅为原型示例，不是生产数据。</div>'
+    );
+  return statePage("missing");
+}
+function statePage(state) {
+  const configs = {
+    empty: [
+      "没有可显示的记录",
+      "从一个主题开始创建，或调整当前筛选条件。",
+      "创建生产任务",
+      "/tasks/new",
+    ],
+    error: [
+      "数据加载失败",
+      "服务暂时不可用。已填写的内容保留，请重试。",
+      "重新加载",
+      null,
+    ],
+    denied: [
+      "你没有访问此页面的权限",
+      "当前身份可以继续处理自己的业务任务。",
+      "返回工作台",
+      "/home",
+    ],
+    missing: [
+      "没有找到这个页面",
+      "链接可能无效，或该对象已经不可访问。",
+      "返回工作台",
+      "/home",
+    ],
+    offline: [
+      "连接已断开",
+      "显示的是最近一次读取的数据。恢复连接前无法提交更改。",
+      "重试连接",
+      null,
+    ],
+  };
+  if (state === "loading")
+    return (
+      header("正在加载…", "即将读取当前对象。") +
+      `<div class="panel" aria-busy="true"><div class="skeleton" style="width:32%"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton" style="width:65%"></div><p class="muted">不会用骨架屏伪装为空数据。</p></div>`
+    );
+  const [title, desc, label, to] = configs[state] || configs.error;
+  return `<section class="panel empty"><div class="empty-icon">${state === "empty" ? "▤" : "◇"}</div><h1 id="page-title" tabindex="-1">${title}</h1><p>${desc}</p>${to ? link(label, to, "button primary") : button(label, "recover", "primary")}<p class="gap-top"><small>设计场景：${state} · 使用底部场景选择器回到正常内容。</small></p></section>`;
+}
+function render() {
+  const hash = location.hash.slice(1) || "/home";
+  [route] = hash.split("?");
+  query = new URLSearchParams(hash.split("?")[1] || "");
+  const page = currentPage();
+  document.title = `${page?.[2] || "原型"} · 序列数据工厂`;
+  const area = page?.[3] || "设计评审";
+  const adminOnly =
+    route.startsWith("/admin") ||
+    /^\/resources\/(templates|prompts|mappings)(\/|$)/.test(route);
+  let body = scenario === "normal" ? content() : statePage(scenario);
+  if (adminOnly && role !== "admin") body = statePage("denied");
+  const shell = `<aside class="sidebar" aria-label="主导航"><a class="brand" href="#/home"><span class="brandmark">▥</span>序列 <small style="color:#bad2cb">DATA FACTORY</small></a><div class="workspace">训练数据实验室 <span style="float:right">⌄</span></div><div class="navlabel">WORKSPACE</div>${nav
+    .map(([icon, name, to]) => link("", to))
+    .map(() => "")
+    .join(
+      "",
+    )}${nav.map(([icon, name, to]) => `<a class="navitem ${route === to || (to !== "/home" && route.startsWith(to + "/")) ? "active" : ""}" href="#${to}" ${route === to || (to !== "/home" && route.startsWith(to + "/")) ? 'aria-current="page"' : ""}><span class="symbol" aria-hidden="true">${icon}</span>${name}</a>`).join("")}<div class="nav-spacer"></div><div class="navlabel">WORKSPACE SETTINGS</div>${role === "admin" ? `<a href="#/admin" class="navitem ${route.startsWith("/admin") ? "active" : ""}"><span class="symbol">⚙</span>系统管理</a>` : ""}<a href="#/help" class="navitem"><span class="symbol">?</span>帮助中心</a><a class="navfoot" href="#/account"><span class="avatar">林</span><span>林知 <small style="display:block;color:#a6c4bb">${role === "admin" ? "管理员" : "成员"}</small></span></a></aside><header class="topbar"><div class="actions">${button("☰", "mobile-nav", "mobile-nav-toggle", 'aria-label="展开主导航"')}<div class="crumb">${link("工作区", "/home")}<span>/</span>${link(area, nav.find((n) => n[1] === area)?.[2] || "/catalog")}<span>/</span><span>${esc(page?.[2] || "原型")}</span></div></div><div class="topactions"><span class="muted">演示工作区</span>${link("通知 · 3", "/notifications", "button quiet")}${link("林", "/account", "avatar")}</div></header><main class="main" id="main">${body}</main>`;
+  $("#app").innerHTML = route === "/login" ? login() : shell;
+  $("#scenario").value = scenario;
+  $("#role").value = role;
+  $("#screen-id").textContent = (page?.[0] || "INDEX") + " · " + route;
+  applyFilters();
+  bindForms();
+  initializePageState();
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+function initializePageState() {
+  if (scenario !== "normal") return;
+  // 恢复可编辑演示数据；密钥和密码从不存入浏览器。
+  if (route === "/tasks/24/structure") {
+    const stored = read("structure", null);
+    if (stored) {
+      $("#domain-name").value = stored.name;
+      $("#domain-title").textContent = stored.name;
+      $("#direction-fields").innerHTML = stored.directions
+        .map(
+          (v, i) =>
+            `<div class="actions field"><span>0${i + 1}</span><input aria-label="方向 ${i + 1}" value="${esc(v)}" required style="flex:1">${button("移除", "remove-direction", "quiet")}</div>`,
+        )
+        .join("");
+      $("#structure-dirty").textContent = "已保存";
+    } else save("structureSaved", false);
+  }
+  if (route === "/cleaning/18/findings/7") {
+    const state = $(".sample-layout .badge");
+    state.textContent = reviewLabel();
+    state.className = "badge " + reviewColor();
+    $("#review-note").value = read("reviewNote", "");
+    $(`[name=decision][value=${read("reviewDecision", "keep")}]`).checked =
+      true;
+  }
+  if (route === "/evaluations/new") updateEvalWorkload();
+  if (route === "/cleaning/new" && query.get("datasetId") === "25") {
+    const select = $("form select");
+    select.options[0].textContent = "仓储调度 · GRPO";
+    $$("[name=stage]").forEach((el) => {
+      if (el.value !== "问题") {
+        el.checked = false;
+        el.disabled = true;
+        el.closest("label").insertAdjacentHTML(
+          "beforeend",
+          " " + badge("不适用于 GRPO"),
+        );
+      }
+    });
+    const vals = $$("aside .summary-row strong");
+    if (vals[1]) vals[1].textContent = "仅问题";
+  }
+  if (
+    route === "/tasks/24" &&
+    read("created", false) &&
+    wizard.kind === "GRPO"
+  ) {
+    $$('.page-head a[href="#/datasets/24"]').forEach(
+      (el) => (el.href = "#/datasets/25"),
+    );
+    $(".page-head .muted").textContent = "任务 #24 · GRPO · 教师评判训练产物";
+    $$(".summary-row").forEach((el) => {
+      if (el.textContent.includes("训练产物"))
+        el.querySelector("strong").textContent = "GRPO · 教师评判提示词";
+    });
+  }
+  if (
+    route === "/tasks/24/output" &&
+    (query.get("type") || wizard.kind) === "GRPO"
+  ) {
+    $$('.page-head a[href="#/datasets/24"]').forEach(
+      (el) => (el.href = "#/datasets/25"),
+    );
+  }
+  if (route === "/datasets/24/samples/1024") {
+    const el = $(".pill-row .badge");
+    if (el) {
+      el.textContent = reviewLabel();
+      el.className = "badge " + reviewColor();
+    }
+    const ref = $('a[href="#/tasks/24/standards/12"]');
+    if (ref) ref.href = "#/tasks/24/standards/12/versions/2";
+  }
+  if (route === "/evaluations/36/items/1024") {
+    const ref = $('a[href="#/resources/dimensions/1"]');
+    if (ref) ref.href = "#/evaluations/36/dimensions/logic-v1";
+  }
+  if (route === "/datasets")
+    $(".page-head .actions").insertAdjacentHTML(
+      "afterbegin",
+      link("查看 GRPO 示例", "/datasets/25", "button"),
+    );
+  if (route === "/notifications" && read("notificationsRead", false)) {
+    $$("#main .link-row strong").forEach((el) =>
+      el.insertAdjacentHTML("afterend", " " + badge("已读")),
+    );
+  }
+  const notice = $('.topactions a[href="#/notifications"]');
+  if (notice && read("notificationsRead", false)) notice.textContent = "通知";
+  const workspace = $(".workspace");
+  if (workspace) workspace.innerHTML = "训练数据实验室";
+  if (read("standardSaved", false) && route === "/tasks/24/standards") {
+    const row = $("[data-row]");
+    if (row) row.children[2].textContent = "v3";
+  }
+  if (query.get("mode") === "edit" || route.endsWith("/new")) {
+    const f = $('form[data-form="resource"]');
+    if (f && f.getAttribute("data-resource") === "dimensions") {
+      if (query.get("copy") === "1")
+        for (const [label, value] of UX_RESOURCE_TYPES.dimensions.fields) {
+          const input = f.elements.namedItem(label);
+          if (input)
+            input.value =
+              label === "名称"
+                ? value + "（副本）"
+                : label === "标识"
+                  ? value + "_custom"
+                  : value;
+        }
+      const minimum = f.elements.namedItem("最小分"),
+        maximum = f.elements.namedItem("最大分");
+      if (!minimum || !maximum) return;
+      const validation = () =>
+        maximum.setCustomValidity(
+          Number(maximum.value) <= Number(minimum.value)
+            ? "最大分必须大于最小分"
+            : "",
+        );
+      minimum.addEventListener("input", validation);
+      maximum.addEventListener("input", validation);
+    }
+  }
+}
+function updateEvalWorkload() {
+  const form = $('form[data-form="evaluation"]');
+  if (!form) return;
+  const mode = form.elements.namedItem("sampling").value;
+  const number = Number(form.elements.namedItem("sampleSize").value) || 0;
+  const count =
+    mode === "全量"
+      ? 1200
+      : mode === "按比例"
+        ? Math.ceil((1200 * number) / 100)
+        : number;
+  const dims = form.querySelectorAll("[name=dimension]:checked").length;
+  const judges = form.querySelectorAll("[name=judge]:checked").length;
+  const values = $$("aside .summary-row strong");
+  [
+    count + " 条",
+    dims + " 个",
+    judges + " 个",
+    `${count} × ${dims} × ${judges} = ${count * dims * judges}`,
+  ].forEach((v, i) => {
+    if (values[i]) values[i].textContent = v;
+  });
+}
+function go(to) {
+  if (location.hash === "#" + to) render();
+  else location.hash = to;
+}
+function notify(text) {
+  $("#toast").textContent = text;
+  $("#toast").hidden = false;
+  clearTimeout(notify.timer);
+  notify.timer = setTimeout(() => {
+    $("#toast").hidden = true;
+  }, 4500);
+}
+function modal(title, body, confirm = "确认", callback = null) {
+  opener = document.activeElement;
+  $("#modal-title").textContent = title;
+  $("#modal-body").innerHTML = body;
+  $("#modal-confirm").textContent = confirm;
+  modalCallback = callback;
+  $("#modal").showModal();
+}
+function closeModal() {
+  $("#modal").close();
+  if (opener?.isConnected) opener.focus();
+  modalCallback = null;
+}
+function applyFilters() {
+  const q = ($("#table-search")?.value || "").trim().toLowerCase(),
+    f = $("#table-filter")?.value || "全部状态";
+  let count = 0;
+  $$("[data-row]").forEach((row) => {
+    row.hidden = !(
+      row.textContent.toLowerCase().includes(q) &&
+      (f === "全部状态" || row.dataset.state.includes(f))
+    );
+    if (!row.hidden) count++;
+  });
+  if ($("#filter-empty")) $("#filter-empty").hidden = count > 0;
+  if ($("#row-count")) $("#row-count").textContent = `当前 ${count} 条演示记录`;
+}
+function rememberWizard() {
+  const form = $("#wizard-form");
+  if (!form) return;
+  const data = new FormData(form);
+  for (const key of ["name", "topic", "kind", "n", "m", "x", "mode"])
+    if (data.has(key)) wizard[key] = data.get(key);
+  if (data.has("奖励档位")) wizard.levels = data.get("奖励档位");
+  save("wizard", wizard);
+}
+function selected() {
+  return $$("[data-select]:checked").map((e) => e.dataset.select);
+}
+function updateSelection() {
+  const ids = selected();
+  if ($(".selected-bar")) $(".selected-bar").hidden = !ids.length;
+  if ($("#selection-count"))
+    $("#selection-count").textContent = `已选择 ${ids.length} 条（仅当前页）`;
+}
+function bindForms() {
+  $$("form[data-form]").forEach((form) =>
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      const kind = form.getAttribute("data-form");
+      if (kind === "login") {
+        go(read("returnTo", "/home"));
+        notify("已进入原型演示工作区");
+        return;
+      }
+      if (kind === "wizard") {
+        rememberWizard();
+        const step = Number(query.get("step") || 1);
+        if (wizard.kind === "GRPO") {
+          const levels = wizard.levels
+            .split(/[,，\s]+/)
+            .filter(Boolean)
+            .map(Number);
+          if (
+            levels.length < 2 ||
+            new Set(levels).size !== levels.length ||
+            levels.some((x) => !Number.isFinite(x))
+          ) {
+            notify("奖励档位至少包含 2 个不同的数值");
+            return;
+          }
+        }
+        if (step < 3) {
+          go("/tasks/new?step=" + (step + 1));
+          return;
+        }
+        save("created", true);
+        go("/tasks/24");
+        notify("演示任务已创建，接下来确认结构");
+        return;
+      }
+      if (kind === "structure") {
+        const directions = $$("#direction-fields input").map((el) =>
+          el.value.trim(),
+        );
+        if (
+          !directions.length ||
+          directions.some((v) => !v) ||
+          new Set(directions).size !== directions.length
+        ) {
+          notify("至少保留一个方向，且名称不能为空或重复");
+          return;
+        }
+        save("structure", { name: $("#domain-name").value.trim(), directions });
+        save("structureSaved", true);
+        $("#structure-dirty").textContent = "已保存";
+        notify("结构已保存");
+        return;
+      }
+      if (kind === "standard") {
+        if (!form.querySelector(".edit-step")) {
+          notify("至少保留一个思维步骤");
+          return;
+        }
+        save("standardSaved", true);
+        notify("思维标准已保存为 v3，历史样本保留原版本");
+        go("/tasks/24/standards");
+        return;
+      }
+      if (kind === "evaluation") {
+        if (
+          !form.querySelector("[name=dimension]:checked") ||
+          !form.querySelector("[name=judge]:checked")
+        ) {
+          notify("至少选择 1 个维度与 1 个独立裁判");
+          return;
+        }
+        save("evalStarted", true);
+        go("/evaluations/36");
+        notify("评估已创建并入队（本地模拟）");
+        setTimeout(() => {
+          save("evalStarted", false);
+          if (route === "/evaluations/36") {
+            render();
+            notify("演示运行已完成；报告使用预置样例数据");
+          }
+        }, 1800);
+        return;
+      }
+      if (kind === "cleaning") {
+        if (
+          !form.querySelector("[name=stage]:checked") ||
+          !form.querySelector("[name=rule]:checked")
+        ) {
+          notify("至少选择 1 个阶段与 1 条规则");
+          return;
+        }
+        modal(
+          "开始本次清洗",
+          `<p>检查 1,200 条样本的选定阶段。命中按规则标记复查或隔离，原始内容保留。</p><p class="muted">原型将展示预置的完成态报告。真实执行先进入运行状态。</p>`,
+          "开始清洗",
+          () => {
+            go(
+              query.get("datasetId") === "25" ? "/cleaning/19" : "/cleaning/18",
+            );
+            notify("演示清洗完成，查看报告与命中明细");
+          },
+        );
+        return;
+      }
+      if (kind === "review") {
+        save("reviewed", true);
+        save("reviewDecision", new FormData(form).get("decision"));
+        save("reviewNote", $("#review-note").value);
+        go("/cleaning/18/findings");
+        notify("复查判断已记录（本地演示）");
+        return;
+      }
+      if (kind === "export") {
+        const data = new FormData(form);
+        const ids =
+          data.get("scope") === "已勾选的样本" ? exportIds() : ["1025", "1026"];
+        if (ids.some((id) => !DEMO_SAMPLES[id].reasoning)) {
+          notify("所选样本有不完整内容，请返回样本页复查");
+          return;
+        }
+        save("exportConfig", {
+          format: data.get("format"),
+          scope: data.get("scope"),
+          ids,
+        });
+        go("/datasets/24/exports/81");
+        notify("演示导出文件已就绪");
+        return;
+      }
+      if (kind === "grpo-export") {
+        go("/datasets/25/exports/82");
+        notify("GRPO 演示文件已生成");
+        return;
+      }
+      if (kind === "keywords") {
+        const words = $("#keyword-lines")
+          .value.split("\n")
+          .map((x) => x.trim())
+          .filter(Boolean);
+        notify(
+          `已导入 ${new Set(words).size} 个关键词，跳过 ${words.length - new Set(words).size} 个重复项（本地演示）`,
+        );
+        go("/resources/keywords");
+        return;
+      }
+      if (kind === "resource") {
+        const key = form.getAttribute("data-resource");
+        const fields = Object.fromEntries(new FormData(form));
+        for (const input of form.querySelectorAll("input[type=password]"))
+          delete fields[input.name];
+        if (key === "dimensions" && Number(fields["权重"]) <= 0) {
+          notify("维度权重必须大于 0");
+          return;
+        }
+        if (key === "keywords" && fields["匹配模式"] === "正则表达式") {
+          try {
+            new RegExp(fields["匹配文本"]);
+          } catch {
+            notify("正则表达式无效，请修改后保存");
+            return;
+          }
+        }
+        if (key === "dimensions") {
+          save("dimensionCopy", fields);
+          notify("自定义维度已保存；内置维度保持原有内容");
+          go("/resources/dimensions/2");
+          return;
+        }
+        save("fields." + key, fields);
+        if (key === "keywords") save("keywordDeleted", false);
+        const value =
+          new FormData(form).get("名称") || new FormData(form).get("匹配文本");
+        if (value) save("resource." + key, value);
+        notify("配置已保存到本地原型");
+        go(resourceBase(key) + "/1");
+        return;
+      }
+    }),
+  );
+}
+document.addEventListener("input", (e) => {
+  if (e.target.closest('[data-form="structure"]')) {
+    save("structureSaved", false);
+    $("#structure-dirty").textContent = "有未保存修改";
+  }
+  if (e.target.closest('[data-form="evaluation"]')) updateEvalWorkload();
+  if (e.target.matches("[data-search]")) {
+    applyFilters();
+    const params = new URLSearchParams(query);
+    e.target.value ? params.set("q", e.target.value) : params.delete("q");
+    history.replaceState(
+      null,
+      "",
+      "#" + route + (params.size ? "?" + params : ""),
+    );
+  }
+  if (e.target.closest("#wizard-form")) {
+    rememberWizard();
+    if ($("#scale-total"))
+      $("#scale-total").textContent =
+        Number(wizard.n) * Number(wizard.m) * Number(wizard.x) + " 个问题";
+  }
+  if (e.target.matches("[data-tree-search]"))
+    $$(".tree-item,.tree-child").forEach(
+      (el) => (el.hidden = !el.textContent.includes(e.target.value)),
+    );
+});
+document.addEventListener("change", (e) => {
+  if (e.target.matches("[data-filter]")) {
+    applyFilters();
+    const params = new URLSearchParams(query);
+    params.set("filter", e.target.value);
+    history.replaceState(null, "", "#" + route + "?" + params);
+  }
+  if (e.target.matches("[name=kind]")) {
+    const name = $("#task-name");
+    if (name && /SFT|GRPO/.test(name.value))
+      name.value = name.value.replace(/SFT|GRPO/g, e.target.value);
+    rememberWizard();
+    $("#reward-levels").hidden = e.target.value !== "GRPO";
+  }
+  if (e.target.matches("[data-select-all]")) {
+    $$("[data-select]").forEach((el) => {
+      if (!el.closest("tr").hidden) el.checked = e.target.checked;
+    });
+    updateSelection();
+  }
+  if (e.target.matches("[data-select]")) updateSelection();
+  if (e.target.matches("[data-sampling]")) {
+    const mode = e.target.value;
+    $("#sampling-number").hidden = mode === "全量";
+    $("#sample-number").disabled = mode === "全量";
+    $("#sample-number").max = mode === "按比例" ? 100 : 1200;
+    $("#sample-number").value = mode === "按比例" ? 10 : 120;
+    $("#sampling-number label").textContent =
+      mode === "按比例" ? "抽样比例（%）" : "抽样数量";
+    $("#sampling-hint").textContent =
+      mode === "按比例"
+        ? "范围为 1–100%，向上取整为样本数。"
+        : "最多 1,200 条。";
+  }
+  if (e.target.matches("[data-format]")) {
+    const format = e.target.value;
+    const mappings = $('select[aria-label="字段映射"]');
+    if (mappings)
+      mappings.innerHTML = `<option>SFT · ${esc(format)} 映射</option>`;
+    const vals = $$("aside .summary-row strong");
+    if (vals[2]) vals[2].textContent = format;
+    const record = exportRecords(exportIds())[0];
+    $("#export-code").textContent =
+      format === "CSV"
+        ? "instruction,input,output\n" +
+          [record.instruction, record.input, record.output]
+            .map((v) => '"' + v.replace(/"/g, '""') + '"')
+            .join(",")
+        : JSON.stringify(
+            format === "JSONL"
+              ? {
+                  question: record.instruction,
+                  reasoning: record.input,
+                  answer: record.output,
+                }
+              : format === "ShareGPT"
+                ? {
+                    conversations: [
+                      { from: "human", value: record.instruction },
+                      {
+                        from: "gpt",
+                        value: record.input + "\n" + record.output,
+                      },
+                    ],
+                  }
+                : record,
+            null,
+            2,
+          );
+  }
+  if (e.target.closest('[data-form="evaluation"]')) updateEvalWorkload();
+});
+document.addEventListener("click", async (e) => {
+  const el = e.target.closest("[data-action]");
+  if (!el || el.disabled) return;
+  const act = el.dataset.action;
+  if (act === "view-mapping") {
+    const format =
+      $("[data-format]")?.value || read("exportConfig", {}).format || "Alpaca";
+    const fields =
+      format === "ShareGPT"
+        ? [
+            ["问题", "conversations[human]"],
+            ["推理 + 答案", "conversations[gpt]"],
+          ]
+        : format === "JSONL"
+          ? [
+              ["问题", "question"],
+              ["推理", "reasoning"],
+              ["答案", "answer"],
+            ]
+          : [
+              ["问题", "instruction"],
+              ["推理", "input"],
+              ["答案", "output"],
+            ];
+    modal(
+      "字段映射 · " + format + " · v1",
+      summary(fields) +
+        '<p class="muted">本次导出使用的只读映射快照。共享映射配置由管理员维护。</p>',
+      "关闭",
+    );
+    return;
+  }
+  if (act === "refresh") {
+    notify("当前内容已刷新（演示数据）");
+    return;
+  }
+  if (act === "recover") {
+    scenario = "normal";
+    render();
+    return;
+  }
+  if (act === "mobile-nav") {
+    $(".sidebar").classList.toggle("open");
+    return;
+  }
+  if (act === "copy-link" || act === "copy-sample") {
+    const text =
+      act === "copy-link"
+        ? location.href
+        : $$(".sample-text")
+            .map((el) => el.textContent)
+            .join("\n\n") ||
+          $(".code-block")?.textContent ||
+          "教师评判提示词：检查目标、约束与方案完整性。";
+    try {
+      await navigator.clipboard.writeText(text);
+      notify("已复制");
+    } catch {
+      modal(
+        "复制内容",
+        `<textarea aria-label="待复制内容" readonly>${esc(text)}</textarea>`,
+        "关闭",
+      );
+    }
+    return;
+  }
+  if (act === "retry") {
+    modal(
+      "仅恢复失败部分",
+      "<p>本次重新处理 12 条失败记录，保留 1,188 条成功内容。沿用原模型与指令，不会清空数据集。</p>",
+      "确认续跑",
+      () => {
+        save("resumed", true);
+        render();
+        notify("续跑请求已入队（本地演示）");
+      },
+    );
+    return;
+  }
+  if (act === "confirm-structure") {
+    if (!read("structureSaved", false)) {
+      notify("请先保存结构，再确认并继续");
+      return;
+    }
+    modal(
+      "确认领域与方向",
+      "<p>确认后进入 12 个方向的思维标准生成。结构变更对后续生成生效。</p>",
+      "确认并继续",
+      () => {
+        go("/tasks/24/standards");
+        notify("结构已确认，可生成思维标准");
+      },
+    );
+    return;
+  }
+  if (act.startsWith("generate-")) {
+    const labels = {
+      "generate-structure": "领域与方向",
+      "generate-standards": "思维标准",
+      "generate-questions": "问题",
+      "generate-output": "训练产物",
+    };
+    modal(
+      "生成" + labels[act],
+      `<p>将为当前任务生成${labels[act]}。显示预期范围，沿用当前配置。</p><p class="muted">原型仅模拟入队反馈。生产系统必须先验证前置条件和并发执行状态。</p>`,
+      "开始生成",
+      () => notify(labels[act] + "生成已入队，可离开当前页面（本地模拟）"),
+    );
+    return;
+  }
+  if (act === "select-domain") {
+    $$("#main .tree-item").forEach((x) => x.classList.remove("active"));
+    el.classList.add("active");
+    $("#domain-title").textContent = el.dataset.name;
+    $("#domain-name").value = el.dataset.name;
+    $("#direction-fields").innerHTML = (
+      el.dataset.name === "运输"
+        ? ["运力分配", "路线规划", "装载优化", "异常配送"]
+        : el.dataset.name === "调度"
+          ? ["约束分析", "任务排序", "动态响应", "资源协同"]
+          : ["订单分配", "补货计划", "库位优化", "波次规划"]
+    )
+      .map(
+        (v, i) =>
+          `<div class="actions field"><span>0${i + 1}</span><input aria-label="方向 ${i + 1}" value="${v}" required style="flex:1">${button("移除", "remove-direction", "quiet")}</div>`,
+      )
+      .join("");
+    save("structureSaved", false);
+    return;
+  }
+  if (act === "add-domain") {
+    modal(
+      "新增领域",
+      '<label class="field">领域名称<input id="new-domain-name" required placeholder="例如：库存管理"></label>',
+      "添加",
+      () => {
+        const name = $("#new-domain-name").value.trim();
+        if (!name) {
+          notify("领域名称不能为空");
+          return false;
+        }
+        $("#domain-title").textContent = name;
+        $("#domain-name").value = name;
+        $("#direction-fields").innerHTML = "";
+        notify("已添加领域草稿，请补充方向并保存");
+      },
+    );
+    return;
+  }
+  if (act === "add-direction") {
+    const n = $$("#direction-fields input").length + 1;
+    $("#direction-fields").insertAdjacentHTML(
+      "beforeend",
+      `<div class="actions field"><span>0${n}</span><input aria-label="方向 ${n}" placeholder="新方向" required style="flex:1">${button("移除", "remove-direction", "quiet")}</div>`,
+    );
+    save("structureSaved", false);
+    return;
+  }
+  if (act === "remove-direction") {
+    el.closest(".field").remove();
+    save("structureSaved", false);
+    return;
+  }
+  if (act === "standard-history") {
+    modal(
+      "思维标准 · 版本历史",
+      '<div class="definition"><dt>v2 · 当前版本</dt><dd>增加资源冲突与时间窗口检查。</dd></div><div class="definition"><dt>v1 · 初始生成</dt><dd>识别目标、提取约束、给出方案。</dd></div><p class="muted gap-top">历史版本只读；恢复时应创建一个新版本，保留完整历史。</p>',
+      "关闭",
+    );
+    return;
+  }
+  if (act === "move-step") {
+    const step = el.closest(".edit-step");
+    if (step.previousElementSibling)
+      step.parentElement.insertBefore(step, step.previousElementSibling);
+    notify("步骤顺序已调整，保存后生成新版本");
+    return;
+  }
+  if (act === "remove-step") {
+    el.closest(".edit-step").remove();
+    return;
+  }
+  if (act === "add-step") {
+    $("#standard-steps").insertAdjacentHTML(
+      "beforeend",
+      '<div class="edit-step"><h3>新增步骤</h3><label class="field">标题<input required aria-label="新增步骤标题"></label><label class="field">检查点<textarea required aria-label="新增步骤检查点"></textarea></label></div>',
+    );
+    return;
+  }
+  if (act === "reward-levels") {
+    modal(
+      "调整奖励档位",
+      field("奖励档位", "-1, 0, 1") +
+        '<p class="muted">更改档位后需生成新的教师评判提示词，旧产物保留。</p>',
+      "保存档位",
+      () => notify("档位已保存；生成新产物后生效（演示）"),
+    );
+    return;
+  }
+  if (act === "run-summary") {
+    modal(
+      "运行 #103 · 问题生成",
+      summary([
+        ["状态", "已完成"],
+        ["方向", "12 / 12"],
+        ["问题", "1,200 条"],
+        ["完成时间", "今天 10:20"],
+      ]),
+      "关闭",
+    );
+    return;
+  }
+  if (act === "preview-clean") {
+    $("#clean-preview").innerHTML =
+      "<strong>预览 20 条：2 条疑似命中（仅示例）</strong><p>#1024 · “对不起”出现在示例话术，建议人工复查。<br>#1027 · 思维链为空，建议隔离。</p>";
+    notify("样例预览完成，尚未修改任何样本");
+    return;
+  }
+  if (act === "preview-import") {
+    const w = $("#keyword-lines")
+      .value.split("\n")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    $("#import-preview").innerHTML =
+      `<strong>${new Set(w).size} 个不重复项，${w.length - new Set(w).size} 个重复项</strong><p>${[...new Set(w)].map(esc).join(" / ")}</p>`;
+    return;
+  }
+  if (act === "clear-filter") {
+    $("#table-search").value = "";
+    $("#table-filter").value = "全部状态";
+    history.replaceState(null, "", "#" + route);
+    query = new URLSearchParams();
+    applyFilters();
+    return;
+  }
+  if (act === "clear-selection") {
+    $$("[data-select], [data-select-all]").forEach((x) => (x.checked = false));
+    updateSelection();
+    return;
+  }
+  if (act === "export-selected") {
+    go("/datasets/24/exports/new?selection=" + selected().join(","));
+    return;
+  }
+  if (act === "toggle-resource") {
+    const key = el.dataset.resource;
+    modal(
+      read("disabled." + key, false) ? "启用资源" : "停用资源",
+      "<p>影响后续任务的可选配置。正在执行的任务与历史结果保留。</p>",
+      "确认",
+      () => {
+        save("disabled." + key, !read("disabled." + key, false));
+        render();
+        notify("资源状态已更新（本地演示）");
+      },
+    );
+    return;
+  }
+  if (act === "test-provider") {
+    modal(
+      "连通性测试结果",
+      '<div class="banner">演示连接成功 · 246 ms</div><p>模型：atlas-instruct<br>协议：OpenAI 兼容<br>真实产品仅在本次请求成功后显示测试通过，不在原型发出外部模型调用。</p>',
+      "关闭",
+    );
+    return;
+  }
+  if (act === "model-list") {
+    modal(
+      "可用模型",
+      '<div class="definition"><dt>Atlas</dt><dd>atlas-instruct / atlas-reasoning</dd></div><p class="muted">原型使用静态模型列表；生产界面调用服务的模型发现接口。</p>',
+      "关闭",
+    );
+    return;
+  }
+  if (act === "default-storage") {
+    modal(
+      "设为默认存储",
+      "<p>主存储将用于后续生成产物。历史文件继续使用创建时记录的存储位置。</p>",
+      "设为默认",
+      () => notify("默认存储已更新（演示）"),
+    );
+    return;
+  }
+  if (act === "delete-keyword") {
+    modal(
+      "删除这个关键词？",
+      "<p>“对不起”将不再参与后续匹配。已有清洗报告保留命中记录。</p>",
+      "确认删除",
+      () => {
+        save("keywordDeleted", true);
+        go("/resources/keywords");
+        notify("关键词已从本地演示中移除；点击重置演示可恢复");
+      },
+    );
+    return;
+  }
+  if (act === "read-all") {
+    save("notificationsRead", true);
+    render();
+    notify("已将全部演示通知标为已读");
+    return;
+  }
+  if (act === "logout") {
+    save("returnTo", "/home");
+    go("/login");
+    return;
+  }
+  if (act === "download") {
+    const config = read("exportConfig", { format: "Alpaca" });
+    let records = exportRecords(config.ids || ["1025", "1026"]);
+    if (config.format === "ShareGPT")
+      records = records.map((r) => ({
+        conversations: [
+          { from: "human", value: r.instruction },
+          { from: "gpt", value: r.input + "\n" + r.output },
+        ],
+      }));
+    if (config.format === "JSONL")
+      records = records.map((r) => ({
+        question: r.instruction,
+        reasoning: r.input,
+        answer: r.output,
+      }));
+    const csv = config.format === "CSV";
+    const csvCell = (v) => '"' + String(v).replace(/"/g, '""') + '"';
+    const text = csv
+      ? "instruction,input,output\n" +
+        records
+          .map((r) => [r.instruction, r.input, r.output].map(csvCell).join(","))
+          .join("\n") +
+        "\n"
+      : records.map((r) => JSON.stringify(r)).join("\n") + "\n";
+    const blob = new Blob([text], {
+      type: csv ? "text/csv;charset=utf-8" : "application/x-ndjson",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "prototype-sft-demo." + (csv ? "csv" : "jsonl");
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    notify(
+      `已下载 ${records.length} 条 ${config.format} 演示记录；这不是生产数据`,
+    );
+    return;
+  }
+  if (act === "download-grpo") {
+    const content =
+      JSON.stringify({
+        question: "如何在冷链容量约束下分配人员？",
+        judge_prompt: "检查目标、资源约束和边界，根据档位给分并说明理由。",
+        levels: [-1, 0, 1],
+        rubrics: ["不可执行", "部分满足", "完整满足"],
+      }) + "\n";
+    const url = URL.createObjectURL(
+      new Blob([content], { type: "application/x-ndjson" }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "prototype-grpo-demo.jsonl";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    notify("已下载 1 条 GRPO 演示数据");
+    return;
+  }
+});
+$("#modal-confirm").addEventListener("click", () => {
+  if (modalCallback) {
+    const result = modalCallback();
+    if (result === false) return;
+  }
+  closeModal();
+});
+$("#modal-cancel").addEventListener("click", closeModal);
+$("#modal-close").addEventListener("click", closeModal);
+$("#modal").addEventListener("cancel", () => {
+  setTimeout(() => opener?.isConnected && opener.focus(), 0);
+});
+$("#scenario").addEventListener("change", (e) => {
+  scenario = e.target.value;
+  render();
+});
+$("#role").addEventListener("change", (e) => {
+  role = e.target.value;
+  save("role", role);
+  render();
+});
+$("#reset-demo").addEventListener("click", () => {
+  for (const k of Object.keys(sessionStorage))
+    if (k.startsWith("ux.")) sessionStorage.removeItem(k);
+  scenario = "normal";
+  wizard = {
+    name: "仓储调度 · SFT",
+    topic: "仓储调度与订单分配",
+    kind: "SFT",
+    n: "3",
+    m: "4",
+    x: "100",
+    levels: "-1, 0, 1",
+    mode: "自动执行，结构确认后继续",
+  };
+  render();
+  notify("本地演示状态已重置");
+});
+window.addEventListener("hashchange", () => {
+  scenario = "normal";
+  render();
+});
+render();
+</script></body></html>

@@ -1,0 +1,26 @@
+{
+  "samples": [
+    {
+      "id": 1024,
+      "passed": true
+    },
+    {
+      "id": 1025,
+      "passed": true
+    },
+    {
+      "id": 1026,
+      "passed": true
+    },
+    {
+      "id": 1027,
+      "passed": true
+    },
+    {
+      "id": 9999,
+      "passed": true,
+      "expected": "404"
+    }
+  ],
+  "errors": []
+}
