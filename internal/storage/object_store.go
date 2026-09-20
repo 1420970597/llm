@@ -77,7 +77,27 @@ func (s *ObjectStore) PutBytes(ctx context.Context, key string, payload []byte, 
 }
 
 func (s *ObjectStore) ReadBytes(ctx context.Context, key string) ([]byte, error) {
-	object, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
+	return s.ReadBytesFromBucket(ctx, s.bucket, key)
+}
+
+// ReadBytesFromBucket 从**指定 bucket** 读取对象，而不是用 Profile 里的默认 bucket。
+//
+// 为什么需要它（issue #136）：工件表把对象位置记在 `object_key` 里，形如
+// `s3://<bucket>/<path>` —— **bucket 是工件自身携带的信息**。而下载此前用
+// `ResolveStorageProfile` 解析出的「当前默认存储配置」的 bucket 去读，
+// 于是管理员一旦切换过默认存储，此前用旧 bucket 导出的工件就永久 500：
+//
+//	当前默认存储: bucket=llm-factory-local
+//	artifact#16 objectKey=s3://llm-factory-dev/...   -> 500 The specified key does not exist
+//	（而 llm-minio-1 里 /data/llm-factory-dev/... 对象确实存在）
+//
+// 「结果存储」是管理员可正常使用的功能，因此这个缺陷会让历史工件在一次配置变更后
+// 全部不可下载，且界面只显示「服务暂时不可用」，无法判断原因。
+func (s *ObjectStore) ReadBytesFromBucket(ctx context.Context, bucket, key string) ([]byte, error) {
+	if strings.TrimSpace(bucket) == "" {
+		bucket = s.bucket
+	}
+	object, err := s.client.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, err
 	}

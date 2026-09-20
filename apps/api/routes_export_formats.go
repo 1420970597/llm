@@ -124,6 +124,25 @@ func (app *application) enqueueMultiFormatExport(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// 上游完整性校验（issue #137）：与 legacy 分支共用同一个判定。
+	//
+	// 此前本分支**完全不做上游校验**，于是带 format 的请求可以绕过
+	// 「该任务还没有质量评估记录」这条守卫：
+	//
+	//   POST /datasets/164/export {}                        -> 409（legacy 拦下）
+	//   POST /datasets/164/export {"format":"jsonl",...}    -> 202（绕过成功）
+	//
+	// 后果：对没有任何可导出内容的数据集也能入队，状态被写成 export_queued，
+	// worker 随后才失败并留下 export.generate_failed —— 用户看到的是「导出失败」
+	// 而不是「你还没有可导出的内容」，无法自助修复。
+	//
+	// 用共享函数而不是复制一份判定，是为了让两条分支的口径**结构上不可能再分叉**
+	// （这正是本缺陷的成因：同一个校验写了两遍、且只写对了一遍）。
+	if status, err := app.validateExportPrerequisites(r.Context(), id); err != nil {
+		app.writeError(w, status, err)
+		return
+	}
+
 	// 指定了映射时先校验存在，避免任务入队后才发现映射 ID 无效。
 	mappingStore := store.NewExportMappingStore(app.db())
 	if input.MappingID > 0 {
