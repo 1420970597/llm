@@ -141,8 +141,28 @@ func runDirectionGeneration(ctx context.Context, jc *jobContext, datasetID int64
 		cursor.DirectionCount = directionCount
 		cursor.FailedDomainIDs = failedDomains
 
+		// done_units 必须与 total_units **同单位**（issue #141）。
+		//
+		// total_units 在入队时算的是 `len(domains) * directionCount`（即**方向数**，
+		// 见 apps/api/routes_directions.go 的 StartRun），而这里此前传的是
+		// `len(cursor.CompletedDomainIDs)`（**领域数**）。两个数不同单位，
+		// 于是进度永远显示成 10/30 这类「完成度 33%」的假象 ——
+		// 而该阶段其实已经全部完成（level2 方向数 = total_units 完全吻合）。
+		//
+		// 实测（generation_runs.stage='directions'）：
+		//
+		//	 id  | status    | total_units | done_units | level1 | level2
+		//	219  | completed |          30 |         10 |     10 |     30   ← done 用了领域数
+		//	247  | completed |         100 |        100 |    100 |    100   ← 恰好相等，掩盖了缺陷
+		//
+		// 改用 `produced`（已产出的方向数），与 total_units 同单位；
+		// 并用 min(produced, TotalUnits) 兜住「模型多产」导致进度超过 100% 的情况。
+		doneUnits := produced
+		if run.TotalUnits > 0 && doneUnits > run.TotalUnits {
+			doneUnits = run.TotalUnits
+		}
 		if err := jc.generationRuns.SaveCursor(ctx, run.ID, store.EncodeDirectionCursor(cursor),
-			len(cursor.CompletedDomainIDs), run.TotalUnits); err != nil {
+			doneUnits, run.TotalUnits); err != nil {
 			return fmt.Errorf("回写方向生成游标失败: %w", err)
 		}
 		log.Printf("directions domain done dataset=%d domain_id=%d inserted=%d produced=%d",
