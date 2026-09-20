@@ -1,0 +1,817 @@
+{
+  "pages": [
+    {
+      "id": "G01",
+      "path": "/login",
+      "title": "从一个主题，到一份可验证的训练数据。",
+      "passed": true
+    },
+    {
+      "id": "G02",
+      "path": "/home",
+      "title": "每一份数据，都有清晰的下一步。",
+      "passed": true
+    },
+    {
+      "id": "G03",
+      "path": "/notifications",
+      "title": "通知中心",
+      "passed": true
+    },
+    {
+      "id": "G04",
+      "path": "/account",
+      "title": "账户",
+      "passed": true
+    },
+    {
+      "id": "G05",
+      "path": "/help",
+      "title": "帮助中心",
+      "passed": true
+    },
+    {
+      "id": "G06",
+      "path": "/help/first-dataset",
+      "title": "创建第一份训练数据",
+      "passed": true
+    },
+    {
+      "id": "D01",
+      "path": "/datasets",
+      "title": "数据集",
+      "passed": true
+    },
+    {
+      "id": "D02",
+      "path": "/datasets/24",
+      "title": "仓储调度 · SFT",
+      "passed": true
+    },
+    {
+      "id": "D03",
+      "path": "/datasets/24/samples",
+      "title": "样本浏览",
+      "passed": true
+    },
+    {
+      "id": "D04",
+      "path": "/datasets/24/samples/1024",
+      "title": "样本 #1024",
+      "passed": true
+    },
+    {
+      "id": "D05",
+      "path": "/datasets/24/exports",
+      "title": "导出记录",
+      "passed": true
+    },
+    {
+      "id": "D06",
+      "path": "/datasets/24/exports/new",
+      "title": "创建导出",
+      "passed": true
+    },
+    {
+      "id": "D07",
+      "path": "/datasets/24/exports/81",
+      "title": "导出 #81",
+      "passed": true
+    },
+    {
+      "id": "T01",
+      "path": "/tasks",
+      "title": "生产任务",
+      "passed": true
+    },
+    {
+      "id": "T02",
+      "path": "/tasks/new",
+      "title": "创建生产任务",
+      "passed": true
+    },
+    {
+      "id": "T03",
+      "path": "/tasks/24",
+      "title": "仓储调度 · 生产任务",
+      "passed": true
+    },
+    {
+      "id": "T04",
+      "path": "/tasks/24/structure",
+      "title": "领域与方向",
+      "passed": true
+    },
+    {
+      "id": "T05",
+      "path": "/tasks/24/standards",
+      "title": "思维标准",
+      "passed": true
+    },
+    {
+      "id": "T06",
+      "path": "/tasks/24/standards/12",
+      "title": "订单分配 · 思维标准",
+      "passed": true
+    },
+    {
+      "id": "T07",
+      "path": "/tasks/24/questions",
+      "title": "问题集",
+      "passed": true
+    },
+    {
+      "id": "T08",
+      "path": "/tasks/24/output",
+      "title": "训练产物",
+      "passed": true
+    },
+    {
+      "id": "T09",
+      "path": "/tasks/24/runs",
+      "title": "运行记录",
+      "passed": true
+    },
+    {
+      "id": "T10",
+      "path": "/tasks/24/runs/104",
+      "title": "运行 #104 · 训练产物",
+      "passed": true
+    },
+    {
+      "id": "T11",
+      "path": "/tasks/24/scoring",
+      "title": "自动评分（历史流程）",
+      "passed": true
+    },
+    {
+      "id": "E01",
+      "path": "/evaluations",
+      "title": "质量评估",
+      "passed": true
+    },
+    {
+      "id": "E02",
+      "path": "/evaluations/new",
+      "title": "新建评估",
+      "passed": true
+    },
+    {
+      "id": "E03",
+      "path": "/evaluations/36",
+      "title": "仓储调度 · 双模型评估",
+      "passed": true
+    },
+    {
+      "id": "E04",
+      "path": "/evaluations/36/scores",
+      "title": "逐条评分",
+      "passed": true
+    },
+    {
+      "id": "E05",
+      "path": "/evaluations/36/items/1024",
+      "title": "样本 #1024 · 评分证据",
+      "passed": true
+    },
+    {
+      "id": "E06",
+      "path": "/evaluations/36/report",
+      "title": "评估报告",
+      "passed": true
+    },
+    {
+      "id": "C01",
+      "path": "/cleaning",
+      "title": "数据清洗",
+      "passed": true
+    },
+    {
+      "id": "C02",
+      "path": "/cleaning/new",
+      "title": "新建清洗",
+      "passed": true
+    },
+    {
+      "id": "C03",
+      "path": "/cleaning/18",
+      "title": "仓储调度 · 清洗 #18",
+      "passed": true
+    },
+    {
+      "id": "C04",
+      "path": "/cleaning/18/findings",
+      "title": "命中明细",
+      "passed": true
+    },
+    {
+      "id": "C05",
+      "path": "/cleaning/18/findings/7",
+      "title": "命中 #7 · 人工复查",
+      "passed": true
+    },
+    {
+      "id": "R01",
+      "path": "/resources",
+      "title": "资源库",
+      "passed": true
+    },
+    {
+      "id": "R02",
+      "path": "/resources/templates",
+      "title": "生成模板",
+      "passed": true
+    },
+    {
+      "id": "R03",
+      "path": "/resources/templates/1",
+      "title": "标准 SFT 模板",
+      "passed": true
+    },
+    {
+      "id": "R04",
+      "path": "/resources/dimensions",
+      "title": "评估维度",
+      "passed": true
+    },
+    {
+      "id": "R05",
+      "path": "/resources/dimensions/1",
+      "title": "逻辑一致性",
+      "passed": true
+    },
+    {
+      "id": "R06",
+      "path": "/resources/rules",
+      "title": "清洗规则",
+      "passed": true
+    },
+    {
+      "id": "R07",
+      "path": "/resources/rules/1",
+      "title": "拒答文本复查",
+      "passed": true
+    },
+    {
+      "id": "R08",
+      "path": "/resources/keywords",
+      "title": "关键词库",
+      "passed": true
+    },
+    {
+      "id": "R09",
+      "path": "/resources/keywords/1",
+      "title": "对不起",
+      "passed": true
+    },
+    {
+      "id": "R10",
+      "path": "/resources/keywords/import",
+      "title": "批量导入关键词",
+      "passed": true
+    },
+    {
+      "id": "R11",
+      "path": "/resources/prompts",
+      "title": "生成指令",
+      "passed": true
+    },
+    {
+      "id": "R12",
+      "path": "/resources/prompts/1",
+      "title": "仓储问题生成指令",
+      "passed": true
+    },
+    {
+      "id": "R13",
+      "path": "/resources/mappings",
+      "title": "导出字段映射",
+      "passed": true
+    },
+    {
+      "id": "R14",
+      "path": "/resources/mappings/1",
+      "title": "SFT · Alpaca 映射",
+      "passed": true
+    },
+    {
+      "id": "A01",
+      "path": "/admin",
+      "title": "系统管理",
+      "passed": true
+    },
+    {
+      "id": "A02",
+      "path": "/admin/providers",
+      "title": "模型服务",
+      "passed": true
+    },
+    {
+      "id": "A03",
+      "path": "/admin/providers/1",
+      "title": "Atlas · 生成模型",
+      "passed": true
+    },
+    {
+      "id": "A04",
+      "path": "/admin/storage",
+      "title": "结果存储",
+      "passed": true
+    },
+    {
+      "id": "A05",
+      "path": "/admin/storage/1",
+      "title": "主存储",
+      "passed": true
+    },
+    {
+      "id": "A06",
+      "path": "/admin/audit",
+      "title": "操作记录",
+      "passed": true
+    },
+    {
+      "id": "A07",
+      "path": "/admin/audit/91",
+      "title": "操作记录 #91",
+      "passed": true
+    },
+    {
+      "id": "D08",
+      "path": "/datasets/25",
+      "title": "仓储调度 · GRPO",
+      "passed": true
+    },
+    {
+      "id": "D09",
+      "path": "/datasets/25/samples",
+      "title": "GRPO 样本列表",
+      "passed": true
+    },
+    {
+      "id": "D10",
+      "path": "/datasets/25/samples/2024",
+      "title": "GRPO 样本 #2024",
+      "passed": true
+    },
+    {
+      "id": "D11",
+      "path": "/datasets/25/exports/new",
+      "title": "创建 GRPO 导出",
+      "passed": true
+    },
+    {
+      "id": "D12",
+      "path": "/datasets/25/exports/82",
+      "title": "GRPO 导出 #82",
+      "passed": true
+    },
+    {
+      "id": "T12",
+      "path": "/tasks/24/standards/12/versions/2",
+      "title": "订单分配 · 思维标准 v2",
+      "passed": true
+    },
+    {
+      "id": "E07",
+      "path": "/evaluations/36/dimensions/logic-v1",
+      "title": "逻辑一致性 · 运行 #36 的维度快照",
+      "passed": true
+    },
+    {
+      "id": "C06",
+      "path": "/cleaning/19",
+      "title": "GRPO 问题清洗 #19",
+      "passed": true
+    }
+  ],
+  "extraRoutes": [
+    {
+      "path": "/catalog",
+      "passed": true
+    },
+    {
+      "path": "/datasets/24/samples?filter=待复查",
+      "passed": true
+    },
+    {
+      "path": "/evaluations/new?dataset=24",
+      "passed": true
+    },
+    {
+      "path": "/cleaning/new?dataset=24",
+      "passed": true
+    },
+    {
+      "path": "/datasets/24/exports/new?scope=filtered",
+      "passed": true
+    },
+    {
+      "path": "/datasets/24/samples/1025",
+      "passed": true
+    },
+    {
+      "path": "/datasets/24/samples/1026",
+      "passed": true
+    },
+    {
+      "path": "/datasets/24/samples/1027",
+      "passed": true
+    },
+    {
+      "path": "/tasks/24/output?type=SFT",
+      "passed": true
+    },
+    {
+      "path": "/tasks/24/output?type=GRPO",
+      "passed": true
+    },
+    {
+      "path": "/evaluations/36/scores?filter=需关注",
+      "passed": true
+    },
+    {
+      "path": "/resources/templates/new",
+      "passed": true
+    },
+    {
+      "path": "/resources/templates/1?mode=edit",
+      "passed": true
+    },
+    {
+      "path": "/tasks/new?template=1",
+      "passed": true
+    },
+    {
+      "path": "/resources/dimensions/new",
+      "passed": true
+    },
+    {
+      "path": "/resources/dimensions/new?copy=1",
+      "passed": true
+    },
+    {
+      "path": "/resources/rules/new",
+      "passed": true
+    },
+    {
+      "path": "/resources/rules/1?mode=edit",
+      "passed": true
+    },
+    {
+      "path": "/cleaning/new?rule=1",
+      "passed": true
+    },
+    {
+      "path": "/resources/keywords/new",
+      "passed": true
+    },
+    {
+      "path": "/resources/keywords/1?mode=edit",
+      "passed": true
+    },
+    {
+      "path": "/resources/prompts/new",
+      "passed": true
+    },
+    {
+      "path": "/resources/prompts/1?mode=edit",
+      "passed": true
+    },
+    {
+      "path": "/resources/mappings/new",
+      "passed": true
+    },
+    {
+      "path": "/resources/mappings/1?mode=edit",
+      "passed": true
+    },
+    {
+      "path": "/admin/providers/new",
+      "passed": true
+    },
+    {
+      "path": "/admin/providers/1?mode=edit",
+      "passed": true
+    },
+    {
+      "path": "/admin/storage/new",
+      "passed": true
+    },
+    {
+      "path": "/admin/storage/1?mode=edit",
+      "passed": true
+    },
+    {
+      "path": "/evaluations/new?datasetId=25",
+      "passed": true
+    },
+    {
+      "path": "/cleaning/new?datasetId=25",
+      "passed": true
+    },
+    {
+      "path": "/resources/dimensions/1?mode=edit",
+      "passed": true
+    },
+    {
+      "path": "/tasks/new?step=2",
+      "passed": true
+    },
+    {
+      "path": "/tasks/new?step=3",
+      "passed": true
+    }
+  ],
+  "interactions": [
+    {
+      "name": "必填主题阻止空提交",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "奖励档位拒绝重复值",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "n/m/x 乘积随输入更新",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "向导回退保留草稿",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "创建后保留 GRPO 训练类型",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "GRPO 创建到 GRPO 数据集没有回退 SFT",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "GRPO 单条详情有教师提示词及奖励判据",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "结构未保存不能确认",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "保存结构、确认后进入标准页",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "样本状态过滤",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "刷新恢复 URL 中筛选",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "批量导出携带所选样本 ID",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "导出详情保留所选格式",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "CSV 导出下载正确扩展名",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "导出列表与详情格式一致",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "所选 ID 的预览匹配样本内容",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "GRPO 独立下载文件",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "生成者在裁判选择中禁用",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "按比例抽样工作量同步更新",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "评估启动进入排队状态",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "排队时不显示最终评估结论",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "报告刷新仍停在同一 run 报告",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "GRPO 评估适配未实现时阻止假启动",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "清洗先预览命中",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "清洗提交进入独立报告",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "隔离判断回写命中列表",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "保留判断回写命中列表",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "续跑状态保留且阻止重复点击",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "资源停用状态同步列表",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "资源字段修改同步详情",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "删除关键词后列表移除记录",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "复制维度保存为新对象",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "复制不改变内置维度及只读状态",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "维度列表同时保留内置与副本",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "已读状态回写通知",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "普通成员不能访问模型配置",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "普通成员不能绕资源库访问 admin 配置",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "普通成员可查看导出映射快照",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "成员子导航不显示无权限的管理入口",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "异常场景 empty",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "异常场景 loading",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "异常场景 error",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "异常场景 offline",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "异常场景 denied",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "异常场景 missing",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "无未处理 JavaScript 异常",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "原型不请求业务接口或外部服务",
+      "passed": true,
+      "detail": ""
+    }
+  ],
+  "responsive": [
+    {
+      "width": 1024,
+      "path": "/home",
+      "passed": true
+    },
+    {
+      "width": 1024,
+      "path": "/datasets/24/samples",
+      "passed": true
+    },
+    {
+      "width": 1024,
+      "path": "/tasks/new",
+      "passed": true
+    },
+    {
+      "width": 1024,
+      "path": "/evaluations/36/report",
+      "passed": true
+    },
+    {
+      "width": 1024,
+      "path": "/admin/providers/new",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "path": "/home",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "path": "/datasets/24/samples",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "path": "/tasks/new",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "path": "/evaluations/36/report",
+      "passed": true
+    },
+    {
+      "width": 390,
+      "path": "/admin/providers/new",
+      "passed": true
+    }
+  ],
+  "errors": [],
+  "externalRequests": []
+}
