@@ -82,7 +82,18 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    # 队列持久化（issue #143）。
+    #
+    # 为什么必须开：任务队列是 Redis List（LPUSH/BRPOP），而 BRPOP 是**破坏性读取**
+    # —— 出队即从 List 移除、没有 ack 机制。此前这里显式关闭了持久化
+    # （--save "" --appendonly no），因此 Redis 或 worker 一旦重启，
+    # 尚未出队的任务就**永久消失**，而 datasets.status 仍停在 *_queued，
+    # 界面上表现为「一直在排队」，最久的已停留 23 小时（实测 dataset 87）。
+    #
+    # appendonly yes：AOF 每次写命令都落盘，重启后可恢复队列内容。
+    # appendfsync everysec：每秒 fsync 一次 —— 最多丢 1 秒的入队，而非全部；
+    # 相比 always 不会显著拖慢 LPUSH（本系统的入队频率极低，任务都是分钟级）。
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

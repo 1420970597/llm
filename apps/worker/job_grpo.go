@@ -107,5 +107,24 @@ func handleGrpoGeneration(ctx context.Context, jc *jobContext, job jobPayload) e
 	if failed > 0 && len(persistable) == 0 {
 		return fmt.Errorf("all %d grpo prompts failed for dataset %d", failed, datasetID)
 	}
+
+	// 推进 datasets.status（issue #139）。
+	//
+	// 此前本处理器**既不 StartRun 也不推进 datasets.status**（它是唯一一个
+	// 完全不碰 generation_runs 的注册表处理器），于是 GRPO 提示词全部落库之后，
+	// 数据集永远停在 `grpo_queued`：界面显示「GRPO 提示词生成排队中」，
+	// 用户既不能继续也不知道要不要重试。实测 dataset 87 停在该状态 23 小时，
+	// 而 grpo_prompts 里的 6 条提示词早已生成完毕。
+	//
+	// 目标是 `grpo_generated`：GRPO 提示词是 功能说明.txt 第 4 步的产物，
+	// 生成完毕即该阶段就绪（与 `questions_generated`/`reasoning_generated` 同构）。
+	// 部分失败时标 `grpo_partial`，让用户知道需要复核而不是重跑全部。
+	grpoStatus := "grpo_generated"
+	if failed > 0 {
+		grpoStatus = "grpo_partial"
+	}
+	if err := jc.datasets.UpdateStatus(ctx, datasetID, grpoStatus); err != nil {
+		return err
+	}
 	return nil
 }

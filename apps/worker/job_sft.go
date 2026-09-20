@@ -144,6 +144,23 @@ func handleSftGeneration(ctx context.Context, jc *jobContext, job jobPayload) er
 		return err
 	}
 
+	// 推进 datasets.status（issue #139）。
+	//
+	// 为什么必须显式做：FinishRun 只更新 `generation_runs.status`，
+	// **不会碰 datasets.status**。此前本处理器漏了这一步，于是 SFT 数据已经
+	// 全部落库、generation_runs 也是 completed，而数据集永远停在 `sft_queued` ——
+	// 界面显示「SFT 数据生成排队中」，用户既不能继续也不知道要不要重试。
+	// 实测 dataset 77 停在该状态 23 小时（`sft_records` 已有 2 条数据）。
+	//
+	// 与 job_directions.go 的既有写法保持一致（它是唯一做对了这一步的处理器）。
+	sftStatus := "sft_generated"
+	if status == "partial_failed" {
+		sftStatus = "sft_partial"
+	}
+	if err := jc.datasets.UpdateStatus(ctx, datasetID, sftStatus); err != nil {
+		return err
+	}
+
 	log.Printf("sft.generate.done dataset_id=%d generated=%d failed=%d include_answer=%t",
 		datasetID, persisted, failed, includeAnswer)
 

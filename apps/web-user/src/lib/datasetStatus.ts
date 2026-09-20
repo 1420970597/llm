@@ -84,6 +84,14 @@ export type DatasetStatus =
   // GRPO / SFT 入队（apps/api/routes_grpo.go:111、routes_sft.go:109）
   | 'grpo_queued'
   | 'sft_queued'
+  // GRPO / SFT 完成态（issue #139）。
+  // 此前这两个阶段只有 queued、没有完成态 —— 因为 worker 处理器压根不推进
+  // datasets.status，数据全部产出后仍显示「排队中」（实测停留 23 小时）。
+  // 处理器补上推进逻辑后，这里同步补完成态文案。
+  | 'sft_generated'
+  | 'sft_partial'
+  | 'grpo_generated'
+  | 'grpo_partial'
 
 /**
  * 状态 → 用户可见的中文文案。
@@ -124,6 +132,12 @@ export const DATASET_STATUS_LABELS: Record<DatasetStatus, string> = {
 
   grpo_queued: 'GRPO 提示词生成排队中',
   sft_queued: 'SFT 数据生成排队中',
+
+  // 完成态：措辞与其它阶段的「…已就绪，待…」保持一致。
+  sft_generated: 'SFT 数据已就绪，待质量评估',
+  sft_partial: 'SFT 数据部分生成，需复核',
+  grpo_generated: 'GRPO 提示词已就绪，可导出交付',
+  grpo_partial: 'GRPO 提示词部分生成，需复核',
 }
 
 /**
@@ -238,6 +252,11 @@ export const DATASET_STATUS_PROGRESS: Record<DatasetStatus, number> = {
   export_failed: 100,
   grpo_queued: 55,
   sft_queued: 55,
+  // 完成态（issue #139）：与后端 completionByStatus 保持一致。
+  sft_generated: 55,
+  sft_partial: 55,
+  grpo_generated: 90,
+  grpo_partial: 90,
 }
 
 /**
@@ -271,4 +290,10 @@ export const DATASET_STATUS_ROUTE: Record<DatasetStatus, string> = {
   export_failed: '/console/exports',
   grpo_queued: '/console/questions',
   sft_queued: '/console/questions',
+  // 完成态（issue #139）：SFT 就绪后下一步是质量评估；
+  // GRPO 提示词就绪后即可进入导出交付。
+  sft_generated: '/console/rewards',
+  sft_partial: '/console/rewards',
+  grpo_generated: '/console/exports',
+  grpo_partial: '/console/exports',
 }

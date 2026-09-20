@@ -119,6 +119,21 @@ func main() {
 		generationRuns: generationRunStore,
 	}
 
+	// 恢复「状态声称在排队、但队列里已经没有」的任务（issue #139 / #143）。
+	//
+	// 为什么需要：队列是 Redis List + BRPOP（**破坏性读取，无 ack**），且 Redis
+	// 曾关闭持久化。Redis/worker 重启后，尚未出队的任务会永久消失，
+	// 而 datasets.status 仍停在 *_queued —— 用户看到「一直在排队」，
+	// 实际队列里根本没有它，永远不会再被处理（实测最长停留 23 小时）。
+	//
+	// 修法：worker 启动时扫一遍「排队中」的数据集，把它们**重新入队**。
+	// 这里刻意不做「先比对队列内容」：BRPOP 是破坏性的，正在被其他 worker
+	// 处理的任务也不在队列里，比对会把在途任务重复入队；
+	// 而重新入队是**幂等安全**的 —— 各阶段的处理器本身按数据集状态做守卫
+	//（例如问题生成会检查上游是否就绪、导出会检查内容是否齐备），
+	// 重复入队最多触发一次「不满足前置条件」的快速失败，不会产生重复数据。
+	go recoverStalledJobs(ctx, jobCtx)
+
 	go consumeJobs(ctx, jobCtx)
 
 	mux := http.NewServeMux()
@@ -136,6 +151,77 @@ func main() {
 	log.Printf("worker listening on :%s", cfg.Port)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("worker server failed: %v", err)
+	}
+}
+
+// queuedStatusToJobType 把「数据集排队状态」映射回「入队时用的 job 类型」。
+//
+// 与 apps/api 的入队点一一对应（见各自路由里的 enqueueJob(..., "<type>", id, "<status>")）：
+//
+//	directions_queued       <- directions.generate
+//	chain_standards_queued  <- chain-standards.generate
+//	questions_queued        <- questions.generate
+//	reasoning_queued        <- reasoning.generate
+//	rewards_queued          <- rewards.generate
+//	grpo_queued             <- grpo.generate
+//	sft_queued              <- sft.generate
+//	export_queued           <- export.generate
+//
+// 注意 eval.run / cleaning.run **不在其中**：它们的入队点传的排队状态是空串
+// （见 routes_eval_runs.go / routes_cleaning_runs.go），不写 datasets.status，
+// 因此不存在「状态说在排队但队列里没有」这种形态。
+var queuedStatusToJobType = map[string]string{
+	"directions_queued":      "directions.generate",
+	"chain_standards_queued": "chain-standards.generate",
+	"questions_queued":       "questions.generate",
+	"reasoning_queued":       "reasoning.generate",
+	"rewards_queued":         "rewards.generate",
+	"grpo_queued":            "grpo.generate",
+	"sft_queued":             "sft.generate",
+	"export_queued":          "export.generate",
+}
+
+// recoverStalledJobs 把「状态声称在排队」的数据集重新入队一次。
+//
+// 为什么需要它（issue #139 / #143）：队列是 Redis List + BRPOP（破坏性读取、无 ack），
+// 且 Redis 曾关闭持久化。Redis 或 worker 重启后，尚未出队的任务永久消失，
+// 而 datasets.status 仍停在 *_queued —— 用户看到「一直在排队」，
+// 实际队列里没有它，永远不会再被处理（实测最长停留 23 小时，LLEN=0）。
+//
+// 为什么直接重新入队而不是「先比对队列内容」：BRPOP 是破坏性的，正在被处理的
+// 任务同样不在队列里，比对会把**在途任务重复入队**。而重新入队是幂等安全的：
+// 各阶段处理器本身按前置条件做守卫（问题生成检查上游、导出检查内容齐备），
+// 重复入队最多触发一次快速失败，不会产生重复数据。
+//
+// 为什么在启动时做一次而不是定时轮询：这个恢复动作的语义是「服务重启后拾起丢失的任务」，
+// 启动时扫一遍即可覆盖；定时轮询会在长时间运行中反复入队业务上已放弃的任务
+// （例如用户主动不想要的阶段），那不是恢复而是打扰。
+func recoverStalledJobs(ctx context.Context, jc *jobContext) {
+	stalled, err := jc.datasets.ListStalledQueuedDatasets(ctx)
+	if err != nil {
+		log.Printf("recover.stalled.list_failed err=%v", err)
+		return
+	}
+	if len(stalled) == 0 {
+		return
+	}
+
+	recovered := 0
+	for _, dataset := range stalled {
+		jobType, ok := queuedStatusToJobType[dataset.Status]
+		if !ok {
+			continue
+		}
+		if err := requeueJob(ctx, jc.redis, jc.queue, jobPayload{Type: jobType, DatasetID: dataset.ID}); err != nil {
+			log.Printf("recover.stalled.requeue_failed dataset=%d status=%s type=%s err=%v",
+				dataset.ID, dataset.Status, jobType, err)
+			continue
+		}
+		recovered++
+		log.Printf("recover.stalled.requeued dataset=%d status=%s type=%s", dataset.ID, dataset.Status, jobType)
+	}
+	if recovered > 0 {
+		log.Printf("recover.stalled.done stalled=%d recovered=%d", len(stalled), recovered)
 	}
 }
 
