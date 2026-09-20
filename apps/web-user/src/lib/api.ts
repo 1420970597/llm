@@ -536,10 +536,6 @@ export type Artifact = {
   createdAt: string
 }
 
-export type ArtifactDownload = {
-  downloadUrl: string
-}
-
 export type PipelineStageStatus = {
   key: string
   label: string
