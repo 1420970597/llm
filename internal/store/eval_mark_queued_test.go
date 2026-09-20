@@ -14,7 +14,7 @@ import (
 // 背景：`startEvalRun` 此前**无条件**把运行写成 queued（"先把运行标为 queued 再入队"）。
 // 若 worker 正在并发完成这条运行（写入 completed / partial_failed），
 // API 随后又把状态写成 queued，最终落库的就是 queued —— 而队列里已经没有任务
-//（已被消费），于是运行**永久停在 queued**，同时 scored_items 是满的。
+// （已被消费），于是运行**永久停在 queued**，同时 scored_items 是满的。
 //
 // 实测（eval_run 22）：
 //

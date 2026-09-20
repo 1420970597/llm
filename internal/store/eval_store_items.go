@@ -170,7 +170,7 @@ func (s *EvalRunStore) UpdateRunStatus(ctx context.Context, runID int64, status 
 //
 // 为什么需要它（issue #142）：`startEvalRun` 此前无条件写
 // `UpdateRunStatus(runID, "queued", ...)`。若 worker 正在并发完成这条运行
-//（写入 completed / partial_failed），而 API 随后又把状态写成 queued，
+// （写入 completed / partial_failed），而 API 随后又把状态写成 queued，
 // 最终落库的就是 queued —— 而队列里已经没有任务（已被消费），
 // 运行**永久停在 queued**，同时 scored_items 是满的。
 //
