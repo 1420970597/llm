@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>控制台 IA 重设计原型</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#fff; --line:#e5e7eb; --ink:#111827; --muted:#6b7280;
+    --brand:#2563eb; --brand-soft:#eff6ff; --ok:#16a34a; --warn:#d97706; --err:#dc2626;
+    --sidebar:264px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font:14px/1.5 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+       background:var(--bg);color:var(--ink);display:flex;min-height:100vh}
+
+  /* ---------- 侧边栏 ---------- */
+  aside{width:var(--sidebar);background:#111827;color:#e5e7eb;display:flex;flex-direction:column;flex:none}
+  .brand{padding:16px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #1f2937}
+  .brand .logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#3b82f6,#8b5cf6)}
+  .brand b{font-size:15px;color:#fff}
+  .switcher{margin:12px;padding:9px 11px;background:#1f2937;border:1px solid #374151;border-radius:8px;
+            font-size:12.5px;display:flex;justify-content:space-between;align-items:center}
+  .switcher small{color:#9ca3af}
+  nav{padding:6px 10px;flex:1;overflow:auto}
+  .grp{margin-top:14px}
+  .grp>span{display:block;padding:6px 8px;font-size:11px;letter-spacing:.06em;color:#6b7280;text-transform:uppercase}
+  nav a{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;color:#d1d5db;
+        text-decoration:none;font-size:13.5px;margin-bottom:1px}
+  nav a:hover{background:#1f2937;color:#fff}
+  nav a.on{background:var(--brand);color:#fff;font-weight:600}
+  nav a .ic{width:16px;text-align:center;opacity:.9}
+  nav a .badge{margin-left:auto;font-size:11px;background:#374151;color:#e5e7eb;padding:1px 6px;border-radius:9px}
+  nav a.on .badge{background:rgba(255,255,255,.22)}
+  .foot{border-top:1px solid #1f2937;padding:8px 10px}
+  .foot a{color:#9ca3af}
+
+  /* ---------- 任务上下文侧栏 ---------- */
+  .back{display:block;padding:10px 18px;color:#9ca3af;text-decoration:none;font-size:12.5px}
+  .taskcard{margin:0 12px 10px;padding:12px;background:#1f2937;border-radius:9px}
+  .taskcard b{color:#fff;font-size:14px;display:block}
+  .taskcard p{color:#9ca3af;font-size:12px;margin-top:5px}
+  .steps{list-style:none;padding:4px 10px}
+  .steps li{margin-bottom:1px}
+  .steps a{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:7px;
+           color:#d1d5db;text-decoration:none;font-size:13.5px}
+  .steps a.on{background:var(--brand);color:#fff;font-weight:600}
+  .steps a.lock{color:#6b7280;cursor:not-allowed}
+  .steps .st{width:15px;text-align:center;font-size:12px}
+  .steps .ok{color:#4ade80}.steps .cur{color:#60a5fa}.steps .todo{color:#4b5563}
+  .steps .cnt{margin-left:auto;font-size:11.5px;color:#9ca3af}
+  .steps a.on .cnt{color:rgba(255,255,255,.8)}
+  .nextwrap{padding:12px}
+  .nextbtn{display:block;text-align:center;padding:10px;background:var(--brand);color:#fff;
+           border-radius:8px;text-decoration:none;font-weight:600;font-size:13px}
+  .nextbtn.dis{background:#374151;color:#6b7280;cursor:not-allowed}
+
+  /* ---------- 主区 ---------- */
+  main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .top{background:#fff;border-bottom:1px solid var(--line);padding:0 26px;display:flex;align-items:center;
+       justify-content:space-between;height:56px}
+  .crumbs{font-size:12.5px;color:var(--muted)}
+  .crumbs b{color:var(--ink)}
+  .top .u{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--muted)}
+  .av{width:26px;height:26px;border-radius:50%;background:#8b5cf6;color:#fff;display:grid;place-items:center;font-size:11px}
+  .content{padding:24px 26px;overflow:auto;flex:1}
+  h1{font-size:20px;margin-bottom:5px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:11px;padding:18px;margin-bottom:14px}
+  .card h2{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .tag{font-size:11px;padding:2px 8px;border-radius:9px;background:var(--brand-soft);color:var(--brand);font-weight:600}
+  .tag.g{background:#dcfce7;color:#15803d}.tag.a{background:#fef3c7;color:#b45309}.tag.r{background:#fee2e2;color:#b91c1c}
+  .grid{display:grid;gap:12px}
+  .g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
+  .tile{border:1px solid var(--line);border-radius:9px;padding:13px;background:#fff}
+  .tile .n{font-size:22px;font-weight:700}
+  .tile .l{font-size:12px;color:var(--muted);margin-top:3px}
+  .tpl{border:1.5px solid var(--line);border-radius:9px;padding:13px;cursor:pointer;background:#fff}
+  .tpl:hover{border-color:var(--brand)}
+  .tpl.sel{border-color:var(--brand);background:var(--brand-soft)}
+  .tpl b{font-size:13.5px;display:block;margin-bottom:5px}
+  .tpl p{font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:8px}
+  .tpl .meta{font-size:11.5px;color:var(--muted);border-top:1px dashed var(--line);padding-top:7px}
+  .field{margin-bottom:13px}
+  .field label{display:block;font-size:12.5px;margin-bottom:5px;font-weight:600}
+  .field label em{color:var(--err);font-style:normal}
+  .field input,.field select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:7px;font-size:13px;background:#fff}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:4px}
+  details{border:1px solid var(--line);border-radius:9px;padding:11px 13px;margin-bottom:11px;background:#fff}
+  summary{cursor:pointer;font-size:13px;font-weight:600}
+  .btns{display:flex;gap:9px;margin-top:16px}
+  .btn{padding:8px 16px;border-radius:8px;border:1px solid var(--line);background:#fff;font-size:13px;cursor:pointer;font-weight:500}
+  .btn.p{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .btn:disabled{background:#f3f4f6;color:#9ca3af;cursor:not-allowed}
+  .row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .row:last-child{border-bottom:none}
+  .row .t{flex:1}
+  .bar{height:7px;background:#f3f4f6;border-radius:4px;overflow:hidden;margin-top:9px}
+  .bar i{display:block;height:100%;background:var(--brand)}
+  .empty{text-align:center;padding:34px;color:var(--muted);font-size:13px}
+  .note{background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:11px 13px;font-size:12.5px;color:#92400e;margin-bottom:14px}
+  .anno{position:relative}
+  .anno::after{content:attr(data-anno);position:absolute;right:8px;top:-9px;background:#111827;color:#fff;
+    font-size:10.5px;padding:2px 7px;border-radius:8px;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<!-- ============ 状态 1：全局导航（任务区） ============ -->
+<aside id="sb-global">
+  <div class="brand"><div class="logo"></div><b>数据工厂</b></div>
+  <div class="switcher"><span>行业研究问答</span><small>切换 ▾</small></div>
+  <nav>
+    <div class="grp"><span>任务</span>
+      <a class="on"><i class="ic">▦</i>总览</a>
+      <a><i class="ic">☰</i>全部任务<span class="badge">6</span></a>
+      <a><i class="ic">＋</i>新建任务</a>
+    </div>
+    <div class="grp"><span>数据资产</span>
+      <a><i class="ic">▤</i>数据集</a>
+      <a><i class="ic">↓</i>导出记录</a>
+    </div>
+    <div class="grp"><span>质量与治理</span>
+      <a><i class="ic">✓</i>评估任务</a>
+      <a><i class="ic">⌗</i>清洗记录</a>
+      <a><i class="ic">⚖</i>评分规则</a>
+    </div>
+  </nav>
+  <div class="foot">
+    <a><i class="ic">⚙</i>系统管理</a>
+    <a><i class="ic">?</i>帮助</a>
+  </div>
+</aside>
+
+<!-- ============ 状态 2：任务上下文导航 ============ -->
+<aside id="sb-task" hidden>
+  <div class="brand"><div class="logo"></div><b>数据工厂</b></div>
+  <a class="back">← 全部任务</a>
+  <div class="taskcard">
+    <b>行业研究问答</b>
+    <p>#11 · 30 主题 · 100 问题 · 进行中</p>
+    <div class="bar"><i style="width:42%"></i></div>
+  </div>
+  <ul class="steps">
+    <li><a><span class="st">◫</span>进度总览</a></li>
+    <li><a><span class="st ok">✓</span>主题结构<span class="cnt">30</span></a></li>
+    <li><a class="on"><span class="st cur">●</span>问题生成<span class="cnt">100/300</span></a></li>
+    <li><a class="lock"><span class="st todo">○</span>答案内容<span class="cnt">—</span></a></li>
+    <li><a class="lock"><span class="st todo">○</span>质量评分<span class="cnt">—</span></a></li>
+    <li><a class="lock"><span class="st todo">○</span>导出交付<span class="cnt">—</span></a></li>
+  </ul>
+  <div class="nextwrap">
+    <a class="nextbtn dis">等待本阶段完成</a>
+  </div>
+</aside>
+
+<!-- ============ 状态 3：步骤完成后，下一步可用 ============ -->
+<aside id="sb-task-done" hidden>
+  <div class="brand"><div class="logo"></div><b>数据工厂</b></div>
+  <a class="back">← 全部任务</a>
+  <div class="taskcard">
+    <b>行业研究问答</b>
+    <p>#11 · 30 主题 · 300 问题 · 进行中</p>
+    <div class="bar"><i style="width:66%"></i></div>
+  </div>
+  <ul class="steps">
+    <li><a><span class="st">◫</span>进度总览</a></li>
+    <li><a><span class="st ok">✓</span>主题结构<span class="cnt">30</span></a></li>
+    <li><a class="on"><span class="st ok">✓</span>问题生成<span class="cnt">300</span></a></li>
+    <li><a><span class="st todo">○</span>答案内容<span class="cnt">—</span></a></li>
+    <li><a class="lock"><span class="st todo">○</span>质量评分<span class="cnt">—</span></a></li>
+    <li><a class="lock"><span class="st todo">○</span>导出交付<span class="cnt">—</span></a></li>
+  </ul>
+  <div class="nextwrap">
+    <a class="nextbtn">下一步：答案内容 →</a>
+  </div>
+</aside>
+
+<main>
+  <div class="top">
+    <div class="crumbs" id="crumbs">任务 / <b>总览</b></div>
+    <div class="u"><span>admin@company.com</span><div class="av">A</div></div>
+  </div>
+  <div class="content" id="view"></div>
+</main>
+
+<script>
+const V = {};
+const head = (t,s)=>`<h1>${t}</h1><p class="sub">${s}</p>`;
+
+/* 1. 任务总览 */
+V.home = head('总览','当前进行中的任务与待办') + `
+<div class="grid g4" style="margin-bottom:14px">
+  <div class="tile"><div class="n">6</div><div class="l">进行中任务</div></div>
+  <div class="tile"><div class="n">1,240</div><div class="l">已生成问题</div></div>
+  <div class="tile"><div class="n">860</div><div class="l">已生成答案</div></div>
+  <div class="tile"><div class="n">3</div><div class="l">待处理失败</div></div>
+</div>
+<div class="card"><h2>继续上次的任务</h2>
+  <div class="row"><span class="tag a">进行中</span><span class="t"><b>行业研究问答</b> · 问题生成 100/300</span><button class="btn p">继续</button></div>
+  <div class="row"><span class="tag r">需处理</span><span class="t"><b>客服对话 SFT</b> · 答案生成失败：AI 服务超时</span><button class="btn">查看原因</button></div>
+</div>`;
+
+/* 2. 全部任务 */
+V.tasks = head('全部任务','共 6 个任务') + `
+<div class="card">
+  <div class="row"><span class="tag a">进行中</span><span class="t"><b>行业研究问答</b> · 30 主题 · 100 问题</span><button class="btn">打开</button></div>
+  <div class="row"><span class="tag r">失败</span><span class="t"><b>客服对话 SFT</b> · 取消超时</span><button class="btn">查看原因</button></div>
+  <div class="row"><span class="tag g">已完成</span><span class="t"><b>代码指令集</b> · 30 主题 · 900 样本</span><button class="btn">查看</button></div>
+</div>`;
+
+/* 3. 新建任务（向导改造） */
+V.planning = head('新建任务','选一个模板即可开始；其余按需展开') + `
+<div class="card anno" data-anno="改造点①：模板前置">
+  <h2>从模板开始 <span class="tag">可选</span></h2>
+  <div class="grid g3">
+    <div class="tpl sel"><b>行业研究问答</b><p>围绕行业主题，生成概念/方法/案例多层次问答。</p><div class="meta">主题：行业研究 · 50 条</div></div>
+    <div class="tpl"><b>客服对话 SFT</b><p>客服场景，覆盖常见问题与拒答边界。</p><div class="meta">主题：客服对话 · 30 条</div></div>
+    <div class="tpl"><b>长链推理 GRPO</b><p>多步推理与自我校验，适合偏好数据。</p><div class="meta">主题：长链推理 · 20 条</div></div>
+  </div>
+</div>
+<div class="card anno" data-anno="改造点②：必填只有 3 个">
+  <h2>基本信息</h2>
+  <div class="field"><label>任务主题 <em>*</em></label><input value="行业研究"></div>
+  <div class="field"><label>目标样本数 <em>*</em></label><input value="50"><div class="hint">最终希望得到多少条训练样本</div></div>
+</div>
+<details><summary>生成参数（可选）</summary>
+  <div class="hint" style="margin-top:9px">每领域问题数 m / 每问题答案数 n / 每条答案评分次数 x。留空即用系统默认。</div>
+</details>
+<details><summary>高级设置（仅管理员）</summary>
+  <div class="hint" style="margin-top:9px">生成策略 · AI 服务 · 结果存储</div>
+</details>
+<div class="btns"><button class="btn p">创建任务</button><button class="btn">取消</button></div>`;
+
+/* 4. 阶段页（任务上下文） */
+const stage = (title, step, state, extra) => head(title, `第 ${step} 步 · 行业研究问答 #11`) + extra;
+V.domains = stage('主题结构',1,'done',`
+<div class="card"><h2>已生成 30 个主题 <span class="tag g">已完成</span></h2>
+  <div class="row"><span class="t">行业概览与市场规模</span><span class="tag g">已确认</span></div>
+  <div class="row"><span class="t">核心技术路线</span><span class="tag g">已确认</span></div>
+  <div class="row"><span class="t">竞争格局分析</span><span class="tag g">已确认</span></div>
+</div>`);
+V.questions = stage('问题生成',2,'running',`
+<div class="note">本阶段正在生成：已产 100 / 300 条。你可以离开此页，任务会在后台继续。</div>
+<div class="card"><h2>进度</h2>
+  <div class="bar"><i style="width:33%"></i></div>
+  <p class="sub" style="margin:9px 0 0">100 / 300 条 · 预计还需 4 分钟</p>
+</div>
+<div class="card"><h2>最近生成</h2>
+  <div class="row"><span class="t">行业研究领域的关键参与者有哪些？</span></div>
+  <div class="row"><span class="t">该行业的主要技术壁垒是什么？</span></div>
+</div>`);
+V.reasoning = stage('答案内容',3,'locked',`<div class="empty">上一步「问题生成」尚未完成，完成后方可进入本阶段。</div>`);
+
+/* 5. 数据资产 */
+V.assets = head('数据集','已交付与可下载的数据') + `
+<div class="card"><h2>可下载数据集</h2>
+  <div class="row"><span class="t"><b>代码指令集</b> · 900 样本 · 2026-09-19</span><button class="btn p">下载 JSONL</button></div>
+  <div class="row"><span class="t"><b>行业研究问答</b> · 50 样本 · 2026-09-18</span><button class="btn p">下载 JSONL</button></div>
+</div>`;
+V.exports = head('导出记录','所有导出产物与状态') + `
+<div class="card"><div class="row"><span class="tag g">成功</span><span class="t">代码指令集.jsonl · 2.1 MB</span><button class="btn">下载</button></div>
+<div class="row"><span class="tag r">失败</span><span class="t">客服对话.jsonl · 原因：存储未配置</span><button class="btn">去配置</button></div></div>`;
+
+/* 6. 质量治理 */
+V.eval = head('评估任务','多模型互评与打分（原「质量评估」改名，消除同名冲突）') + `
+<div class="card"><div class="row"><span class="tag a">运行中</span><span class="t">GPT-4o × Claude 交叉评分</span><button class="btn">查看</button></div></div>`;
+V.clean = head('清洗记录','拒答与异常拦截结果') + `
+<div class="card"><div class="row"><span class="t">命中拒答 12 条 · 已隔离</span><button class="btn">查看</button></div></div>`;
+V.judges = head('评分规则','维度与裁判配置') + `
+<div class="card"><div class="row"><span class="t">准确性 · 完整性 · 可读性</span><button class="btn">编辑</button></div></div>`;
+
+V.help = head('帮助','常见问题与恢复指南') + `<div class="card"><div class="row"><span class="t">任务失败怎么办？</span></div></div>`;
+
+const CRUMBS = {
+  home:'任务 / <b>总览</b>', tasks:'任务 / <b>全部任务</b>', planning:'任务 / <b>新建任务</b>',
+  domains:'行业研究问答 / <b>主题结构</b>', questions:'行业研究问答 / <b>问题生成</b>',
+  reasoning:'行业研究问答 / <b>答案内容</b>',
+  assets:'数据资产 / <b>数据集</b>', exports:'数据资产 / <b>导出记录</b>',
+  eval:'质量与治理 / <b>评估任务</b>', clean:'质量与治理 / <b>清洗记录</b>',
+  judges:'质量与治理 / <b>评分规则</b>', help:'<b>帮助</b>'
+};
+
+/* 安全渲染：不使用 innerHTML/outerHTML。
+   本原型的所有视图字符串都是本文件中的静态字面量，不含任何用户数据；
+   这里仍用 DOMParser 解析（结果为惰性文档，脚本不会执行），
+   避免在仓库里留下 innerHTML 这个 XSS 惯用写法供人模仿。 */
+const _parser = new DOMParser();
+function renderHTML(host, html) {
+  const doc = _parser.parseFromString(`<body>${html}</body>`, 'text/html');
+  host.replaceChildren(...doc.body.childNodes);
+}
+
+function render(){
+  const k = (location.hash||'#home').slice(1);
+  renderHTML(document.getElementById('view'), V[k] || V.home);
+  renderHTML(document.getElementById('crumbs'), CRUMBS[k] || '');
+  const inTask = ['domains','questions','reasoning'].includes(k);
+  document.getElementById('sb-global').hidden = inTask;
+  // 任务上下文：完成态 vs 进行态
+  const done = (k === 'domains');
+  document.getElementById('sb-task').hidden      = !inTask || done;
+  document.getElementById('sb-task-done').hidden = !inTask || !done;
+}
+addEventListener('hashchange', render); render();
+</script>
+</body>
+</html>
