@@ -1,0 +1,170 @@
+[
+  {
+    "name": "01-login",
+    "label": "登录页",
+    "url": "http://127.0.0.1:3210/login",
+    "md5": "19fc6c7aa4e40b45548c08144dea5ac6",
+    "snippet": "(登录页，登录前捕获)"
+  },
+  {
+    "name": "02-home",
+    "label": "工作台",
+    "url": "http://127.0.0.1:3210/console/home",
+    "md5": "6eb9a2a76f90031c6ead28809c14a580",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "03-planning",
+    "label": "新建任务（含任务模板）",
+    "url": "http://127.0.0.1:3210/console/planning",
+    "md5": "dfacc0cfe3290cc14cf5bd631d204ea7",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "04-tasks",
+    "label": "我的任务",
+    "url": "http://127.0.0.1:3210/console/tasks",
+    "md5": "b4fa5a2a264f8f9d7eb0f44c0319f1b9",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "05-results",
+    "label": "数据资产",
+    "url": "http://127.0.0.1:3210/console/results",
+    "md5": "73e3fa694381ec9b02079abf41324e51",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "06-evaluation",
+    "label": "质量评估（多模型互评）",
+    "url": "http://127.0.0.1:3210/console/evaluation",
+    "md5": "46477455612c9686f7ccecd7d4358bd8",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "07-cleaning",
+    "label": "数据清洗",
+    "url": "http://127.0.0.1:3210/console/cleaning",
+    "md5": "cc1c02637005dc96e0c7f64ed9e3229d",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "08-help",
+    "label": "账户与帮助",
+    "url": "http://127.0.0.1:3210/console/help",
+    "md5": "a6b5eeaeb63f3d6bbb0ef46f7fa28204",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "09-operations",
+    "label": "运营监控",
+    "url": "http://127.0.0.1:3210/console/operations",
+    "md5": "6baa47f4077969810fa977c7d3421c0b",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 系统设置 运营监控 AI 服务 结果存储 生成规则 生成指令 操作记录 任务 1 队列 0 A admi"
+  },
+  {
+    "name": "10-admin-providers",
+    "label": "AI 服务",
+    "url": "http://127.0.0.1:3210/console/admin/providers",
+    "md5": "5b12fe46aafcf2d0d6b63bcf2cecb0c2",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 系统设置 运营监控 AI 服务 结果存储 生成规则 生成指令 操作记录 任务 1 队列 0 A admi"
+  },
+  {
+    "name": "11-admin-storage",
+    "label": "结果存储",
+    "url": "http://127.0.0.1:3210/console/admin/storage",
+    "md5": "9f2bc956290a2edf7a0795f188428d17",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 系统设置 运营监控 AI 服务 结果存储 生成规则 生成指令 操作记录 任务 1 队列 0 A admi"
+  },
+  {
+    "name": "12-admin-strategies",
+    "label": "生成规则",
+    "url": "http://127.0.0.1:3210/console/admin/strategies",
+    "md5": "aa5e5b9b96f497d0efc845edfb27756b",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 系统设置 运营监控 AI 服务 结果存储 生成规则 生成指令 操作记录 任务 1 队列 0 A admi"
+  },
+  {
+    "name": "13-admin-prompts",
+    "label": "生成指令",
+    "url": "http://127.0.0.1:3210/console/admin/prompts",
+    "md5": "43c6f8820928c0013762bcb764655522",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 系统设置 运营监控 AI 服务 结果存储 生成规则 生成指令 操作记录 任务 1 队列 0 A admi"
+  },
+  {
+    "name": "14-admin-audit",
+    "label": "操作记录",
+    "url": "http://127.0.0.1:3210/console/admin/audit",
+    "md5": "9d429c232657f123c7444c3a82114b0f",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 系统设置 运营监控 AI 服务 结果存储 生成规则 生成指令 操作记录 任务 1 队列 0 A admi"
+  },
+  {
+    "name": "15-stage-domains",
+    "label": "阶段1 主题结构",
+    "url": "http://127.0.0.1:3210/console/domains",
+    "md5": "a89272c948da3bf56550d46e048550ee",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "16-stage-questions",
+    "label": "阶段2 问题生成",
+    "url": "http://127.0.0.1:3210/console/questions",
+    "md5": "2ed66b2f078e0dbb94f9b2becfd9c3c0",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "17-stage-reasoning",
+    "label": "阶段3 答案内容",
+    "url": "http://127.0.0.1:3210/console/reasoning",
+    "md5": "05e9bba3eb7bebfa0e8b221f37c489dc",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "18-stage-rewards",
+    "label": "阶段4 质量评分",
+    "url": "http://127.0.0.1:3210/console/rewards",
+    "md5": "ff20c5620cdff05ac4ac3324e171b195",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "19-stage-exports",
+    "label": "阶段5 导出交付",
+    "url": "http://127.0.0.1:3210/console/exports",
+    "md5": "4f7c2109576aece23c59c3b75c673b6f",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "20-task-detail",
+    "label": "任务详情（枢纽页）",
+    "url": "http://127.0.0.1:3210/console/tasks/11",
+    "md5": "cf751f8672351c62bd83ded4ae6f4f59",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "21-eval-dimensions",
+    "label": "质量评估 · 维度管理",
+    "url": "http://127.0.0.1:3210/console/evaluation",
+    "md5": "46477455612c9686f7ccecd7d4358bd8",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "22-eval-create",
+    "label": "质量评估 · 新建评估",
+    "url": "http://127.0.0.1:3210/console/evaluation",
+    "md5": "5368bc4f7039e6d6e7a93529186ec07d",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "23-eval-runs",
+    "label": "质量评估 · 运行列表",
+    "url": "http://127.0.0.1:3210/console/evaluation",
+    "md5": "a0a402e75805b57c9dcebe58896a3bd6",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  },
+  {
+    "name": "24-eval-report",
+    "label": "质量评估 · 结果与报告",
+    "url": "http://127.0.0.1:3210/console/evaluation",
+    "md5": "2a703b0e2cc6d40695f4147c6886c667",
+    "snippet": "L 企业数据工厂 管理员 新建任务 我的任务 业务导航 工作台 新建任务 我的任务 数据资产 质量评估 数据清洗 账户与帮助 系统设置 任务 1 队列 0 A "
+  }
+]
