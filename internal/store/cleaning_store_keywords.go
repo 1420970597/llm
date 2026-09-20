@@ -256,6 +256,39 @@ func (s *CleaningKeywordStore) SeedBuiltin(ctx context.Context) (int, error) {
 	return inserted, nil
 }
 
+// EnsureSeeded 在内置关键词缺失时补种，幂等。
+//
+// 为什么需要它（父代理代码级评审发现的缺陷）：
+// `cleaning_keywords` 表由迁移 0012 创建，但迁移里**没有任何 INSERT**
+// —— 41 条内置词只存在于 Go 代码（internal/cleaning/keywords.go 的 BuiltinKeywords()），
+// 而补种只挂在 `POST /api/v1/cleaning/keywords/seed` 上，**前端完全没有这个入口**。
+//
+// 于是全新部署（或清空过关键词库的环境）会出现：
+//  1. 清洗页关键词库为空，空状态文案只说「点新增关键词或批量粘贴」，
+//     用户不可能知道工具本应自带 41 个内置词；
+//  2. 更严重的是**清洗静默失效**：apps/worker/job_cleaning.go 只加载
+//     `is_active = TRUE` 的词，库为空 -> 匹配不到任何东西 ->
+//     internal/cleaning/scanner.go 的 `if len(matches) == 0 { return ActionClean }`
+//     -> 所有拒答内容都被判为「干净」，而界面显示「清洗完成、命中 0 条」。
+//     用户会误以为数据质量良好。
+//
+// 这与 model_providers / storage_profiles 的启动引导是**同一类问题**：
+// 内置目录类数据缺了「首次可用即自动就绪」这条路径。而 export_mappings 早就这么做了
+// （internal/store/export_mapping_store.go 的 EnsureSeeded 挂在 GET 上），
+// 本方法与之对称：**幂等、只在缺失时补种、不覆盖用户改动**
+// （SeedBuiltin 本身就不覆盖 is_active，用户停用过的内置词不会被重新启用）。
+func (s *CleaningKeywordStore) EnsureSeeded(ctx context.Context) error {
+	total, err := s.CountBuiltin(ctx)
+	if err != nil {
+		return err
+	}
+	if total > 0 {
+		return nil
+	}
+	_, err = s.SeedBuiltin(ctx)
+	return err
+}
+
 // CountBuiltinInserted 统计库中内置关键词总数，供 seed 接口返回 total。
 func (s *CleaningKeywordStore) CountBuiltin(ctx context.Context) (int, error) {
 	var total int
