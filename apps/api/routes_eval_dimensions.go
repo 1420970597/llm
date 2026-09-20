@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -40,7 +42,47 @@ func (app *application) evalDimensions() *store.EvalDimensionStore {
 }
 
 // listEvalDimensions 返回维度列表。?category= 按分类过滤，?builtin=true|false 按来源过滤。
+// ensureBuiltinEvalDimensions 在内置维度缺失时补种，幂等。
+//
+// 为什么放在 API 层而不是 store 层：`eval.Seed` 需要一个实现 `eval.DimensionSink`
+// 的 store，而 `internal/store` **不能** import `internal/eval`
+// ——`internal/eval/judge.go` 已经 import 了 `internal/store`，反向依赖会成环。
+// API 层同时可见两个包，因此补种逻辑正确的位置在这里。
+//
+// 为什么需要它（父代理代码级评审发现的缺陷）：
+// `eval_dimensions` 表由迁移 0011 创建，但迁移里**没有 INSERT** ——
+// 58 个内置维度只存在于 Go 代码（internal/eval/catalog.go 的 BuiltinDimensions()），
+// 补种只挂在 `POST /api/v1/eval/dimensions/seed` 上。
+// 前端确实有「导入内置维度」按钮，但它在 useEffect 里**不会自动触发** ——
+// 全新部署打开评估页看到「暂无评估维度」，需要用户自己发现并点击。
+//
+// 而需求原文是「评估维度工具内需要**内置**不少于 50 个维度」：
+// 「内置」应当无需用户操作即可用。因此与 export_mappings 的既有做法对齐
+// （routes_export_formats.go 在 GET 里调 EnsureSeeded），在**读**路径上补种。
+//
+// 失败不阻断读取：表为空时至少要让用户看到「确实是空的」，而不是收到 500。
+func (app *application) ensureBuiltinEvalDimensions(ctx context.Context) {
+	dimStore := app.evalDimensions()
+	total, err := dimStore.Count(ctx)
+	if err != nil {
+		log.Printf("eval.dimensions.count_failed err=%v", err)
+		return
+	}
+	if total > 0 {
+		return
+	}
+	inserted, _, err := eval.Seed(ctx, dimStore)
+	if err != nil {
+		log.Printf("eval.dimensions.seed_failed err=%v", err)
+		return
+	}
+	log.Printf("eval.dimensions.seeded inserted=%d", inserted)
+}
+
 func (app *application) listEvalDimensions(w http.ResponseWriter, r *http.Request) {
+	// 首次读取时自动补种内置维度目录（需求：「内置不少于 50 个维度」应开箱可用）。
+	app.ensureBuiltinEvalDimensions(r.Context())
+
 	category := strings.TrimSpace(r.URL.Query().Get("category"))
 
 	builtin, err := parseOptionalBool(r.URL.Query().Get("builtin"))

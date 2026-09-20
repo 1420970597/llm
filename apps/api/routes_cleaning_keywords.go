@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,6 +37,21 @@ func (app *application) cleaningKeywords() *store.CleaningKeywordStore {
 }
 
 func (app *application) listCleaningKeywords(w http.ResponseWriter, r *http.Request) {
+	// 首次读取时自动补种内置词库（issue: 全新部署下内置词缺失导致清洗静默失效）。
+	//
+	// 为什么放在**读**路径而不是只在启动时做：与 export_mappings 的既有做法保持一致
+	//（internal/store/export_mapping_store.go 的 EnsureSeeded 也挂在 GET 上），
+	// 且这样「清空过关键词库」的环境也能自愈，不必重启服务。
+	//
+	// 幂等且不覆盖用户改动：EnsureSeeded 只在**内置词条数为 0** 时补种，
+	// 而 SeedBuiltin 本身不覆盖 is_active（用户停用过的内置词不会被重新启用）。
+	//
+	// 补种失败不阻断列表读取：目录为空时至少要让用户看到「确实是空的」，
+	// 而不是收到 500；失败原因记日志便于排查。
+	if err := app.cleaningKeywords().EnsureSeeded(r.Context()); err != nil {
+		log.Printf("cleaning.keywords.seed_failed err=%v", err)
+	}
+
 	// active 省略时不限启用状态；显式传 true/false 才精确过滤。
 	var active *bool
 	if raw := strings.TrimSpace(r.URL.Query().Get("active")); raw != "" {
