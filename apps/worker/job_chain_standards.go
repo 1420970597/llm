@@ -117,6 +117,17 @@ func handleChainStandardGeneration(ctx context.Context, jc *jobContext, job jobP
 	if err := jc.generationRuns.FinishRun(ctx, run.ID, status, summary); err != nil {
 		return err
 	}
+
+	// 推进 datasets.status（issue #139）。FinishRun 只更新 generation_runs，
+	// 不会碰 datasets.status；此前本处理器漏了这一步，于是长链标准步骤已全部落库、
+	// run 也是 completed，而数据集永远停在 `chain_standards_queued`。
+	//
+	// 目标是 `directions_completed`：长链标准步骤与方向生成同属「领域整理」阶段
+	//（见 internal/store/dataset_store.go 的 queuedStageByStatus 注释与 rank 1 设定），
+	// 完成后该阶段即就绪，用户可以进入问题生成。
+	if err := jc.datasets.UpdateStatus(ctx, job.DatasetID, "directions_completed"); err != nil {
+		return err
+	}
 	if failures > 0 {
 		return fmt.Errorf("chain standards generation partially failed: %s", summary)
 	}

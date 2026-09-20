@@ -358,6 +358,37 @@ func (s *DatasetStore) ConfirmDomains(ctx context.Context, datasetID int64) erro
 	return err
 }
 
+// ListStalledQueuedDatasets 返回「状态声称在排队」的数据集及其排队状态。
+//
+// 用途（issue #139 / #143）：任务队列是 Redis List + BRPOP（破坏性读取，无 ack），
+// 且 Redis 曾关闭持久化。因此 Redis/worker 重启后，尚未出队的任务会永久消失，
+// 而 datasets.status 仍停在 *_queued —— 界面上表现为「一直在排队」，
+// 实测最久的已停留 23 小时，而队列里根本没有它（LLEN = 0），永远不会再被处理。
+//
+// 本方法只负责「找出可疑行」，是否真的需要重新入队由调用方（worker）与队列实际内容比对后决定
+// —— 因为「在排队」与「已丢失」在数据库层面无法区分。
+func (s *DatasetStore) ListStalledQueuedDatasets(ctx context.Context) ([]model.Dataset, error) {
+	rows, err := s.db.Query(ctx, `SELECT `+datasetColumns+`
+	    FROM datasets
+	    WHERE status IN ('directions_queued','chain_standards_queued','questions_queued',
+	                     'reasoning_queued','rewards_queued','export_queued','grpo_queued','sft_queued')
+	    ORDER BY id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []model.Dataset{}
+	for rows.Next() {
+		item, err := scanDataset(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (s *DatasetStore) UpdateStatus(ctx context.Context, datasetID int64, status string) error {
 	// 推进到任何新状态都清空上一次的失败原因（issue #83）：
 	// 否则用户重试成功之后，界面上会继续挂着一条旧的失败提示。
@@ -462,6 +493,16 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 		"sft_failed":             2,
 		"eval_failed":            5,
 		"cleaning_failed":        5,
+		// grpo / sft 的完成态（issue #139）。
+		//
+		// 这两个阶段此前**只有 queued 状态、没有完成态** —— 因为处理器压根不推进
+		// datasets.status（见 apps/worker/job_grpo.go 与 job_sft.go 的修复）。
+		// 补上完成态后，进度接口才能把它们显示为「已完成」，而不是永远「排队中」。
+		// rank 与所处阶段一致：sft 在问题生成之后（2），grpo 在质量评估之后（4）。
+		"sft_generated":  2,
+		"sft_partial":    2,
+		"grpo_generated": 4,
+		"grpo_partial":   4,
 	}
 	queuedStageByStatus := map[string]string{
 		// 方向与长链标准步骤都是「领域整理」阶段内的子步骤
@@ -619,6 +660,13 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 		"sft_failed":             55,
 		"eval_failed":            90,
 		"cleaning_failed":        90,
+		// grpo / sft 完成态的完成度（issue #139）。
+		// 不给兜底值 `completed * 20`：那会让「SFT 已就绪」显示成 40% 这类
+		// 与事实不符的进度。sft 就绪 = 问题阶段已完成（55），grpo 就绪 = 评估之后（90）。
+		"sft_generated":  55,
+		"sft_partial":    55,
+		"grpo_generated": 90,
+		"grpo_partial":   90,
 	}
 	// 同 exportState 的说明：必须用 normalizedStatus，否则历史点号形态的失败行
 	// 会落到 `completed * 20` 的兜底（实测 20% 而不是 90%），
