@@ -27,6 +27,55 @@ type jobPayload struct {
 	Retry     int    `json:"retry,omitempty"`
 }
 
+// failedStatusForJob 把「job 类型」映射为**进度接口认识的**数据集失败状态。
+//
+// 为什么需要它（issue #140，父代理复核时发现是系统性问题）：
+// 这里此前写的是 `job.Type + "_failed"`，而注册表里的 job 类型都带点号：
+//
+//	export.generate   -> export.generate_failed
+//	sft.generate      -> sft.generate_failed
+//	grpo.generate     -> grpo.generate_failed
+//	questions.generate-> questions.generate_failed
+//	eval.run          -> eval.run_failed
+//	cleaning.run      -> cleaning.run_failed
+//	directions.generate -> directions.generate_failed
+//	chain-standards.generate -> chain-standards.generate_failed
+//
+// 而进度接口（internal/store/dataset_store.go 的 rankByStatus / failedStageByStatus /
+// completionByStatus）只认识**下划线形态**（export_failed / questions_failed / ...）。
+// 于是这些失败状态在界面上退化成「没有任何阶段失败、完成度 0%、阶段仍在进行中」——
+// 实测 dataset 161（export.generate_failed）显示为：
+//
+//	status=export.generate_failed  completion=0  currentStage=domains
+//	domains in_progress(40)  questions pending  ... export pending   ← 无 failed
+//
+// 用户看到的是「进行中 0%」，既不知道失败了，也不知道卡在哪。
+//
+// 修法：集中映射一次，**默认回退到 job.Type + "_failed"**（保持未知类型可观测），
+// 已知类型一律映射到进度接口认识的规范名。
+func failedStatusForJob(jobType string) string {
+	switch jobType {
+	case "directions.generate":
+		return "directions_partial_failed"
+	case questionsJobType:
+		return "questions_failed"
+	case "chain-standards.generate":
+		return "chain_standards_failed"
+	case "grpo.generate":
+		return "grpo_failed"
+	case "sft.generate":
+		return "sft_failed"
+	case "export.generate":
+		return "export_failed"
+	case evalRunStage:
+		return "eval_failed"
+	case cleaningRunStage:
+		return "cleaning_failed"
+	default:
+		return jobType + "_failed"
+	}
+}
+
 func main() {
 	cfg := config.LoadWorkerConfig()
 	ctx := context.Background()
@@ -124,7 +173,7 @@ func consumeJobs(ctx context.Context, jc *jobContext) {
 					log.Printf("job retrying dataset=%d type=%s next_retry=%d err=%v", job.DatasetID, job.Type, next.Retry, err)
 					continue
 				}
-				markStageFailed(ctx, jc.datasets, job.DatasetID, job.Type+"_failed", err)
+				markStageFailed(ctx, jc.datasets, job.DatasetID, failedStatusForJob(job.Type), err)
 			}
 			continue
 		}

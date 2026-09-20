@@ -380,6 +380,31 @@ func (s *DatasetStore) MarkFailed(ctx context.Context, datasetID int64, status, 
 	return err
 }
 
+// legacyStatusAliases 把 worker 曾写出的**点号形态**失败状态折算为规范的下划线形态。
+//
+// 来源：修复 issue #140 之前，worker 的注册表路径写的是 `job.Type + "_failed"`，
+// 而注册表里的 job 类型都带点号。这些行已经落在数据库里，且不会自愈。
+//
+// 只做只读折算（显示用），不改写数据 —— 改写历史状态属数据修复，需单独判断。
+var legacyStatusAliases = map[string]string{
+	"export.generate_failed":          "export_failed",
+	"sft.generate_failed":             "sft_failed",
+	"grpo.generate_failed":            "grpo_failed",
+	"questions.generate_failed":       "questions_failed",
+	"directions.generate_failed":      "directions_partial_failed",
+	"chain-standards.generate_failed": "chain_standards_failed",
+	"eval.run_failed":                 "eval_failed",
+	"cleaning.run_failed":             "cleaning_failed",
+}
+
+// normalizeLegacyStatus 返回规范化后的状态串；未知状态原样返回。
+func normalizeLegacyStatus(status string) string {
+	if canonical, ok := legacyStatusAliases[status]; ok {
+		return canonical
+	}
+	return status
+}
+
 func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (model.PipelineProgress, error) {
 	dataset, err := s.GetDataset(ctx, datasetID)
 	if err != nil {
@@ -428,6 +453,15 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 		"export_queued":             4,
 		"export_generated":          5,
 		"export_failed":             5,
+		// 以下是 worker 注册表路径（job.Type 带点号）写出的失败状态。
+		// 必须显式登记：缺失会让 statusRank 落到零值 0，
+		// 于是失败任务在界面上显示成「进行中 0%、没有任何阶段失败」（issue #140）。
+		// rank 与同阶段 queued 一致，避免进度条在失败时倒退。
+		"chain_standards_failed": 1,
+		"grpo_failed":            1,
+		"sft_failed":             2,
+		"eval_failed":            5,
+		"cleaning_failed":        5,
 	}
 	queuedStageByStatus := map[string]string{
 		// 方向与长链标准步骤都是「领域整理」阶段内的子步骤
@@ -444,10 +478,28 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 		"reasoning_failed":          "reasoning",
 		"rewards_failed":            "rewards",
 		"export_failed":             "export",
+		// 同 rankByStatus 的说明：注册表路径写出的失败状态必须在这里登记，
+		// 否则该阶段不会被标为 failed（用户看不到失败发生在哪一步）。
+		"chain_standards_failed": "domains",
+		"grpo_failed":            "domains",
+		"sft_failed":             "questions",
+		"eval_failed":            "export",
+		"cleaning_failed":        "export",
 	}
-	statusRank := rankByStatus[dataset.Status]
-	queuedStage := queuedStageByStatus[dataset.Status]
-	failedStage := failedStageByStatus[dataset.Status]
+	// 规范化历史状态串（issue #140）。
+	//
+	// worker 的注册表路径曾写出带点号的失败状态（`export.generate_failed`、
+	// `sft.generate_failed`、`eval.run_failed` ...），而本文件的三个映射表用的是
+	// 下划线形态。修复写入侧之后，**历史行仍然是点号形态**——若不在此处兼容，
+	// 那些已经失败的任务会永远显示成「进行中 0%、无阶段失败」。
+	//
+	// 因此这里做一次只读的规范化：把已知的点号形态折算成对应的下划线形态再查表。
+	// 只影响「怎么显示」，不改写数据库（历史状态的改写属数据修复，需单独判断）。
+	normalizedStatus := normalizeLegacyStatus(dataset.Status)
+
+	statusRank := rankByStatus[normalizedStatus]
+	queuedStage := queuedStageByStatus[normalizedStatus]
+	failedStage := failedStageByStatus[normalizedStatus]
 
 	// stageState 判定某阶段对**用户**呈现的状态。
 	//
@@ -490,11 +542,15 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 
 	exportState := "pending"
 	exportSummary := "尚未产出导出工件"
+	// 注意用 normalizedStatus 而不是 dataset.Status（issue #140）：
+	// 历史行可能是点号形态的 `export.generate_failed`，直接用 dataset.Status
+	// 会让这个 switch 全部落空 -> export 阶段永远显示 pending，
+	// 用户看不到「导出失败」。
 	switch {
-	case dataset.Status == "export_failed":
+	case normalizedStatus == "export_failed":
 		exportState = "failed"
 		exportSummary = "导出任务失败，请检查上游结果后重试"
-	case dataset.Status == "export_queued":
+	case normalizedStatus == "export_queued":
 		exportState = "queued"
 		if artifactCount > 0 {
 			exportSummary = fmt.Sprintf("导出任务已入队，已有 %d 个历史工件，等待最新交付文件", artifactCount)
@@ -504,7 +560,7 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 	case artifactCount > 0:
 		exportState = "completed"
 		exportSummary = fmt.Sprintf("已产出 %d 个工件", artifactCount)
-	case dataset.Status == "export_generated":
+	case normalizedStatus == "export_generated":
 		exportState = "in_progress"
 		exportSummary = "导出状态已完成，正在确认交付文件"
 	}
@@ -556,12 +612,22 @@ func (s *DatasetStore) PipelineProgress(ctx context.Context, datasetID int64) (m
 		"export_queued":             90,
 		"export_generated":          100,
 		"export_failed":             90,
+		// 注册表路径的失败状态（issue #140）：给一个与所处阶段相称的完成度，
+		// 而不是落到 `completed * 20` 的兜底（那会让失败任务显示 0%）。
+		"chain_standards_failed": 45,
+		"grpo_failed":            55,
+		"sft_failed":             55,
+		"eval_failed":            90,
+		"cleaning_failed":        90,
 	}
-	completionPercent, ok := completionByStatus[dataset.Status]
+	// 同 exportState 的说明：必须用 normalizedStatus，否则历史点号形态的失败行
+	// 会落到 `completed * 20` 的兜底（实测 20% 而不是 90%），
+	// 与「已失败」的语义不符（issue #140）。
+	completionPercent, ok := completionByStatus[normalizedStatus]
 	if !ok {
 		completionPercent = completed * 20
 	}
-	if dataset.Status == "export_generated" && artifactCount == 0 {
+	if normalizedStatus == "export_generated" && artifactCount == 0 {
 		completionPercent = 90
 	}
 
