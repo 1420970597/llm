@@ -165,9 +165,37 @@ func (s *AdminStore) UpsertStorageProfile(ctx context.Context, input model.Stora
 		return model.StorageProfile{}, err
 	}
 
+	// 同一时刻只允许一条存储配置是默认（issue #138）。
+	//
+	// 为什么必须在这里做：`ResolveStorageProfile` 在未绑定存储时用
+	// `ORDER BY is_default DESC, id DESC LIMIT 1` 挑一条 —— 也就是**最新建的**那条。
+	// 而「设为默认」开关在弹窗里默认打开、保存时又不清掉别人，实测库里出现了
+	// **20 条同时 is_default=true**，界面上每一行都显示「默认=是」，
+	// 用户无法判断哪条真正生效（实际生效的那条规则在界面上完全不可见）。
+	//
+	// 这还会放大 #136（下载用当前默认 bucket）：用户以为默认还是原来那条，
+	// 实际默认已被新建记录悄悄顶掉。
+	//
+	// 与 export_mapping_store.go 的既有做法一致：写入前先清掉同类的默认标记。
+	// 不同之处是这里用事务包住「清 + 写」，避免中途失败留下零个默认的中间态。
 	var item model.StorageProfile
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return model.StorageProfile{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if input.IsDefault {
+		if _, err := tx.Exec(ctx,
+			`UPDATE storage_profiles SET is_default = FALSE, updated_at = NOW()
+			 WHERE is_default = TRUE AND id <> $1`, input.ID); err != nil {
+			return model.StorageProfile{}, err
+		}
+	}
+
 	if input.ID == 0 {
-		err = s.db.QueryRow(ctx, `
+		err = tx.QueryRow(ctx, `
       INSERT INTO storage_profiles (
         name, provider, endpoint, region, bucket, access_key_id, encrypted_secret_key, secret_key_masked, use_path_style, is_active, is_default
       ) VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $7 = '' THEN NULL ELSE $7 END, $8, $9, $10, $11)
@@ -185,7 +213,7 @@ func (s *AdminStore) UpsertStorageProfile(ctx context.Context, input model.Stora
 			input.IsDefault,
 		).Scan(&item.ID, &item.Name, &item.Provider, &item.Endpoint, &item.Region, &item.Bucket, &item.AccessKeyID, &item.SecretKeyMasked, &item.UsePathStyle, &item.IsActive, &item.IsDefault, &item.CreatedAt, &item.UpdatedAt)
 	} else {
-		err = s.db.QueryRow(ctx, `
+		err = tx.QueryRow(ctx, `
       UPDATE storage_profiles SET
         name = $2,
         provider = $3,
@@ -215,8 +243,14 @@ func (s *AdminStore) UpsertStorageProfile(ctx context.Context, input model.Stora
 			input.IsDefault,
 		).Scan(&item.ID, &item.Name, &item.Provider, &item.Endpoint, &item.Region, &item.Bucket, &item.AccessKeyID, &item.SecretKeyMasked, &item.UsePathStyle, &item.IsActive, &item.IsDefault, &item.CreatedAt, &item.UpdatedAt)
 	}
+	if err != nil {
+		return model.StorageProfile{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return model.StorageProfile{}, err
+	}
 
-	return item, err
+	return item, nil
 }
 
 func (s *AdminStore) ListStrategies(ctx context.Context) ([]model.GenerationStrategy, error) {
@@ -246,9 +280,26 @@ func (s *AdminStore) UpsertStrategy(ctx context.Context, input model.GenerationS
 	}
 
 	var item model.GenerationStrategy
-	var err error
+
+	// 同一时刻只允许一条生成策略是默认（issue #138，与 storage_profiles 同一类问题）。
+	// 实测库里 4 条 generation_strategies 同时 is_default=true。
+	// 用事务包住「清 + 写」，避免中途失败留下零个默认的中间态。
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return model.GenerationStrategy{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if input.IsDefault {
+		if _, err := tx.Exec(ctx,
+			`UPDATE generation_strategies SET is_default = FALSE, updated_at = NOW()
+			 WHERE is_default = TRUE AND id <> $1`, input.ID); err != nil {
+			return model.GenerationStrategy{}, err
+		}
+	}
+
 	if input.ID == 0 {
-		err = s.db.QueryRow(ctx, `
+		err = tx.QueryRow(ctx, `
       INSERT INTO generation_strategies (
         name, description, domain_count, questions_per_domain, answer_variants, reward_variants, planning_mode, is_default
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -263,7 +314,7 @@ func (s *AdminStore) UpsertStrategy(ctx context.Context, input model.GenerationS
 			input.IsDefault,
 		).Scan(&item.ID, &item.Name, &item.Description, &item.DomainCount, &item.QuestionsPerDomain, &item.AnswerVariants, &item.RewardVariants, &item.PlanningMode, &item.IsDefault, &item.CreatedAt, &item.UpdatedAt)
 	} else {
-		err = s.db.QueryRow(ctx, `
+		err = tx.QueryRow(ctx, `
       UPDATE generation_strategies SET
         name = $2,
         description = $3,
@@ -287,7 +338,13 @@ func (s *AdminStore) UpsertStrategy(ctx context.Context, input model.GenerationS
 			input.IsDefault,
 		).Scan(&item.ID, &item.Name, &item.Description, &item.DomainCount, &item.QuestionsPerDomain, &item.AnswerVariants, &item.RewardVariants, &item.PlanningMode, &item.IsDefault, &item.CreatedAt, &item.UpdatedAt)
 	}
-	return item, err
+	if err != nil {
+		return model.GenerationStrategy{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return model.GenerationStrategy{}, err
+	}
+	return item, nil
 }
 
 func (s *AdminStore) ListPrompts(ctx context.Context) ([]model.PromptTemplate, error) {
