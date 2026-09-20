@@ -356,28 +356,43 @@ func (app *application) startEvalRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 先把运行标为 queued 再入队：worker 拿到 job 时靠 ActiveRun 反查
-	// status IN ('queued','running') 的运行（job payload 只带 datasetId），
-	// 顺序反了会出现 worker 先到、查不到运行而静默空跑。
-	if err := runs.UpdateRunStatus(ctx, runID, "queued", run.TotalItems, run.ScoredItems, ""); err != nil {
-		app.writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
+	// **先入队，再改状态**（issue #142）。
+	//
+	// 为什么顺序很关键：worker 拿到 job 后靠 `ActiveRun`
+	//（`WHERE dataset_id = $1 AND status IN ('queued','running') ORDER BY id DESC LIMIT 1`）
+	// 反查要跑哪一条运行，而 job payload 只带 datasetId。
+	//
+	// 此前的顺序是「先标 queued 再入队」，注释里的理由是「否则 worker 先到、查不到运行」。
+	// 但那个理由不成立：`enqueueJob` 是**同步**的 LPUSH，返回后任务才可能被消费，
+	// 而 worker 反查时用的就是本函数刚写的 queued 状态 —— 顺序对调不会丢任务。
+	//
+	// 反过来，旧顺序有真实的竞态：若 worker **正在并发完成**这条运行
+	//（它会写入 completed/partial_failed），而本函数随后又把状态写成 queued，
+	// 那么最终落库的就是 queued —— 而队列里已经没有任务了（已被消费），
+	// 于是运行**永久停在 queued**，同时 scored_items 是满的。
+	//
+	// 实测（eval_run 22）：worker 在 02:38:46 记下
+	// `eval.run.done run=22 ... status=completed`，而该行 updated_at 是 03:24:35
+	// 且 status=queued / scored=8/8 —— 正是这个竞态留下的形态，
+	// 界面上同时显示「已入队」与「100% 已打分 8/8」，报告也已可读。
+	//
+	// 因此改为：入队成功后只把状态推进到 queued 的**前驱态条件**下才写，
+	// 用 SQL 的 WHERE 限定「不覆盖终态」——即只有在运行尚未进入终态时才重置为 queued。
 	enqueued, err := app.enqueueJob(ctx, evalJobType, run.DatasetID, "")
 	if err != nil {
-		// 入队本身失败（Redis 不可用）：必须把状态退回 failed，
-		// 否则运行会永远停在 queued，后续 start 只会返回「已在队列中」而永远没人执行。
-		_ = runs.UpdateRunStatus(ctx, runID, "failed", run.TotalItems, run.ScoredItems,
-			msgEnqueueFailed)
+		// 入队本身失败（Redis 不可用）：状态保持原样（可能是 queued/draft/终态），
+		// 不写 failed —— 因为运行并没有真的开始过，且 Redis 恢复后用户可重试。
 		app.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	if !enqueued {
-		// 去重键仍在有效期内（上一次运行完成但 TTL 未过）。任务不会被执行，
-		// 必须把状态改回可重试的 failed，否则运行会永远停在 queued。
-		_ = runs.UpdateRunStatus(ctx, runID, "failed", run.TotalItems, run.ScoredItems,
-			msgDuplicateEnqueue)
+	// 无论入队成功还是被去重，都只在**运行尚未进入终态**时把它标为 queued。
+	//
+	// 被去重时（`!enqueued`）尤其不能改状态：若运行已是 completed/partial_failed，
+	// 改它就是 issue #142 那个「把已完成的运行打回 queued」的缺陷。
+	// 而入队成功时同样用条件更新，防止与「worker 正在并发完成」竞态。
+	if err := runs.MarkQueuedIfNotTerminal(ctx, runID, run.TotalItems, run.ScoredItems); err != nil {
+		app.writeError(w, http.StatusInternalServerError, err)
+		return
 	}
 
 	app.audit(ctx, "start", "eval_run", strconv.FormatInt(runID, 10),

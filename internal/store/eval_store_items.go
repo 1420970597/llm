@@ -166,6 +166,34 @@ func (s *EvalRunStore) UpdateRunStatus(ctx context.Context, runID int64, status 
 	return err
 }
 
+// MarkQueuedIfNotTerminal 把运行标为 queued，但**不覆盖终态**。
+//
+// 为什么需要它（issue #142）：`startEvalRun` 此前无条件写
+// `UpdateRunStatus(runID, "queued", ...)`。若 worker 正在并发完成这条运行
+//（写入 completed / partial_failed），而 API 随后又把状态写成 queued，
+// 最终落库的就是 queued —— 而队列里已经没有任务（已被消费），
+// 运行**永久停在 queued**，同时 scored_items 是满的。
+//
+// 实测（eval_run 22）：worker 在 02:38:46 记下
+// `eval.run.done run=22 ... status=completed`，而该行 updated_at 是 03:24:35
+// 且 status=queued / scored=8/8。界面同时显示「已入队」与「100% 已打分 8/8」，
+// 报告也已可读 —— 用户以为还要等，其实早就完成了。
+//
+// 修法：把「不覆盖终态」作为 SQL 的 WHERE 条件，让判定与写入在**同一条语句**里完成，
+// 不依赖「先读后写」这种有竞态窗口的模式。
+func (s *EvalRunStore) MarkQueuedIfNotTerminal(ctx context.Context, runID int64, totalItems, scoredItems int) error {
+	_, err := s.db.Exec(ctx, `
+    UPDATE eval_runs
+    SET status = 'queued',
+        total_items = $2,
+        scored_items = $3,
+        updated_at = NOW()
+    WHERE id = $1
+      AND status NOT IN ('completed', 'partial_failed', 'failed')`,
+		runID, totalItems, scoredItems)
+	return err
+}
+
 // EvalItemInput 一条待写入的被评条目。
 type EvalItemInput struct {
 	QuestionID int64
