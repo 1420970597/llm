@@ -27,6 +27,26 @@ func handleDirectionGenerationJob(ctx context.Context, jc *jobContext, job jobPa
 	return runDirectionGeneration(ctx, jc, job.DatasetID)
 }
 
+// directionDoneUnits 把「已产出的方向数」折算成进度接口的 done_units（issue #141）。
+//
+// 抽成纯函数是为了让 #141 有一条**不需要容器**的回归断言：
+// 这个 bug 的本质是「单位用错」，而单位错误在集成测试里很容易被
+// 「领域数恰好等于方向数」的数据掩盖（实测 run 247/248 就是这样）。
+//
+// 两个约束：
+//  1. 入参必须是**方向数**（produced），与 total_units 同单位。
+//     历史实现传的是 len(CompletedDomainIDs)（领域数），于是进度停在 33%。
+//  2. 结果不得超过 total_units —— 模型多产方向时不能让进度超过 100%。
+func directionDoneUnits(produced, totalUnits int) int {
+	if totalUnits > 0 && produced > totalUnits {
+		return totalUnits
+	}
+	if produced < 0 {
+		return 0
+	}
+	return produced
+}
+
 func runDirectionGeneration(ctx context.Context, jc *jobContext, datasetID int64) error {
 	dataset, err := jc.datasets.GetDataset(ctx, datasetID)
 	if err != nil {
@@ -157,10 +177,7 @@ func runDirectionGeneration(ctx context.Context, jc *jobContext, datasetID int64
 		//
 		// 改用 `produced`（已产出的方向数），与 total_units 同单位；
 		// 并用 min(produced, TotalUnits) 兜住「模型多产」导致进度超过 100% 的情况。
-		doneUnits := produced
-		if run.TotalUnits > 0 && doneUnits > run.TotalUnits {
-			doneUnits = run.TotalUnits
-		}
+		doneUnits := directionDoneUnits(produced, run.TotalUnits)
 		if err := jc.generationRuns.SaveCursor(ctx, run.ID, store.EncodeDirectionCursor(cursor),
 			doneUnits, run.TotalUnits); err != nil {
 			return fmt.Errorf("回写方向生成游标失败: %w", err)
