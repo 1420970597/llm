@@ -31,7 +31,10 @@ type application struct {
 	rewards        *store.RewardStore
 	artifacts      *store.ArtifactStore
 	generationRuns *store.GenerationRunStore
-	redis          *redis.Client
+	// Atelier 主线（Issue #160 T02）：项目与工作区作用域，以及命令幂等。
+	projects    *store.ProjectStore
+	idempotency *store.IdempotencyStore
+	redis       *redis.Client
 }
 
 func main() {
@@ -71,6 +74,8 @@ func main() {
 		rewards:        store.NewRewardStore(pool),
 		artifacts:      store.NewArtifactStore(pool, redisClient, cfg.QueueName),
 		generationRuns: store.NewGenerationRunStore(pool),
+		projects:       store.NewProjectStore(pool),
+		idempotency:    store.NewIdempotencyStore(pool),
 		redis:          redisClient,
 	}
 
@@ -83,6 +88,20 @@ func main() {
 	}
 	if err := app.auth.EnsureBootstrapUser(ctx, cfg.DefaultUserEmail, cfg.DefaultUserPassword, "user"); err != nil {
 		log.Fatalf("bootstrap user failed: %v", err)
+	}
+
+	// 幂等创建默认工作区（Issue #160 T02 契约 §4.1「首版可以默认一个 workspace」）。
+	//
+	// 为什么必须做：项目、成员与将来的连接治理都挂在 workspace 上，
+	// 而「表为空」会让第一次创建项目就失败在一个与用户输入无关的原因上。
+	// 这里用固定 slug 做唯一键，不依赖「第一条记录」这种脆弱约定。
+	//
+	// 失败**不阻断启动**：与 provider/storage 引导一致，少一个初始化步骤
+	// 不该升级为「容器起不来」；此时创建项目会返回可操作的中文提示。
+	if workspace, err := app.projects.EnsureDefaultWorkspace(ctx, bootstrapUserID(ctx, app)); err != nil {
+		log.Printf("WARNING: 默认工作区初始化失败: %v（服务继续启动，项目 API 会提示工作区未初始化）", err)
+	} else {
+		log.Printf("default workspace ensured: id=%d slug=%s", workspace.ID, workspace.Slug)
 	}
 
 	// 从环境变量幂等引导默认 LLM provider（密钥加密落库，不写入日志）。
