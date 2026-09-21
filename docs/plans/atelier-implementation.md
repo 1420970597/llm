@@ -84,7 +84,7 @@
 | 2026-09-21 | T14 | §2.6 只说「缺分与真实 0 分区分」，未规定表结构如何保证 | 用**可空列**保证而不是靠约定：`experiment_scores.raw_score` 为 NULL 表示「这次没拿到分」，`experiment_items.status` 区分 `missing`（缺分）/`error`（裁判出错）/`not_applicable`（不适用）三种事实 —— 压成 0 会让「没评」显示成「评得很差」。另用 `score_state` 标注每一格是什么 |
 | 2026-09-21 | T14 | §2.3 要求「隔离不缩小分母」，但未规定样本版本可否被删除 | `experiment_items.sample_version_id` 用 **ON DELETE RESTRICT**：用 CASCADE 会让「删一个样本」静默缩小历史实验的分母，而那正是「分母可以被做小」的形态。分母因此永久等于创建时冻结的行数 |
 | 2026-09-21 | T14 | 独立性判定缺少可依据的字段 | 冻结判据为**endpoint 指纹不同**（不是连接 ID 不同）：同一真实来源的别名连接（主/备用账号指向同一 endpoint）不算两名裁判。指纹缺失时**保守判为不独立** —— 反过来会让独立性在配置不全时静默失效，而失效方向是「本该拦住的自评被放行」。`experiment_items.generator_source/generator_fingerprint` **由样本来源推导**并冻结，不接受客户端传入（否则请求体里带一个 generatorConnectionId 就能绕过检查）|
-| 2026-09-21 | T14 | T14 尚未全部交付（本轮完成迁移 0028 + 模型判据与测试；store/worker/报告的落库与执行路径仍待续） | 已交付且经 门禁验证的部分：迁移 0028（experiments/experiment_items/experiment_scores，含可空分值、RESTRICT 外键、只追加的评分与部分唯一索引）、`internal/model/experiment.go` 的判据与统计（独立性、固定分母、零分母无结论、归一化、量表校验、GRPO 在 T24 前不可运行）、`internal/model/experiment_test.go`。**未交付**：experiment store 的读写与聚合、worker 的评估执行（T14 剩余部分，落点在 `apps/worker`）、项目实验 API 与质量页（T19）|
+| 2026-09-21 | T14 | T14 尚未全部交付（本轮完成迁移 0028 + 模型判据与测试；store/worker/报告的落库与执行路径仍待续） | 已交付且经 门禁验证的部分：迁移 0028（experiments/experiment_items/experiment_scores，含可空分值、RESTRICT 外键、只追加的评分与部分唯一索引）、`internal/model/experiment.go` 的判据与统计（独立性、固定分母、零分母无结论、归一化、量表校验、GRPO 在 T24 前不可运行）、`internal/model/experiment_test.go`。**新增交付**：`internal/store/experiment_store.go`（创建即冻结、只追加的评分与 supersede、固定分母报告、续跑清单）与 `internal/store/experiment_store_test.go`。**未交付**：worker 的评估执行（T14 剩余部分，落点在 `apps/worker`）、项目实验 API 与质量页（T19）|
 ---
 
 ## 2. 必须先定清的固定口径

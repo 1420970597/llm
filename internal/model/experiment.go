@@ -171,6 +171,13 @@ type Experiment struct {
 	MissingCount   int `json:"missingCount"`
 	ErrorCount     int `json:"errorCount"`
 
+	// IndependenceCoverage 是「每个生成来源有哪些独立裁判」，只在创建时返回。
+	//
+	// 不落库（可由 judges + generator_sources 重算），但创建时**必须**返回：
+	// 它正是 T14 验收项「若实验含多生成来源，逐条判断独立性并明确有效评分覆盖」
+	// 的展示内容 —— 让用户当场知道「来源 X 只有 1 名独立裁判」。
+	IndependenceCoverage map[string][]int64 `json:"independenceCoverage,omitempty"`
+
 	CreatedBy  *int64     `json:"createdBy,omitempty"`
 	StartedAt  *time.Time `json:"startedAt,omitempty"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
