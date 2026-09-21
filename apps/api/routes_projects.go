@@ -14,6 +14,7 @@ import (
 
 	"github.com/1420970597/llm/internal/model"
 	"github.com/1420970597/llm/internal/store"
+	"github.com/1420970597/llm/internal/studio"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -88,48 +89,56 @@ func parseProjectID(raw string) (int64, error) {
 	return id, nil
 }
 
-// apiErrorBody 是契约 §1.2 的错误响应。
-//
-// 注意：它**不**复用 writeError 的 `{"error": "..."}` 形状，因为新契约要求
-// code/fieldErrors/blockers/requestId/retryable。两者并存是过渡期的必然结果：
-// 旧端点的前端调用方已经依赖 `error` 字符串，改形状会同时打断旧页面。
-type apiErrorBody struct {
-	Code        string             `json:"code"`
-	Message     string             `json:"message"`
-	FieldErrors []model.FieldError `json:"fieldErrors,omitempty"`
-	Blockers    []apiBlocker       `json:"blockers,omitempty"`
-	RequestID   string             `json:"requestId"`
-	Retryable   bool               `json:"retryable"`
-}
-
-// apiBlocker 是可跳转的阻塞项（契约 §2.8）。
-type apiBlocker struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Link    string `json:"link,omitempty"`
-}
-
 // 错误码常量。前端按 code 分支，不解析中文文案（文案会改，code 不会）。
+//
+// T08 起这些常量由 internal/studio 定义（唯一来源），这里保留别名使
+// 既有调用点与测试无需改动 —— 别名而不是复制，避免两处取值漂移。
 const (
-	codeValidation    = "VALIDATION_FAILED"
-	codeUnauthorized  = "UNAUTHORIZED"
-	codeForbidden     = "FORBIDDEN"
-	codeNotFound      = "NOT_FOUND"
-	codeConflict      = "CONFLICT"
-	codeRevisionStale = "REVISION_CONFLICT"
-	codeIdempotency   = "IDEMPOTENCY_KEY_REUSED"
-	codeUnavailable   = "DEPENDENCY_UNAVAILABLE"
+	codeValidation    = studio.CodeValidation
+	codeUnauthorized  = studio.CodeUnauthorized
+	codeForbidden     = studio.CodeForbidden
+	codeNotFound      = studio.CodeNotFound
+	codeConflict      = studio.CodeConflict
+	codeRevisionStale = studio.CodeRevisionStale
+	codeIdempotency   = studio.CodeIdempotency
+	codeUnavailable   = studio.CodeUnavailable
 )
 
-// writeAPIError 是项目 API 的**唯一**错误出口。
+// apiErrorBody 是契约 §1.2 的错误实体（T02 的历史命名，T08 后为 studio.ErrorBody 的别名）。
+//
+// 保留别名使既有测试与调用点继续编译，同时把定义收敛到 internal/studio 一处。
+type apiErrorBody = studio.ErrorBody
+
+// apiBlocker 是 studio.Blocker 的历史别名（同上）。
+type apiBlocker = studio.Blocker
+
+// writeAPIError 是项目 API 的错误出口。
+//
+// 响应形状是契约 §1.2 的**嵌套**形式：`{"error": {code, message, fieldErrors,
+// blockers, requestId, retryable}}`。
+//
+// 为什么必须嵌套（T08 发现 T02 写成了扁平）：契约 §1.2 与 §6 要求
+// 「TS 类型与本节 schema 一致，由 T08 的契约测试断言」，而扁平形状下
+// `error.message` 无处存放 —— 前端拦截器只能把 `data.error` 当字符串，
+// 于是新契约的错误码/字段错误/blockers 全部拿不到。
+// 旧端点（writeError）保持 `{"error": "..."}` 字符串形态不变，
+// 两者并存由前端拦截器区分（见 lib/api.ts）。
 func (app *application) writeAPIError(w http.ResponseWriter, r *http.Request, status int, code, message string, fieldErrors []model.FieldError) {
-	app.writeJSON(w, status, apiErrorBody{
+	app.writeJSON(w, status, apiErrorResponse{Error: studio.ErrorBody{
 		Code:        code,
 		Message:     message,
 		FieldErrors: fieldErrors,
 		RequestID:   requestID(r),
-		Retryable:   status == http.StatusTooManyRequests || status == http.StatusServiceUnavailable,
-	})
+		Retryable:   studio.IsRetryable(code),
+	}})
+}
+
+// apiErrorResponse 是契约 §1.2 的错误响应外壳。
+//
+// 用命名类型而不是匿名结构：契约测试要对它做反射取 JSON 字段名，
+// 匿名结构无法被引用，测试只能靠字符串字面量重复一遍 schema细节。
+type apiErrorResponse struct {
+	Error studio.ErrorBody `json:"error"`
 }
 
 // writeAPIEntityError 把 store/service 层的错误翻译成契约错误码。

@@ -15,6 +15,7 @@ import (
 	"github.com/1420970597/llm/internal/migrate"
 	"github.com/1420970597/llm/internal/model"
 	"github.com/1420970597/llm/internal/store"
+	"github.com/1420970597/llm/internal/studio"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -37,6 +38,9 @@ type application struct {
 	documents   *store.DocumentStore
 	idempotency *store.IdempotencyStore
 	redis       *redis.Client
+	// studio 是 Atelier 命令层（T08）：授权、幂等、分页与读模型都收在它里，
+	// 使 handler 只做「解析 → 调用 → 写响应」。
+	studio *studio.Service
 	// sessionUsers 是「按会话里的用户 ID 读服务端当前身份」的可替换实现（T03）。
 	// 生产始终为 nil（走 app.auth）；测试注入假实现以在无数据库环境下
 	// 覆盖「撤权立即生效」这两个分支。
@@ -85,6 +89,7 @@ func main() {
 		documents:      store.NewDocumentStore(pool),
 		idempotency:    store.NewIdempotencyStore(pool),
 		redis:          redisClient,
+		studio:         studio.New(pool),
 	}
 
 	if err := app.reasoning.EnsureSchemaReady(ctx); err != nil {

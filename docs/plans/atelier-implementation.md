@@ -66,6 +66,9 @@
 | 2026-09-21 | T07 | §2.4 未定义「未知费用占用多少额度」 | 冻结为：`unknown` 按**当时预留的金额**占用（`budget_reservations.uncertain_minor`），不是 0。理由：预留是我们愿意为这次请求付出的上界，而超时/断连时供应商可能已收费；记 0 等于宣称「确定没花钱」，会让用户看到剩余额度却已被扣款。`estimated`（有价格有估算用量）同样计入 `uncertain_minor` 而**不**计入 `settled_minor` —— 后者只放精确值，否则「估计」会被当成账单凭证 |
 | 2026-09-21 | T07 | §5 要求「模型参数默认取能力声明」但没有说能力声明存在哪里 | 新增表 `model_capabilities`（每个连接+模型一行：temperature/reasoning_effort/结构化输出/JSON 模式/token 上限）。代码侧 `internal/llm/capabilities.go` 提供按模型家族的内置**保守**默认（已知拒绝 temperature 的家族一律声明不支持），仅在数据库无声明时使用，且用 `ModelCapabilities.Source` 标明来源（`declaration` / `builtin-default`）。内置默认**不猜** token 上限（0=未声明）：猜小了会把合法配置误拒，猜大了等于没校验 |
 | 2026-09-21 | T07 | §4.1 的 Batch 对象没有预算占用字段，但 §6.1 的批次创建命令接受自带 `budget` | 迁移 0027 给 `batches` 增加 `budget_reserved_minor/budget_settled_minor/budget_uncertain_minor` 三列，使「本批还剩多少」不必聚合 `usage_ledger`。批次上限与项目上限**两层都拦**，生效上限取二者中更严格者（`model.EffectiveLimitMinor`）；币种不一致返回字段级配置错误而不是 `ErrBudgetExhausted`，避免用户去加预算却修不好 |
+| 2026-09-21 | T08 | §1.2 的错误响应是**嵌套**形状（`{"error": {...}}`），而 T02 实现成了扁平（顶层直接是 `code/message`） | 对齐契约：`writeAPIError` 改为写 `{"error": {...}}`，错误体类型收敛到 `studio.ErrorBody`，并加断言「顶层只有 error 一个键」。前端拦截器同时支持两种形状（旧端点仍是 `{"error": "文案"}` 字符串），契约 §7 的过渡期要求两者并存。变更理由：扁平形状下前端只能把 `data.error` 当字符串，新契约的 `code/fieldErrors/blockers` 全部拿不到，而 §6 明确要求「TS 类型与本节 schema 一致」|
+| 2026-09-21 | T08 | §6.3 把契约层落点写作 `internal/studio/`，但未规定它与 `apps/api` 的分工 | 确立分工：`internal/studio` **不引用 `net/http`**，只定义信封/错误码/游标分页/能力位/读模型与命令层（授权、幂等）；HTTP 状态码由 handler 用 `studio.StatusFor` 做一次集中映射。理由：一个契约错误在不同资源下对应不同状态码（「不是成员」必须是资源隐藏型 404 而不是 403），而这一决定属于 HTTP 层；且 service 可以被 worker 与测试直接使用 |
+| 2026-09-21 | T08 | §3 列出 `GET P/samples?status=&risk=`，但两者的判据来自人工判断与证据（T16/T17 才建表） | T08 **显式拒绝**这两个筛选（422 + 字段错误，点名负责的任务），而不是接受后忽略。理由：「传了筛选但没生效」会让用户以为自己看到的是筛过的结果，而列表看起来很正常 —— 那类错误在界面上完全不可见。同一原则适用于 T14/T20 才有的 experiments/releases 端点：它们不在 T08 先建一个空壳，而在各自任务里按同一契约**增量**交付（T08 验收项原文）|
 
 ---
 

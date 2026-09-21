@@ -100,19 +100,9 @@ func TestSessionRoleIsRefreshedFromServer(t *testing.T) {
 // 测试只调用 `applyRouteRegistrars`。同时调用两者会重复注册同一 pattern，
 // Go 1.22+ ServeMux 会 panic —— 那正是本测试要排除的失败形态。
 func TestProjectRoutesRegistered(t *testing.T) {
-	app := &application{}
-	mux := http.NewServeMux()
-
-	func() {
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				t.Fatalf("注册路由时 panic（重复注册或与其他 lane 的前缀冲突）: %v", recovered)
-			}
-		}()
-		applyRouteRegistrars(mux, app)
-	}()
-
-	handler := app.middleware(mux)
+	// 共享一次注册结果：applyRouteRegistrars 会写包级 map，重复应用会 panic
+	//（那是防两个 lane 静默覆盖彼此路由的保护，见 sharedRoutedApplication）。
+	app, handler := sharedRoutedApplication(t)
 
 	// 已注册的路由必须可达：未登录时由中间件（或 handler）返回 401，而不是 404。
 	// 404 会说明路由根本没挂上，而这种情况在界面上表现为「打开页面就提示资源不存在」。
@@ -376,6 +366,11 @@ func TestProjectCapabilitiesByRole(t *testing.T) {
 }
 
 // TestWriteAPIErrorShape 断言契约 §1.2 的错误响应字段。
+//
+// 形状是**嵌套**的（`{"error": {...}}`）：T02 初版写成了扁平，
+// 而 §1.2 与 §6（「TS 类型与本节 schema 一致」）都要求嵌套 ——
+// 扁平形状下前端拦截器只能把 `data.error` 当字符串，
+// 新契约的错误码/字段错误/blockers 全部拿不到。T08 对齐了它。
 func TestWriteAPIErrorShape(t *testing.T) {
 	app := &application{}
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/projects", nil)
@@ -387,29 +382,44 @@ func TestWriteAPIErrorShape(t *testing.T) {
 	if recorder.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("状态码必须是 422，实际 %d", recorder.Code)
 	}
-	var body apiErrorBody
+	var body apiErrorResponse
 	if err := json.NewDecoder(bytes.NewReader(recorder.Body.Bytes())).Decode(&body); err != nil {
 		t.Fatalf("错误响应必须是 JSON: %v", err)
 	}
-	if body.Code != codeValidation {
-		t.Fatalf("错误码必须是 %q，实际 %q", codeValidation, body.Code)
+	if body.Error.Code != codeValidation {
+		t.Fatalf("错误码必须是 %q，实际 %q", codeValidation, body.Error.Code)
 	}
-	if body.RequestID == "" {
+	if body.Error.RequestID == "" {
 		t.Fatal("错误响应必须带 requestId（§1.2）：用户报错截图要能对上日志")
 	}
-	if len(body.FieldErrors) != 1 || body.FieldErrors[0].Field != "pilotSize" {
-		t.Fatalf("fieldErrors 必须透出，实际 %+v", body.FieldErrors)
+	if len(body.Error.FieldErrors) != 1 || body.Error.FieldErrors[0].Field != "pilotSize" {
+		t.Fatalf("fieldErrors 必须透出，实际 %+v", body.Error.FieldErrors)
 	}
-	if body.Retryable {
+	if body.Error.Retryable {
 		t.Fatal("422 是不可重试错误，retryable 必须为 false")
+	}
+
+	// 嵌套形状必须真的嵌套：顶层不得同时出现 code/message。
+	var topLevel map[string]json.RawMessage
+	if err := json.Unmarshal(recorder.Body.Bytes(), &topLevel); err != nil {
+		t.Fatalf("错误响应必须是 JSON: %v", err)
+	}
+	if _, exists := topLevel["code"]; exists {
+		t.Fatal("错误体必须嵌在 error 下（§1.2），不得把 code 提到顶层")
+	}
+	if _, exists := topLevel["error"]; !exists {
+		t.Fatal("错误响应必须在 error 键下携带错误体")
 	}
 
 	// 5xx 才可重试。
 	recorder = httptest.NewRecorder()
 	app.writeAPIError(recorder, req, http.StatusServiceUnavailable, codeUnavailable, "依赖不可用", nil)
 	_ = json.NewDecoder(bytes.NewReader(recorder.Body.Bytes())).Decode(&body)
-	if !body.Retryable {
+	if !body.Error.Retryable {
 		t.Fatal("503 必须标记 retryable=true")
+	}
+	if body.Error.Code != codeUnavailable {
+		t.Fatalf("503 的错误码必须是 %q，实际 %q", codeUnavailable, body.Error.Code)
 	}
 }
 

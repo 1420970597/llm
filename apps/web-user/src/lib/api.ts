@@ -11,7 +11,9 @@ export type ApiError = Error & {
   rawMessage?: string
 }
 
-const client = axios.create({
+// client 导出供模块化 API 使用（Atelier 的 api/studio.ts 复用它的会话与
+// 错误处理：拦截器是**唯一**的错误本地化入口，见下方 localizeApiMessage）。
+export const client = axios.create({
   baseURL: '/api',
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
@@ -772,7 +774,17 @@ client.interceptors.response.use(
     } else if (statusCode === 403) {
       fallbackMessage = '你没有执行该操作的权限，请联系管理员。'
     }
-    const rawMessage: string = String(error?.response?.data?.error ?? error?.message ?? fallbackMessage)
+    // 两种错误形状并存（契约 §7 的过渡期）：
+    //   * 旧端点 writeError 返回 `{"error": "英文/中文文案"}`（字符串）；
+    //   * Atelier 新端点返回契约 §1.2 的嵌套 `{"error": {code, message, ...}}`。
+    // 必须同时支持：只认字符串会让新端点的报错变成 "[object Object]"，
+    // 只认对象会让所有旧页面的报错消失。
+    const errorPayload = error?.response?.data?.error
+    const rawMessage: string = String(
+      (typeof errorPayload === 'string' ? errorPayload : errorPayload?.message) ??
+        error?.message ??
+        fallbackMessage,
+    )
     // 统一在这里把后端文案转成面向中文用户的可执行提示（issue #103 / #107）。
     //
     // 为什么放在拦截器而不是各调用点：后端会对同一类前置条件返回不同句式

@@ -55,24 +55,38 @@ func NewBatchStore(db *pgxpool.Pool) *BatchStore {
 // 快照 hash 由服务端从**被引用的版本行**读出，而不是信任客户端传来的 hash：
 // 客户端提供的 hash 无法证明它对应库里的内容，而快照的全部价值就在于
 // 「事后能核对内容是否变过」。因此这里必须自己查。
+// CreateBatch 创建一个批次（独立事务）。
 func (s *BatchStore) CreateBatch(ctx context.Context, projectID, actorID int64, targetKind string, input model.CreateBatchInput) (model.Batch, error) {
+	batch, _, err := s.CreateBatchWithJob(ctx, projectID, actorID, targetKind, input, nil)
+	return batch, err
+}
+
+// CreateBatchWithJob 在**同一事务**内创建批次并创建作业（Issue #160 T06/T08）。
+//
+// 为什么必须同事务（T06 验收项「API 落库后、派发前崩溃不丢任务」）：
+// 分两次写会留下两种坏状态 ——
+//   - 批次写了但作业没写：用户看到「已排队」，实际永远不会被执行；
+//   - 作业写了但批次没写：worker 去处理一个不存在的批次。
+//
+// job 为 nil 时退化为「只建批次不派发」，供只做设计验证的场景使用。
+func (s *BatchStore) CreateBatchWithJob(ctx context.Context, projectID, actorID int64, targetKind string, input model.CreateBatchInput, job *EnqueueJobInput) (model.Batch, *model.Job, error) {
 	input.Normalize()
 	if err := input.Validate(); err != nil {
-		return model.Batch{}, err
+		return model.Batch{}, nil, err
 	}
 	if targetKind != model.TargetKindSFT && targetKind != model.TargetKindGRPO {
-		return model.Batch{}, &apiStoreError{Message: "项目目标类型不合法"}
+		return model.Batch{}, nil, &apiStoreError{Message: "项目目标类型不合法"}
 	}
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
-		return model.Batch{}, err
+		return model.Batch{}, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	snapshot, generationConfig, err := resolveBatchSnapshotTx(ctx, tx, projectID, input)
 	if err != nil {
-		return model.Batch{}, err
+		return model.Batch{}, nil, err
 	}
 	generationConfig.SchemaVersion = model.SampleSchemaForTarget(targetKind)
 
@@ -143,12 +157,12 @@ func (s *BatchStore) CreateBatch(ctx context.Context, projectID, actorID int64, 
 		&batch.CreatedBy, &batch.StartedAt, &batch.FinishedAt, &batch.CreatedAt, &batch.UpdatedAt)
 	if err != nil {
 		if isForeignKeyViolation(err) {
-			return model.Batch{}, model.FieldErrors{{
+			return model.Batch{}, nil, model.FieldErrors{{
 				Field:   "blueprintVersionId",
 				Message: "引用的文档版本不存在或不属于本项目，请重新选择方案版本",
 			}}
 		}
-		return model.Batch{}, err
+		return model.Batch{}, nil, err
 	}
 	batch.Snapshot.BlueprintVersionID = derefVersionID(blueprintVersionID)
 	batch.Snapshot.CoverageVersionID = derefVersionID(coverageVersionID)
@@ -165,7 +179,7 @@ func (s *BatchStore) CreateBatch(ctx context.Context, projectID, actorID int64, 
 		"batchId":   batch.ID,
 		"purpose":   input.Purpose,
 	}); err != nil {
-		return model.Batch{}, err
+		return model.Batch{}, nil, err
 	}
 
 	if err := writeStudioAuditTx(ctx, tx, StudioAudit{
@@ -176,13 +190,29 @@ func (s *BatchStore) CreateBatch(ctx context.Context, projectID, actorID int64, 
 		ProjectID:  projectID,
 		Reason:     fmt.Sprintf("purpose=%s units=%d", input.Purpose, input.UnitCount),
 	}); err != nil {
-		return model.Batch{}, err
+		return model.Batch{}, nil, err
+	}
+
+	var createdJob *model.Job
+	if job != nil {
+		// 作业的作用域必须由服务端填，不接受调用方传入的批次 ID：
+		// 否则一次笔误就能让作业指向别的批次（进而把内容写进别的项目）。
+		job.BatchID = &batch.ID
+		job.ProjectID = &projectID
+		if job.CreatedBy == nil {
+			job.CreatedBy = &actorID
+		}
+		enqueued, _, err := EnqueueJobTx(ctx, tx, *job)
+		if err != nil {
+			return model.Batch{}, nil, err
+		}
+		createdJob = &enqueued
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return model.Batch{}, err
+		return model.Batch{}, nil, err
 	}
-	return batch, nil
+	return batch, createdJob, nil
 }
 
 // resolveBatchSnapshotTx 读取被引用版本的 hash，组装快照。
