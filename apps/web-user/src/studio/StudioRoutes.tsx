@@ -11,6 +11,7 @@ import { StudioLayout } from './StudioLayout'
 import { ProjectOverviewPage, ProjectsPage } from './pages/ProjectsPages'
 import { NewProjectWizard } from './pages/NewProjectWizard'
 import { BlueprintPage, CoveragePage, StandardPage } from './pages/BlueprintPages'
+import { BatchDetailPage, BatchPlanningPage, FailuresPage, RunsPage } from './pages/RunPages'
 import {
   allStudioRoutes,
   auxiliaryRoutes,
@@ -46,6 +47,11 @@ import {
 const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   projects: () => <ProjectsPage />,
   'project.overview': () => <ProjectOverviewPage />,
+  'project.runs': () => <RunsPage />,
+  'project.pilot': () => <BatchPlanningPage purpose="pilot" />,
+  'project.runNew': () => <BatchPlanningPage purpose="scale" />,
+  'project.runDetail': () => <BatchDetailPage />,
+  'project.runFailures': () => <FailuresPage />,
   'project.blueprint': () => <BlueprintPage />,
   'project.coverage': () => <CoveragePage />,
   'project.standard': () => <StandardPage />,

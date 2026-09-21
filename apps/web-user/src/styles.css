@@ -1306,3 +1306,375 @@ select:focus {
   white-space: nowrap;
   border: 0;
 }
+
+/* ---------------------------------------------------------------------------
+ * 生产工作区样式（Issue #160 T13）
+ * --------------------------------------------------------------------------- */
+
+/* 批次表：计划/完成/失败/在途**分列**，因此不做「合并成进度条」的视觉暗示。 */
+.batch-table {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--panel-strong);
+}
+
+.batch-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.7fr 1.6fr repeat(4, 0.7fr) 2.4fr;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--panel-border);
+  font-size: 13px;
+}
+
+.batch-row--head {
+  border-top: none;
+  background: var(--bg-strong);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.batch-row__link {
+  border: none;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+}
+
+.batch-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.batch-status {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.batch-status--running {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--accent-strong);
+}
+
+.batch-status--paused {
+  background: rgba(217, 119, 6, 0.14);
+  color: var(--warning);
+}
+
+.batch-status--failed {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+.batch-status--done {
+  background: rgba(22, 163, 74, 0.14);
+  color: var(--success);
+}
+
+.batch-status--queued {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--text-soft);
+}
+
+.batch-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.batch-snapshot,
+.batch-steps,
+.batch-events,
+.preflight-list,
+.failure-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.batch-snapshot li,
+.batch-steps li,
+.batch-events li,
+.preflight-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--panel-border);
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.batch-steps li {
+  justify-content: space-between;
+}
+
+.batch-events__type {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.batch-events__time {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.preflight-ok {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.preflight-block {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.preflight-detail {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.failure-list {
+  display: grid;
+  gap: 10px;
+}
+
+/* 蓝图页样式（T11）：三栏布局 + 只读历史提示。 */
+.blueprint-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr) 240px;
+  gap: 16px;
+}
+
+.blueprint-readonly-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background: rgba(217, 119, 6, 0.12);
+  color: var(--warning);
+}
+
+.blueprint-nodes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.blueprint-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--panel-strong);
+  color: var(--text-soft);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.blueprint-node--active {
+  border-color: var(--panel-border-strong);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.blueprint-node__badge {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(217, 119, 6, 0.14);
+  color: var(--warning);
+}
+
+.blueprint-history__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.blueprint-history__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--panel-strong);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.blueprint-history__item--active {
+  border-color: var(--panel-border-strong);
+  background: var(--accent-soft);
+}
+
+.blueprint-history__hash {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--text-muted);
+}
+
+.blueprint-history__reason {
+  color: var(--text-muted);
+}
+
+.blueprint-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  font: inherit;
+  background: var(--panel-strong);
+  color: var(--text);
+}
+
+.blueprint-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.coverage-matrix {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.coverage-directions {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+
+.coverage-directions li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--panel-border);
+  font-size: 13px;
+}
+
+.coverage-direction__name {
+  flex: 1;
+  min-width: 0;
+}
+
+.coverage-direction__quota {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.coverage-gap {
+  border: none;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.standard-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.standard-step__index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.console-page__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.console-card {
+  background: var(--panel-strong);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+}
+
+.wizard-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wizard-field__label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.wizard-field__required {
+  color: #b91c1c;
+}
+
+.wizard-field__error {
+  margin-top: 4px;
+  color: #b91c1c;
+  font-size: 12px;
+}
+
+.wizard-triple {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.wizard-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.wizard-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+}

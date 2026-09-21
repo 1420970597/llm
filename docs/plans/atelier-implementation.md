@@ -79,6 +79,8 @@
 | 2026-09-21 | T12 | §6.3 未规定「覆盖分配」的算法位置与确定性要求 | 放在 `internal/studio/batch_runner.go` 的纯函数 `AllocateUnits`：按覆盖版本的领域/方向**顺序**展开、每方向按 `quota` 取 ordinal、直到计划单元数用尽。**必须确定** —— item_key = `domain/direction#ordinal`，因此「恢复失败项」命中同一批 item（配合 T05 的 UNIQUE(batch_id,item_key)），不会把已完成的工作重跑一遍。缺覆盖版本时退化为 `unit/default#n`，使「无覆盖方案的手动扩量」仍可执行 |
 | 2026-09-21 | T12 | §4.2 未规定「单元级重试」归谁 | 明确**不**在 runner 内重试：重试由作业层按 attempt/退避/上限统一管理。runner 内再重试会与作业层的 attempt 计数重复，同一笔费用会得到两次机会，`max_attempts` 也失去意义。runner 只做「抢占 → 生成 → 提交或记录失败」，不可重试的错误类别显式标 `retryable=false`，使「恢复失败项」不会重复花在必然失败的输入上 |
 | 2026-09-21 | T12 | §2.2 的 `reasoning` 与旧生成器的 `chainOfThought` 命名不同 | 在 worker 侧做**显式适配**（`internal/llm` 的旧生成器不动，属第一轮冻结契约）：旧名直接透传会被 T05 的 schema 校验拒绝，而静默接受一个不在契约里的字段更糟。`StandardStep`→`ChainStep` 同理按显式 `order` 稳定排序（新 schema 的顺序是数据，旧类型用数组下标当顺序） |
+| 2026-09-21 | T13 | §3.2 未规定批次详情/异常恢复的路由形态 | 落实为生产标签的**子页**（`navParent: project.runs`）：`/p/:projectId/runs/:batchId` 与 `/runs/:batchId/failures`，因此侧边栏高亮与面包屑都指回「生产」而不是掉回默认项（issue #61 的同一修复形态）。`?slice=` 从覆盖矩阵带缺口方向进入规划页，**只影响提示与初值**，不触发任何重生成 |
+| 2026-09-21 | T13 | §4.2 未规定「暂停中」在界面上如何表达 | 冻结为：暂停后必须**同时**显示「已停止提交新请求」与「在途 N 个请求仍会完成并计费」（`data-pause-notice` 可断言）。只显示「已暂停」会让用户以为不再花钱，而 §2.4 明确暂停不撤回在途请求 |
 ---
 
 ## 2. 必须先定清的固定口径
