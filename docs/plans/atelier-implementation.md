@@ -59,6 +59,8 @@
 | 2026-09-21 | T04 | §6.3 把 typed 文档 schema 的落点写作 `internal/model/pipeline_v2.go`，但该文件已由第一轮冻结契约（L1–L15，见 `docs/plans/eval-and-cleaning-plan.md`）占用，包含 `ChainStep`/`ChainStandard`/`GrpoPrompt`/`GrpoLevelRubric`/`SftRecord`/`ExportMapping`/`ExportFormatList`/`GenerationRun` 等在用类型 | 保留 §6.3 指定的**语义落点**（同一 `internal/model` 包的 typed 文档 schema），物理落到新文件 `internal/model/studio_docs.go`；`pipeline_v2.go` 只做零改动。GRPO 判据**复用**既有 `GrpoLevelRubric`（它已承载判据文本 + 接受/拒绝边界例），不新定义同概念类型。原因：混在一起会让两轮契约无法辨认，且本轮 diff 无法与旧类型分开审阅 |
 | 2026-09-21 | T04 | §6.3 把文档读写的落点写作「版本 store/service」，未指定文件名 | 落到 `internal/store/document_store.go`（文档版本）与 `apps/api/routes_documents.go`（命令与读模型），均为新文件。§6.3 指定的 `internal/model/pipeline_v2.go` 保持不动 |
 | 2026-09-21 | T04 | `ExportFormatList`/`canonicalFormats` 已含 `parquet`，而 §2.2 本轮只承诺 SFT JSONL/CSV/Alpaca 与 GRPO JSONL | 新增文档允许集（`model.KnownExportFormats`）**有意排除 parquet**：`internal/exporter/parquet.go` 的 `IsRealParquet=false`，实为列式 JSONL，允许它出现在新蓝图/映射里即构成假承诺。旧格式清单不动（兼容读路径） |
+| 2026-09-21 | T06 | §6.3 把 worker 侧落点写作 `apps/worker/registry.go`，暗示复用现有 `RegisterJobHandler` | **不改动** `registry.go`（属于第一轮冻结契约）。新建 `apps/worker/studio_jobs.go` 内的 `RegisterStudioJobHandler`：理由是第一轮的 `jobHandler` 签名固定为 `func(ctx, *jobContext, jobPayload) error`，既拿不到 `model.Job`（租约/attempt/fencing token），也无法返回要写回 `jobs.payload` 的结果摘要；改它的签名会让所有旧 lane handler 一同重编。两套注册表共存的代价由「`studio.` 前缀 + 两条独立队列」限定在可辨认范围内 |
+| 2026-09-21 | T06 | 契约未规定 Studio 队列名与单进程并发度的配置项 | 新增 `WORKER_STUDIO_QUEUE_NAME`（默认 `WORKER_QUEUE_NAME` + `-studio`）与 `WORKER_STUDIO_CONCURRENCY`（默认 2，上限 8）。原因为「旧消费者不得误吞新消息」需要队列名分离作为结构性事实，而串行会让一个长批次占满 worker；并发度只控制「同时几个批次在跑」，批次内并发仍由该批次的 `generation_config.concurrency` 决定 |
 
 ---
 

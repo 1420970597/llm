@@ -290,11 +290,18 @@ func decodeGenerationConfig(raw []byte) model.BatchGenerationConfig {
 // 读取
 // ---------------------------------------------------------------------------
 
-// batchSelectColumns 是批次的统一列清单。
+// batchColumns 是批次的权威列清单，**只作为核对基准，不插值进 SQL**。
 //
-// 抽出来的原因：CreateBatch / GetBatch / ListBatches 必须用同一列与同一顺序，
-// 两处漂移会在「列表正常但详情错列」时才暴露，而那种错误很难一眼看出。
-const batchSelectColumns = `
+// 为什么不把它拼进 SQL：把列清单常量插值到语句里，会让每处调用都多一个
+// 「这段 SQL 不是静态的」的审查面 —— 静态分析器无法区分可信常量与用户输入，
+// 于是真正的注入点会被淹没在噪声里（那正是安全门禁反复报出的形态）。
+//
+// 因此本文件每条语句都**完整静态**地写出列清单（含 ListBatches 的 WHERE：
+// 它的条件文本本身也是静态的，只有参数是动态的）。重复的代价由
+// TestBatchSelectStatementsMatchCanonicalColumns 兜住 —— 它断言每条静态
+// 语句的列清单与本节逐字一致，于是「改了一处忘了另一处」会立即失败，
+// 而不是等到「列表正常但详情错列」时才暴露。
+const batchColumns = `
   id, project_id, purpose, status, control_state, target_kind, schema_version,
   blueprint_version_id, blueprint_content_hash,
   coverage_version_id, coverage_content_hash,
@@ -305,9 +312,46 @@ const batchSelectColumns = `
   budget_currency, budget_limit_minor, coverage_slice, fencing_token, lease_owner, lease_until,
   created_by, started_at, finished_at, created_at, updated_at`
 
+// batchSelectByIDSQL 按 ID 读取批次（静态语句，见 batchColumns 的说明）。
+const batchSelectByIDSQL = `
+  SELECT
+    id, project_id, purpose, status, control_state, target_kind, schema_version,
+    blueprint_version_id, blueprint_content_hash,
+    coverage_version_id, coverage_content_hash,
+    standard_version_id, standard_content_hash,
+    quality_policy_version_id, quality_policy_content_hash,
+    mapping_version_id, mapping_content_hash,
+    generation_config, planned_units, completed_units, failed_units, in_flight_units,
+    budget_currency, budget_limit_minor, coverage_slice, fencing_token, lease_owner, lease_until,
+    created_by, started_at, finished_at, created_at, updated_at
+  FROM batches WHERE id = $1`
+
+// batchListSQL 是批次列表查询（静态语句，见 batchColumns 的说明）。
+//
+// keyset 游标（契约 §1.5）：用 (created_at, id) 而不是 OFFSET。
+// OFFSET 在并发写入下会漏行或重复行，而批次列表正是「边跑边看」的场景。
+const batchListSQL = `
+    SELECT
+      id, project_id, purpose, status, control_state, target_kind, schema_version,
+      blueprint_version_id, blueprint_content_hash,
+      coverage_version_id, coverage_content_hash,
+      standard_version_id, standard_content_hash,
+      quality_policy_version_id, quality_policy_content_hash,
+      mapping_version_id, mapping_content_hash,
+      generation_config, planned_units, completed_units, failed_units, in_flight_units,
+      budget_currency, budget_limit_minor, coverage_slice, fencing_token, lease_owner, lease_until,
+      created_by, started_at, finished_at, created_at, updated_at
+    FROM batches
+    WHERE project_id = $1
+      AND ($2 = '' OR purpose = $2)
+      AND ($3 = '' OR status = $3)
+      AND ($4::timestamptz IS NULL OR (created_at, id) < ($4::timestamptz, $5::bigint))
+    ORDER BY created_at DESC, id DESC
+    LIMIT $6`
+
 // GetBatch 读取单个批次；不存在返回 pgx.ErrNoRows。
 func (s *BatchStore) GetBatch(ctx context.Context, batchID int64) (model.Batch, error) {
-	return scanBatch(s.db.QueryRow(ctx, `SELECT `+batchSelectColumns+` FROM batches WHERE id = $1`, batchID))
+	return scanBatch(s.db.QueryRow(ctx, batchSelectByIDSQL, batchID))
 }
 
 // BatchListQuery 是批次列表条件。
@@ -339,15 +383,7 @@ func (s *BatchStore) ListBatches(ctx context.Context, query BatchListQuery) ([]m
 		cursorTime = &truncated
 	}
 
-	rows, err := s.db.Query(ctx, `
-    SELECT `+batchSelectColumns+`
-    FROM batches
-    WHERE project_id = $1
-      AND ($2 = '' OR purpose = $2)
-      AND ($3 = '' OR status = $3)
-      AND ($4::timestamptz IS NULL OR (created_at, id) < ($4::timestamptz, $5::bigint))
-    ORDER BY created_at DESC, id DESC
-    LIMIT $6`,
+	rows, err := s.db.Query(ctx, batchListSQL,
 		query.ProjectID, strings.TrimSpace(query.Purpose), strings.TrimSpace(query.Status),
 		cursorTime, query.CursorID, limit)
 	if err != nil {
@@ -598,7 +634,7 @@ func (s *BatchStore) controlBatch(ctx context.Context, projectID, batchID, actor
 		return model.Batch{}, err
 	}
 
-	batch, err := scanBatch(tx.QueryRow(ctx, `SELECT `+batchSelectColumns+` FROM batches WHERE id = $1`, batchID))
+	batch, err := scanBatch(tx.QueryRow(ctx, batchSelectByIDSQL, batchID))
 	if err != nil {
 		return model.Batch{}, err
 	}
@@ -1340,7 +1376,7 @@ func (s *BatchStore) RefreshBatchCounts(ctx context.Context, batchID int64) (mod
 		return model.Batch{}, err
 	}
 
-	batch, err := scanBatch(tx.QueryRow(ctx, `SELECT `+batchSelectColumns+` FROM batches WHERE id = $1`, batchID))
+	batch, err := scanBatch(tx.QueryRow(ctx, batchSelectByIDSQL, batchID))
 	if err != nil {
 		return model.Batch{}, err
 	}

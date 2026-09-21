@@ -70,6 +70,23 @@ type WorkerConfig struct {
 	QueueName        string
 	EncryptionKey    string
 	MigrationPath    string
+
+	// StudioQueueName 是 Atelier 新作业（`studio.*`）的独立队列（Issue #160 T06）。
+	//
+	// 为什么**必须**是独立队列而不是复用 QueueName：旧消费者按
+	// `{type, datasetId}` 解析消息，它既不认识 `{schemaVersion, jobId}`，
+	// 也不可能在解析失败时保持沉默（`type` 为空会走 `default:` 分支打印
+	// 「worker ignored job type=」然后**丢掉消息**）。用两条队列让
+	// 「旧 worker 不得误吞新消息」成为结构性事实，而不是靠双方的约定。
+	StudioQueueName string
+
+	// StudioConcurrency 是单进程同时处理的 Studio 作业数上界。
+	//
+	// 串行（=1）会让一个长批次占满 worker，用户看到别的批次一直排队；
+	// 无上限则无法解释「在途数量」与预算预留。取一个小上界：
+	// 批次内部的并发度由批次自己的 generation_config.concurrency 决定
+	//（T12），这里只控制「同时有几个批次在跑」。
+	StudioConcurrency int
 }
 
 func LoadAPIConfig() APIConfig {
@@ -144,6 +161,12 @@ func LoadWorkerConfig() WorkerConfig {
 		QueueName:        getenv("WORKER_QUEUE_NAME", "dataset-generation"),
 		EncryptionKey:    getenv("APP_ENCRYPTION_KEY", "phase1-dev-only-32-byte-secret!!!"),
 		MigrationPath:    getenv("MIGRATION_PATH", "sql/migrations"),
+
+		// 默认在旧队列名后加 `-studio`：一个只需要 `WORKER_QUEUE_NAME` 的部署
+		// 自动获得两条互不干扰的队列，无需运维记忆两个变量；
+		// 需要时用 WORKER_STUDIO_QUEUE_NAME 覆盖。
+		StudioQueueName:   getenv("WORKER_STUDIO_QUEUE_NAME", getenv("WORKER_QUEUE_NAME", "dataset-generation")+"-studio"),
+		StudioConcurrency: getenvInt("WORKER_STUDIO_CONCURRENCY", 2),
 	}
 }
 

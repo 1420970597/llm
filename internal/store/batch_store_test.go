@@ -1159,3 +1159,64 @@ func TestErrorClassActionIsActionable(t *testing.T) {
 		}
 	}
 }
+
+// TestBatchSelectStatementsMatchCanonicalColumns 是 batch_store.go 中
+// 「列清单不插值进 SQL」这一取舍的兜底。
+//
+// 为什么需要它：为了不让安全门禁无法区分「可信常量拼接」与「用户输入拼接」，
+// 本文件每条查询都完整静态地写出列清单，而不是拼一个常量。代价是
+// 同一份列清单出现多次 —— 一旦有人只改了一处，「列表里有这一列、详情里没有」
+// 这类错误不会在编译期暴露，也不会在概览页暴露，只会在某个用户点开详情时
+// 以「字段串位/值为零」的形态出现，而那时追溯成本极高。
+//
+// 本测试把 batchColumns 当作唯一基准，逐字比较每条静态语句的列清单。
+func TestBatchSelectStatementsMatchCanonicalColumns(t *testing.T) {
+	canonical := selectColumnsOf(t, batchColumns)
+	if len(canonical) < 20 {
+		t.Fatalf("基准列清单异常：只解析出 %d 列，可能是解析器或常量被改坏", len(canonical))
+	}
+
+	statements := map[string]string{
+		"batchSelectByIDSQL": batchSelectByIDSQL,
+		"batchListSQL":       batchListSQL,
+	}
+	for name, statement := range statements {
+		columns := selectColumnsOf(t, statement)
+		if len(columns) != len(canonical) {
+			t.Fatalf("%s 的列数（%d）与基准（%d）不一致：\n语句列：%v\n基准列：%v",
+				name, len(columns), len(canonical), columns, canonical)
+		}
+		for index := range canonical {
+			if columns[index] != canonical[index] {
+				t.Fatalf("%s 第 %d 列错位：语句是 %q，基准是 %q（列的顺序必须一致，因为 scanBatch 按顺序扫描）",
+					name, index+1, columns[index], canonical[index])
+			}
+		}
+	}
+}
+
+// selectColumnsOf 取出 SQL 中 SELECT 与 FROM 之间的列清单；
+// 对于本身就是纯列清单的常量（batchColumns）则直接解析整个字符串。
+func selectColumnsOf(t *testing.T, statement string) []string {
+	t.Helper()
+	body := statement
+	upper := strings.ToUpper(statement)
+	if start := strings.Index(upper, "SELECT"); start >= 0 {
+		end := strings.Index(upper, " FROM ")
+		if end < 0 || end < start {
+			t.Fatalf("无法从语句中定位 SELECT ... FROM：%q", statement)
+		}
+		body = statement[start+len("SELECT") : end]
+	}
+	parts := strings.Split(body, ",")
+	columns := make([]string, 0, len(parts))
+	for _, part := range parts {
+		column := strings.TrimSpace(strings.ReplaceAll(part, "\n", " "))
+		column = strings.Join(strings.Fields(column), " ")
+		if column == "" {
+			continue
+		}
+		columns = append(columns, column)
+	}
+	return columns
+}
