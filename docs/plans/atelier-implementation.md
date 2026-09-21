@@ -81,6 +81,10 @@
 | 2026-09-21 | T12 | §2.2 的 `reasoning` 与旧生成器的 `chainOfThought` 命名不同 | 在 worker 侧做**显式适配**（`internal/llm` 的旧生成器不动，属第一轮冻结契约）：旧名直接透传会被 T05 的 schema 校验拒绝，而静默接受一个不在契约里的字段更糟。`StandardStep`→`ChainStep` 同理按显式 `order` 稳定排序（新 schema 的顺序是数据，旧类型用数组下标当顺序） |
 | 2026-09-21 | T13 | §3.2 未规定批次详情/异常恢复的路由形态 | 落实为生产标签的**子页**（`navParent: project.runs`）：`/p/:projectId/runs/:batchId` 与 `/runs/:batchId/failures`，因此侧边栏高亮与面包屑都指回「生产」而不是掉回默认项（issue #61 的同一修复形态）。`?slice=` 从覆盖矩阵带缺口方向进入规划页，**只影响提示与初值**，不触发任何重生成 |
 | 2026-09-21 | T13 | §4.2 未规定「暂停中」在界面上如何表达 | 冻结为：暂停后必须**同时**显示「已停止提交新请求」与「在途 N 个请求仍会完成并计费」（`data-pause-notice` 可断言）。只显示「已暂停」会让用户以为不再花钱，而 §2.4 明确暂停不撤回在途请求 |
+| 2026-09-21 | T14 | §2.6 只说「缺分与真实 0 分区分」，未规定表结构如何保证 | 用**可空列**保证而不是靠约定：`experiment_scores.raw_score` 为 NULL 表示「这次没拿到分」，`experiment_items.status` 区分 `missing`（缺分）/`error`（裁判出错）/`not_applicable`（不适用）三种事实 —— 压成 0 会让「没评」显示成「评得很差」。另用 `score_state` 标注每一格是什么 |
+| 2026-09-21 | T14 | §2.3 要求「隔离不缩小分母」，但未规定样本版本可否被删除 | `experiment_items.sample_version_id` 用 **ON DELETE RESTRICT**：用 CASCADE 会让「删一个样本」静默缩小历史实验的分母，而那正是「分母可以被做小」的形态。分母因此永久等于创建时冻结的行数 |
+| 2026-09-21 | T14 | 独立性判定缺少可依据的字段 | 冻结判据为**endpoint 指纹不同**（不是连接 ID 不同）：同一真实来源的别名连接（主/备用账号指向同一 endpoint）不算两名裁判。指纹缺失时**保守判为不独立** —— 反过来会让独立性在配置不全时静默失效，而失效方向是「本该拦住的自评被放行」。`experiment_items.generator_source/generator_fingerprint` **由样本来源推导**并冻结，不接受客户端传入（否则请求体里带一个 generatorConnectionId 就能绕过检查）|
+| 2026-09-21 | T14 | T14 尚未全部交付（本轮完成迁移 0028 + 模型判据与测试；store/worker/报告的落库与执行路径仍待续） | 已交付且经 门禁验证的部分：迁移 0028（experiments/experiment_items/experiment_scores，含可空分值、RESTRICT 外键、只追加的评分与部分唯一索引）、`internal/model/experiment.go` 的判据与统计（独立性、固定分母、零分母无结论、归一化、量表校验、GRPO 在 T24 前不可运行）、`internal/model/experiment_test.go`。**未交付**：experiment store 的读写与聚合、worker 的评估执行（T14 剩余部分，落点在 `apps/worker`）、项目实验 API 与质量页（T19）|
 ---
 
 ## 2. 必须先定清的固定口径

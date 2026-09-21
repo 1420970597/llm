@@ -509,16 +509,13 @@ type SampleStats struct {
 	AcceptanceRateDisplay string `json:"acceptanceRateDisplay"`
 }
 
-// AcceptanceRateOf 计算接纳率与展示文案。
+// AcceptanceRateOf 是 model.AcceptanceRateOf 的薄包装。
 //
-// 零分母 → nil + 「无结论」。这一条是本包最容易被"优化"掉、
-// 而后果最严重的规则：显示 100% 会让一个没做任何检查的项目看起来可以发布。
+// 保留这个名字是为了让既有 API 调用点（apps/api/routes_studio_read.go）
+// 无需改动；而**规则本身**只有一份（在 model 里）——
+// 项目统计与实验统计显示不同的接纳率是致命的，那正是两处各写一遍的必然结果。
 func AcceptanceRateOf(accepted, inspected int) (*float64, string) {
-	if inspected <= 0 {
-		return nil, "无结论"
-	}
-	rate := float64(accepted) / float64(inspected)
-	return &rate, fmt.Sprintf("%.1f%%", rate*100)
+	return model.AcceptanceRateOf(accepted, inspected)
 }
 
 // PlannedQuestions 计算计划问题数（n × m × x）。
