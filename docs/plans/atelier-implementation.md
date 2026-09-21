@@ -61,6 +61,11 @@
 | 2026-09-21 | T04 | `ExportFormatList`/`canonicalFormats` 已含 `parquet`，而 §2.2 本轮只承诺 SFT JSONL/CSV/Alpaca 与 GRPO JSONL | 新增文档允许集（`model.KnownExportFormats`）**有意排除 parquet**：`internal/exporter/parquet.go` 的 `IsRealParquet=false`，实为列式 JSONL，允许它出现在新蓝图/映射里即构成假承诺。旧格式清单不动（兼容读路径） |
 | 2026-09-21 | T06 | §6.3 把 worker 侧落点写作 `apps/worker/registry.go`，暗示复用现有 `RegisterJobHandler` | **不改动** `registry.go`（属于第一轮冻结契约）。新建 `apps/worker/studio_jobs.go` 内的 `RegisterStudioJobHandler`：理由是第一轮的 `jobHandler` 签名固定为 `func(ctx, *jobContext, jobPayload) error`，既拿不到 `model.Job`（租约/attempt/fencing token），也无法返回要写回 `jobs.payload` 的结果摘要；改它的签名会让所有旧 lane handler 一同重编。两套注册表共存的代价由「`studio.` 前缀 + 两条独立队列」限定在可辨认范围内 |
 | 2026-09-21 | T06 | 契约未规定 Studio 队列名与单进程并发度的配置项 | 新增 `WORKER_STUDIO_QUEUE_NAME`（默认 `WORKER_QUEUE_NAME` + `-studio`）与 `WORKER_STUDIO_CONCURRENCY`（默认 2，上限 8）。原因为「旧消费者不得误吞新消息」需要队列名分离作为结构性事实，而串行会让一个长批次占满 worker；并发度只控制「同时几个批次在跑」，批次内并发仍由该批次的 `generation_config.concurrency` 决定 |
+| 2026-09-21 | T07 | §2.4 四态费用列出后没有定义「与供应商账单核对」的状态（#160 T07 的原文把该项归给 T01） | 补齐并冻结在本节：`reconciliation ∈ {not_attempted, pending, confirmed, mismatch, impossible}`，存于 `usage_ledger.reconciliation`。其中 `impossible`（供应商不提供明细，例如超时后连请求 ID 都没有）是**必须存在**的终态 —— 把无法核对硬标成 `confirmed` 会让对账报告失去意义。同时固定两条派生规则：无用量或无价格时，结算自动标为 `impossible` 并写明原因；已验证未产生费用的释放自动标为 `confirmed` |
+| 2026-09-21 | T07 | §4.1 的 Usage / Budget 行只列出 `usage_ledger` 与 `budget_reservations`，未规定粒度 | `budget_reservations` 落实为**每个 (project, currency) 一行**的预留台账（`limit/reserved/settled/uncertain` 四个整数计数器），逐请求事实在 `usage_ledger`（每个逻辑请求一行，`UNIQUE(idempotency_key)`）。不同粒度的原因：「不超卖」必须在一个可串行化的点上完成，而「按请求行做 SUM 聚合」在 10 万单元批次下是 O(n²) 且仍需额外的串行化点。**行为未变**：仍然在提交外部请求前事务预留、完成后结算/释放 |
+| 2026-09-21 | T07 | §2.4 未定义「未知费用占用多少额度」 | 冻结为：`unknown` 按**当时预留的金额**占用（`budget_reservations.uncertain_minor`），不是 0。理由：预留是我们愿意为这次请求付出的上界，而超时/断连时供应商可能已收费；记 0 等于宣称「确定没花钱」，会让用户看到剩余额度却已被扣款。`estimated`（有价格有估算用量）同样计入 `uncertain_minor` 而**不**计入 `settled_minor` —— 后者只放精确值，否则「估计」会被当成账单凭证 |
+| 2026-09-21 | T07 | §5 要求「模型参数默认取能力声明」但没有说能力声明存在哪里 | 新增表 `model_capabilities`（每个连接+模型一行：temperature/reasoning_effort/结构化输出/JSON 模式/token 上限）。代码侧 `internal/llm/capabilities.go` 提供按模型家族的内置**保守**默认（已知拒绝 temperature 的家族一律声明不支持），仅在数据库无声明时使用，且用 `ModelCapabilities.Source` 标明来源（`declaration` / `builtin-default`）。内置默认**不猜** token 上限（0=未声明）：猜小了会把合法配置误拒，猜大了等于没校验 |
+| 2026-09-21 | T07 | §4.1 的 Batch 对象没有预算占用字段，但 §6.1 的批次创建命令接受自带 `budget` | 迁移 0027 给 `batches` 增加 `budget_reserved_minor/budget_settled_minor/budget_uncertain_minor` 三列，使「本批还剩多少」不必聚合 `usage_ledger`。批次上限与项目上限**两层都拦**，生效上限取二者中更严格者（`model.EffectiveLimitMinor`）；币种不一致返回字段级配置错误而不是 `ErrBudgetExhausted`，避免用户去加预算却修不好 |
 
 ---
 
@@ -110,6 +115,8 @@
 - **禁止**用浮点表示金额；价格版本（`price_version`）与价格表单独版本化。
 - 费用分四态：`estimated`（估计）、`actual`（实际）、`unknown`（未知）、`reserved`（预留）。
   超时但供应商可能已收费时记为 `unknown`，**不得直接记 0**。
+- 与供应商账单核对的状态：`not_attempted` / `pending` / `confirmed` / `mismatch` / `impossible`
+  五个取值，存于 `usage_ledger.reconciliation`。定义与派生规则见第 1.1 节 T07 行。
 - 无法可靠预留时阻止新的自动执行，并要求补齐价格/上限。
 
 ### 2.5 发布名与发布 ID

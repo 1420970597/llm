@@ -163,7 +163,19 @@ type Batch struct {
 	// 暂停时界面必须显示它：停止新请求不等于立刻停费（§2.4）。
 	InFlightUnits int `json:"inFlightUnits"`
 
-	Budget        BudgetPolicy    `json:"budget"`
+	Budget BudgetPolicy `json:"budget"`
+	// 批次级预算计数器（Issue #160 T07）。
+	//
+	// 与 BudgetPolicy 分开：BudgetPolicy 是「上限」（配置），
+	// 这三个是「已经占用多少」（事实）。放在同一层是因为
+	// 「本批还剩多少」必须能一次读出来，而不需要 JOIN usage_ledger 聚合 ——
+	// 10 万单元的批次下每次预留都聚合一遍是 O(n²)。
+	//
+	// 三者的语义与 §2.4 的四态对应，详见 budget_reservations 的表注释。
+	BudgetReservedMinor  int64 `json:"budgetReservedMinor"`
+	BudgetSettledMinor   int64 `json:"budgetSettledMinor"`
+	BudgetUncertainMinor int64 `json:"budgetUncertainMinor"`
+
 	CoverageSlice json.RawMessage `json:"coverageSlice,omitempty"`
 	FencingToken  int64           `json:"fencingToken"`
 	LeaseOwner    string          `json:"leaseOwner,omitempty"`

@@ -117,7 +117,9 @@ func (s *BatchStore) CreateBatch(ctx context.Context, projectID, actorID int64, 
               quality_policy_version_id, quality_policy_content_hash,
               mapping_version_id, mapping_content_hash,
               generation_config, planned_units, completed_units, failed_units, in_flight_units,
-              budget_currency, budget_limit_minor, coverage_slice, fencing_token, lease_owner, lease_until,
+              budget_currency, budget_limit_minor,
+              budget_reserved_minor, budget_settled_minor, budget_uncertain_minor,
+              coverage_slice, fencing_token, lease_owner, lease_until,
               created_by, started_at, finished_at, created_at, updated_at`,
 		projectID, input.Purpose,
 		nullableVersionID(snapshot.BlueprintVersionID), snapshot.BlueprintContentHash,
@@ -136,6 +138,7 @@ func (s *BatchStore) CreateBatch(ctx context.Context, projectID, actorID int64, 
 		&mappingVersionID, &batch.Snapshot.MappingContentHash,
 		&rawGenerationConfig, &batch.PlannedUnits, &batch.CompletedUnits, &batch.FailedUnits,
 		&batch.InFlightUnits, &batch.Budget.Currency, &batch.Budget.LimitMinor,
+		&batch.BudgetReservedMinor, &batch.BudgetSettledMinor, &batch.BudgetUncertainMinor,
 		&batch.CoverageSlice, &batch.FencingToken, &batch.LeaseOwner, &leaseUntil,
 		&batch.CreatedBy, &batch.StartedAt, &batch.FinishedAt, &batch.CreatedAt, &batch.UpdatedAt)
 	if err != nil {
@@ -309,7 +312,9 @@ const batchColumns = `
   quality_policy_version_id, quality_policy_content_hash,
   mapping_version_id, mapping_content_hash,
   generation_config, planned_units, completed_units, failed_units, in_flight_units,
-  budget_currency, budget_limit_minor, coverage_slice, fencing_token, lease_owner, lease_until,
+  budget_currency, budget_limit_minor,
+  budget_reserved_minor, budget_settled_minor, budget_uncertain_minor,
+  coverage_slice, fencing_token, lease_owner, lease_until,
   created_by, started_at, finished_at, created_at, updated_at`
 
 // batchSelectByIDSQL 按 ID 读取批次（静态语句，见 batchColumns 的说明）。
@@ -322,7 +327,9 @@ const batchSelectByIDSQL = `
     quality_policy_version_id, quality_policy_content_hash,
     mapping_version_id, mapping_content_hash,
     generation_config, planned_units, completed_units, failed_units, in_flight_units,
-    budget_currency, budget_limit_minor, coverage_slice, fencing_token, lease_owner, lease_until,
+    budget_currency, budget_limit_minor,
+    budget_reserved_minor, budget_settled_minor, budget_uncertain_minor,
+    coverage_slice, fencing_token, lease_owner, lease_until,
     created_by, started_at, finished_at, created_at, updated_at
   FROM batches WHERE id = $1`
 
@@ -339,7 +346,9 @@ const batchListSQL = `
       quality_policy_version_id, quality_policy_content_hash,
       mapping_version_id, mapping_content_hash,
       generation_config, planned_units, completed_units, failed_units, in_flight_units,
-      budget_currency, budget_limit_minor, coverage_slice, fencing_token, lease_owner, lease_until,
+      budget_currency, budget_limit_minor,
+      budget_reserved_minor, budget_settled_minor, budget_uncertain_minor,
+      coverage_slice, fencing_token, lease_owner, lease_until,
       created_by, started_at, finished_at, created_at, updated_at
     FROM batches
     WHERE project_id = $1
@@ -1467,6 +1476,7 @@ func scanBatch(row pgx.Row) (model.Batch, error) {
 		&mappingVersionID, &batch.Snapshot.MappingContentHash,
 		&rawGenerationConfig, &batch.PlannedUnits, &batch.CompletedUnits, &batch.FailedUnits,
 		&batch.InFlightUnits, &batch.Budget.Currency, &batch.Budget.LimitMinor,
+		&batch.BudgetReservedMinor, &batch.BudgetSettledMinor, &batch.BudgetUncertainMinor,
 		&batch.CoverageSlice, &batch.FencingToken, &batch.LeaseOwner, &leaseUntil,
 		&batch.CreatedBy, &batch.StartedAt, &batch.FinishedAt, &batch.CreatedAt, &batch.UpdatedAt)
 	if err != nil {

@@ -14,6 +14,16 @@ import (
 )
 
 type chatCompletionResponse struct {
+	// ID/Model/Usage 是 T07 新增的「用量元数据」。刻意用指针表示 token 数：
+	// 供应商不回传时是 nil（未知），而不是 0 —— 把未知记成 0 会让成本
+	// 系统性偏低，而偏低会让超支看起来没超。
+	ID    string `json:"id"`
+	Model string `json:"model"`
+	Usage struct {
+		PromptTokens     *int64 `json:"prompt_tokens"`
+		CompletionTokens *int64 `json:"completion_tokens"`
+		TotalTokens      *int64 `json:"total_tokens"`
+	} `json:"usage"`
 	Choices []struct {
 		Message struct {
 			Content          string `json:"content"`
@@ -137,6 +147,17 @@ func buildChatCompletionBodies(provider ProviderConfig, payload map[string]any) 
 	base := clonePayload(payload)
 	if _, exists := base["stream"]; !exists {
 		base["stream"] = true
+	}
+
+	// T07：只有显式要求时才让供应商回传流式用量。
+	// 条件还要求 stream=true —— 非流式请求本来就带 usage，
+	// 而给非流式请求加 stream_options 反而会被部分接入点拒绝。
+	if provider.IncludeUsage {
+		if streaming, _ := base["stream"].(bool); streaming {
+			if _, exists := base["stream_options"]; !exists {
+				base["stream_options"] = map[string]any{"include_usage": true}
+			}
+		}
 	}
 
 	if strings.HasPrefix(strings.ToLower(provider.Model), "gpt-5") {
