@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +20,75 @@ import (
 // 需要真实 Postgres 的端到端断言（分页、并发、事务回滚）在
 // internal/store/project_store_test.go；本文件只跑内存，因此在任何 CI 上都会执行
 // —— 这正是它存在的意义：契约回归不能因为「没设 DSN」而被 Skip 掉。
+
+// TestSessionRoleIsRefreshedFromServer 是 T03 的核心安全断言：
+// **登录时写入 cookie 的角色不得被长期信任**。
+//
+// 场景：管理员登录（cookie 里 role=admin），随后在库里被降级为 user。
+// 若中间件直接用 cookie 里的副本，旧 cookie 仍能通过 /api/v1/admin/* 检查 ——
+// 那就是一个最长 24 小时的权限提升窗口。
+//
+// 断言两条分支：
+//  1. 服务端当前角色是 user → 即使 cookie 写着 admin，管理员接口也必须 403；
+//  2. 服务端读不到身份（账号被删 / 库不可用）→ 会话整个失效（401），
+//     而不是「继续信任旧角色」（fail closed；数据库故障时不能把权限全放开）。
+func TestSessionRoleIsRefreshedFromServer(t *testing.T) {
+	app := &application{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/admin/dashboard", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := app.middleware(mux)
+
+	box, err := appcrypto.NewSecretBox("phase1-dev-only-32-byte-secret!!!")
+	if err != nil {
+		t.Fatalf("secret box: %v", err)
+	}
+	app.box = box
+
+	// cookie 里写的是 admin（登录时的副本）。
+	cookie, err := app.createSessionCookie(model.User{ID: 7, Email: "admin@example.test", Role: "admin"})
+	if err != nil {
+		t.Fatalf("create session cookie: %v", err)
+	}
+
+	// 分支 1：服务端当前角色已降级为 user。
+	app.sessionUsers = func(context.Context, int64) (model.User, error) {
+		return model.User{ID: 7, Email: "admin@example.test", Role: "user"}, nil
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/dashboard", nil)
+	request.AddCookie(cookie)
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("服务端已降级时旧 cookie 必须失效（403），实际 %d —— 说明仍在使用 cookie 里的角色副本", recorder.Code)
+	}
+
+	// 分支 2：服务端读不到身份。
+	app.sessionUsers = func(context.Context, int64) (model.User, error) {
+		return model.User{}, errors.New("no rows in result set")
+	}
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/dashboard", nil)
+	request.AddCookie(cookie)
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("无法确认服务端身份时必须丢弃会话（401，fail closed），实际 %d", recorder.Code)
+	}
+
+	// 反证：服务端当前角色确实是 admin 时必须放行，否则上面的断言可能只是
+	// 「所有请求都被拒」的假阳性。
+	app.sessionUsers = func(context.Context, int64) (model.User, error) {
+		return model.User{ID: 7, Email: "admin@example.test", Role: "admin"}, nil
+	}
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/dashboard", nil)
+	request.AddCookie(cookie)
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("服务端角色仍为 admin 时必须放行，实际 %d", recorder.Code)
+	}
+}
 
 // TestProjectRoutesRegistered 断言项目 API 真正可达，且注册时不 panic。
 //
@@ -75,6 +146,10 @@ func TestProjectRoutesRegistered(t *testing.T) {
 //
 // 用途：让「已认证视角」的契约（未知子资源 404）可测。匿名视角的断言只是 401，
 // 而 401 对「路由是否真的挂上」没有区分力 —— 两者必须都测。
+//
+// 同时注入 sessionUsers 假实现：T03 之后 cookie 里的用户不再被直接信任，
+// 中间件会重新读一次服务端身份（那正是「撤权立即生效」的实现方式），
+// 因此不注入的话这里会真的去查库并因为取不到而丢弃会话。
 func mustSessionCookie(t *testing.T, app *application) *http.Cookie {
 	t.Helper()
 	box, err := appcrypto.NewSecretBox("phase1-dev-only-32-byte-secret!!!")
@@ -82,6 +157,9 @@ func mustSessionCookie(t *testing.T, app *application) *http.Cookie {
 		t.Fatalf("secret box: %v", err)
 	}
 	app.box = box
+	app.sessionUsers = func(context.Context, int64) (model.User, error) {
+		return model.User{ID: 1, Email: "reader@example.test", Role: "user"}, nil
+	}
 	cookie, err := app.createSessionCookie(model.User{ID: 1, Email: "reader@example.test", Role: "user"})
 	if err != nil {
 		t.Fatalf("create session cookie: %v", err)

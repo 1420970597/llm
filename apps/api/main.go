@@ -31,10 +31,15 @@ type application struct {
 	rewards        *store.RewardStore
 	artifacts      *store.ArtifactStore
 	generationRuns *store.GenerationRunStore
-	// Atelier 主线（Issue #160 T02）：项目与工作区作用域，以及命令幂等。
+	// Atelier 主线（Issue #160 T02/T03）：项目与工作区作用域、项目级授权、命令幂等。
 	projects    *store.ProjectStore
+	authz       *store.AuthzStore
 	idempotency *store.IdempotencyStore
 	redis       *redis.Client
+	// sessionUsers 是「按会话里的用户 ID 读服务端当前身份」的可替换实现（T03）。
+	// 生产始终为 nil（走 app.auth）；测试注入假实现以在无数据库环境下
+	// 覆盖「撤权立即生效」这两个分支。
+	sessionUsers func(ctx context.Context, userID int64) (model.User, error)
 }
 
 func main() {
@@ -75,6 +80,7 @@ func main() {
 		artifacts:      store.NewArtifactStore(pool, redisClient, cfg.QueueName),
 		generationRuns: store.NewGenerationRunStore(pool),
 		projects:       store.NewProjectStore(pool),
+		authz:          store.NewAuthzStore(pool),
 		idempotency:    store.NewIdempotencyStore(pool),
 		redis:          redisClient,
 	}

@@ -42,8 +42,10 @@ func registerProjectRoutes(mux *http.ServeMux, app *application) {
 	mux.HandleFunc("POST "+projectPrefix, app.createProject)
 	mux.HandleFunc("GET "+projectPrefix+"/{projectId}", app.getProject)
 
-	// 成员读模型在 T02 只做读取，增删改角色属于 T28 的成员管理命令。
+	// 成员读模型在 T02 只做读取，写入命令见下方 members 的 POST/DELETE。
 	mux.HandleFunc("GET "+projectPrefix+"/{projectId}/members", app.listProjectMembers)
+	mux.HandleFunc("POST "+projectPrefix+"/{projectId}/members", app.upsertProjectMember)
+	mux.HandleFunc("DELETE "+projectPrefix+"/{projectId}/members/{userId}", app.removeProjectMember)
 }
 
 // ---------------------------------------------------------------------------
@@ -386,75 +388,205 @@ func (app *application) listProjects(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/projects/{projectId}
 // ---------------------------------------------------------------------------
 
+// requireProject 是项目 API 的**统一授权入口**（T03）。
+//
+// 为什么所有 handler 都必须走它：T03 的验收项要求「项目/批次/样本/实验/候选/文件的
+// 读写均校验作用域」。逐个 handler 写 `ProjectRole` + `if !isMember` 已经在本文件
+// 出现过三次，而那正是漏一处的形态 —— 漏掉的那一处就是越权。
+//
+// 返回 false 时响应已写完，调用方直接 return。
+// 拒绝细节（404 vs 403）由 store 的 DenialKind 决定，不在 handler 里重算。
+func (app *application) requireProject(w http.ResponseWriter, r *http.Request, action store.AuthzAction) (model.Project, store.AuthzDecision, bool) {
+	user, ok := requestUser(r)
+	if !ok {
+		app.writeAPIError(w, r, http.StatusUnauthorized, codeUnauthorized, msgAuthRequired, nil)
+		return model.Project{}, store.AuthzDecision{}, false
+	}
+	projectID, err := parseProjectID(r.PathValue("projectId"))
+	if err != nil {
+		app.writeAPIEntityError(w, r, err)
+		return model.Project{}, store.AuthzDecision{}, false
+	}
+
+	decision, denial, message, err := app.authz.RequireProjectAccess(r.Context(), projectID, user.ID, action)
+	if err != nil {
+		app.writeAPIEntityError(w, r, err)
+		return model.Project{}, store.AuthzDecision{}, false
+	}
+	switch denial {
+	case store.DenialHidden:
+		app.writeAPIError(w, r, http.StatusNotFound, codeNotFound, message, nil)
+		return model.Project{}, decision, false
+	case store.DenialForbidden:
+		app.writeAPIError(w, r, http.StatusForbidden, codeForbidden, message, nil)
+		return model.Project{}, decision, false
+	}
+	return decision.Project, decision, true
+}
+
 // getProject 返回单个项目。
 //
 // 非成员一律 404（**资源隐藏型 404**，契约 §1.2）：返回 403 会让「这个项目
 // 存在」本身成为可探测信息，而项目名往往就是业务信息。
 func (app *application) getProject(w http.ResponseWriter, r *http.Request) {
-	user, ok := requestUser(r)
+	project, decision, ok := app.requireProject(w, r, store.AuthzRead)
 	if !ok {
-		app.writeAPIError(w, r, http.StatusUnauthorized, codeUnauthorized, msgAuthRequired, nil)
 		return
 	}
-
-	projectID, err := parseProjectID(r.PathValue("projectId"))
-	if err != nil {
-		app.writeAPIEntityError(w, r, err)
-		return
-	}
-	project, err := app.projects.GetProject(r.Context(), projectID)
-	if err != nil {
-		app.writeAPIEntityError(w, r, err)
-		return
-	}
-	role, isMember, err := app.projects.ProjectRole(r.Context(), projectID, user.ID)
-	if err != nil {
-		app.writeAPIEntityError(w, r, err)
-		return
-	}
-	if !isMember {
-		app.writeAPIError(w, r, http.StatusNotFound, codeNotFound, msgProjectNotFound, nil)
-		return
-	}
-
-	app.writeJSON(w, http.StatusOK, app.projectEnvelope(project, role))
+	app.writeJSON(w, http.StatusOK, app.projectEnvelope(project, decision.Role))
 }
 
 // listProjectMembers 列出项目成员。
+//
+// 只有 owner 能看成员名单：成员名单含他人邮箱，属于项目内容之外的治理信息，
+// viewer/reviewer 没有需要的场景。这条限制由 AuthzManageMembers 表达，
+// 与「谁可以改成员」共用同一条判定 —— 分开判定会出现「能看不能改」与
+// 「能改不能看」这两种都说不通的组合。
 func (app *application) listProjectMembers(w http.ResponseWriter, r *http.Request) {
-	user, ok := requestUser(r)
+	project, _, ok := app.requireProject(w, r, store.AuthzManageMembers)
 	if !ok {
-		app.writeAPIError(w, r, http.StatusUnauthorized, codeUnauthorized, msgAuthRequired, nil)
-		return
-	}
-	projectID, err := parseProjectID(r.PathValue("projectId"))
-	if err != nil {
-		app.writeAPIEntityError(w, r, err)
-		return
-	}
-	role, isMember, err := app.projects.ProjectRole(r.Context(), projectID, user.ID)
-	if err != nil {
-		app.writeAPIEntityError(w, r, err)
-		return
-	}
-	if !isMember {
-		app.writeAPIError(w, r, http.StatusNotFound, codeNotFound, msgProjectNotFound, nil)
-		return
-	}
-	// 只有 owner 能看成员名单：成员名单含他人邮箱，属于项目内容之外的治理信息，
-	// viewer/reviewer 没有需要的场景。
-	if role != model.ProjectRoleOwner {
-		app.writeAPIError(w, r, http.StatusForbidden, codeForbidden,
-			"只有项目负责人可以查看成员名单", nil)
 		return
 	}
 
-	members, err := app.projects.ListProjectMembers(r.Context(), projectID)
+	members, err := app.projects.ListProjectMembers(r.Context(), project.ID)
 	if err != nil {
 		app.writeAPIEntityError(w, r, err)
 		return
 	}
 	app.writeJSON(w, http.StatusOK, map[string]any{"items": members})
+}
+
+// ---------------------------------------------------------------------------
+// 成员管理命令（T03）
+// ---------------------------------------------------------------------------
+
+// memberUpsertRequest 是添加/修改项目成员的请求体。
+//
+// reason 必填：契约 §1.2 的错误响应里审计字段包含 reason，
+// 而权限变更是最需要「为什么改」的操作 —— 事后只看到「某人被降级」
+// 而不清楚原因，审计就无法回答用户的问题。
+//
+// userId 与 email 二选一：首版只支持已有账号（T28 明确「邮件邀请未接入则
+// 不放假按钮」），而项目 owner 手上通常只有同事邮箱。
+type memberUpsertRequest struct {
+	UserID int64  `json:"userId"`
+	Email  string `json:"email"`
+	Role   string `json:"role"`
+	Reason string `json:"reason"`
+}
+
+// upsertProjectMember 添加或修改项目成员（契约 §1.6）。
+func (app *application) upsertProjectMember(w http.ResponseWriter, r *http.Request) {
+	project, _, ok := app.requireProject(w, r, store.AuthzManageMembers)
+	if !ok {
+		return
+	}
+	user, _ := requestUser(r)
+
+	var input memberUpsertRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		app.writeAPIError(w, r, http.StatusBadRequest, codeValidation,
+			"请求格式有误，请检查填写的内容后重试", nil)
+		return
+	}
+
+	targetUserID := input.UserID
+	if targetUserID <= 0 {
+		email := strings.ToLower(strings.TrimSpace(input.Email))
+		if email == "" {
+			app.writeAPIError(w, r, http.StatusUnprocessableEntity, codeValidation,
+				"请选择要添加的成员（userId 或 email）",
+				[]model.FieldError{{Field: "email", Message: "必填"}})
+			return
+		}
+		// 首版只支持已有账号：查不到就明确告知，不静默建一个无密码用户。
+		resolved, err := app.auth.GetUserByEmail(r.Context(), email)
+		if err != nil {
+			app.writeAPIError(w, r, http.StatusUnprocessableEntity, codeValidation,
+				"未找到该邮箱对应的账号；首版只支持添加已有账号的成员",
+				[]model.FieldError{{Field: "email", Message: "未找到该账号"}})
+			return
+		}
+		targetUserID = resolved.ID
+	}
+
+	reason := store.NormalizeReason(input.Reason)
+	if reason == "" {
+		app.writeAPIError(w, r, http.StatusUnprocessableEntity, codeValidation,
+			"请填写变更原因（会写入项目审计）",
+			[]model.FieldError{{Field: "reason", Message: "必填"}})
+		return
+	}
+
+	err := app.authz.UpsertProjectMember(r.Context(), project.ID, user.ID, targetUserID, input.Role, reason, requestID(r))
+	if err != nil {
+		app.writeMemberError(w, r, err)
+		return
+	}
+
+	members, err := app.projects.ListProjectMembers(r.Context(), project.ID)
+	if err != nil {
+		app.writeAPIEntityError(w, r, err)
+		return
+	}
+	app.writeJSON(w, http.StatusOK, map[string]any{"items": members})
+}
+
+// removeProjectMember 移除项目成员（契约 §1.6：不得移除最后一名 owner）。
+func (app *application) removeProjectMember(w http.ResponseWriter, r *http.Request) {
+	project, _, ok := app.requireProject(w, r, store.AuthzManageMembers)
+	if !ok {
+		return
+	}
+	user, _ := requestUser(r)
+
+	targetUserID, err := strconv.ParseInt(strings.TrimSpace(r.PathValue("userId")), 10, 64)
+	if err != nil || targetUserID <= 0 {
+		app.writeAPIError(w, r, http.StatusUnprocessableEntity, codeValidation,
+			"成员标识不正确", []model.FieldError{{Field: "userId", Message: "必须是正整数"}})
+		return
+	}
+
+	reason := store.NormalizeReason(r.URL.Query().Get("reason"))
+	if reason == "" {
+		app.writeAPIError(w, r, http.StatusUnprocessableEntity, codeValidation,
+			"请填写移除原因（会写入项目审计）",
+			[]model.FieldError{{Field: "reason", Message: "必填"}})
+		return
+	}
+
+	if err := app.authz.RemoveProjectMember(r.Context(), project.ID, user.ID, targetUserID, reason, requestID(r)); err != nil {
+		app.writeMemberError(w, r, err)
+		return
+	}
+
+	members, err := app.projects.ListProjectMembers(r.Context(), project.ID)
+	if err != nil {
+		app.writeAPIEntityError(w, r, err)
+		return
+	}
+	app.writeJSON(w, http.StatusOK, map[string]any{"items": members})
+}
+
+// writeMemberError 把成员命令的错误翻译成契约响应。
+//
+// 最后一名 owner 必须是 409（状态冲突）而不是 422：请求本身合法，
+// 只是「当前状态下不允许执行」（契约 §1.2 的 409 定义）。
+// 而用户能做的事是先去指定另一位负责人 —— 因此文案要给这条路径。
+func (app *application) writeMemberError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, store.ErrLastOwner) {
+		app.writeAPIError(w, r, http.StatusConflict, codeConflict, err.Error(), nil)
+		return
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		app.writeAPIError(w, r, http.StatusNotFound, codeNotFound, "未找到该成员", nil)
+		return
+	}
+	if store.IsStoreValidationError(err) {
+		app.writeAPIError(w, r, http.StatusUnprocessableEntity, codeValidation, err.Error(), nil)
+		return
+	}
+	app.writeAPIEntityError(w, r, err)
 }
 
 // ---------------------------------------------------------------------------
