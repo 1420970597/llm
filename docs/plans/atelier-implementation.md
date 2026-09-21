@@ -76,6 +76,9 @@
 | 2026-09-21 | T10 | §2.1 的创建命令字段与前端表单需要一致，但契约未规定一致性如何保证 | 前端校验常量与 Go 常量由 `test/l15_studio_wizard.mjs` **直接读两侧源码比对**（`MinPilotSize`/`MaxPilotSize`/名称上限/预算下限），而不是人工同步。前端校验只是为了「不必往返一次」，判定仍在服务端；服务端返回的 `fieldErrors` 会按字段归到向导步骤并跳回最早出错的那一步，避免用户看到「本页没有这个字段」的错误 |
 | 2026-09-21 | T11 | §5 的节点表未规定「节点键」与「payload 字段名」是否同一字符串 | **明确区分**：节点键是 snake_case（`human_review`，用于 URL 的 `?node=` 与校验分派，复用 T04 冻结的 `BlueprintNode*` 常量），payload 字段名是 camelCase（`humanReview`，属于已冻结的文档 schema）。新增 `BlueprintNodeSpec.PayloadField` 承载映射，并由测试双向断言（结构体字段↔元数据字段、payload 字段↔节点覆盖）。理由：把两者混为一个值会让「`?node=human_review` 读不到配置」这类缺陷出现在界面上却看不出原因 |
 | 2026-09-21 | T11 | §5 未说明「保存版本」与「执行前」的必填是否同一套 | 明确为**两套**：`NodeFieldSpec.Required` 只表达「**执行前**必须设置」，保存版本允许不完整（§5 允许先定结构再逐项补内容，用户要能保存只填了一部分的蓝图草稿）。节点字段约束的元数据由 `GET P/blueprint-nodes` 暴露，前端检查器**由它驱动**而不是按节点手写七个表单，于是「服务端加了字段而界面没跟上」不会发生 |
+| 2026-09-21 | T12 | §6.3 未规定「覆盖分配」的算法位置与确定性要求 | 放在 `internal/studio/batch_runner.go` 的纯函数 `AllocateUnits`：按覆盖版本的领域/方向**顺序**展开、每方向按 `quota` 取 ordinal、直到计划单元数用尽。**必须确定** —— item_key = `domain/direction#ordinal`，因此「恢复失败项」命中同一批 item（配合 T05 的 UNIQUE(batch_id,item_key)），不会把已完成的工作重跑一遍。缺覆盖版本时退化为 `unit/default#n`，使「无覆盖方案的手动扩量」仍可执行 |
+| 2026-09-21 | T12 | §4.2 未规定「单元级重试」归谁 | 明确**不**在 runner 内重试：重试由作业层按 attempt/退避/上限统一管理。runner 内再重试会与作业层的 attempt 计数重复，同一笔费用会得到两次机会，`max_attempts` 也失去意义。runner 只做「抢占 → 生成 → 提交或记录失败」，不可重试的错误类别显式标 `retryable=false`，使「恢复失败项」不会重复花在必然失败的输入上 |
+| 2026-09-21 | T12 | §2.2 的 `reasoning` 与旧生成器的 `chainOfThought` 命名不同 | 在 worker 侧做**显式适配**（`internal/llm` 的旧生成器不动，属第一轮冻结契约）：旧名直接透传会被 T05 的 schema 校验拒绝，而静默接受一个不在契约里的字段更糟。`StandardStep`→`ChainStep` 同理按显式 `order` 稳定排序（新 schema 的顺序是数据，旧类型用数组下标当顺序） |
 ---
 
 ## 2. 必须先定清的固定口径

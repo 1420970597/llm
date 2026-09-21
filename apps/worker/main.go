@@ -137,7 +137,11 @@ func main() {
 	// Atelier 新作业的执行侧（Issue #160 T06）。它使用**独立队列**，
 	// 与上面的旧消费者并存：旧消费者不理解 `{schemaVersion, jobId}`，
 	// 新消费者不理解 `{type, datasetId}`，两者靠队列名分开而不是靠约定。
-	startStudioRuntime(ctx, pool, redisClient, cfg)
+	studioRuntime := startStudioRuntime(ctx, pool, redisClient, cfg)
+	// 注入凭证解密器（T07「凭证单独取，不能冻结明文密钥」）。
+	// 用 extras 而不是给 StudioJobEnv 加字段：后者会让每个后续任务都要改
+	// 那个结构体与它的所有构造点，而 extras 是 T06 留好的扩展点。
+	studioRuntime.env.SetExtra("secretBox", box)
 
 	go consumeJobs(ctx, jobCtx)
 
