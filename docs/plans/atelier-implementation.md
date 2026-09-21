@@ -72,6 +72,8 @@
 | 2026-09-21 | T09 | §7 的 C1/C2 要求把 L15 守卫从「源码布局假设」迁到「行为/路由契约断言」，但未指定新壳的守卫形态 | 新增 `test/l15_studio_shell.mjs`（已加入 CI 的 UI guards 步骤，与既有 8 个守卫同层），三层结构：第 1 层源码级（路由元数据唯一性、available/planned 状态与任务号、nginx try_files、不依赖全局任务选中态），第 2 层用 esbuild 打包**生产模块** `src/studio/routes.ts` 并断言 `matchRoute`/`activeNavKey`/`breadcrumbsFor`/`isCatalogRouteMounted` 的真实行为，第 3 层变异自证（改坏元数据必须被捕获）。**旧的 8 个 L15 守卫全部保留且继续在 CI 运行**（旧入口是过渡期的兼容读，不得因换菜单而失去回归保护）|
 | 2026-09-21 | T09 | 框架约束：React Router v6 的 `<Routes>` 只接受 `<Route>` 或 `<React.Fragment>` 作为直接子元素 | `studioRouteTree` 必须是**函数**（调用方写 `{studioRouteTree(props)}`），不能是组件。写成组件会在运行期抛 `[X] is not a <Route> component`，而 `tsc`/`vite build` **都不会**发现它 —— 实际由 `test/l15_stage_routes.mjs` 在真实渲染里报出。已在该函数与守卫里注明，避免后续重构成组件|
 | 2026-09-21 | T09 | 再次遇到 `import.meta.env` 只在 Vite 构建里存在（#112 的同一形态） | 新壳里读取 `import.meta.env.PROD` 时必须**先判断宿主存在**（与 `buildInfo.ts` 的防御式读取一致），否则所有用 esbuild 渲染真实组件树的 UI 守卫都会以 `Cannot read properties of undefined` 挂掉 —— 本次改动真的触发了一次（`l15_stage_routes.mjs` 当场失败）。守卫第 2 层用 `define: { 'import.meta.env': ... }` 注入（定义宿主而不是只定义 `.PROD`），使「生产不挂载目录评审页」测的是真实行为 |
+| 2026-09-21 | T10 | §3.2 的 URL 参数契约未规定向导草稿的存放位置 | 向导草稿存浏览器本地（`studio.wizard.draft.v1.u<userId>`），**键必须含用户 ID**：固定键会让下一个登录的用户看到上一个人的项目名称与目标（隐私 + 建出属于别人内容的双重问题）。不做服务端草稿表：一段未提交的表单不是业务事实，把它当项目一样做乐观锁与权限只会让向导多一层失败面；代价（换浏览器不恢复）已在界面上写明 |
+| 2026-09-21 | T10 | §2.1 的创建命令字段与前端表单需要一致，但契约未规定一致性如何保证 | 前端校验常量与 Go 常量由 `test/l15_studio_wizard.mjs` **直接读两侧源码比对**（`MinPilotSize`/`MaxPilotSize`/名称上限/预算下限），而不是人工同步。前端校验只是为了「不必往返一次」，判定仍在服务端；服务端返回的 `fieldErrors` 会按字段归到向导步骤并跳回最早出错的那一步，避免用户看到「本页没有这个字段」的错误 |
 
 ---
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Card, Empty, Spin, Tag, Typography } from '@douyinfe/semi-ui'
+import { Button, Card, Empty, Input, Spin, Tag, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, CirclePlus, RefreshCw } from 'lucide-react'
 import { client } from '../../lib/api'
 import { projectPath } from '../../lib/api/studio'
@@ -47,25 +47,45 @@ export function ProjectsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [projects, setProjects] = useState<ProjectEnvelope[]>([])
+  // 搜索与分页都走**服务端**（T10 验收项「项目列表服务端搜索/分页」）：
+  // 前端过滤会让「搜索结果数量」与真实数量不一致，而用户会据此判断
+  // 项目是否被删除。
+  const [search, setSearch] = useState('')
+  // nextCursor 是「下一页的游标」；当前页不需要单独保存（翻页只往后走，
+  // 前向游标由上一页的响应给出）。多存一个 cursor 状态会让两个值有机会
+  // 不一致，而那种不一致表现为「加载更多加载出重复内容」。
+  const [nextCursor, setNextCursor] = useState('')
+  const [pageIndex, setPageIndex] = useState(1)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const response = await client.get<PageEnvelope<ProjectEnvelope>>('/v1/projects?limit=20')
-      setProjects(response.data.items ?? [])
-    } catch (loadError) {
-      // 错误文案已经由拦截器本地化；这里只负责把它显示出来，
-      // 并且**不**把失败伪装成「没有项目」—— 那会让用户以为数据丢了。
-      setError(loadError instanceof Error ? loadError.message : '加载项目失败')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const load = useCallback(
+    async (query: string, pageCursor: string, append: boolean) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const params = new URLSearchParams({ limit: '20' })
+        if (query.trim() !== '') params.set('q', query.trim())
+        if (pageCursor !== '') params.set('cursor', pageCursor)
+        const response = await client.get<PageEnvelope<ProjectEnvelope>>(
+          `/v1/projects?${params.toString()}`,
+        )
+        const items = response.data.items ?? []
+        setProjects((previous) => (append ? [...previous, ...items] : items))
+        setNextCursor(response.data.nextCursor ?? '')
+      } catch (loadError) {
+        // 错误文案已经由拦截器本地化；这里只负责把它显示出来，
+        // 并且**不**把失败伪装成「没有项目」—— 那会让用户以为数据丢了。
+        setError(loadError instanceof Error ? loadError.message : '加载项目失败')
+      } finally {
+        setLoading(false)
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
-    void load()
-  }, [load])
+    setPageIndex(1)
+    void load(search, '', false)
+  }, [load, search])
 
   return (
     <div className="console-page" data-studio-page="projects">
@@ -77,7 +97,18 @@ export function ProjectsPage() {
           <Text type="tertiary">按项目组织设计、运行与发布；一个项目可以有多个并行批次。</Text>
         </div>
         <div className="flex gap-2">
-          <Button icon={<RefreshCw size={14} />} onClick={() => void load()} disabled={loading}>
+          <Input
+            value={search}
+            onChange={(value) => setSearch(value)}
+            placeholder="按名称或目标搜索"
+            style={{ width: 220 }}
+            aria-label="搜索项目"
+          />
+          <Button
+            icon={<RefreshCw size={14} />}
+            onClick={() => void load(search, '', false)}
+            disabled={loading}
+          >
             刷新
           </Button>
           <Button
@@ -105,7 +136,7 @@ export function ProjectsPage() {
               </Text>
               <Text type="tertiary">{error}</Text>
               <div className="mt-3">
-                <Button size="small" onClick={() => void load()}>
+                <Button size="small" onClick={() => void load(search, '', false)}>
                   重试
                 </Button>
               </div>
@@ -156,6 +187,22 @@ export function ProjectsPage() {
           ))}
         </div>
       )}
+
+      {nextCursor !== '' ? (
+        <div className="mt-3 flex justify-center">
+          <Button
+            onClick={() => {
+              // 游标分页：只追加，不重新拉第一页 —— 那会在并发写入下
+              // 重复显示同一批项目（契约 §1.5 的「翻页无重复无遗漏」）。
+              setPageIndex((index) => index + 1)
+              void load(search, nextCursor, true)
+            }}
+            loading={loading}
+          >
+            加载更多（第 {pageIndex + 1} 页）
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -22,7 +22,7 @@ import {
   breadcrumbsFor,
   fillRoutePath,
   globalRoutes,
-  navVisibleRoutes,
+  menuRoutes,
 } from './routes'
 import { newIdempotencyKey } from '../lib/api/studio'
 
@@ -76,7 +76,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
   // 屏幕阅读器播报一起更新，键盘/听觉用户才不会「失焦」。
   const [announcement, setAnnouncement] = useState('')
   useEffect(() => {
-    const current = navVisibleRoutes().find((route) => route.key === activeKey)
+    const current = menuRoutes().find((route) => route.key === activeKey)
     const label = current?.label ?? ''
     setAnnouncement(label ? `已进入${label}` : '')
     document.title = label ? `${label} · 企业数据工厂` : '企业数据工厂'
@@ -223,7 +223,7 @@ export function Breadcrumbs({ items }: { items: { label: string; path?: string }
 
 /** 供页面引用的路由构造器（避免各处手写 `/p/${id}/...`）。 */
 export function projectHref(key: string, projectId: number | string): string {
-  const route = navVisibleRoutes().find((item) => item.key === key)
+  const route = menuRoutes().find((item) => item.key === key)
   if (!route) return fillRoutePath('/projects', {})
   return fillRoutePath(route.path, { projectId })
 }

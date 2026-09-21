@@ -1,13 +1,15 @@
-import { Component, useMemo } from 'react'
+import { Component, useEffect, useMemo, useState } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { Button, Card, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle } from 'lucide-react'
+import { client } from '../lib/api'
 import type { User } from '../lib/api'
 import { CapabilityNotice } from './CapabilityNotice'
 import { ProjectLayout } from './ProjectLayout'
 import { StudioLayout } from './StudioLayout'
 import { ProjectOverviewPage, ProjectsPage } from './pages/ProjectsPages'
+import { NewProjectWizard } from './pages/NewProjectWizard'
 import {
   allStudioRoutes,
   auxiliaryRoutes,
@@ -16,6 +18,7 @@ import {
   isCatalogRouteMounted,
   projectDetailRoutes,
   projectRoutes,
+  wizardRoutes,
   type StudioRouteMeta,
 } from './routes'
 
@@ -42,6 +45,49 @@ import {
 const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   projects: () => <ProjectsPage />,
   'project.overview': () => <ProjectOverviewPage />,
+  new: () => <WizardRoute step="basic" />,
+  'new.coverage': () => <WizardRoute step="coverage" />,
+  'new.quality': () => <WizardRoute step="quality" />,
+}
+
+/**
+ * WizardRoute 把当前用户 ID 注入向导。
+ *
+ * 草稿按用户 ID 分键持久化（T10 验收项「草稿绑定当前用户，退出账号清理」），
+ * 因此向导必须知道用户是谁。这里通过路径组件而不是全局单例注入：
+ * 全局单例会让「切换账号后草稿仍是上一个人的」—— 那正是这条验收项要防的。
+ */
+function WizardRoute({ step }: { step: 'basic' | 'coverage' | 'quality' }) {
+  const userId = useCurrentUserId()
+  return <NewProjectWizard step={step} userId={userId} />
+}
+
+/**
+ * useCurrentUserId 读取当前会话用户 ID。
+ *
+ * 为什么从路由布局外读而不是 prop 透传：向导是 `/new/*` 下的独立页面，
+ * 与项目壳无父子关系。这里读的是登录时写入的会话缓存，它只用于
+ * **草稿分键**（不是权限判定，权限一律由服务端判）。
+ * 拿不到时返回 0 → 草稿键退化成 `u0`，仍是「确定的一把键」，
+ * 不会读到别的用户的内容。
+ */
+function useCurrentUserId(): number {
+  const [userId, setUserId] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const response = await client.get<{ user?: { id?: number } }>('/v1/auth/me')
+        if (!cancelled) setUserId(response.data?.user?.id ?? 0)
+      } catch {
+        // 未登录/会话失效由壳层重定向处理，这里保持 0 即可。
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  return userId
 }
 
 /**
@@ -103,6 +149,11 @@ export function studioRouteTree({ user, onLogout }: StudioRouteTreeProps) {
           </AuthenticatedShell>
         }
       >
+        {/* 项目向导三步（W03–W05）：不是菜单项，但同样由元数据派生。 */}
+        {wizardRoutes.map((route) => (
+          <Route key={route.key} path={route.path} element={<ModuleElement route={route} />} />
+        ))}
+
         {/* 全局四入口 */}
         {globalRoutes.map((route) => (
           <Route key={route.key} path={route.path} element={<ModuleElement route={route} />} />

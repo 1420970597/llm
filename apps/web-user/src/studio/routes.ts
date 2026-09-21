@@ -281,6 +281,49 @@ export const projectDetailRoutes: StudioRouteMeta[] = [
 ]
 
 /**
+ * 项目向导的三步（W03–W05）。
+ *
+ * 刻意**不是**导航项：用户从「数据项目」页的「新建项目」进入，
+ * 不存在「直接跳到第二步」这种独立入口。但它们仍然需要元数据 ——
+ * 面包屑、权限与实现状态都由同一份表派生，否则这三页会成为
+ * 「元数据之外的例外」，而那正是漂移的起点。
+ */
+export const wizardRoutes: StudioRouteMeta[] = [
+  {
+    key: 'new',
+    path: '/new',
+    label: '新建项目',
+    caption: '意图与目标类型',
+    kind: 'global',
+    moduleStatus: 'available',
+    task: 'T10',
+    permission: 'design',
+  },
+  {
+    key: 'new.coverage',
+    path: '/new/coverage',
+    label: '目标量与覆盖',
+    caption: 'n × m × x 与试制数量',
+    kind: 'global',
+    moduleStatus: 'available',
+    task: 'T10',
+    navParent: 'new',
+    permission: 'design',
+  },
+  {
+    key: 'new.quality',
+    path: '/new/quality',
+    label: '质量与预算',
+    caption: '接纳率目标与预算上限',
+    kind: 'global',
+    moduleStatus: 'available',
+    task: 'T10',
+    navParent: 'new',
+    permission: 'design',
+  },
+]
+
+/**
  * 辅助入口（契约 §3.1）。刻意不与主流程争菜单位置。
  */
 export const auxiliaryRoutes: StudioRouteMeta[] = [
@@ -346,8 +389,11 @@ export const catalogRoutes: StudioRouteMeta[] = [
   },
 ]
 
-/** 全部路由（含目录评审），用于注册与实际渲染。 */
+/** 全部路由（含目录评审与向导步骤），用于注册、匹配与实际渲染。 */
 export const allStudioRoutes: StudioRouteMeta[] = [
+  // 向导步骤放在最前：`/new` 与 `/new/coverage` 段数不同，matchRoute 按
+  // 段数精确匹配，因此顺序不影响结果；放在前面只是让「入口优先」可见。
+  ...wizardRoutes,
   ...globalRoutes,
   ...projectRoutes,
   ...projectDetailRoutes,
@@ -355,9 +401,20 @@ export const allStudioRoutes: StudioRouteMeta[] = [
   ...catalogRoutes,
 ]
 
-/** 导航可见的路由（生产构建下不含目录评审）。 */
+/**
+ * 导航可见的路由（生产构建下不含目录评审）。
+ *
+ * 向导步骤也被排除：它们是「新建项目」的下钻页，不是菜单项 ——
+ * 出现在侧边栏里会让「第一步」看起来像一个常驻工作区。
+ */
 export function navVisibleRoutes(): StudioRouteMeta[] {
   return allStudioRoutes.filter((route) => route.kind !== 'catalog')
+}
+
+/** 侧边栏菜单项（全局入口 + 辅助入口），由元数据派生。 */
+export function menuRoutes(): StudioRouteMeta[] {
+  const wizardKeys = new Set(wizardRoutes.map((route) => route.key))
+  return navVisibleRoutes().filter((route) => !wizardKeys.has(route.key))
 }
 
 /**
@@ -485,6 +542,9 @@ export function breadcrumbsFor(pathname: string, params: Record<string, string |
       const parent = allStudioRoutes.find((route) => route.key === current.navParent)
       if (parent) items.push({ label: parent.label, path: fillRoutePath(parent.path, params) })
     }
+    // 用 `items[items.length - 1]` 而不是 `items.at(-1)`：tsconfig 的
+    // target/lib 是 ES2020，`.at()` 需要 ES2022 —— 用它会让 tsc 直接报错，
+    // 而「为了过风格建议改坏构建」是本末倒置。
     if (items[items.length - 1]?.label !== current.label) {
       items.push({ label: current.label })
     }

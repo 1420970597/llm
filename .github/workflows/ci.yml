@@ -97,7 +97,7 @@ jobs:
           set -uo pipefail
           failed=0
           for t in stage_routes silent_guards capability_entries nmx_params \
-                   artifact_download dataset_status app_ux cleaning_ux studio_shell; do
+                   artifact_download dataset_status app_ux cleaning_ux studio_shell studio_wizard; do
             f="test/l15_${t}.mjs"
             [ -f "$f" ] || { echo "缺少冻结测试 $f"; failed=1; continue; }
             echo "=== $f ==="
