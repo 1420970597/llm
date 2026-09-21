@@ -21,9 +21,19 @@ flowchart LR
   G --> H[数据卡 + 文件 + 证据]
 ```
 
+## 代表画面
+
+![今日工作](assets/screens/W01.png)
+
+![生产蓝图](assets/screens/P02.png)
+
+![样本审阅台](assets/screens/D02.png)
+
+![发布候选数据卡](assets/screens/L03.png)
+
 ## 公开原型
 
-- [独立 HTML 原型](./prototype.html)：无需构建工具，打开后可以使用 Hash 路由浏览 36 个主要画面。
+- [独立 HTML 原型](./prototype.html)：无需构建工具，下载后用浏览器打开，可使用 Hash 路由浏览 39 个主要画面。GitHub 文件预览不会执行 HTML，请点 Download raw file；也可下载该目录后用本地静态服务打开。
 - [原型画面图册](./06-atlas.md)：每个菜单、主要状态和响应式行为的索引。
 - [调研与参考](./01-research.md)：实际访问过的公开 Web UI 页面、观察到的模式和未访问到的内容。
 - [产品规格](./02-product-spec.md)：对象、生命周期、菜单和业务规则。
