@@ -34,6 +34,7 @@ type application struct {
 	// Atelier 主线（Issue #160 T02/T03）：项目与工作区作用域、项目级授权、命令幂等。
 	projects    *store.ProjectStore
 	authz       *store.AuthzStore
+	documents   *store.DocumentStore
 	idempotency *store.IdempotencyStore
 	redis       *redis.Client
 	// sessionUsers 是「按会话里的用户 ID 读服务端当前身份」的可替换实现（T03）。
@@ -81,6 +82,7 @@ func main() {
 		generationRuns: store.NewGenerationRunStore(pool),
 		projects:       store.NewProjectStore(pool),
 		authz:          store.NewAuthzStore(pool),
+		documents:      store.NewDocumentStore(pool),
 		idempotency:    store.NewIdempotencyStore(pool),
 		redis:          redisClient,
 	}

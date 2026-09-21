@@ -54,7 +54,11 @@
 
 （后续任务如发现 `main` 更新导致实现方式变化，在此逐条追加：日期、提交、差异、处置。）
 
-暂无。
+| 日期 | 任务 | 差异 | 处置 |
+|---|---|---|---|
+| 2026-09-21 | T04 | §6.3 把 typed 文档 schema 的落点写作 `internal/model/pipeline_v2.go`，但该文件已由第一轮冻结契约（L1–L15，见 `docs/plans/eval-and-cleaning-plan.md`）占用，包含 `ChainStep`/`ChainStandard`/`GrpoPrompt`/`GrpoLevelRubric`/`SftRecord`/`ExportMapping`/`ExportFormatList`/`GenerationRun` 等在用类型 | 保留 §6.3 指定的**语义落点**（同一 `internal/model` 包的 typed 文档 schema），物理落到新文件 `internal/model/studio_docs.go`；`pipeline_v2.go` 只做零改动。GRPO 判据**复用**既有 `GrpoLevelRubric`（它已承载判据文本 + 接受/拒绝边界例），不新定义同概念类型。原因：混在一起会让两轮契约无法辨认，且本轮 diff 无法与旧类型分开审阅 |
+| 2026-09-21 | T04 | §6.3 把文档读写的落点写作「版本 store/service」，未指定文件名 | 落到 `internal/store/document_store.go`（文档版本）与 `apps/api/routes_documents.go`（命令与读模型），均为新文件。§6.3 指定的 `internal/model/pipeline_v2.go` 保持不动 |
+| 2026-09-21 | T04 | `ExportFormatList`/`canonicalFormats` 已含 `parquet`，而 §2.2 本轮只承诺 SFT JSONL/CSV/Alpaca 与 GRPO JSONL | 新增文档允许集（`model.KnownExportFormats`）**有意排除 parquet**：`internal/exporter/parquet.go` 的 `IsRealParquet=false`，实为列式 JSONL，允许它出现在新蓝图/映射里即构成假承诺。旧格式清单不动（兼容读路径） |
 
 ---
 
