@@ -182,6 +182,35 @@ const CONTRACT_FORWARD_REFS = new Set([
   // 多 LLM 互评需求验证 lane 的测试文件名（同样未在契约 §6.1 冻结）。
   // 已核对 origin/lane/eval-multi-judge 上真实存在，PR #81 尚在评审中。
   'test/l15_eval_multi_judge.py',
+
+  // ---- Atelier 主线（Issue #160，T01）----
+  // docs/plans/atelier-implementation.md §1 与 §6.3、docs/plans/atelier-api-contract.md §6
+  // 冻结了「落点」文件名，并要求「文件由各任务创建，T01 不预建空文件」。
+  // 同理命中的条目会在摘要里单独列出；文件一旦创建即自动转为正常校验。
+  'apps/api/routes_projects.go',
+  'apps/api/routes_recipes.go',
+  'apps/api/routes_studio_activity.go',
+  'apps/worker/studio_jobs.go',
+  'apps/worker/job_studio_eval.go',
+  'apps/web-user/src/lib/api/studio.ts',
+  'internal/model/project.go',
+  'internal/store/project_store.go',
+  'internal/store/job_store.go',
+  'internal/eval/grpo_adapter.go',
+  // 迁移编号分配表（§7.1），由 T02–T30 各自创建。
+  'sql/migrations/0022_studio_workspaces_projects.sql',
+  'sql/migrations/0023_studio_authz_audit.sql',
+  'sql/migrations/0024_studio_versioned_docs.sql',
+  'sql/migrations/0025_studio_batches_samples.sql',
+  'sql/migrations/0026_studio_jobs_outbox.sql',
+  'sql/migrations/0027_studio_usage_budget.sql',
+  'sql/migrations/0028_studio_experiments.sql',
+  'sql/migrations/0029_studio_rules_evidence.sql',
+  'sql/migrations/0030_studio_review.sql',
+  'sql/migrations/0031_studio_releases.sql',
+  'sql/migrations/0032_studio_recipes.sql',
+  'sql/migrations/0033_studio_activity_comments.sql',
+  'sql/migrations/0034_studio_legacy_imports.sql',
 ])
 
 /**
