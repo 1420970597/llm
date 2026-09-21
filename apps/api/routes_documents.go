@@ -65,6 +65,58 @@ func registerDocumentRoutes(mux *http.ServeMux, app *application) {
 		mux.HandleFunc("GET "+base+"/{version}", app.getDocumentVersion(kind))
 	}
 	mux.HandleFunc("GET "+projectPrefix+"/{projectId}/documents", app.listDocuments)
+
+	// 蓝图节点元数据（T11）。前端检查器**由它驱动**，而不是按节点手写七个表单：
+	// 节点的字段名、约束、是否必填、由哪个任务交付都是**数据**，
+	// 于是「服务端加了字段而界面没跟上」不会发生（同一份数据两边用）。
+	//
+	// 为什么放在实体文档段之外（`blueprint-nodes` 而不是
+	// `blueprint-versions/nodes`）：它不是某个版本的子资源，而是节点集合的
+	// 定义，与具体版本无关。放进版本子路径会让 `?version=` 看起来能影响它。
+	mux.HandleFunc("GET "+projectPrefix+"/{projectId}/blueprint-nodes", app.listBlueprintNodes)
+}
+
+// listBlueprintNodes 返回蓝图节点元数据（T11）。
+//
+// 需要读权限（而不是设计权限）：viewer 也要能看懂「这个项目的方案由哪些节点组成」，
+// 只是不能保存。把读权限收紧到 design 会让只读成员看到一个没有内容的页面，
+// 而他本来可以据此提问。
+func (app *application) listBlueprintNodes(w http.ResponseWriter, r *http.Request) {
+	user, ok := requestUser(r)
+	if !ok {
+		app.writeAPIError(w, r, http.StatusUnauthorized, codeUnauthorized, msgAuthRequired, nil)
+		return
+	}
+	projectID, err := parseProjectID(r.PathValue("projectId"))
+	if err != nil {
+		app.writeAPIError(w, r, http.StatusNotFound, codeNotFound, msgProjectNotFound, nil)
+		return
+	}
+	if _, err := app.studio.Authorize(r.Context(), projectID, user.ID, store.AuthzRead); err != nil {
+		app.writeStudioError(w, r, err)
+		return
+	}
+
+	specs := model.BlueprintNodeSpecs()
+	// 单节点查询：`?node=` 直接返回该节点，使分享链接的接收方拿到同一份定义。
+	if key := r.URL.Query().Get("node"); key != "" {
+		spec, found := model.BlueprintNodeSpecByKey(key)
+		if !found {
+			app.writeAPIError(w, r, http.StatusNotFound, codeNotFound,
+				"没有这个蓝图节点；节点集合是固定的，请从设计页选择", nil)
+			return
+		}
+		app.writeJSON(w, http.StatusOK, spec)
+		return
+	}
+
+	app.writeJSON(w, http.StatusOK, map[string]any{
+		"items": specs,
+		// 节点集合是**封闭**的（§5「禁止任意脚本节点」），因此这里显式声明
+		// 一份可核对的键清单，客户端不需要从 items 里推导。
+		"nodeKeys": model.BlueprintNodeKeys(),
+		"sortKey":  "node:asc",
+	})
 }
 
 // documentVersionRequest 是保存版本的请求体（契约 §2.2）。

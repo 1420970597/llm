@@ -10,6 +10,7 @@ import { ProjectLayout } from './ProjectLayout'
 import { StudioLayout } from './StudioLayout'
 import { ProjectOverviewPage, ProjectsPage } from './pages/ProjectsPages'
 import { NewProjectWizard } from './pages/NewProjectWizard'
+import { BlueprintPage, CoveragePage, StandardPage } from './pages/BlueprintPages'
 import {
   allStudioRoutes,
   auxiliaryRoutes,
@@ -45,6 +46,9 @@ import {
 const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   projects: () => <ProjectsPage />,
   'project.overview': () => <ProjectOverviewPage />,
+  'project.blueprint': () => <BlueprintPage />,
+  'project.coverage': () => <CoveragePage />,
+  'project.standard': () => <StandardPage />,
   new: () => <WizardRoute step="basic" />,
   'new.coverage': () => <WizardRoute step="coverage" />,
   'new.quality': () => <WizardRoute step="quality" />,

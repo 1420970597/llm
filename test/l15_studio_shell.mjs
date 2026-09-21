@@ -75,6 +75,10 @@ function stripComments(text) {
 
 const routesSourceRaw = readFileSync(ROUTES_SOURCE, 'utf8')
 const routesSource = routesSourceRaw
+// StudioRoutes.tsx 的源码也要在这里读取：下面「available 与注册表一致」的
+// 断言用到它，而它原本声明在文件后半段 —— 在其之前引用会抛
+// ReferenceError（守卫自己当场报出过这个错误）。
+const studioRoutesSource = readFileSync(STUDIO_ROUTES_SOURCE, 'utf8')
 
 /**
  * 项目路由路径只允许出现在 routes.ts。
@@ -144,6 +148,7 @@ function parseRouteBlocks(text, exportName) {
 }
 
 const routeBlocks = [
+  ...parseRouteBlocks(routesSource, 'wizardRoutes'),
   ...parseRouteBlocks(routesSource, 'globalRoutes'),
   ...parseRouteBlocks(routesSource, 'projectRoutes'),
   ...parseRouteBlocks(routesSource, 'projectDetailRoutes'),
@@ -157,17 +162,24 @@ record(
   plannedBlocks.length >= 10 && plannedBlocks.every((block) => /T\d+/.test(block.task)),
   `planned=${plannedBlocks.length}；缺任务号：${plannedBlocks.filter((block) => !/T\d+/.test(block.task)).map((block) => block.key).join(', ') || '无'}`,
 )
+/**
+ * available 模块必须**恰好**等于注册了页面组件的那些键。
+ *
+ * 用「与注册表比对」而不是写死数量：写死数量会让每加一个页面都要改守卫，
+ * 而守卫的职责是「available 却没有页面」这类缺陷 —— 那才是「未实现能力
+ * 伪装可用」的入口。这一条比数量断言强得多，且不需要随任务更新。
+ */
 record(
-  '每个 available 模块也都标注来源任务',
-  availableBlocks.length === 2 && availableBlocks.every((block) => /T\d+/.test(block.task)),
+  '每个 available 模块都标注来源任务',
+  availableBlocks.length > 0 && availableBlocks.every((block) => /T\d+/.test(block.task)),
   `available=${availableBlocks.length}（${availableBlocks.map((block) => `${block.key}→${block.task}`).join(', ')}）`,
 )
 record(
   '每个路由都有明确的实现状态',
-  // 24 条 = 4 全局 + 6 项目标签 + 9 项目子页 + 4 辅助 + 1 目录评审。
+  // 27 条 = 3 向导步骤 + 4 全局 + 6 项目标签 + 9 项目子页 + 4 辅助 + 1 目录评审。
   // 用精确数字而不是「>= 某个值」：漏掉一整条路由（例如忘了注册某个工作区）
   // 正是这个守卫要发现的，而 >= 会让它仍然通过。
-  routeBlocks.length === 24 && routeBlocks.every((block) => block.status === 'planned' || block.status === 'available'),
+  routeBlocks.length === 27 && routeBlocks.every((block) => block.status === 'planned' || block.status === 'available'),
   `共 ${routeBlocks.length} 条路由；状态缺失：${routeBlocks.filter((block) => !block.status).map((block) => block.key).join(', ') || '无'}`,
 )
 
@@ -188,7 +200,6 @@ record('项目六工作区齐全', projectCount === 6, `projectRoutes=${projectC
  * 路由元素必须由元数据 map 生成；手写 `<Route path="/p/...">` 会让
  * 「元数据改了但 JSX 没改」重新变成可能。
  */
-const studioRoutesSource = readFileSync(STUDIO_ROUTES_SOURCE, 'utf8')
 const hardcodedRoutePaths = [...studioRoutesSource.matchAll(/<Route[^>]*path=["'](\/[^"']*)["']/g)]
   .map((match) => match[1])
   // `/p/:projectId`（项目壳）与 `/login`（认证）是壳层结构本身，不是功能路由。
@@ -290,6 +301,23 @@ async function bundleRoutes(prod) {
 const devRoutes = await bundleRoutes(false)
 const prodRoutes = await bundleRoutes(true)
 
+const availableKeys = availableBlocks.map((block) => block.key).sort()
+const registryBlock =
+  studioRoutesSource.match(/const AVAILABLE_PAGES[^{]*\{([\s\S]*?)\n\}/)?.[1] ?? ''
+const knownRouteKeys = new Set(prodRoutes.allStudioRoutes.map((route) => route.key))
+// 键可能是带引号的（含点号的 'project.overview'）或不带引号的（projects）——
+// 只匹配带引号的那种会漏掉后者，于是断言在「注册表写的是普通键」时误报。
+const registeredKeys = [...registryBlock.matchAll(/(?:'([A-Za-z0-9_.]+)'|\b([A-Za-z_][A-Za-z0-9_]*))\s*:/g)]
+  .map((match) => match[1] ?? match[2])
+  // 用真实路由键集合过滤：注册表里可能有非路由的辅助键（例如包装组件），
+  // 而它们不属于「模块是否有页面」这件事。
+  .filter((key) => knownRouteKeys.has(key))
+  .sort()
+record(
+  'available 模块与已注册页面组件一一对应',
+  JSON.stringify(availableKeys) === JSON.stringify(registeredKeys),
+  `available=[${availableKeys.join(', ')}] 注册=[${registeredKeys.join(', ')}]`,
+)
 record(
   '开发构建挂载 /catalog',
   devRoutes.isCatalogRouteMounted() === true,

@@ -270,7 +270,7 @@ func TestFencingRejectsLateSubmitFromExpiredWorker(t *testing.T) {
 	}
 
 	// 让租约过期，并回收。
-	time.Sleep(1100 * time.Millisecond)
+	waitForLeaseExpiry(t, fixture.pool, job.ID)
 	reclaimed, err := fixture.jobs.ReclaimExpiredJobs(ctx, 10)
 	if err != nil {
 		t.Fatalf("ReclaimExpiredJobs: %v", err)
@@ -380,7 +380,7 @@ func TestFencingRejectsLateFailureFromExpiredWorker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("worker A 抢占: %v", err)
 	}
-	time.Sleep(1100 * time.Millisecond)
+	waitForLeaseExpiry(t, fixture.pool, job.ID)
 	if _, err := fixture.jobs.ReclaimExpiredJobs(ctx, 10); err != nil {
 		t.Fatalf("ReclaimExpiredJobs: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestReclaimExpiredJobsRepublishesOutbox(t *testing.T) {
 		t.Fatalf("clear outbox: %v", err)
 	}
 
-	time.Sleep(1100 * time.Millisecond)
+	waitForLeaseExpiry(t, fixture.pool, job.ID)
 	reclaimed, err := fixture.jobs.ReclaimExpiredJobs(ctx, 10)
 	if err != nil {
 		t.Fatalf("ReclaimExpiredJobs: %v", err)
@@ -1102,4 +1102,29 @@ func TestRearmUndeliveredJobOutbox(t *testing.T) {
 	if !claimable[lostEventID] {
 		t.Fatal("重新武装后的事件必须能被 dispatcher 取走")
 	}
+}
+
+// waitForLeaseExpiry 等到租约在**数据库时钟**上确实过期。
+//
+// 为什么不能用固定 time.Sleep（这是一次真实 flake 的修复，不是预防性改动）：
+// 租约是否过期由数据库判定（`lease_until < NOW()`），而固定 sleep 的余量很小
+// （租约 1s + sleep 1.1s = 100ms）。在 `go test ./...` 并行编译与运行九個包时，
+// 这个余量实测不够 —— 出现过一次 store 包失败、单独重跑立即通过。
+// 改成「按数据库时钟轮询」，判据与产品代码**完全一致**，不再是时间猜测。
+func waitForLeaseExpiry(t *testing.T, pool *pgxpool.Pool, jobID int64) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		var expired bool
+		if err := pool.QueryRow(context.Background(), `
+      SELECT lease_until IS NOT NULL AND lease_until < NOW() FROM jobs WHERE id = $1`,
+			jobID).Scan(&expired); err != nil {
+			t.Fatalf("读取租约失败: %v", err)
+		}
+		if expired {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatal("租约在 15 秒内没有过期：数据库时钟或租约时长异常")
 }
