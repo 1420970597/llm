@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -81,7 +82,7 @@ func (app *application) createReleaseCandidate(w http.ResponseWriter, r *http.Re
 		app.writeReleaseError(w, r, err)
 		return
 	}
-	app.writeReleaseEnvelope(w, http.StatusCreated, projectID, release, role)
+	app.writeReleaseEnvelope(w, r.Context(), http.StatusCreated, projectID, release, role)
 }
 
 // getReleaseCard 返回发布 + 数据卡 + 制品（L03）。
@@ -110,7 +111,7 @@ func (app *application) getReleaseCard(w http.ResponseWriter, r *http.Request) {
 	manifest, manifestHash, manifestErr := app.studio.ReleaseArtifacts.GetManifest(
 		r.Context(), releaseID, release.CandidateRevision)
 	if manifestErr != nil && !errors.Is(manifestErr, store.ErrArtifactNotFound) {
-		app.writeStudioError(w, r, err)
+		app.writeStudioError(w, r, manifestErr)
 		return
 	}
 	_ = user
@@ -128,20 +129,25 @@ func (app *application) getReleaseCard(w http.ResponseWriter, r *http.Request) {
 		Blockers []studio.Blocker `json:"blockers"`
 	}{
 		Release: release, Artifacts: artifacts, Manifest: manifest, ManifestHash: manifestHash,
-		Blockers: app.releaseBlockers(projectID, release),
+		Blockers: app.releaseBlockers(r.Context(), projectID, release),
 	}
 	app.writeStudioEnvelope(w, http.StatusOK, envelope)
 }
 
 // releaseBlockers 把门槛快照转成带链接的 blocker（契约 §2.8）。
-func (app *application) releaseBlockers(projectID int64, release store.Release) []studio.Blocker {
+func (app *application) releaseBlockers(ctx context.Context, projectID int64, release store.Release) []studio.Blocker {
 	blockers := []studio.Blocker{}
 	for _, blocker := range release.Blockers {
 		item := studio.Blocker{Code: blocker.Code, Message: blocker.Message}
 		if blocker.SampleVersionID != nil {
-			// 每条 blocker 必须能点到**具体对象**，否则用户要在几万条里自己找。
-			item.Link = fmt.Sprintf("%s/samples/versions/%d", projectPrefix+"/"+strconv.FormatInt(projectID, 10),
-				*blocker.SampleVersionID)
+			// blocker 只保存 sample_versions.id；SPA 页面需要样本身份与
+			// 样本内版本号才能打开 `/p/:id/data/s_x?version=n`。
+			// 先按行 ID 解析，禁止把版本行 ID 当成 sampleId 拼进 URL。
+			version, err := app.studio.Batches.GetSampleVersionByID(ctx, projectID, *blocker.SampleVersionID)
+			if err == nil {
+				item.Link = fmt.Sprintf("/p/%d/data/%s?version=%d", projectID,
+					studio.SampleResourceID(version.SampleID), version.Version)
+			}
 		}
 		blockers = append(blockers, item)
 	}
@@ -182,7 +188,7 @@ func (app *application) publishRelease(w http.ResponseWriter, r *http.Request) {
 		app.writeReleaseError(w, r, err)
 		return
 	}
-	app.writeReleaseEnvelope(w, http.StatusAccepted, projectID, frozen, role)
+	app.writeReleaseEnvelope(w, r.Context(), http.StatusAccepted, projectID, frozen, role)
 }
 
 // createNextCandidate 从已发布版本创建下一版候选（契约 §2.10）。
@@ -245,7 +251,7 @@ func (app *application) createNextCandidate(w http.ResponseWriter, r *http.Reque
 		app.writeReleaseError(w, r, err)
 		return
 	}
-	app.writeReleaseEnvelope(w, http.StatusCreated, projectID, next, role)
+	app.writeReleaseEnvelope(w, r.Context(), http.StatusCreated, projectID, next, role)
 }
 
 // releaseNextCandidateLinks 给出「创建下一版」的入口信息（页面链接，不自行拼 URL）。
@@ -454,7 +460,7 @@ func (app *application) parseReleaseID(w http.ResponseWriter, r *http.Request) (
 }
 
 // writeReleaseEnvelope 写一个发布响应。
-func (app *application) writeReleaseEnvelope(w http.ResponseWriter, status int, projectID int64, release store.Release, role string) {
+func (app *application) writeReleaseEnvelope(w http.ResponseWriter, ctx context.Context, status int, projectID int64, release store.Release, role string) {
 	envelope := studio.NewEnvelope(
 		strconv.FormatInt(release.ID, 10), release.Status, release.CandidateRevision,
 		release.UpdatedAt, model.ReleaseCapabilities(role, release.Status),
@@ -464,7 +470,7 @@ func (app *application) writeReleaseEnvelope(w http.ResponseWriter, status int, 
 		Blockers []studio.Blocker `json:"blockers"`
 		Warnings []string         `json:"warnings"`
 	}{
-		Release: release, Blockers: app.releaseBlockers(projectID, release),
+		Release: release, Blockers: app.releaseBlockers(ctx, projectID, release),
 		Warnings: releaseWarnings(release),
 	}
 	app.writeStudioEnvelope(w, status, envelope)
