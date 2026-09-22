@@ -42,6 +42,12 @@ export type Envelope = {
   data: unknown
 }
 
+/** A typed envelope keeps the server capability bits alongside its payload. */
+export type TypedEnvelope<T, C> = Omit<Envelope, 'capabilities' | 'data'> & {
+  capabilities: C
+  data: T
+}
+
 /**
  * Atelier 单对象接口统一使用 `{ ...envelope, data: T }`。
  *
@@ -76,6 +82,12 @@ export type BatchCapabilities = {
 export type SampleCapabilities = {
   canReview: boolean
   canViewHistory: boolean
+}
+
+export type ReleaseCapabilities = {
+  canPublish: boolean
+  canDownload: boolean
+  canCreateNext: boolean
 }
 
 export type DocumentCapabilities = {
@@ -252,6 +264,8 @@ export type BatchSummary = {
   budgetLimitMinor: number
   createdAt: string
   updatedAt: string
+  /** 服务端按当前用户与状态计算的 UI 操作能力；命令端点仍会重新鉴权。 */
+  capabilities: BatchCapabilities
 }
 
 /** 批次级预算台账（T07）：三个计数器与上限。 */
@@ -387,6 +401,8 @@ export type SampleSummary = {
   /** 聚合判断序号：显示「判断改过几次」，也是发布冻结时的竞争检测依据。 */
   aggregateReviewRevision: number
   reviewConflict: boolean
+  /** 列表行能力位；viewer 仍可读内容，但不能提交判断。 */
+  capabilities: SampleCapabilities
 }
 
 /** 版本来源：单独一页要能回答「谁生成的、用哪一版标准与蓝图」（§4.1）。 */
@@ -918,6 +934,10 @@ export const studioApi = {
   /** `GET P/overview`（契约 §3）。 */
   overview: (projectId: number) =>
     client.get<Envelope>(`${projectPath(projectId)}/overview`).then((response) => unwrapStudioData<ProjectOverviewData>(response)),
+  overviewEnvelope: (projectId: number) =>
+    client
+      .get<TypedEnvelope<ProjectOverviewData, ProjectCapabilities>>(`${projectPath(projectId)}/overview`)
+      .then((response) => response.data),
 
   /** `GET P/batches`（契约 §3）：服务端分页，不按最大 ID 猜「当前运行」。 */
   listBatches: (projectId: number, params?: ListParams) =>
@@ -928,6 +948,10 @@ export const studioApi = {
   /** `GET P/batches/{batchId}`（契约 §3 的 R02）。 */
   getBatch: (projectId: number, batchId: string) =>
     client.get<Envelope>(`${projectPath(projectId)}/batches/${batchId}`).then((response) => unwrapStudioData<BatchDetail>(response)),
+  getBatchEnvelope: (projectId: number, batchId: string) =>
+    client
+      .get<TypedEnvelope<BatchDetail, BatchCapabilities>>(`${projectPath(projectId)}/batches/${batchId}`)
+      .then((response) => response.data),
 
   /** `GET P/batches/{batchId}/failures`（契约 §3 的 R03）。 */
   listBatchFailures: (projectId: number, batchId: string, params?: ListParams) =>
@@ -973,6 +997,10 @@ export const studioApi = {
   /** `GET P/samples/{sampleId}`（契约 §3 的 D02：内容只读）。 */
   getSample: (projectId: number, sampleId: string) =>
     client.get<Envelope>(`${projectPath(projectId)}/samples/${sampleId}`).then((response) => unwrapStudioData<SampleDetail>(response)),
+  getSampleEnvelope: (projectId: number, sampleId: string) =>
+    client
+      .get<TypedEnvelope<SampleDetail, SampleCapabilities>>(`${projectPath(projectId)}/samples/${sampleId}`)
+      .then((response) => response.data),
 
   /** `GET P/samples/{sampleId}/history`（契约 §3 的 D03）。 */
   listSampleHistory: (projectId: number, sampleId: string, params?: ListParams) =>
@@ -1061,6 +1089,10 @@ export const studioApi = {
     client
       .get(`${projectPath(projectId)}/releases/${releaseId}`)
       .then((response) => unwrapStudioData<ReleaseCard>(response)),
+  getReleaseCardEnvelope: (projectId: number, releaseId: number) =>
+    client
+      .get<TypedEnvelope<ReleaseCard, ReleaseCapabilities>>(`${projectPath(projectId)}/releases/${releaseId}`)
+      .then((response) => response.data),
 
   /** `POST .../publish`：冻结并发布（202 + building；相同命令返回同一个 release）。 */
   publishRelease: (projectId: number, releaseId: number) =>

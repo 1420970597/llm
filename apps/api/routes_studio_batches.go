@@ -258,7 +258,8 @@ func (app *application) listBatches(w http.ResponseWriter, r *http.Request) {
 		app.writeStudioError(w, r, studio.NewError(studio.CodeNotFound, msgProjectNotFound))
 		return
 	}
-	if _, err := app.studio.Authorize(r.Context(), projectID, user.ID, store.AuthzRead); err != nil {
+	decision, err := app.studio.Authorize(r.Context(), projectID, user.ID, store.AuthzRead)
+	if err != nil {
 		app.writeStudioError(w, r, err)
 		return
 	}
@@ -290,7 +291,9 @@ func (app *application) listBatches(w http.ResponseWriter, r *http.Request) {
 
 	summaries := make([]studio.BatchSummary, 0, len(batches))
 	for _, batch := range batches {
-		summaries = append(summaries, studio.ToBatchSummary(batch))
+		summaries = append(summaries, studio.ToBatchSummaryWithCapabilities(
+			batch, studio.BatchCapabilitiesFor(decision.Role, batch.Status),
+		))
 	}
 	app.writeJSON(w, http.StatusOK, studio.NewPage(summaries, query.Limit, "createdAt:desc",
 		func(summary studio.BatchSummary) studio.Cursor {
@@ -350,7 +353,8 @@ func (app *application) getBatch(w http.ResponseWriter, r *http.Request) {
 	_ = counts
 
 	detail := getBatchDetail{
-		Batch:            studio.ToBatchSummary(batch),
+		Batch: studio.ToBatchSummaryWithCapabilities(batch,
+			batchCapabilitiesForRole(user.ID, batch, app)),
 		Steps:            steps,
 		Snapshot:         batch.Snapshot,
 		GenerationConfig: batch.GenerationConfig,
@@ -563,7 +567,8 @@ func (app *application) controlBatch(action string) http.HandlerFunc {
 				return
 			}
 			envelope := app.batchEnvelopeWithRole(updated, decision.Role)
-			envelope.Data = map[string]any{"batch": studio.ToBatchSummary(updated), "resetItems": reset}
+			envelope.Data = map[string]any{"batch": studio.ToBatchSummaryWithCapabilities(updated,
+				studio.BatchCapabilitiesFor(decision.Role, updated.Status)), "resetItems": reset}
 			app.writeStudioEnvelope(w, http.StatusOK, envelope)
 			return
 		default:
@@ -635,7 +640,8 @@ func (app *application) batchEnvelopeWithRole(batch model.Batch, role string) st
 		studio.BatchCapabilitiesFor(role, batch.Status),
 		batchLinks(batch.ProjectID, batch.ID), nil,
 	)
-	envelope.Data = studio.ToBatchSummary(batch)
+	envelope.Data = studio.ToBatchSummaryWithCapabilities(batch,
+		studio.BatchCapabilitiesFor(role, batch.Status))
 	return envelope
 }
 

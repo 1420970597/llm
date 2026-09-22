@@ -117,9 +117,10 @@ type sampleSummary struct {
 	UpdatedAt       string `json:"updatedAt"`
 	// 审阅投影随列表一起返回（T17）：队列页要显示「哪些待审」，
 	// 逐条查会变成 N+1 次请求，而队列正是「一次看一屏」的场景。
-	ReviewStatus            string `json:"reviewStatus"`
-	AggregateReviewRevision int64  `json:"aggregateReviewRevision"`
-	ReviewConflict          bool   `json:"reviewConflict"`
+	ReviewStatus            string                    `json:"reviewStatus"`
+	AggregateReviewRevision int64                     `json:"aggregateReviewRevision"`
+	ReviewConflict          bool                      `json:"reviewConflict"`
+	Capabilities            studio.SampleCapabilities `json:"capabilities"`
 }
 
 // toSampleSummary 转换样本（不含审阅投影）。
@@ -140,6 +141,7 @@ func toSampleSummary(sample model.Sample) sampleSummary {
 		OriginBatchID: sample.OriginBatchID,
 		CreatedAt:     studio.FormatTime(sample.CreatedAt),
 		UpdatedAt:     studio.FormatTime(sample.UpdatedAt),
+		Capabilities:  studio.SampleCapabilities{CanViewHistory: true},
 	}
 }
 
@@ -176,7 +178,8 @@ func (app *application) listSamples(w http.ResponseWriter, r *http.Request) {
 		app.writeStudioError(w, r, studio.NewError(studio.CodeNotFound, msgProjectNotFound))
 		return
 	}
-	if _, err := app.studio.Authorize(r.Context(), projectID, user.ID, store.AuthzRead); err != nil {
+	decision, err := app.studio.Authorize(r.Context(), projectID, user.ID, store.AuthzRead)
+	if err != nil {
 		app.writeStudioError(w, r, err)
 		return
 	}
@@ -248,7 +251,9 @@ func (app *application) listSamples(w http.ResponseWriter, r *http.Request) {
 
 	summaries := make([]sampleSummary, 0, len(samples))
 	for _, sample := range samples {
-		summaries = append(summaries, toSampleSummaryWithReview(sample))
+		summary := toSampleSummaryWithReview(sample)
+		summary.Capabilities.CanReview = decision.Role == model.ProjectRoleOwner || decision.Role == model.ProjectRoleReviewer
+		summaries = append(summaries, summary)
 	}
 	app.writeJSON(w, http.StatusOK, studio.NewPage(summaries, query.Limit, "createdAt:desc",
 		func(summary sampleSummary) studio.Cursor {
@@ -334,9 +339,10 @@ func (app *application) getSample(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	capabilities := app.sampleCapabilities(r.Context(), projectID, user.ID)
 	envelope := studio.NewEnvelope(
 		studio.SampleResourceID(sample.ID), "ready", int64(sample.LatestVersion), sample.UpdatedAt,
-		app.sampleCapabilities(r.Context(), projectID, user.ID),
+		capabilities,
 		studio.Links{
 			"self":    sampleLinks(projectID, sample.ID)["self"],
 			"history": sampleLinks(projectID, sample.ID)["history"],
@@ -348,6 +354,7 @@ func (app *application) getSample(w http.ResponseWriter, r *http.Request) {
 	// 「已被接纳」显示成「待判断」，而用户会据此重复审一遍已经看过的东西。
 	summary := toSampleSummary(sample)
 	summary.LatestVersionID = version.ID
+	summary.Capabilities = capabilities
 	if projection, err := app.studio.Reviews.GetProjection(r.Context(), projectID, version.ID); err == nil {
 		applyReviewProjection(&summary, projection)
 	} else {

@@ -4,7 +4,16 @@ import { Button, Card, Checkbox, Empty, Input, Select, Spin, Tag, TextArea, Typo
 import { AlertTriangle, ChevronLeft, ChevronRight, Copy, RefreshCw, Save } from 'lucide-react'
 import { client } from '../../lib/api'
 import { projectPath, studioApi } from '../../lib/api/studio'
-import type { ApiBlocker, Page, ReviewDecision, ReviewProjection, SampleSummary, SampleVersionView } from '../../lib/api/studio'
+import type {
+  ApiBlocker,
+  Page,
+  ProjectCapabilities,
+  ReviewDecision,
+  ReviewProjection,
+  SampleCapabilities,
+  SampleSummary,
+  SampleVersionView,
+} from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { CommentPanel } from '../CommentsPanel'
 import { currentActorID, enqueue, pendingCount } from '../../lib/pendingQueue'
@@ -85,6 +94,17 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [snapshotNotice, setSnapshotNotice] = useState<string | null>(null)
   const [snapshotID, setSnapshotID] = useState<number | null>(null)
+  const [projectCapabilities, setProjectCapabilities] = useState<ProjectCapabilities | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void studioApi.overviewEnvelope(scope.projectId).then((overview) => {
+      if (!cancelled) setProjectCapabilities(overview.capabilities)
+    }).catch(() => {
+      if (!cancelled) setProjectCapabilities(null)
+    })
+    return () => { cancelled = true }
+  }, [scope.projectId])
 
   // 请求序号：丢弃过期响应，避免「先发出的慢响应覆盖后发出的结果」。
   const latestRequest = useRef(0)
@@ -237,12 +257,16 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
             它由服务端解析，因此不会出现「以为选了 40 条、实际提交 12 条」。
           </Text>
           <div className="mt-2 flex gap-2">
-            <Button size="small" theme="solid" type="primary" onClick={() => void snapshotSelected()} data-selection-release="true">
-              导出所选并准备发布
-            </Button>
-            <Button size="small" onClick={() => void snapshotAll()} data-snapshot-all="true">
-              按筛选条件全选并准备发布
-            </Button>
+            {projectCapabilities?.canPublish ? (
+              <Button size="small" theme="solid" type="primary" onClick={() => void snapshotSelected()} data-selection-release="true">
+                导出所选并准备发布
+              </Button>
+            ) : null}
+            {projectCapabilities?.canPublish ? (
+              <Button size="small" onClick={() => void snapshotAll()} data-snapshot-all="true">
+                按筛选条件全选并准备发布
+              </Button>
+            ) : null}
             <Button size="small" onClick={() => setSelected(new Set())}>
               清空当前页选择
             </Button>
@@ -250,9 +274,11 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
         </Card>
       ) : (
         <div className="mb-3">
-          <Button size="small" onClick={() => void snapshotAll()} data-snapshot-all="true">
-            按当前筛选冻结并准备发布（服务端解析）
-          </Button>
+          {projectCapabilities?.canPublish ? (
+            <Button size="small" onClick={() => void snapshotAll()} data-snapshot-all="true">
+              按当前筛选冻结并准备发布（服务端解析）
+            </Button>
+          ) : null}
         </div>
       )}
 
@@ -334,7 +360,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
                   ) : null}
                 </span>
                 <span className="flex gap-2">
-                  <Button
+                  {sample.capabilities?.canReview ? <Button
                     size="small"
                     theme="solid"
                     type="primary"
@@ -346,7 +372,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
                     }
                   >
                     审阅
-                  </Button>
+                  </Button> : null}
                   <Button
                     size="small"
                     onClick={() => navigate(`/p/${scope.projectId}/data/${sample.resourceId}/history`)}
@@ -383,6 +409,10 @@ export function SampleReviewPage() {
   const sampleID = params.sampleId ?? ''
 
   const [detail, setDetail] = useState<{ sample: SampleSummary; version: SampleVersionView } | null>(null)
+  const [capabilities, setCapabilities] = useState<SampleCapabilities>({
+    canReview: false,
+    canViewHistory: false,
+  })
   const [decisions, setDecisions] = useState<ReviewDecision[]>([])
   const [projection, setProjection] = useState<ReviewProjection | null>(null)
   const [blockers, setBlockers] = useState<ApiBlocker[]>([])
@@ -416,13 +446,12 @@ export function SampleReviewPage() {
     setLoading(true)
     setError(null)
     try {
-      const response = await client.get<{ data?: { sample: SampleSummary; version: SampleVersionView } }>(
-        `${projectPath(scope.projectId)}/samples/${sampleID}`,
-      )
+      const response = await studioApi.getSampleEnvelope(scope.projectId, sampleID)
       if (requestID !== latestRequest.current) return
-      setDetail(response.data.data ?? null)
+      setDetail(response.data)
+      setCapabilities(response.capabilities)
 
-      const version = response.data.data?.version
+      const version = response.data?.version
       if (version) {
         const decisionResponse = await studioApi.listDecisions(scope.projectId, sampleID, version.version)
         if (requestID !== latestRequest.current) return
@@ -469,6 +498,10 @@ export function SampleReviewPage() {
 
   const submit = useCallback(async () => {
     if (!detail) return
+    if (!capabilities.canReview) {
+      setSubmitError('当前账号没有审阅权限；内容保持只读')
+      return
+    }
     if (reason.trim() === '') {
       setSubmitError('理由必填：没有理由的判断无法被复核')
       return
@@ -496,7 +529,7 @@ export function SampleReviewPage() {
     } finally {
       setSubmitting(false)
     }
-  }, [action, detail, load, projection, reason, sampleID, scope.projectId])
+  }, [action, capabilities.canReview, detail, load, projection, reason, sampleID, scope.projectId])
 
   /**
    * 保存为本地草稿（T29）。
@@ -506,6 +539,10 @@ export function SampleReviewPage() {
    * 而启动运行/发布等操作由 pendingQueue 的允许清单直接拒绝。
    */
   const saveOfflineDraft = useCallback(() => {
+    if (!capabilities.canReview) {
+      setSubmitError('当前账号没有审阅权限；不能保存判断草稿')
+      return
+    }
     const actorId = currentActorID()
     const result = enqueue({
       kind: 'review_decision_draft',
@@ -521,7 +558,7 @@ export function SampleReviewPage() {
     } else {
       setSubmitError(result.reason)
     }
-  }, [action, detail, projection, reason, refreshPending, scope.projectId])
+  }, [action, capabilities.canReview, detail, projection, reason, refreshPending, scope.projectId])
 
   const copyContent = useCallback(async () => {
     if (!detail) return
@@ -596,6 +633,12 @@ export function SampleReviewPage() {
       {savedNotice ? (
         <Card className="console-card mb-3" bodyStyle={{ padding: 10 }} data-review-notice="true">
           <Text size="small">{savedNotice}</Text>
+        </Card>
+      ) : null}
+
+      {!capabilities.canReview ? (
+        <Card className="console-card mb-3" bodyStyle={{ padding: 10 }} data-capability-readonly="review">
+          <Text size="small">当前账号可以查看内容与来源，但没有提交人工判断的权限。</Text>
         </Card>
       ) : null}
 
@@ -688,7 +731,7 @@ export function SampleReviewPage() {
             <Text type="tertiary" size="small" className="block mb-1">
               处置
             </Text>
-            <Select
+            {capabilities.canReview ? <Select
               value={action}
               style={{ width: '100%' }}
               aria-label="选择处置"
@@ -697,41 +740,41 @@ export function SampleReviewPage() {
                 { value: 'quarantined', label: '隔离' },
               ]}
               onChange={(value) => setAction(value === 'quarantined' ? 'quarantined' : 'accepted')}
-            />
+            /> : null}
             <Text type="tertiary" size="small" className="block mt-2 mb-1">
               理由（必填）
             </Text>
-            <TextArea
+            {capabilities.canReview ? <TextArea
               value={reason}
               onChange={(value) => setReason(value)}
               autosize={{ minRows: 3, maxRows: 6 }}
               placeholder="例如：规则命中为误报，推理链完整"
               data-field="review-reason"
-            />
-            {submitError ? (
+            /> : null}
+            {capabilities.canReview && submitError ? (
               <div className="wizard-field__error mt-1" role="alert" data-review-submit-error="true">
                 {submitError}
               </div>
             ) : null}
             {/* 离线待同步（T29）：提交失败时提供本地草稿，并明确「未提交」。 */}
-            {submitError ? (
+            {capabilities.canReview && submitError ? (
               <div className="mt-1">
                 <Button size="small" theme="borderless" onClick={saveOfflineDraft} data-review-offline-draft="true">
                   保存为本地草稿（待同步）
                 </Button>
               </div>
             ) : null}
-            {offlineNotice ? (
+            {capabilities.canReview && offlineNotice ? (
               <Text type="warning" size="small" className="block mt-1" data-review-offline-notice="true">
                 {offlineNotice}
               </Text>
             ) : null}
-            {pending > 0 ? (
+            {capabilities.canReview && pending > 0 ? (
               <Text type="tertiary" size="small" className="block mt-1" data-review-pending-count="true">
                 待同步（未提交）：{pending} 条。联网后请重新登录并确认，系统不会后台自动提交。
               </Text>
             ) : null}
-            <div className="mt-2">
+            {capabilities.canReview ? <div className="mt-2">
               <Button
                 theme="solid"
                 type="primary"
@@ -741,7 +784,7 @@ export function SampleReviewPage() {
               >
                 保存判断
               </Button>
-            </div>
+            </div> : null}
           </div>
 
           {/* 评论面板（T27）：锚定**当前内容版本**，与判断分开 —— 讨论不改处置。 */}

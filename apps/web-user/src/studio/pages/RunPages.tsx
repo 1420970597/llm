@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowLeftRight, Pause, Play, RefreshCw, RotateCcw } from
 import { newIdempotencyKey, projectPath, studioApi } from '../../lib/api/studio'
 import type {
   BatchDetail,
+  BatchCapabilities,
   BatchFailure,
   BatchSnapshot,
   BatchSummary,
@@ -75,15 +76,18 @@ export function RunsPage() {
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState<number | null>(null)
+  const [canRun, setCanRun] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await client.get<Page<BatchSummary>>(
-        `${projectPath(scope.projectId)}/batches?limit=50`,
-      )
+      const [response, overview] = await Promise.all([
+        client.get<Page<BatchSummary>>(`${projectPath(scope.projectId)}/batches?limit=50`),
+        studioApi.overviewEnvelope(scope.projectId),
+      ])
       setBatches(response.data.items ?? [])
+      setCanRun(overview.capabilities.canRun === true)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载批次失败')
     } finally {
@@ -129,10 +133,12 @@ export function RunsPage() {
           <Button icon={<RefreshCw size={14} />} onClick={() => void load()} disabled={loading}>
             刷新
           </Button>
-          <Button onClick={() => navigate(`/p/${scope.projectId}/pilot`)}>新建试制</Button>
-          <Button theme="solid" type="primary" onClick={() => navigate(`/p/${scope.projectId}/runs/new`)}>
-            扩量规划
-          </Button>
+          {canRun ? <Button onClick={() => navigate(`/p/${scope.projectId}/pilot`)}>新建试制</Button> : null}
+          {canRun ? (
+            <Button theme="solid" type="primary" onClick={() => navigate(`/p/${scope.projectId}/runs/new`)}>
+              扩量规划
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -193,7 +199,7 @@ export function RunsPage() {
               <span data-count="failed">{batch.failedUnits}</span>
               <span data-count="inFlight">{batch.inFlightUnits}</span>
               <span className="batch-row__actions">
-                {batch.status === 'running' || batch.status === 'queued' ? (
+                {batch.capabilities?.canPause && (batch.status === 'running' || batch.status === 'queued') ? (
                   <Button
                     size="small"
                     icon={<Pause size={13} />}
@@ -203,7 +209,7 @@ export function RunsPage() {
                     暂停
                   </Button>
                 ) : null}
-                {batch.status === 'paused' || batch.status === 'pause_requested' ? (
+                {batch.capabilities?.canResume && (batch.status === 'paused' || batch.status === 'pause_requested') ? (
                   <Button
                     size="small"
                     icon={<Play size={13} />}
@@ -213,7 +219,7 @@ export function RunsPage() {
                     继续
                   </Button>
                 ) : null}
-                {batch.failedUnits > 0 ? (
+                {batch.capabilities?.canRetryFailed && batch.failedUnits > 0 ? (
                   <Button
                     size="small"
                     icon={<RotateCcw size={13} />}
@@ -251,6 +257,11 @@ export function BatchDetailPage() {
   const { Title, Text } = Typography
   const batchId = params.batchId ?? ''
   const [detail, setDetail] = useState<BatchDetail | null>(null)
+  const [capabilities, setCapabilities] = useState<BatchCapabilities>({
+    canPause: false,
+    canResume: false,
+    canRetryFailed: false,
+  })
   const [events, setEvents] = useState<BatchEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -262,16 +273,13 @@ export function BatchDetailPage() {
     setError(null)
     try {
       const [detailResponse, eventsResponse] = await Promise.all([
-        client.get<{ data?: BatchDetail } & BatchDetail>(
-          `${projectPath(scope.projectId)}/batches/${batchId}`,
-        ),
+        studioApi.getBatchEnvelope(scope.projectId, batchId),
         client.get<Page<BatchEvent>>(
           `${projectPath(scope.projectId)}/batches/${batchId}/events?limit=30`,
         ),
       ])
-      const payload =
-        (detailResponse.data as { data?: BatchDetail }).data ?? (detailResponse.data as BatchDetail)
-      setDetail(payload)
+      setDetail(detailResponse.data)
+      setCapabilities(detailResponse.capabilities)
       setEvents(eventsResponse.data.items ?? [])
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载批次详情失败')
@@ -341,7 +349,7 @@ export function BatchDetailPage() {
           </Text>
         </div>
         <div className="flex gap-2">
-          {isRunning ? (
+          {capabilities.canPause && isRunning ? (
             <Button
               icon={<Pause size={14} />}
               loading={busy}
@@ -350,12 +358,12 @@ export function BatchDetailPage() {
               暂停
             </Button>
           ) : null}
-          {isPaused ? (
+          {capabilities.canResume && isPaused ? (
             <Button icon={<Play size={14} />} loading={busy} onClick={() => void control('resume')}>
               继续
             </Button>
           ) : null}
-          {detail.batch.failedUnits > 0 ? (
+          {capabilities.canRetryFailed && detail.batch.failedUnits > 0 ? (
             <Button
               icon={<RotateCcw size={14} />}
               loading={busy}
@@ -511,15 +519,18 @@ export function FailuresPage() {
   const [error, setError] = useState<string | null>(null)
   const [resetItems, setResetItems] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
+  const [canRetryFailed, setCanRetryFailed] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await client.get<Page<BatchFailure>>(
-        `${projectPath(scope.projectId)}/batches/${batchId}/failures?limit=50`,
-      )
+      const [response, batch] = await Promise.all([
+        client.get<Page<BatchFailure>>(`${projectPath(scope.projectId)}/batches/${batchId}/failures?limit=50`),
+        studioApi.getBatchEnvelope(scope.projectId, batchId),
+      ])
       setFailures(response.data.items ?? [])
+      setCanRetryFailed(batch.capabilities.canRetryFailed === true)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载失败项失败')
     } finally {
@@ -558,9 +569,11 @@ export function FailuresPage() {
             只恢复**可重试**的失败单元；成功内容保留，因此反复点击不会重复产出。
           </Text>
         </div>
-        <Button icon={<RotateCcw size={14} />} loading={busy} onClick={() => void retry()}>
-          恢复失败项
-        </Button>
+        {canRetryFailed ? (
+          <Button icon={<RotateCcw size={14} />} loading={busy} onClick={() => void retry()}>
+            恢复失败项
+          </Button>
+        ) : null}
       </div>
 
       {/* 「恢复了 0 项」与「点了没反应」必须能区分。 */}
@@ -654,9 +667,20 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   const [adoptionNotice, setAdoptionNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [canRun, setCanRun] = useState(false)
   // A retry after a network timeout must replay the same command. Generating
   // the key inside submit would turn an uncertain retry into a second paid run.
   const idempotencyKeyRef = useRef(newIdempotencyKey())
+
+  useEffect(() => {
+    let cancelled = false
+    void studioApi.overviewEnvelope(scope.projectId).then((overview) => {
+      if (!cancelled) setCanRun(overview.capabilities.canRun === true)
+    }).catch(() => {
+      if (!cancelled) setCanRun(false)
+    })
+    return () => { cancelled = true }
+  }, [scope.projectId])
 
   const maxUnits = purpose === 'pilot' ? MAX_PILOT_UNITS : MAX_SCALE_UNITS
   const title = purpose === 'pilot' ? '小批试制' : '扩量规划'
@@ -732,6 +756,10 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   const ready = checklist.every((item) => item.ok)
 
   const submit = useCallback(async () => {
+    if (!canRun) {
+      setError('当前项目没有运行权限；请联系项目负责人')
+      return
+    }
     if (!ready) {
       setError('请先修正核对项中的问题')
       return
@@ -775,6 +803,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       setSubmitting(false)
     }
   }, [
+    canRun,
     blueprintVersionId,
     budgetLimitMinor,
     coverageVersionId,
@@ -913,7 +942,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
         <Button
           theme="solid"
           type="primary"
-          disabled={!ready}
+          disabled={!ready || !canRun}
           loading={submitting}
           onClick={() => void submit()}
         >

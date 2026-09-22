@@ -12,7 +12,9 @@ import type {
   ReleaseArtifact,
   ReleaseBlocker,
   ReleaseCard,
+  ReleaseCapabilities,
   ReleaseRecord,
+  ProjectCapabilities,
   SampleSummary,
 } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
@@ -79,13 +81,18 @@ export function ReleasesListPage() {
   const [releases, setReleases] = useState<ReleaseRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [canPublish, setCanPublish] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await studioApi.listReleases(scope.projectId)
+      const [response, overview] = await Promise.all([
+        studioApi.listReleases(scope.projectId),
+        studioApi.overviewEnvelope(scope.projectId),
+      ])
       setReleases(response.items ?? [])
+      setCanPublish(overview.capabilities.canPublish === true)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载发布列表失败')
     } finally {
@@ -124,9 +131,11 @@ export function ReleasesListPage() {
         </div>
         <div className="flex gap-2">
           <Button icon={<RefreshCw size={14} />} onClick={() => void load()}>刷新</Button>
-          <Button theme="solid" type="primary" onClick={() => navigate(`/p/${scope.projectId}/releases/new`)}>
-            准备发布
-          </Button>
+          {canPublish ? (
+            <Button theme="solid" type="primary" onClick={() => navigate(`/p/${scope.projectId}/releases/new`)}>
+              准备发布
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -196,6 +205,7 @@ export function ReleaseNewPage() {
   // GRPO 的发布格式与映射要求与 SFT 不同（T25）：界面必须提示用户，
   // 而不是让他在构建失败后才从错误里推出来。
   const [targetKind, setTargetKind] = useState('sft')
+  const [projectCapabilities, setProjectCapabilities] = useState<ProjectCapabilities | null>(null)
   const [blockers, setBlockers] = useState<ReleaseBlocker[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -222,8 +232,11 @@ export function ReleaseNewPage() {
     let cancelled = false
     void (async () => {
       try {
-        const response = await studioApi.overview(scope.projectId)
-        if (!cancelled) setTargetKind(response.targetKind ?? 'sft')
+        const response = await studioApi.overviewEnvelope(scope.projectId)
+        if (!cancelled) {
+          setTargetKind(response.data.targetKind ?? 'sft')
+          setProjectCapabilities(response.capabilities)
+        }
       } catch {
         // 读取失败时回退 SFT：该值只影响提示文案，不参与服务端校验，
         // 因此失败方向是「少一条提示」而不是「提交错格式」。
@@ -287,6 +300,10 @@ export function ReleaseNewPage() {
   const submit = useCallback(async () => {
     setError(null)
     setBlockers([])
+    if (!projectCapabilities?.canPublish) {
+      setError('当前项目没有发布权限；请联系项目负责人')
+      return
+    }
     if (hasInvalidSelectionParam || selectionSnapshotState === 'invalid') {
       setError('发布范围快照无效或已过期，请返回样本工作区重新选择')
       return
@@ -349,6 +366,7 @@ export function ReleaseNewPage() {
     selectionSnapshotID,
     selectionSnapshotItems,
     selectionSnapshotState,
+    projectCapabilities?.canPublish,
   ])
 
   return (
@@ -460,7 +478,7 @@ export function ReleaseNewPage() {
 
       {error ? <div className="wizard-field__error mb-3" role="alert">{error}</div> : null}
 
-      <Button theme="solid" type="primary" loading={busy} onClick={() => void submit()}>
+      <Button theme="solid" type="primary" loading={busy} disabled={!projectCapabilities?.canPublish} onClick={() => void submit()}>
         创建发布候选
       </Button>
     </div>
@@ -480,6 +498,11 @@ export function ReleaseCardPage() {
   const releaseID = Number(params.releaseId ?? 0)
 
   const [card, setCard] = useState<ReleaseCard | null>(null)
+  const [capabilities, setCapabilities] = useState<ReleaseCapabilities>({
+    canPublish: false,
+    canDownload: false,
+    canCreateNext: false,
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -489,8 +512,9 @@ export function ReleaseCardPage() {
     setLoading(true)
     setError(null)
     try {
-      const response = await studioApi.getReleaseCard(scope.projectId, releaseID)
-      setCard(response)
+      const response = await studioApi.getReleaseCardEnvelope(scope.projectId, releaseID)
+      setCard(response.data)
+      setCapabilities(response.capabilities)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载数据卡失败')
     } finally {
@@ -564,11 +588,11 @@ export function ReleaseCardPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Tag color={statusColor(release.status)}>{RELEASE_STATUS_LABEL[release.status] ?? release.status}</Tag>
-          {!published ? (
+          {!published && capabilities.canPublish ? (
             <Button theme="solid" type="primary" loading={busy} onClick={() => void publish()}>
               冻结并发布
             </Button>
-          ) : (
+          ) : published && capabilities.canCreateNext ? (
             <Button loading={busy} onClick={() => void createNext()}>创建下一版</Button>
           )}
         </div>
@@ -625,7 +649,7 @@ export function ReleaseCardPage() {
               <Text size="small">
                 {artifact.format} · {artifact.sizeBytes} 字节 · hash {artifact.artifactHash.slice(0, 16)}…
               </Text>
-              {artifact.state === 'verified' ? (
+              {artifact.state === 'verified' && capabilities.canDownload ? (
                 // 下载走同源 /api，因此复用统一会话与错误处理（401/403 有中文提示）。
                 // 文件名由服务端设置（含类型与版本名，不叫 latest）。
                 <a className="console-link" href={studioApi.downloadArtifactURL(scope.projectId, release.id, artifact.id)}>

@@ -309,23 +309,35 @@ func ValidateReleaseName(name string) error {
 	return nil
 }
 
+// ReleaseCapabilitiesView is the release-specific capability shape from
+// contract §4.  It deliberately is not the project capability shape: a
+// release has no edit/run/member controls, but does expose the published-only
+// "create next" action.
+type ReleaseCapabilitiesView struct {
+	// CanEdit is retained for compatibility with the existing model-level
+	// capability contract; published releases always return false.
+	CanEdit       bool `json:"canEdit"`
+	CanPublish    bool `json:"canPublish"`
+	CanDownload   bool `json:"canDownload"`
+	CanCreateNext bool `json:"canCreateNext"`
+}
+
 // ReleaseCapabilities 派生发布能力位（契约 §4）。
 //
 // published 是**终态**：只有下载与「创建下一版」可用（§2.4 发布后只读）。
-func ReleaseCapabilities(role, status string) Capabilities {
+func ReleaseCapabilities(role, status string) ReleaseCapabilitiesView {
 	isOwner := role == ProjectRoleOwner
 	canReview := isOwner || role == ProjectRoleReviewer
 	switch status {
 	case ReleaseStatusPublished:
-		return Capabilities{CanPublish: false, CanDownload: canReview || role == ProjectRoleViewer}
+		return ReleaseCapabilitiesView{
+			CanDownload:   canReview || role == ProjectRoleViewer,
+			CanCreateNext: isOwner,
+		}
 	case ReleaseStatusBuilding:
 		// building 期间不可重复发布（重复命令返回同一个 release，见 §2.9）。
-		return Capabilities{CanPublish: false, CanDownload: canReview}
+		return ReleaseCapabilitiesView{CanDownload: canReview}
 	default:
-		return Capabilities{
-			CanEdit:     isOwner,
-			CanPublish:  isOwner,
-			CanDownload: canReview,
-		}
+		return ReleaseCapabilitiesView{CanEdit: isOwner, CanPublish: isOwner, CanDownload: canReview}
 	}
 }
