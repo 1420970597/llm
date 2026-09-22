@@ -526,6 +526,11 @@ export function SampleReviewPage() {
 
   useEffect(() => {
     // 切换样本时，判断理由和复制回退内容都属于上一条，不能带到新样本。
+    setDetail(null)
+    setDecisions([])
+    setProjection(null)
+    setBlockers([])
+    setLoading(true)
     setAction('accepted')
     setReason('')
     setSubmitError(null)
@@ -784,7 +789,11 @@ export function SampleReviewPage() {
                 queueWithCurrent.map((item) => {
                   const active = item.resourceId === sampleID
                   return (
-                    <li key={item.resourceId} className={active ? 'review-queue__item--active' : undefined}>
+                    <li
+                      key={item.resourceId}
+                      className={active ? 'review-queue__item--active' : undefined}
+                      style={active ? { border: '1px solid #d6cdf7', borderRadius: 8, background: '#faf8ff' } : undefined}
+                    >
                       <button
                         type="button"
                         className="review-queue__button"

@@ -11,12 +11,12 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import {
-  breadcrumbsFor,
   fillRoutePath,
   fillRoutePathByKey,
   projectDetailRoutes,
   projectRoutes,
 } from './routes'
+import { useProjectName } from './projectName'
 
 /**
  * 项目壳（Issue #160 T09）：六项目工作区标签 + 面包屑 + 项目作用域。
@@ -89,18 +89,14 @@ export function ProjectLayout() {
   const scope = useProjectScope()
   const location = useLocation()
   const { Title, Text } = Typography
-
-  const crumbs = useMemo(
-    () => breadcrumbsFor(location.pathname, { projectId: scope.projectId }),
-    [location.pathname, scope.projectId],
-  )
+  const projectName = useProjectName(scope.projectId)
 
   const activeTab = useMemo(() => {
     const meta = tabForPath(location.pathname)
     return meta?.key ?? 'project.overview'
   }, [location.pathname])
 
-  const projectName = crumbs.length > 1 ? crumbs[1].label : `项目 ${scope.projectId}`
+  const projectTitle = projectName ?? '项目'
 
   return (
     // key=projectId：切换项目时整棵子树重新挂载，上一个项目的在飞请求
@@ -108,7 +104,7 @@ export function ProjectLayout() {
     <div className="project-layout atelier-project-shell" key={scope.projectId} data-studio-project-id={scope.projectId}>
       <header className="project-layout__header atelier-project-header">
         <Title heading={4} className="!mb-0">
-          {projectName}
+          {projectTitle}
         </Title>
         <Text type="tertiary">{activeTabCaption(activeTab)}</Text>
       </header>

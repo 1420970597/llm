@@ -627,7 +627,11 @@ export type BreadcrumbItem = {
   path?: string
 }
 
-export function breadcrumbsFor(pathname: string, params: Record<string, string | number>): BreadcrumbItem[] {
+export function breadcrumbsFor(
+  pathname: string,
+  params: Record<string, string | number>,
+  projectName?: string,
+): BreadcrumbItem[] {
   const current = matchRoute(pathname)
   if (!current) {
     return [{ label: '数据项目', path: fillRoutePathByKey('projects', {}) }]
@@ -636,7 +640,9 @@ export function breadcrumbsFor(pathname: string, params: Record<string, string |
     const items: BreadcrumbItem[] = [
       { label: '数据项目', path: fillRoutePathByKey('projects', {}) },
       {
-        label: `项目 ${params.projectId ?? ''}`.trim(),
+        // 详情接口加载完成前由壳传入中性占位；保留 ID fallback 仅供纯路由
+        // 调用方与离线守卫使用，运行中的项目壳不会把 URL ID当作名称。
+        label: projectName?.trim() || `项目 ${params.projectId ?? ''}`.trim(),
         path: fillRoutePathByKey('project.overview', params),
       },
     ]
