@@ -26,6 +26,7 @@ import {
 } from './routes'
 import { newIdempotencyKey } from '../lib/api/studio'
 import { CommandSearch } from './pages/TodayPages'
+import { clearForActor, currentActorID } from '../lib/pendingQueue'
 
 /**
  * 全局壳（Issue #160 T09）：4 全局入口 + 辅助入口 + 目录评审（仅非生产）。
@@ -146,6 +147,10 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
                 size="small"
                 icon={<LogOut size={14} />}
                 onClick={() => {
+                  // 退出账号时清理本机待同步队列（T29）：
+                  // 敏感正文不在本机留存；下一个登录的用户不会看到上一个人的草稿。
+                  const actorId = currentActorID()
+                  if (actorId > 0) clearForActor(actorId)
                   onLogout()
                   navigate('/login')
                 }}

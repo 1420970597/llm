@@ -1780,3 +1780,52 @@ select:focus {
   display: grid;
   gap: 10px;
 }
+
+/* ---------------------------------------------------------------------------
+   无障碍与窄屏（Issue #160 T29）
+   ---------------------------------------------------------------------------
+   三条最容易被忽略、而后果最直接的可访问性问题：
+   1. 键盘焦点不可见：`:focus-visible` 在暗色/浅色下都要有明确轮廓 —— 靠浏览器
+      默认轮廓在自定义背景上经常几乎看不见；
+   2. 中文长文本不换行：长 URL/长英文串会把容器撑破（`overflow-wrap` 必须显式写，
+      否则用户的截图里正文被裁掉一半）；
+   3. 触屏目标太小：390px 下小于 32px 的行内按钮很难点中（点错会提交错误操作）。
+   --------------------------------------------------------------------------- */
+:focus-visible {
+  outline: 2px solid #165dff;
+  outline-offset: 2px;
+}
+
+.review-evidence,
+.comparison-row,
+.console-card,
+.sidebar-nav-item__label {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 触屏目标的可用性下限（不为设计美观牺牲可点性）。 */
+button,
+[role='button'],
+a {
+  min-height: 28px;
+}
+
+@media (max-width: 768px) {
+  /* 窄屏下按钮更宽松：390/768 是 T29 明确要求验证的宽度。 */
+  button,
+  [role='button'] {
+    min-height: 36px;
+  }
+  .comparison-row {
+    /* 窄屏不横向挤压：宁可允许横向滚动，也不要让单元格内容互相遮挡。 */
+    min-width: 640px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

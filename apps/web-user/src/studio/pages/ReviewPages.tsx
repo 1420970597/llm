@@ -7,6 +7,7 @@ import { projectPath, studioApi } from '../../lib/api/studio'
 import type { ApiBlocker, Page, ReviewDecision, ReviewProjection, SampleSummary, SampleVersionView } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { CommentPanel } from '../CommentsPanel'
+import { currentActorID, enqueue, pendingCount } from '../../lib/pendingQueue'
 
 /**
  * 数据工作区页面（Issue #160 T17）：样本列表、三栏审阅、版本与来源历史。
@@ -359,10 +360,22 @@ export function SampleReviewPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [savedNotice, setSavedNotice] = useState<string | null>(null)
+  // 离线待同步（T29）：提交失败时**不显示成功**，而是提供「保存为本地草稿」。
+  const [offlineNotice, setOfflineNotice] = useState<string | null>(null)
+  const [pending, setPending] = useState(0)
 
   // 竞态防护：切样本时丢弃过期响应（见文件头说明）。
   const latestRequest = useRef(0)
   const contentRef = useRef<HTMLDivElement | null>(null)
+
+  const refreshPending = useCallback(() => {
+    const actorId = currentActorID()
+    setPending(actorId > 0 ? pendingCount(actorId, scope.projectId) : 0)
+  }, [scope.projectId])
+
+  useEffect(() => {
+    refreshPending()
+  }, [refreshPending])
 
   const load = useCallback(async () => {
     const requestID = latestRequest.current + 1
@@ -451,6 +464,31 @@ export function SampleReviewPage() {
       setSubmitting(false)
     }
   }, [action, detail, load, projection, reason, sampleID, scope.projectId])
+
+  /**
+   * 保存为本地草稿（T29）。
+   *
+   * 只在**提交失败**时提供：离线写入不显示成功，这里返回的语义是
+   * 「待同步（未提交）」。判断类意图可以入队（非收费、可安全重放），
+   * 而启动运行/发布等操作由 pendingQueue 的允许清单直接拒绝。
+   */
+  const saveOfflineDraft = useCallback(() => {
+    const actorId = currentActorID()
+    const result = enqueue({
+      kind: 'review_decision_draft',
+      actorId,
+      workspaceId: scope.projectId,
+      objectRef: `sample_version:${detail?.version.versionId ?? 0}`,
+      revision: projection?.evidenceRevision ?? 0,
+      payload: { body: reason.trim(), action },
+    })
+    if (result.status === 'pending') {
+      setOfflineNotice('已保存为本机草稿（待同步，**未提交**）：联网后需先登录并确认，系统不会后台自动提交')
+      refreshPending()
+    } else {
+      setSubmitError(result.reason)
+    }
+  }, [action, detail, projection, reason, refreshPending, scope.projectId])
 
   const copyContent = useCallback(async () => {
     if (!detail) return
@@ -638,9 +676,27 @@ export function SampleReviewPage() {
               data-field="review-reason"
             />
             {submitError ? (
-              <div className="wizard-field__error mt-1" role="alert">
+              <div className="wizard-field__error mt-1" role="alert" data-review-submit-error="true">
                 {submitError}
               </div>
+            ) : null}
+            {/* 离线待同步（T29）：提交失败时提供本地草稿，并明确「未提交」。 */}
+            {submitError ? (
+              <div className="mt-1">
+                <Button size="small" theme="borderless" onClick={saveOfflineDraft} data-review-offline-draft="true">
+                  保存为本地草稿（待同步）
+                </Button>
+              </div>
+            ) : null}
+            {offlineNotice ? (
+              <Text type="warning" size="small" className="block mt-1" data-review-offline-notice="true">
+                {offlineNotice}
+              </Text>
+            ) : null}
+            {pending > 0 ? (
+              <Text type="tertiary" size="small" className="block mt-1" data-review-pending-count="true">
+                待同步（未提交）：{pending} 条。联网后请重新登录并确认，系统不会后台自动提交。
+              </Text>
             ) : null}
             <div className="mt-2">
               <Button
