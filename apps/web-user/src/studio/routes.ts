@@ -97,7 +97,7 @@ export const globalRoutes: StudioRouteMeta[] = [
     label: '交付库',
     caption: '仅已发布且你有权访问的版本',
     kind: 'global',
-    moduleStatus: 'planned',
+    moduleStatus: 'available',
     task: 'T22',
     permission: 'read',
   },
@@ -166,7 +166,7 @@ export const projectRoutes: StudioRouteMeta[] = [
     label: '发布',
     caption: '候选门槛、不可变制品与交付',
     kind: 'project',
-    moduleStatus: 'planned',
+    moduleStatus: 'available',
     task: 'T22',
     permission: 'publish',
   },
@@ -232,6 +232,17 @@ export const projectDetailRoutes: StudioRouteMeta[] = [
     moduleStatus: 'available',
     task: 'T17',
     navParent: 'project.data',
+    permission: 'read',
+  },
+  {
+    key: 'project.releaseCard',
+    path: '/p/:projectId/releases/:releaseId',
+    label: '数据卡',
+    caption: '阻塞项、制品与不可变 manifest',
+    kind: 'project',
+    moduleStatus: 'available',
+    task: 'T22',
+    navParent: 'project.releases',
     permission: 'read',
   },
   {
@@ -328,7 +339,7 @@ export const projectDetailRoutes: StudioRouteMeta[] = [
     label: '准备发布',
     caption: '范围、用途与限制',
     kind: 'project',
-    moduleStatus: 'planned',
+    moduleStatus: 'available',
     task: 'T20',
     navParent: 'project.releases',
     permission: 'publish',
@@ -499,17 +510,25 @@ export function isCatalogRouteMounted(): boolean {
 /**
  * 按当前 pathname 找最匹配的路由元数据。
  *
- * 匹配规则：把 `:param` 段与任意非空段对齐，取**最长**匹配。
- * 为什么取最长：`/p/1/runs` 与 `/p/1/runs/new` 都能与 `/p/:projectId/runs`
- * 的模式前缀匹配，只有最长匹配才能让「扩量规划」不会把侧边栏高亮到「生产」。
+ * 匹配规则（两段优先级，缺一不可）：
+ *
+ *  1. 段数必须相同（`/p/1/runs` 与 `/p/1/runs/new` 不是同一个页面）；
+ *  2. 段数相同时，**字面段多者优先**（参数段少者优先）。
+ *
+ * 第 2 条是一处真实缺陷的修复（由守卫发现）：`/p/:projectId/releases/:releaseId`
+ * 与 `/p/:projectId/releases/new` 段数相同，若只按「段数最长」选，
+ * 先出现的带参数路由会赢 —— 于是点「准备发布」会打开某个发布的数据卡
+ * （`releaseId` 被当成 `"new"`）。按字面段数排序让 `new` 这种固定路径
+ * 永远优先于参数路径，这与路由框架的既定行为一致。
  */
 export function matchRoute(pathname: string): StudioRouteMeta | undefined {
   const segments = splitPath(pathname)
   let best: StudioRouteMeta | undefined
-  let bestScore = -1
+  let bestLiteral = -1
   for (const route of allStudioRoutes) {
     const pattern = splitPath(route.path)
     if (pattern.length !== segments.length) continue
+    let literal = 0
     let matched = true
     for (let index = 0; index < pattern.length; index += 1) {
       const expected = pattern[index]
@@ -518,11 +537,13 @@ export function matchRoute(pathname: string): StudioRouteMeta | undefined {
         matched = false
         break
       }
+      literal += 1
     }
     if (!matched) continue
-    if (pattern.length > bestScore) {
+    // 字面段更多的优先；相同时保留先出现的（元数据顺序即优先级声明顺序）。
+    if (literal > bestLiteral) {
       best = route
-      bestScore = pattern.length
+      bestLiteral = literal
     }
   }
   return best

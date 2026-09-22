@@ -159,7 +159,10 @@ const plannedBlocks = routeBlocks.filter((block) => block.status === 'planned')
 const availableBlocks = routeBlocks.filter((block) => block.status === 'available')
 record(
   '每个 planned 模块都标注负责的任务号',
-  plannedBlocks.length >= 10 && plannedBlocks.every((block) => /T\d+/.test(block.task)),
+  // 不设「至少 N 个 planned」这类阈值：随任务落地 planned 会自然减少，
+  // 而这条断言的不变量是「每个 planned 都有任务号」。
+  // 阈值会让守卫在进度推进后无意义地失败（已发生过一次）。
+  plannedBlocks.every((block) => /T\d+/.test(block.task)) && plannedBlocks.length > 0,
   `planned=${plannedBlocks.length}；缺任务号：${plannedBlocks.filter((block) => !/T\d+/.test(block.task)).map((block) => block.key).join(', ') || '无'}`,
 )
 /**
@@ -176,10 +179,10 @@ record(
 )
 record(
   '每个路由都有明确的实现状态',
-  // 32 条 = 3 向导步骤 + 4 全局 + 6 项目标签 + 14 项目子页 + 4 辅助 + 1 目录评审。
+  // 33 条 = 3 向导步骤 + 4 全局 + 6 项目标签 + 15 项目子页 + 4 辅助 + 1 目录评审。
   // 用精确数字而不是「>= 某个值」：漏掉一整条路由（例如忘了注册某个工作区）
   // 正是这个守卫要发现的，而 >= 会让它仍然通过。
-  routeBlocks.length === 32 && routeBlocks.every((block) => block.status === 'planned' || block.status === 'available'),
+  routeBlocks.length === 33 && routeBlocks.every((block) => block.status === 'planned' || block.status === 'available'),
   `共 ${routeBlocks.length} 条路由；状态缺失：${routeBlocks.filter((block) => !block.status).map((block) => block.key).join(', ') || '无'}`,
 )
 

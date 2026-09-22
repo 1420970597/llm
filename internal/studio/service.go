@@ -31,35 +31,39 @@ import (
 
 // Service 是 Atelier 指挥层的依赖聚合。
 type Service struct {
-	Pool        *pgxpool.Pool
-	Projects    *store.ProjectStore
-	Authz       *store.AuthzStore
-	Documents   *store.DocumentStore
-	Batches     *store.BatchStore
-	Jobs        *store.JobStore
-	Usage       *store.UsageStore
-	Reviews     *store.ReviewStore
-	Experiments *store.ExperimentStore
-	Selections  *store.SelectionStore
-	Comparisons *store.ComparisonStore
-	Idempotency *store.IdempotencyStore
+	Pool             *pgxpool.Pool
+	Projects         *store.ProjectStore
+	Authz            *store.AuthzStore
+	Documents        *store.DocumentStore
+	Batches          *store.BatchStore
+	Jobs             *store.JobStore
+	Usage            *store.UsageStore
+	Reviews          *store.ReviewStore
+	Experiments      *store.ExperimentStore
+	Selections       *store.SelectionStore
+	Comparisons      *store.ComparisonStore
+	Releases         *store.ReleaseStore
+	ReleaseArtifacts *store.ReleaseArtifactStore
+	Idempotency      *store.IdempotencyStore
 }
 
 // New 构造服务。
 func New(pool *pgxpool.Pool) *Service {
 	return &Service{
-		Pool:        pool,
-		Projects:    store.NewProjectStore(pool),
-		Authz:       store.NewAuthzStore(pool),
-		Documents:   store.NewDocumentStore(pool),
-		Batches:     store.NewBatchStore(pool),
-		Jobs:        store.NewJobStore(pool),
-		Usage:       store.NewUsageStore(pool),
-		Reviews:     store.NewReviewStore(pool),
-		Experiments: store.NewExperimentStore(pool),
-		Selections:  store.NewSelectionStore(pool),
-		Comparisons: store.NewComparisonStore(pool),
-		Idempotency: store.NewIdempotencyStore(pool),
+		Pool:             pool,
+		Projects:         store.NewProjectStore(pool),
+		Authz:            store.NewAuthzStore(pool),
+		Documents:        store.NewDocumentStore(pool),
+		Batches:          store.NewBatchStore(pool),
+		Jobs:             store.NewJobStore(pool),
+		Usage:            store.NewUsageStore(pool),
+		Reviews:          store.NewReviewStore(pool),
+		Experiments:      store.NewExperimentStore(pool),
+		Selections:       store.NewSelectionStore(pool),
+		Comparisons:      store.NewComparisonStore(pool),
+		Releases:         store.NewReleaseStore(pool),
+		ReleaseArtifacts: store.NewReleaseArtifactStore(pool),
+		Idempotency:      store.NewIdempotencyStore(pool),
 	}
 }
 

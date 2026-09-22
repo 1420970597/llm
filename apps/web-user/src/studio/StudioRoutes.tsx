@@ -15,6 +15,7 @@ import { BatchDetailPage, BatchPlanningPage, FailuresPage, RunsPage } from './pa
 import { SampleHistoryPage, SampleListPage, SampleReviewPage } from './pages/ReviewPages'
 import { ComparePage } from './pages/ComparePage'
 import { QualityListPage, QualityNewPage, QualityReportPage, RulesPage } from './pages/QualityPages'
+import { DeliveriesPage, ReleaseCardPage, ReleaseNewPage, ReleasesListPage } from './pages/ReleasePages'
 import {
   allStudioRoutes,
   auxiliaryRoutes,
@@ -50,6 +51,10 @@ import {
 const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   projects: () => <ProjectsPage />,
   'project.overview': () => <ProjectOverviewPage />,
+  'project.releases': () => <ReleasesListPage />,
+  'project.newRelease': () => <ReleaseNewPage />,
+  'project.releaseCard': () => <ReleaseCardPage />,
+  deliveries: () => <DeliveriesPage />,
   'project.quality': () => <QualityListPage />,
   'project.qualityNew': () => <QualityNewPage />,
   'project.qualityReport': () => <QualityReportPage />,

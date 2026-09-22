@@ -505,6 +505,96 @@ export type CreateSelectionSnapshotRequest = {
 }
 
 // ---------------------------------------------------------------------------
+// 发布与交付（契约 §2.8–§2.10、§3）
+// ---------------------------------------------------------------------------
+
+export type ReleaseStatus =
+  | 'candidate'
+  | 'blocked'
+  | 'building'
+  | 'published'
+  | 'build_failed'
+
+export type ReleaseBlocker = {
+  code: string
+  message: string
+  /** 指向具体内容版本的链接（前端不自行拼 URL）。 */
+  link?: string
+  field?: string
+}
+
+export type ReleaseArtifact = {
+  id: number
+  releaseId: number
+  revision: number
+  artifactType: string
+  format: string
+  objectKey: string
+  storageEndpoint: string
+  storageBucket: string
+  sizeBytes: number
+  contentType: string
+  artifactHash: string
+  itemsContentHash: string
+  encoderVersion: string
+  state: 'registered' | 'verified' | 'failed' | string
+  errorClass: string
+  errorMessage: string
+  verifiedAt?: string
+}
+
+export type ReleaseRecord = {
+  id: number
+  projectId: number
+  releaseName: string
+  status: ReleaseStatus | string
+  targetKind: string
+  intendedUse: string
+  limitations: string[]
+  format: string
+  candidateId: number
+  candidateRevision: number
+  mappingVersionId?: number
+  blockers: ReleaseBlocker[]
+  publishedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** 数据卡：原范围指标、排除数量与覆盖损失都保留（§2.3）。 */
+export type ReleaseCard = {
+  release: ReleaseRecord
+  artifacts: ReleaseArtifact[]
+  manifest: unknown
+  manifestHash: string
+  blockers: ReleaseBlocker[]
+}
+
+export type CreateReleaseCandidateRequest = {
+  releaseName: string
+  /** 具体内容版本（不是筛选条件）。 */
+  sampleVersionIds: number[]
+  mappingVersionId: number
+  format?: string
+  intendedUse: string
+  limitations?: string[]
+  provenance?: Record<string, unknown>
+}
+
+/** 交付库条目：**只含已发布且用户可访问的版本**。 */
+export type DeliveryItem = {
+  releaseId: number
+  projectId: number
+  releaseName: string
+  status: string
+  intendedUse: string
+  format: string
+  targetKind: string
+  publishedAt?: string
+  page: string
+}
+
+// ---------------------------------------------------------------------------
 // 质量实验（契约 §2.5、§3、§3.1）
 // ---------------------------------------------------------------------------
 
@@ -915,6 +1005,43 @@ export const studioApi = {
     client
       .post(`${projectPath(projectId)}/selection-snapshots`, payload)
       .then((response) => response.data as SelectionSnapshot),
+
+  /** `POST P/releases`：创建候选（同事务分配 candidateId + releaseId + 版本名）。 */
+  createReleaseCandidate: (projectId: number, payload: CreateReleaseCandidateRequest) =>
+    client
+      .post(`${projectPath(projectId)}/releases`, payload)
+      .then((response) => response.data as { data: { release: ReleaseRecord; blockers: ReleaseBlocker[] } }),
+
+  listReleases: (projectId: number) =>
+    client
+      .get<Page<ReleaseRecord>>(`${projectPath(projectId)}/releases`)
+      .then((response) => response.data),
+
+  /** `GET P/releases/{releaseId}`：发布 + 数据卡 + 制品 + blocker 快照。 */
+  getReleaseCard: (projectId: number, releaseId: number) =>
+    client
+      .get(`${projectPath(projectId)}/releases/${releaseId}`)
+      .then((response) => response.data as { data: ReleaseCard; status: string }),
+
+  /** `POST .../publish`：冻结并发布（202 + building；相同命令返回同一个 release）。 */
+  publishRelease: (projectId: number, releaseId: number) =>
+    client
+      .post(`${projectPath(projectId)}/releases/${releaseId}/publish`)
+      .then((response) => response.data as { data: { release: ReleaseRecord } }),
+
+  /** `POST .../next-candidate`：复制候选但**不改原版**。 */
+  createNextCandidate: (projectId: number, releaseId: number, releaseName?: string) =>
+    client
+      .post(`${projectPath(projectId)}/releases/${releaseId}/next-candidate`, { releaseName })
+      .then((response) => response.data as { data: { release: ReleaseRecord } }),
+
+  /** `GET P/releases/{releaseId}/artifacts/{artifactId}/download`。 */
+  downloadArtifactURL: (projectId: number, releaseId: number, artifactId: number) =>
+    `/api${projectPath(projectId)}/releases/${releaseId}/artifacts/${artifactId}/download`,
+
+  /** `GET /api/v1/deliveries`：仅已发布且我可访问的版本。 */
+  listDeliveries: (params?: ListParams) =>
+    client.get<Page<DeliveryItem>>(`/v1/deliveries${queryString(params)}`).then((response) => response.data),
 
   /** `POST P/experiments`：冻结实验（202；执行是异步的）。 */
   createExperiment: (projectId: number, payload: CreateExperimentRequest) =>
