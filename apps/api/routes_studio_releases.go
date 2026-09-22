@@ -542,6 +542,11 @@ func (app *application) writeReleaseError(w http.ResponseWriter, r *http.Request
 	case errors.Is(err, store.ErrReleaseNotFound), errors.Is(err, store.ErrArtifactNotFound):
 		app.writeAPIError(w, r, http.StatusNotFound, studio.CodeNotFound,
 			"未找到该发布版本或交付文件", nil)
+	case errors.Is(err, store.ErrSelectionSnapshotNotFound):
+		// 快照按项目作用域与有效期读取；过期/跨项目 ID 不得变成 500，
+		// 页面据此回到审阅工作区重新冻结范围。
+		app.writeAPIError(w, r, http.StatusNotFound, studio.CodeNotFound,
+			"发布选择范围不存在或已过期，请重新选择", nil)
 	case errors.Is(err, pgx.ErrNoRows):
 		app.writeAPIError(w, r, http.StatusNotFound, studio.CodeNotFound, msgProjectNotFound, nil)
 	default:
