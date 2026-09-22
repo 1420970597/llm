@@ -34,6 +34,7 @@ import { fileURLToPath } from 'node:url'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const REVIEW_PAGE = path.join(REPO_ROOT, 'apps', 'web-user', 'src', 'studio', 'pages', 'ReviewPages.tsx')
+const RELEASE_PAGE = path.join(REPO_ROOT, 'apps', 'web-user', 'src', 'studio', 'pages', 'ReleasePages.tsx')
 const STUDIO_API = path.join(REPO_ROOT, 'apps', 'web-user', 'src', 'lib', 'api', 'studio.ts')
 
 const failures = []
@@ -43,6 +44,7 @@ function record(name, ok, detail) {
 }
 
 const source = readFileSync(REVIEW_PAGE, 'utf8')
+const releaseSource = readFileSync(RELEASE_PAGE, 'utf8')
 const apiSource = readFileSync(STUDIO_API, 'utf8')
 
 // ---------------------------------------------------------------------------
@@ -64,6 +66,25 @@ record(
     /data-snapshot-all/.test(source) &&
     /URL 里不会出现这些 ID|URL 只需带它/.test(source),
   '按筛选条件由服务端解析并冻结，界面明确说明 URL 不带 ID 列表',
+)
+
+/** 审阅页的出口必须落到真实发布准备路由，而不是只显示一个快照编号。 */
+record(
+  '选择快照可直达发布准备',
+  /purpose:\s*'release'/.test(source) &&
+    /releases\/new\?selection=/.test(source) &&
+    /sampleVersionIds/.test(source),
+  '发布用途快照包含明确版本范围，并通过 ?selection= 进入发布准备',
+)
+
+/** 发布页必须重新确认用途/明细，并把快照 ID 交给服务端候选命令。 */
+record(
+  '发布准备不会绕过选择快照语义',
+  /snapshot\?\.purpose\s*!==\s*'release'/.test(releaseSource) &&
+    /selectionSnapshotId/.test(releaseSource) &&
+    /不是发布用途/.test(releaseSource) &&
+    /不能用于创建发布候选/.test(releaseSource),
+  '快照恢复失败或用途不符时阻止提交，候选命令携带服务端快照 ID',
 )
 
 /** 竞态防护：切样本时丢弃过期响应。 */

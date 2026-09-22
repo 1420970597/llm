@@ -335,7 +335,19 @@ export function ReleaseNewPage() {
     } finally {
       setBusy(false)
     }
-  }, [intendedUse, limitations, mappingVersionId, navigate, releaseName, scope.projectId, selected, selectionSnapshotItems])
+  }, [
+    hasInvalidSelectionParam,
+    intendedUse,
+    limitations,
+    mappingVersionId,
+    navigate,
+    releaseName,
+    scope.projectId,
+    selected,
+    selectionSnapshotID,
+    selectionSnapshotItems,
+    selectionSnapshotState,
+  ])
 
   return (
     <div className="console-page" data-studio-page="release-new">
