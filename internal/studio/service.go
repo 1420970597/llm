@@ -39,6 +39,10 @@ type Service struct {
 	Jobs             *store.JobStore
 	Usage            *store.UsageStore
 	Reviews          *store.ReviewStore
+	// Rules 提供质量策略规则的纯读预览与不可变命中证据。
+	// 预览端点走这里而不是直接在 handler 里查库，确保项目作用域校验
+	// 与其它 Atelier 命令使用同一组 store 依赖。
+	Rules            *store.RuleStore
 	Experiments      *store.ExperimentStore
 	Selections       *store.SelectionStore
 	Comparisons      *store.ComparisonStore
@@ -61,6 +65,7 @@ func New(pool *pgxpool.Pool) *Service {
 		Jobs:             store.NewJobStore(pool),
 		Usage:            store.NewUsageStore(pool),
 		Reviews:          store.NewReviewStore(pool),
+		Rules:            store.NewRuleStore(pool),
 		Experiments:      store.NewExperimentStore(pool),
 		Selections:       store.NewSelectionStore(pool),
 		Comparisons:      store.NewComparisonStore(pool),
