@@ -110,10 +110,10 @@ type sampleSummary struct {
 	LatestVersion int    `json:"latestVersion"`
 	// LatestVersionID 是当前指针对应的 sample_versions.id。命令 API（实验、
 	// 发布、规则预览）接受的是这个行 ID，而不是样本身份或样本内版本号。
-	LatestVersionID int64 `json:"latestVersionId"`
-	OriginBatchID *int64 `json:"originBatchId,omitempty"`
-	CreatedAt     string `json:"createdAt"`
-	UpdatedAt     string `json:"updatedAt"`
+	LatestVersionID int64  `json:"latestVersionId"`
+	OriginBatchID   *int64 `json:"originBatchId,omitempty"`
+	CreatedAt       string `json:"createdAt"`
+	UpdatedAt       string `json:"updatedAt"`
 	// 审阅投影随列表一起返回（T17）：队列页要显示「哪些待审」，
 	// 逐条查会变成 N+1 次请求，而队列正是「一次看一屏」的场景。
 	ReviewStatus            string `json:"reviewStatus"`
