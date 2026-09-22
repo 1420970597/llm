@@ -187,6 +187,13 @@ func (s *ProjectStore) CreateProject(ctx context.Context, workspaceID, actorID i
 	if err := input.Validate(); err != nil {
 		return model.Project{}, err
 	}
+	// 带来源方案的创建必须走 RecipeStore.CreateProjectFromRecipe（T26）：
+	// 那条路径会在**同一事务**里把方案的五类文档复制进新项目。
+	// 从这里放过去会建出一个「只有项目壳、没有配置」的项目，
+	// 而它在界面上看起来完全正常，直到用户点「开始试制」。
+	if input.SourceRecipeVersionID != nil {
+		return model.Project{}, &apiStoreError{Message: "以方案创建项目必须走方案复制路径（否则方案内容不会被复制进项目）"}
+	}
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -219,6 +226,9 @@ func createProjectTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID int64,
 	// 旧数据导入（T31）需要把来源 dataset 写进同一行：见 CreateProjectInput
 	// 里 LegacyDatasetID 的说明。手工创建项目时它为空。
 	legacyDatasetID := input.LegacyDatasetID
+	// 来源方案版本（T26）：只用于追溯「这个项目是从哪个方案的哪一版复制来的」。
+	// 复制本身已经在同一事务里完成（见 RecipeStore.CreateProjectFromRecipe）。
+	sourceRecipeVersionID := input.SourceRecipeVersionID
 	domains, directionsPerDomain, questionsPerDirection := input.CoverageValues()
 	// 项目内唯一名冲突会返回 23505；上层把它翻译成 409（不是 500）。
 	err := tx.QueryRow(ctx, `
@@ -226,21 +236,23 @@ func createProjectTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID int64,
       workspace_id, name, goal, target_kind, status, owner_id,
       domain_count, directions_per_domain, questions_per_direction, pilot_size,
       acceptance_rate_target, budget_currency, budget_limit_minor, budget_on_exhausted,
-      legacy_dataset_id, created_by)
-    VALUES ($1, $2, $3, $4, 'draft', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      legacy_dataset_id, source_recipe_version_id, created_by)
+    VALUES ($1, $2, $3, $4, 'draft', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
     RETURNING id, workspace_id, name, goal, target_kind, status, owner_id,
               domain_count, directions_per_domain, questions_per_direction, pilot_size,
               acceptance_rate_target::float8, budget_currency, budget_limit_minor,
-              budget_on_exhausted, row_version, legacy_dataset_id, created_at, updated_at`,
+              budget_on_exhausted, row_version, legacy_dataset_id, source_recipe_version_id,
+              created_at, updated_at`,
 		workspaceID, input.Name, input.Goal, input.TargetKind, actorID,
 		domains, directionsPerDomain, questionsPerDirection,
 		input.PilotSize, input.AcceptanceTargetValue(), input.Budget.Currency,
-		input.BudgetLimitValue(), input.Budget.OnExhausted, legacyDatasetID, actorID,
+		input.BudgetLimitValue(), input.Budget.OnExhausted, legacyDatasetID, sourceRecipeVersionID, actorID,
 	).Scan(&project.ID, &project.WorkspaceID, &project.Name, &project.Goal, &project.TargetKind,
 		&project.Status, &project.OwnerID, &project.DomainCount, &project.DirectionsPerDomain,
 		&project.QuestionsPerDirection, &project.PilotSize, &project.AcceptanceRateTarget,
 		&project.Budget.Currency, &project.Budget.LimitMinor, &project.Budget.OnExhausted,
-		&project.RowVersion, &project.LegacyDatasetID, &project.CreatedAt, &project.UpdatedAt)
+		&project.RowVersion, &project.LegacyDatasetID, &project.SourceRecipeVersionID,
+		&project.CreatedAt, &project.UpdatedAt)
 	if err != nil {
 		return model.Project{}, err
 	}
@@ -351,7 +363,8 @@ const (
   SELECT id, workspace_id, name, goal, target_kind, status, owner_id,
          domain_count, directions_per_domain, questions_per_direction, pilot_size,
          acceptance_rate_target::float8, budget_currency, budget_limit_minor,
-         budget_on_exhausted, row_version, legacy_dataset_id, created_at, updated_at
+         budget_on_exhausted, row_version, legacy_dataset_id, source_recipe_version_id,
+         created_at, updated_at
   FROM projects
   WHERE id = ANY($1) AND status <> 'archived'
     AND ($2::timestamptz IS NULL OR (updated_at, id) < ($2::timestamptz, $3::bigint))
@@ -362,7 +375,8 @@ const (
   SELECT id, workspace_id, name, goal, target_kind, status, owner_id,
          domain_count, directions_per_domain, questions_per_direction, pilot_size,
          acceptance_rate_target::float8, budget_currency, budget_limit_minor,
-         budget_on_exhausted, row_version, legacy_dataset_id, created_at, updated_at
+         budget_on_exhausted, row_version, legacy_dataset_id, source_recipe_version_id,
+         created_at, updated_at
   FROM projects
   WHERE id = ANY($1) AND status <> 'archived'
     AND (name ILIKE $2 OR goal ILIKE $2)
@@ -440,7 +454,8 @@ func (s *ProjectStore) GetProject(ctx context.Context, projectID int64) (model.P
     SELECT id, workspace_id, name, goal, target_kind, status, owner_id,
            domain_count, directions_per_domain, questions_per_direction, pilot_size,
            acceptance_rate_target::float8, budget_currency, budget_limit_minor,
-           budget_on_exhausted, row_version, legacy_dataset_id, created_at, updated_at
+           budget_on_exhausted, row_version, legacy_dataset_id, source_recipe_version_id,
+           created_at, updated_at
     FROM projects WHERE id = $1`, projectID)
 	return scanProject(row)
 }
@@ -539,7 +554,7 @@ func scanProject(row pgx.Row) (model.Project, error) {
 		&project.DirectionsPerDomain, &project.QuestionsPerDirection, &project.PilotSize,
 		&project.AcceptanceRateTarget, &project.Budget.Currency, &project.Budget.LimitMinor,
 		&project.Budget.OnExhausted, &project.RowVersion, &project.LegacyDatasetID,
-		&project.CreatedAt, &project.UpdatedAt)
+		&project.SourceRecipeVersionID, &project.CreatedAt, &project.UpdatedAt)
 	if err != nil {
 		return model.Project{}, err
 	}

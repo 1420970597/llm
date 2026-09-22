@@ -263,13 +263,28 @@ func TestCreateProjectDefaultsMatchContract(t *testing.T) {
 func TestDigestCreateProjectIgnoresIrrelevantShape(t *testing.T) {
 	first := model.CreateProjectInput{Name: "冷链", Goal: "g", TargetKind: "sft", PilotSize: 3}
 	second := model.CreateProjectInput{Name: "冷链", Goal: "g", TargetKind: "sft", PilotSize: 3}
-	// SourceRecipeVersionId 不参与创建摘要：它不改变「创建一个新项目」这件事的语义，
-	// 且显式 null 与省略必须等价。
-	recipeID := int64(7)
-	first.SourceRecipeVersionID = &recipeID
+	// 未指定来源方案与显式指定 0 必须等价（都是「不带方案」）。
+	zero := int64(0)
+	first.SourceRecipeVersionID = &zero
 
 	if digestCreateProject(first) != digestCreateProject(second) {
 		t.Fatal("语义相同的请求必须得到同一摘要（否则重试会被误判为「不同请求」并返回 409）")
+	}
+
+	// **来源方案版本参与摘要**（T26 改变了这条语义）。
+	//
+	// 它原本是个占位字段（「只校验 ID 形态」），因此当时不参与摘要是对的。
+	// 但 T26 让它变成真实输入：同一个 Idempotency-Key 配不同的方案版本是
+	// **不同的请求** —— 忽略它会把第一个项目的回放当成「你选的那一版生效了」，
+	// 而项目里其实是另一版方案的配置。
+	recipeV1 := int64(7)
+	recipeV2 := int64(8)
+	withV1 := second
+	withV1.SourceRecipeVersionID = &recipeV1
+	withV2 := second
+	withV2.SourceRecipeVersionID = &recipeV2
+	if digestCreateProject(withV1) == digestCreateProject(withV2) {
+		t.Fatal("不同方案版本必须得到不同摘要（否则用户会拿到用另一版方案建出来的项目）")
 	}
 
 	different := second

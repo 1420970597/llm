@@ -148,9 +148,14 @@ type Project struct {
 	RowVersion            int64        `json:"rowVersion"`
 	// LegacyDatasetID 指向迁移来源（T30/T31）。此阶段只保留可追溯字段，
 	// 不批量导入旧数据，也不把旧 dataset 当成项目。
-	LegacyDatasetID *int64    `json:"legacyDatasetId,omitempty"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	LegacyDatasetID *int64 `json:"legacyDatasetId,omitempty"`
+	// SourceRecipeVersionID 指向「以方案创建项目」时的方案版本（T26）。
+	//
+	// 只用于追溯：复制本身已经把方案内容写成项目自己的文档版本，
+	// 因此方案后续升级不会改变这个项目（T26「方案升级只影响未来复制」）。
+	SourceRecipeVersionID *int64    `json:"sourceRecipeVersionId,omitempty"`
+	CreatedAt             time.Time `json:"createdAt"`
+	UpdatedAt             time.Time `json:"updatedAt"`
 }
 
 // CoverageValues 返回归一化后的 n/m/x。

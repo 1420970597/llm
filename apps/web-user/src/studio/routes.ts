@@ -87,7 +87,7 @@ export const globalRoutes: StudioRouteMeta[] = [
     label: '方案库',
     caption: '可复用的覆盖/标准/质量组合',
     kind: 'global',
-    moduleStatus: 'planned',
+    moduleStatus: 'available',
     task: 'T26',
     permission: 'read',
   },
@@ -109,6 +109,32 @@ export const globalRoutes: StudioRouteMeta[] = [
  * 顺序对应数据流：先设计与范围，再跑生产，然后看数据与质量，最后发布。
  * 「概览」在第一位，因为它是进入项目后的默认落点（P01）。
  */
+/**
+ * 全局入口的**子页**（不是入口本身）。
+ *
+ * 与 `globalRoutes` 分开的理由：契约 §3.1 规定「全局四入口」是导航项，
+ * 而方案详情（`/recipes/:recipeId`）是入口下的详情页 —— 它不是第五个入口。
+ * 把两者混在一个数组里会让「四入口」变成「五个」，而那种偏差不会让任何
+ * 页面变坏，只会让导航多出一项看起来同级的东西（`test/l15_studio_shell.mjs`
+ * 直接断言 globalRoutes 的数量，就是为了拦住它）。
+ *
+ * 与 `projectDetailRoutes` 同一形态：`navParent` 让侧边栏高亮与面包屑
+ * 指回所属入口，而不是掉回默认项（issue #61 的同一修复形态）。
+ */
+export const globalDetailRoutes: StudioRouteMeta[] = [
+  {
+    key: 'recipe.detail',
+    path: '/recipes/:recipeId',
+    label: '方案详情',
+    caption: '版本、发布与用方案创建项目',
+    kind: 'global',
+    moduleStatus: 'available',
+    task: 'T26',
+    permission: 'read',
+    navParent: 'recipes',
+  },
+]
+
 export const projectRoutes: StudioRouteMeta[] = [
   {
     key: 'project.overview',
@@ -461,6 +487,7 @@ export const allStudioRoutes: StudioRouteMeta[] = [
   // 段数精确匹配，因此顺序不影响结果；放在前面只是让「入口优先」可见。
   ...wizardRoutes,
   ...globalRoutes,
+  ...globalDetailRoutes,
   ...projectRoutes,
   ...projectDetailRoutes,
   ...auxiliaryRoutes,

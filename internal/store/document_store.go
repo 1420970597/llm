@@ -156,7 +156,36 @@ func validatePayloadForKind(kind model.DocumentKind, payload any) (string, error
 //  4. 更新头记录的 current_version / row_version；
 //  5. 重建该版本的引用边（删除旧边 + 插入新边），由复合外键强制同项目。
 //  6. 写审计（同事务：变更与审计不可分离）。
+//
+// SaveVersion 保存一个新版本（在**自己的事务**里提交）。
 func (s *DocumentStore) SaveVersion(ctx context.Context, projectID int64, kind model.DocumentKind, actorID int64, input SaveDocumentVersionInput) (VersionedDocument, DocumentVersion, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return VersionedDocument{}, DocumentVersion{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	document, version, err := saveVersionTx(ctx, tx, projectID, kind, actorID, input)
+	if err != nil {
+		return VersionedDocument{}, DocumentVersion{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		// 提交阶段的唯一约束冲突与内部插入同源：并发保存的另一个编辑者赢了。
+		if IsUniqueViolation(err) {
+			return VersionedDocument{}, DocumentVersion{}, ErrRevisionConflict
+		}
+		return VersionedDocument{}, DocumentVersion{}, err
+	}
+	document.Current = &version
+	return document, version, nil
+}
+
+// saveVersionTx 在**调用方的事务**里保存一个文档版本（不提交）。
+//
+// 抽出来的理由（T26）：以方案创建项目要在**同一个事务**里写入五类文档 ——
+// 「项目建好了但方案里的蓝图没复制进来」是一个看起来正常、实则缺配置的项目，
+// 而它只在用户点「开始试制」时才失败。分次提交做不到这一点。
+func saveVersionTx(ctx context.Context, tx pgx.Tx, projectID int64, kind model.DocumentKind, actorID int64, input SaveDocumentVersionInput) (VersionedDocument, DocumentVersion, error) {
 	if !model.IsValidDocumentKind(kind) {
 		return VersionedDocument{}, DocumentVersion{}, &apiStoreError{Message: "不支持的文档类型"}
 	}
@@ -189,11 +218,7 @@ func (s *DocumentStore) SaveVersion(ctx context.Context, projectID int64, kind m
 		return VersionedDocument{}, DocumentVersion{}, err
 	}
 
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return VersionedDocument{}, DocumentVersion{}, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	// 事务由调用方提供（SaveVersion 或「以方案创建项目」）。
 
 	// 步骤 1：确保文档头存在，并锁住它。
 	//
@@ -282,15 +307,6 @@ func (s *DocumentStore) SaveVersion(ctx context.Context, projectID int64, kind m
 		return VersionedDocument{}, DocumentVersion{}, err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		// 提交阶段的唯一约束冲突同上：并发保存的另一个编辑者赢了。
-		if IsUniqueViolation(err) {
-			return VersionedDocument{}, DocumentVersion{}, ErrRevisionConflict
-		}
-		return VersionedDocument{}, DocumentVersion{}, err
-	}
-
-	document.Current = &version
 	return document, version, nil
 }
 

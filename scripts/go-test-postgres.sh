@@ -60,7 +60,7 @@ fi
 
 echo "[go-test-postgres] 应用迁移"
 for file in sql/migrations/*.sql; do
-  docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -q -U "$DB_USER" -d "$DB_NAME" < "$file"
+  docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -q -U "$DB_USER" -d "$DB_NAME" <"$file"
 done
 echo "[go-test-postgres] 迁移完成：$(find sql/migrations -name '*.sql' | wc -l) 个文件"
 

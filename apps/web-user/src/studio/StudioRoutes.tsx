@@ -16,10 +16,12 @@ import { SampleHistoryPage, SampleListPage, SampleReviewPage } from './pages/Rev
 import { ComparePage } from './pages/ComparePage'
 import { QualityListPage, QualityNewPage, QualityReportPage, RulesPage } from './pages/QualityPages'
 import { DeliveriesPage, ReleaseCardPage, ReleaseNewPage, ReleasesListPage } from './pages/ReleasePages'
+import { RecipeDetailPage, RecipesListPage } from './pages/RecipesPages'
 import {
   allStudioRoutes,
   auxiliaryRoutes,
   catalogRoutes,
+  globalDetailRoutes,
   globalRoutes,
   isCatalogRouteMounted,
   projectDetailRoutes,
@@ -55,6 +57,9 @@ const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   'project.newRelease': () => <ReleaseNewPage />,
   'project.releaseCard': () => <ReleaseCardPage />,
   deliveries: () => <DeliveriesPage />,
+  // 方案库（T26）：工作区作用域的全局入口，不属于任何项目。
+  recipes: () => <RecipesListPage />,
+  'recipe.detail': () => <RecipeDetailPage />,
   'project.quality': () => <QualityListPage />,
   'project.qualityNew': () => <QualityNewPage />,
   'project.qualityReport': () => <QualityReportPage />,
@@ -183,6 +188,11 @@ export function studioRouteTree({ user, onLogout }: StudioRouteTreeProps) {
 
         {/* 全局四入口 */}
         {globalRoutes.map((route) => (
+          <Route key={route.key} path={route.path} element={<ModuleElement route={route} />} />
+        ))}
+
+        {/* 全局入口的子页（方案详情等）：不是入口本身，见 globalDetailRoutes 的说明。 */}
+        {globalDetailRoutes.map((route) => (
           <Route key={route.key} path={route.path} element={<ModuleElement route={route} />} />
         ))}
 

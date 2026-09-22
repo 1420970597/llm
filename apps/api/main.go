@@ -37,7 +37,11 @@ type application struct {
 	authz       *store.AuthzStore
 	documents   *store.DocumentStore
 	idempotency *store.IdempotencyStore
-	redis       *redis.Client
+	// recipes 是方案库（T26）：方案与「以方案创建项目」走它。
+	// 与 studio 分开：方案不是项目作用域对象（属于工作区），而 studio 的
+	// 授权/读模型都以项目为入口。
+	recipes *store.RecipeStore
+	redis   *redis.Client
 	// studio 是 Atelier 命令层（T08）：授权、幂等、分页与读模型都收在它里，
 	// 使 handler 只做「解析 → 调用 → 写响应」。
 	studio *studio.Service
@@ -87,6 +91,7 @@ func main() {
 		projects:       store.NewProjectStore(pool),
 		authz:          store.NewAuthzStore(pool),
 		documents:      store.NewDocumentStore(pool),
+		recipes:        store.NewRecipeStore(pool),
 		idempotency:    store.NewIdempotencyStore(pool),
 		redis:          redisClient,
 		studio:         studio.NewWithRollout(pool, studioRolloutFromConfig(cfg)),

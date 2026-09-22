@@ -275,10 +275,26 @@ func (app *application) createProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	project, err := app.projects.CreateProject(r.Context(), workspaceID, user.ID, input)
-	if err != nil {
-		app.writeAPIEntityError(w, r, err)
-		return
+	// 以方案创建项目（T26）走复制路径：它会**在同一事务**里把方案版本的五类
+	// 文档写进新项目。若在这里调用普通的 CreateProject，会建出一个只有项目壳、
+	// 没有配置的项目 —— 而那在界面上看起来完全正常。
+	var project model.Project
+	var recipeCopy *model.RecipeCopyResult
+	if input.SourceRecipeVersionID != nil {
+		copied, result, err := app.recipes.CreateProjectFromRecipe(
+			r.Context(), workspaceID, user.ID, input, *input.SourceRecipeVersionID)
+		if err != nil {
+			app.writeAPIEntityError(w, r, err)
+			return
+		}
+		project, recipeCopy = copied, &result
+	} else {
+		created, err := app.projects.CreateProject(r.Context(), workspaceID, user.ID, input)
+		if err != nil {
+			app.writeAPIEntityError(w, r, err)
+			return
+		}
+		project = created
 	}
 
 	if key != "" {
@@ -289,7 +305,17 @@ func (app *application) createProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	app.writeJSON(w, http.StatusCreated, app.projectEnvelope(project, model.ProjectRoleOwner))
+	envelope := app.projectEnvelope(project, model.ProjectRoleOwner)
+	if recipeCopy != nil {
+		// 只在方案复制路径上改变 Data 形状（普通创建继续是裸 project）。
+		// 复制结果必须回给用户：缺连接时界面要提示「需要绑定连接」，
+		// 而那是项目建完之后才能知道的事实。
+		envelope.Data = struct {
+			Project    model.Project           `json:"project"`
+			RecipeCopy *model.RecipeCopyResult `json:"recipeCopy,omitempty"`
+		}{Project: project, RecipeCopy: recipeCopy}
+	}
+	app.writeJSON(w, http.StatusCreated, envelope)
 }
 
 // digestCreateProject 计算请求摘要。
@@ -312,6 +338,11 @@ func digestCreateProject(input model.CreateProjectInput) string {
 		Currency              string
 		LimitMinor            int64
 		OnExhausted           string
+		// SourceRecipeVersionID 参与幂等摘要（T26）：
+		// 同一个 Idempotency-Key 配不同的方案版本是**不同请求**，
+		// 必须 409，而不是把第一个项目当成回放返回（那会让用户以为
+		// 自己选的那一版生效了）。
+		SourceRecipeVersionID int64
 	}{
 		Name:                  input.Name,
 		Goal:                  input.Goal,
@@ -325,6 +356,7 @@ func digestCreateProject(input model.CreateProjectInput) string {
 		Currency:              input.Budget.Currency,
 		LimitMinor:            input.BudgetLimitValue(),
 		OnExhausted:           input.Budget.OnExhausted,
+		SourceRecipeVersionID: derefRecipeVersionID(input.SourceRecipeVersionID),
 	}
 	raw, err := json.Marshal(normalized)
 	if err != nil {

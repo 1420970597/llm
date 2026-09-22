@@ -54,7 +54,13 @@ TestImportSkipsQuestionsWithoutContent
 TestImportRefusesDatasetWithoutOwner
 TestImportRefusesNameConflict
 TestImportDryRunWritesNothing
-TestLegacyDatasetProjectMapping"
+TestLegacyDatasetProjectMapping
+TestRecipeLifecycle
+TestRecipePrivateVisibility
+TestRecipeCopyWritesDocumentsInOneTransaction
+TestRecipeCopyRejectsDraftAndTargetMismatch
+TestRecipeUpgradeDoesNotAffectCopiedProject
+TestRecipeDuplicateNameRejected"
 
 echo "[integration] go test ./... -v -count=1"
 output_file="$(mktemp)"

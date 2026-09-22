@@ -1126,3 +1126,118 @@ export const studioApi = {
       )
       .then((response) => response.data),
 }
+
+// ---------------------------------------------------------------------------
+// 方案库（T26）：工作区作用域对象，因此不挂在 projectPath 下
+// ---------------------------------------------------------------------------
+
+export type RecipeLimitation = string
+
+export type Recipe = {
+  id: number
+  workspaceId: number
+  name: string
+  nameKey: string
+  description: string
+  targetKind: string
+  visibility: 'private' | 'workspace'
+  applicableScope: string
+  limitations: RecipeLimitation[]
+  latestVersion: number
+  /** 0 表示还没有已发布版本（此时不能用于创建项目）。 */
+  publishedVersion: number
+  versionCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type RecipeVersion = {
+  id: number
+  recipeId: number
+  version: number
+  status: 'draft' | 'published'
+  contentHash: string
+  changeReason: string
+  publishedAt?: string
+  createdAt: string
+}
+
+/** 方案详情信封（`data` 里是 recipe + versions）。 */
+export type RecipeDetail = {
+  id: string
+  status: string
+  revision: number
+  updatedAt: string
+  capabilities: { canEdit?: boolean; canPublish?: boolean; canCopy?: boolean }
+  links: Record<string, string>
+  warnings: string[]
+  data: { recipe: Recipe; versions: RecipeVersion[] }
+}
+
+/** 以方案创建项目的结果（缺连接时需要用户绑定）。 */
+export type RecipeCopyResult = {
+  recipeId: number
+  recipeVersionId: number
+  recipeName: string
+  version: number
+  copiedDocuments: string[]
+  /** 生成节点引用的连接不可用：界面必须提示绑定，否则项目看起来配置齐全。 */
+  unboundModelConnection: boolean
+  unboundJudgeConnections: number
+  /** 评估节点的 rubric 引用因无法跨项目映射而被清空，需要重新选择。 */
+  clearedRubricVersion: boolean
+  limitations: string[]
+}
+
+export const recipeApi = {
+  list: (params?: { targetKind?: string; limit?: number }) =>
+    client
+      .get<Page<Recipe>>(`/v1/recipes${queryString(params as ListParams)}`)
+      .then((response) => response.data),
+
+  get: (recipeId: number) =>
+    client.get<RecipeDetail>(`/v1/recipes/${recipeId}`).then((response) => response.data),
+
+  create: (payload: {
+    name: string
+    description?: string
+    targetKind: string
+    visibility?: 'private' | 'workspace'
+    applicableScope?: string
+    limitations?: string[]
+    changeReason: string
+    publish?: boolean
+    payload: unknown
+  }) => client.post<RecipeDetail>('/v1/recipes', payload).then((response) => response.data),
+
+  saveVersion: (
+    recipeId: number,
+    payload: { payload: unknown; changeReason: string; publish?: boolean },
+  ) => client.post<RecipeVersion>(`/v1/recipes/${recipeId}/versions`, payload).then((response) => response.data),
+
+  publishVersion: (recipeId: number, version: number) =>
+    client
+      .post<RecipeVersion>(`/v1/recipes/${recipeId}/versions/${version}/publish`)
+      .then((response) => response.data),
+
+  /**
+   * 以方案创建项目。
+   *
+   * 走的是 `POST /v1/projects`（带 sourceRecipeVersionId）：服务端在同一事务里
+   * 复制方案的五类文档并建立项目。**不是**先建项目再复制 —— 那会留下一个
+   * 看起来正常但缺配置的项目。
+   */
+  createProjectFromRecipe: (payload: {
+    sourceRecipeVersionId: number
+    name: string
+    goal: string
+    targetKind: string
+    workspaceId?: number
+  }) =>
+    client
+      .post<{ data: { project: { id: number; name: string }; recipeCopy?: RecipeCopyResult } }>(
+        '/v1/projects',
+        payload,
+      )
+      .then((response) => response.data),
+}
