@@ -215,6 +215,9 @@ func TestComparisonPairsScoresByUnitKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateComparisonBaseline: %v", err)
 	}
+	if baseline.InputRef == "questions-v1" || !strings.HasPrefix(baseline.InputRef, "sample-input-v1:") {
+		t.Fatalf("逐题配对必须使用服务端计算的输入指纹，实际 inputRef=%q", baseline.InputRef)
+	}
 
 	report, err := fixture.comparisons.BuildComparisonReport(ctx, fixture.projectID, baseline.ID)
 	if err != nil {
@@ -318,6 +321,34 @@ func TestComparisonRequiresBothBatchesInProject(t *testing.T) {
 		LeftBatchID: fixture.leftBatch, RightBatchID: fixture.leftBatch,
 	}); err == nil {
 		t.Fatal("两侧相同必须被拒（与自己比较的差异恒为 0）")
+	}
+}
+
+// TestComparisonRejectsDifferentInputFingerprint 确认 paired 不信任客户端传入的
+// inputRef：只要两侧实际题面不同，即使客户端伪造了同一个字符串也必须拒绝。
+func TestComparisonRejectsDifferentInputFingerprint(t *testing.T) {
+	fixture := newComparisonFixture(t)
+	ctx := context.Background()
+
+	// 右侧同一稳定单元重新生成了不同题面；服务端应以最新版本为准发现漂移。
+	if _, _, err := fixture.batches.AppendSampleVersion(ctx, AppendSampleVersionInput{
+		ProjectID: fixture.projectID, SampleKey: "cold-chain/temperature#1",
+		TargetKind: model.TargetKindSFT, Title: "cold-chain/temperature#1",
+		BatchID: &fixture.rightBatch,
+		Payload:  map[string]any{"question": "changed-input", "reasoning": "r", "answer": "a"},
+	}); err != nil {
+		t.Fatalf("AppendSampleVersion: %v", err)
+	}
+
+	if _, err := fixture.comparisons.CreateComparisonBaseline(ctx, CreateComparisonBaselineInput{
+		ProjectID: fixture.projectID, InputRef: "same-input-via-client",
+		Rubric: comparisonRubric(),
+		Judges: []model.JudgeSpec{{ConnectionID: 99999, EndpointFingerprint: "judge.example.com/v1"}},
+		Metric: model.ComparisonMetricPaired,
+		LeftBatchID: fixture.leftBatch, RightBatchID: fixture.rightBatch,
+		CreatedBy: &fixture.userID,
+	}); err == nil {
+		t.Fatal("两侧题面不同，即使客户端伪造 inputRef 也必须拒绝")
 	}
 }
 

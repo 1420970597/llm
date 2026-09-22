@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -77,10 +79,6 @@ func (s *ComparisonStore) CreateComparisonBaseline(ctx context.Context, input Cr
 	if len(baseline.CoverageSlice) == 0 {
 		baseline.CoverageSlice = map[string]any{}
 	}
-	if err := model.ValidateComparisonBaseline(baseline); err != nil {
-		return model.ComparisonBaseline{}, err
-	}
-
 	// 两侧批次必须属于本项目（跨项目比较没有意义，且会泄漏别人的批次）。
 	for _, batchID := range []int64{left, right} {
 		var projectID int64
@@ -96,6 +94,21 @@ func (s *ComparisonStore) CreateComparisonBaseline(ctx context.Context, input Cr
 			return model.ComparisonBaseline{}, &apiStoreError{Message: fmt.Sprintf(
 				"批次 %d 不属于本项目，不能参与比较", batchID)}
 		}
+	}
+
+	// `inputRef` 不能由客户端拿两个批次 ID 拼出来：那只能证明「选了哪两批」，
+	// 不能证明两侧实际使用了同一份输入。逐题配对时由服务端读取两侧批次已经
+	// 产出的样本键与题面，计算不可伪造的输入指纹；客户端传入的 inputRef
+	// 仅作为旧客户端兼容字段，永远不会成为判定依据。
+	if baseline.Metric == model.ComparisonMetricPaired {
+		inputRef, err := s.resolvePairedInputRef(ctx, left, right)
+		if err != nil {
+			return model.ComparisonBaseline{}, err
+		}
+		baseline.InputRef = inputRef
+	}
+	if err := model.ValidateComparisonBaseline(baseline); err != nil {
+		return model.ComparisonBaseline{}, err
 	}
 
 	rubricJSON, err := json.Marshal(baseline.Rubric)
@@ -131,6 +144,62 @@ func (s *ComparisonStore) CreateComparisonBaseline(ctx context.Context, input Cr
 	_ = json.Unmarshal(rawRubric, &created.Rubric)
 	_ = json.Unmarshal(rawJudges, &created.Judges)
 	return created, nil
+}
+
+// resolvePairedInputRef 返回两侧实际样本输入的服务端指纹。
+//
+// 每一侧取每个稳定 sample_key 最新版本中的 question 字段；键和题面都纳入
+// 摘要，因此「同一批次 ID 格式」或客户端伪造字符串无法把不同输入标成可比。
+// 没有已产出的输入时拒绝建立 paired 基准：空集合相等并不等于固定了输入。
+func (s *ComparisonStore) resolvePairedInputRef(ctx context.Context, leftBatchID, rightBatchID int64) (string, error) {
+	load := func(batchID int64) ([]string, error) {
+		rows, err := s.db.Query(ctx, `
+      SELECT DISTINCT ON (sm.sample_key)
+             sm.sample_key, COALESCE(sv.payload->>'question', '')
+      FROM sample_versions sv
+      JOIN samples sm ON sm.id = sv.sample_id
+      WHERE sv.batch_id = $1
+      ORDER BY sm.sample_key, sv.created_at DESC, sv.id DESC`, batchID)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		inputs := []string{}
+		for rows.Next() {
+			var key, question string
+			if err := rows.Scan(&key, &question); err != nil {
+				return nil, err
+			}
+			// Length-prefix each field so concatenation cannot create ambiguous
+			// identities (e.g. ["ab", "c"] vs ["a", "bc"]).
+			inputs = append(inputs, fmt.Sprintf("%d:%s:%d:%s", len(key), key, len(question), question))
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return inputs, nil
+	}
+
+	left, err := load(leftBatchID)
+	if err != nil {
+		return "", err
+	}
+	right, err := load(rightBatchID)
+	if err != nil {
+		return "", err
+	}
+	if len(left) == 0 || len(right) == 0 || len(left) != len(right) {
+		return "", model.FieldErrors{{Field: "inputRef",
+			Message: "两侧批次没有相同且完整的输入题集，无法进行逐题配对；请使用同一输入版本重新试制"}}
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return "", model.FieldErrors{{Field: "inputRef",
+				Message: "两侧批次的实际输入题集不一致，无法进行逐题配对；请使用同一输入版本重新试制"}}
+		}
+	}
+	hash := sha256.Sum256([]byte(strings.Join(left, "\n")))
+	return "sample-input-v1:" + hex.EncodeToString(hash[:]), nil
 }
 
 // GetComparisonBaseline 读取一份比较基准（项目作用域）。

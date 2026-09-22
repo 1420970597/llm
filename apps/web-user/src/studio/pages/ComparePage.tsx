@@ -97,9 +97,8 @@ export function ComparePage() {
       const created = await studioApi.createComparisonBaseline(scope.projectId, {
         name: `试制比较 ${new Date().toISOString().slice(0, 10)}`,
         metric: 'paired',
-        // 逐题配对必须固定输入问题版本；这里用覆盖单元键作为输入参照
-        //（两侧基于同一份覆盖时会得到相同的键空间）。
-        inputRef: `units:${left}vs${right}`,
+        // 逐题配对的输入指纹由服务端从两侧已冻结的样本题集计算；
+        // 客户端不能用批次 ID 拼一个 inputRef 冒充「同一输入」。
         samplingSeed: 42,
         rubric: {
           dimensions: [{ key: 'accuracy', label: '准确', weight: 1, min: 0, max: 10 }],
