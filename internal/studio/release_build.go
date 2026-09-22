@@ -97,6 +97,15 @@ func (runner *ReleaseBuilder) BuildReleaseArtifact(ctx context.Context, input Re
 		return ReleaseBuildOutput{}, err
 	}
 
+	// GRPO 的格式与映射在编码之前就要拦（T25）：
+	// 等编码完再发现「levels 被压成字符串」会把错误推迟到一个已经花掉
+	// 上传配额的时刻，而且用户拿到的是一份不能用的文件。
+	if input.TargetKind == model.TargetKindGRPO {
+		if err := validateGRPORelease(input, mapping); err != nil {
+			return ReleaseBuildOutput{}, err
+		}
+	}
+
 	// 逐条读内容（按冻结的版本 ID）并构造统一记录。
 	// 分批处理：一次把十万条内容读进内存是不可接受的。
 	records := make([]exporter.Record, 0, len(input.Items))
@@ -142,6 +151,27 @@ func (runner *ReleaseBuilder) BuildReleaseArtifact(ctx context.Context, input Re
 		return ReleaseBuildOutput{}, err
 	}
 
+	// GRPO 的内容结构**逐行校验**（T25 验收项）：
+	// 只检查「映射里配了字段名」不够 —— 字段名对了但占位符写法错
+	//（例如把 `{{levels}}` 写成 `levels: {{levels}}`）仍会把数组变成字符串，
+	// 而那种偏差在用户训练时才暴露。这里直接解码每一行并校验：
+	//   * levels 是字符串数组（≥ 2 档、不重复、非空）；
+	//   * level_rubrics 是对象数组且与 levels 一一对应；
+	//   * 每档有判据文本。
+	// 不通过就**中止发布**，不产出文件。
+	if input.TargetKind == model.TargetKindGRPO {
+		lineCount, verifyErr := model.VerifyGRPOExportLines(artifactBytes)
+		if verifyErr != nil {
+			return ReleaseBuildOutput{}, NewError(CodeValidation, fmt.Sprintf(
+				"GRPO 导出内容结构校验失败（发布已中止，不会产出错误文件）：%v", verifyErr))
+		}
+		if lineCount != len(records) {
+			// 行数与清单不符意味着少了内容或多了重复，两者都是错的发布。
+			return ReleaseBuildOutput{}, NewError(CodeValidation, fmt.Sprintf(
+				"导出文件有 %d 行，而发布清单有 %d 条，发布已中止", lineCount, len(records)))
+		}
+	}
+
 	manifest := model.ReleaseManifest{
 		ReleaseID: input.ReleaseID, Revision: input.Revision, ReleaseName: input.ReleaseName,
 		TargetKind: input.TargetKind, Format: input.Format,
@@ -163,6 +193,42 @@ func (runner *ReleaseBuilder) BuildReleaseArtifact(ctx context.Context, input Re
 		ArtifactBytes: artifactBytes, ArtifactHash: artifactHash,
 		SizeBytes: int64(len(artifactBytes)), ItemsContentHash: itemsContentHash,
 	}, nil
+}
+
+// validateGRPORelease 校验 GRPO 发布的格式与映射（Issue #160 T25）。
+//
+// 两条拒绝理由：
+//
+//  1. **格式必须是 JSONL**：CSV/Alpaca 的行模型无法表达「一行的 levels 是数组、
+//     level_rubrics 是对象数组」，用它们发布 GRPO 只能把结构拍平。
+//  2. **映射必须包含四个必需字段**（question/judge_prompt/levels/level_rubrics）：
+//     少任何一个都会让文件不可训练，而「少字段」在文件里看起来很正常
+//     （只是用户训练脚本报 KeyError）。
+//
+// 这里只检查字段名；占位符写法是否正确由编码后的逐行校验负责。
+func validateGRPORelease(input ReleaseBuildInput, mapping model.ExportMapping) error {
+	if input.Format != model.ExportFormatJSONL {
+		return NewError(CodeValidation, fmt.Sprintf(
+			"GRPO 项目只能发布 JSONL（当前格式 %s）：CSV/Alpaca 无法保留 levels 与 level_rubrics 的结构",
+			input.Format))
+	}
+	present := map[string]bool{}
+	for _, name := range exporter.FieldNames(mapping) {
+		present[strings.ToLower(strings.TrimSpace(name))] = true
+	}
+	missing := make([]string, 0, 4)
+	for _, required := range model.GRPORequiredExportFields() {
+		if !present[required] {
+			missing = append(missing, required)
+		}
+	}
+	if len(missing) > 0 {
+		return NewError(CodeValidation, fmt.Sprintf(
+			"GRPO 映射缺少必需字段 %s：levels 与 level_rubrics 必须配为单个占位符"+
+				"（保留数组与对象结构），否则导出的文件无法被训练使用",
+			strings.Join(missing, "、")))
+	}
+	return nil
 }
 
 // ReleaseBuilder 是发布作业的编码器。
@@ -274,6 +340,11 @@ func (runner *ReleaseBuilder) loadMapping(ctx context.Context, mappingVersionID 
 }
 
 // loadRecord 按**冻结的样本版本 ID** 读内容并构造统一记录。
+//
+// 按目标类型分叉（T25）：GRPO 用 typed 解析，把 levels 与 level_rubrics
+// 原样带进 Record（保留数组与对象结构）；SFT 走既有的扁平字段。
+// 不做统一解析：两者的 payload 字段集不同，统一解析只能靠「缺什么当空」，
+// 而那种做法会把一个写坏的 GRPO payload 当 SFT 内容导出（一个看起来正常的错）。
 func (runner *ReleaseBuilder) loadRecord(ctx context.Context, projectID int64, targetKind string, item store.ReleaseItem) (exporter.Record, error) {
 	// 必须带**项目作用域**：GetSampleVersionByID 的查询是
 	// `WHERE id = $1 AND project_id = $2`，传 0 会一条也读不到
@@ -283,36 +354,42 @@ func (runner *ReleaseBuilder) loadRecord(ctx context.Context, projectID int64, t
 		return exporter.Record{}, NewError(CodeUnavailable, fmt.Sprintf(
 			"读取内容版本 %d 失败：%v", item.SampleVersionID, err))
 	}
+
+	record := exporter.Record{
+		DatasetID:  item.ReleaseID,
+		QuestionID: item.SampleVersionID,
+	}
+
+	if targetKind == model.TargetKindGRPO {
+		sample, parseErr := model.ParseGRPOSamplePayload(version.Payload)
+		if parseErr != nil {
+			return exporter.Record{}, NewError(CodeValidation, fmt.Sprintf(
+				"内容版本 %d 不符合 GRPO 样本契约：%v", item.SampleVersionID, parseErr))
+		}
+		record.Question = sample.Question
+		record.JudgePrompt = sample.JudgePrompt
+		// levels 保留**数组**、level_rubrics 保留**对象数组**（T25 明令禁止 Join）。
+		record.RewardLevels = sample.Levels
+		record.LevelRubrics = model.ToGRPORubricExports(sample.LevelRubrics)
+		record.FrameworkRef = sample.FrameworkRef
+		return record, nil
+	}
+
 	var payload map[string]any
 	if err := json.Unmarshal(version.Payload, &payload); err != nil {
 		return exporter.Record{}, NewError(CodeValidation, fmt.Sprintf(
 			"内容版本 %d 不是合法的 JSON 对象", item.SampleVersionID))
 	}
-
-	record := exporter.Record{
-		DatasetID:   item.ReleaseID,
-		QuestionID:  item.SampleVersionID,
-		Question:    stringField(payload, "question"),
-		Answer:      stringField(payload, "answer"),
-		JudgePrompt: stringField(payload, "judge_prompt"),
-	}
+	record.Question = stringField(payload, "question")
+	record.Answer = stringField(payload, "answer")
+	record.JudgePrompt = stringField(payload, "judge_prompt")
 	// **字段命名**：新契约用 `reasoning`，旧名 `chainOfThought` 不再作为
 	// 新契约字段（§2.2）。这里显式映射，而不是把旧名透传 ——
 	// 透传会让导出文件里出现一个不在契约里的字段名。
 	record.ChainOfThought = stringField(payload, "reasoning")
-	// GRPO 的档位保留**数组结构**（不能 join 成逗号字符串）。
-	if levels, found := payload["levels"].([]any); found {
-		record.RewardLevels = make([]string, 0, len(levels))
-		for _, level := range levels {
-			if text, ok := level.(string); ok {
-				record.RewardLevels = append(record.RewardLevels, text)
-			}
-		}
-	}
 	if difficulty, found := payload["difficulty"].(string); found {
 		record.Difficulty = difficulty
 	}
-	_ = targetKind
 	return record, nil
 }
 

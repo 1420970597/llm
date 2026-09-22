@@ -114,6 +114,12 @@ func (s *ReleaseStore) CreateReleaseCandidate(ctx context.Context, input CreateR
 	if input.Format == "" {
 		input.Format = "jsonl"
 	}
+	// GRPO 的格式与映射在写入之前就拦（T25）：
+	// 先建候选再在构建时失败，用户看到的是一条「发布失败」，
+	// 而可操作的原因是「格式/映射配错了」——越早给出越省事。
+	if err := validateReleaseTargetFormatTx(ctx, s.db, input.ProjectID, input.MappingVersionID, input.Format); err != nil {
+		return Release{}, err
+	}
 	limitations, err := json.Marshal(input.Limitations)
 	if err != nil {
 		return Release{}, err
@@ -602,6 +608,77 @@ func validateReleaseRangeTx(ctx context.Context, tx pgx.Tx, projectID int64, ver
 		return &apiStoreError{Message: fmt.Sprintf(
 			"发布范围里有 %d 个内容版本不存在或不属于该项目，已拒绝创建（避免范围静默变小）",
 			len(versionIDs)-validCount)}
+	}
+	return nil
+}
+
+// validateReleaseTargetFormatTx 校验发布格式与**项目目标类型/映射版本**一致（T25）。
+//
+// 三条判据，每条都对应一个「文件看起来正常但不能用」的形态：
+//
+//  1. GRPO 只能用 JSONL：CSV/Alpaca 的行模型无法表达数组/对象结构；
+//  2. 映射版本的格式必须与发布格式一致：不一致时导出器会拿着另一套字段名
+//     去取值（结果是一批空列，而空列在文件里很正常）；
+//  3. GRPO 的映射必须包含 T25 的四个必需字段。
+//
+// 用 s.db 而不是事务：这是一个**只读校验**，失败时不该留下任何已写入的行；
+// 而校验与后续写入之间的竞态（并发改项目类型/映射）不会导致数据损坏
+// （构建阶段会再检查一次，那一次读的是冻结快照）。
+func validateReleaseTargetFormatTx(ctx context.Context, db interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}, projectID, mappingVersionID int64, format string) error {
+	var targetKind string
+	if err := db.QueryRow(ctx, `SELECT target_kind FROM projects WHERE id = $1`, projectID).Scan(&targetKind); err != nil {
+		return &apiStoreError{Message: "项目不存在或不属于当前工作区，无法创建发布候选"}
+	}
+	if targetKind == model.TargetKindGRPO && format != model.ExportFormatJSONL {
+		return model.FieldErrors{{Field: "format", Message: fmt.Sprintf(
+			"GRPO 项目只能发布 JSONL（当前 %s）：CSV/Alpaca 无法保留 levels 与 level_rubrics 的结构",
+			format)}}
+	}
+	if mappingVersionID <= 0 {
+		// 映射版本可空（候选可以在门槛阶段被拦住），这里不报错：
+		// 「没有映射」会在构建时给出明确原因。
+		return nil
+	}
+
+	var payload []byte
+	err := db.QueryRow(ctx, `
+    SELECT payload FROM document_versions
+    WHERE id = $1 AND project_id = $2 AND kind = 'mapping'`,
+		mappingVersionID, projectID).Scan(&payload)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.FieldErrors{{Field: "mappingVersionId",
+			Message: "映射版本不存在或不属于本项目"}}
+	}
+	if err != nil {
+		return err
+	}
+	var mapping model.MappingPayload
+	if err := json.Unmarshal(payload, &mapping); err != nil {
+		return model.FieldErrors{{Field: "mappingVersionId", Message: "映射版本内容无法解析，请重新保存映射"}}
+	}
+	if declared := strings.TrimSpace(mapping.Format); declared != "" && declared != format {
+		return model.FieldErrors{{Field: "format", Message: fmt.Sprintf(
+			"发布格式 %s 与映射版本的格式 %s 不一致，请选择匹配的映射版本", format, declared)}}
+	}
+	if targetKind != model.TargetKindGRPO {
+		return nil
+	}
+	present := map[string]bool{}
+	for _, field := range mapping.Fields {
+		present[strings.ToLower(strings.TrimSpace(field.TargetField))] = true
+	}
+	missing := make([]string, 0, 4)
+	for _, required := range model.GRPORequiredExportFields() {
+		if !present[required] {
+			missing = append(missing, required)
+		}
+	}
+	if len(missing) > 0 {
+		return model.FieldErrors{{Field: "mappingVersionId", Message: fmt.Sprintf(
+			"GRPO 映射缺少必需字段 %s：levels 与 level_rubrics 必须配为单个占位符（保留数组与对象结构）",
+			strings.Join(missing, "、"))}}
 	}
 	return nil
 }

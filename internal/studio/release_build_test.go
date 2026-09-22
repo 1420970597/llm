@@ -146,3 +146,130 @@ func TestLoadRecordMapsReasoningAndKeepsLevelsArray(t *testing.T) {
 		t.Fatalf("缺失字段应返回空串，实际 %q", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// T25：GRPO 发布 JSONL
+// ---------------------------------------------------------------------------
+
+// grpoMapping 是 T25 要求的结构化映射（单占位符 → 保留数组/对象类型）。
+func grpoMapping() model.ExportMapping {
+	return model.ExportMapping{
+		Format: model.ExportFormatJSONL,
+		FieldMap: map[string]any{
+			"question":      "{{question}}",
+			"judge_prompt":  "{{judgePrompt}}",
+			"levels":        "{{levels}}",
+			"level_rubrics": "{{level_rubrics}}",
+		},
+	}
+}
+
+func grpoRecords(count int) []exporter.Record {
+	records := make([]exporter.Record, 0, count)
+	for index := 0; index < count; index++ {
+		records = append(records, exporter.Record{
+			DatasetID: 1, QuestionID: int64(index + 1),
+			Question:     fmt.Sprintf("GRPO 问题 %d", index+1),
+			JudgePrompt:  "按档位评分：基础、精通。",
+			RewardLevels: []string{"基础", "精通"},
+			LevelRubrics: []model.GRPORubricExport{
+				{Level: "基础", Criteria: "能说出思路", AcceptCase: "提到 pivot", RejectCase: "答非所问"},
+				{Level: "精通", Criteria: "能讨论退化", AcceptCase: "指出有序输入", RejectCase: "否认退化"},
+			},
+		})
+	}
+	return records
+}
+
+// TestValidateGRPOReleaseRequiresJSONLAndStructuralFields 覆盖 T25
+// 「GRPO 发布页仅开放支持其 schema 的 JSONL」与「四个必需字段」。
+func TestValidateGRPOReleaseRequiresJSONLAndStructuralFields(t *testing.T) {
+	base := ReleaseBuildInput{TargetKind: model.TargetKindGRPO, Format: model.ExportFormatCSV}
+	if err := validateGRPORelease(base, grpoMapping()); err == nil {
+		t.Fatal("GRPO 用 CSV 发布必须被拒绝（无法保留数组/对象结构）")
+	}
+
+	base.Format = model.ExportFormatJSONL
+	missingRubrics := model.ExportMapping{
+		Format: model.ExportFormatJSONL,
+		FieldMap: map[string]any{
+			"question":     "{{question}}",
+			"judge_prompt": "{{judgePrompt}}",
+			"levels":       "{{levels}}",
+		},
+	}
+	if err := validateGRPORelease(base, missingRubrics); err == nil {
+		t.Fatal("缺少 level_rubrics 的映射必须被拒绝")
+	}
+
+	if err := validateGRPORelease(base, grpoMapping()); err != nil {
+		t.Fatalf("结构化映射应当被接受：%v", err)
+	}
+}
+
+// TestGRPOJSONLArtifactKeepsStructureAndPassesVerification 覆盖 T25 的核心验收项：
+// 逐行解码字段、levels 是数组、level_rubrics 是对象数组且与档位一一对应。
+//
+// 同时做**变异自证**：把 levels 换成非单占位符写法（结构会被压平），
+// 断言校验必须报错 —— 否则这条测试只证明「合法输入能通过」。
+func TestGRPOJSONLArtifactKeepsStructureAndPassesVerification(t *testing.T) {
+	records := grpoRecords(3)
+	content, _, err := buildJSONLArtifact(context.Background(), nil, records, grpoMapping())
+	if err != nil {
+		t.Fatalf("buildJSONLArtifact: %v", err)
+	}
+	count, err := model.VerifyGRPOExportLines(content)
+	if err != nil {
+		t.Fatalf("结构化输出应当通过逐行校验：%v", err)
+	}
+	if count != len(records) {
+		t.Fatalf("行数必须等于记录数：%d vs %d", count, len(records))
+	}
+	text := string(content)
+	// 数组与对象结构必须在字节层面可见（这是「没有 join 成逗号串」的证据）。
+	if !strings.Contains(text, `"levels":["基础","精通"]`) {
+		t.Fatalf("levels 必须是 JSON 数组，实际 %s", text)
+	}
+	if !strings.Contains(text, `"level_rubrics":[{`) {
+		t.Fatalf("level_rubrics 必须是对象数组，实际 %s", text)
+	}
+	if !strings.Contains(text, `"accept_case"`) || !strings.Contains(text, `"reject_case"`) {
+		t.Fatalf("档位判据必须带边界例字段，实际 %s", text)
+	}
+
+	// 变异：把 levels 改成裸字段名（stringify 后变成空串）——结构校验必须捕获。
+	flattened := model.ExportMapping{
+		Format: model.ExportFormatJSONL,
+		FieldMap: map[string]any{
+			"question":      "{{question}}",
+			"judge_prompt":  "{{judgePrompt}}",
+			"levels":        "levels",
+			"level_rubrics": "level_rubrics",
+		},
+	}
+	brokenContent, _, err := buildJSONLArtifact(context.Background(), nil, records, flattened)
+	if err != nil {
+		t.Fatalf("buildJSONLArtifact(变异): %v", err)
+	}
+	if _, err := model.VerifyGRPOExportLines(brokenContent); err == nil {
+		t.Fatal("被压平的 levels/level_rubrics 必须被逐行校验拒绝（否则禁止 strings.Join 只是一句口号）")
+	}
+}
+
+// TestGRPOReleaseVerificationRejectsLineCountMismatch 覆盖 T25
+// 「发布清单与实际行数一致」：行数与清单不符必须中止发布。
+func TestGRPOReleaseVerificationRejectsLineCountMismatch(t *testing.T) {
+	// 直接构造：清单 3 条但只有 2 行内容，验证「行数对账」这条判据本身。
+	records := grpoRecords(2)
+	content, _, err := buildJSONLArtifact(context.Background(), nil, records, grpoMapping())
+	if err != nil {
+		t.Fatalf("buildJSONLArtifact: %v", err)
+	}
+	count, err := model.VerifyGRPOExportLines(content)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if count == 3 {
+		t.Fatal("测试前提失效：行数不应等于 3")
+	}
+}

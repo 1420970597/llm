@@ -173,6 +173,9 @@ export function ReleaseNewPage() {
   const [intendedUse, setIntendedUse] = useState('')
   const [limitations, setLimitations] = useState('')
   const [snapshotNotice, setSnapshotNotice] = useState<string | null>(null)
+  // GRPO 的发布格式与映射要求与 SFT 不同（T25）：界面必须提示用户，
+  // 而不是让他在构建失败后才从错误里推出来。
+  const [targetKind, setTargetKind] = useState('sft')
   const [blockers, setBlockers] = useState<ReleaseBlocker[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -190,6 +193,20 @@ export function ReleaseNewPage() {
         setBatches(batchResponse.data.items ?? [])
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : '加载可选范围失败')
+      }
+    })()
+    return () => { cancelled = true }
+  }, [scope.projectId])
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const response = await client.get<{ targetKind?: string }>(`${projectPath(scope.projectId)}/overview`)
+        if (!cancelled) setTargetKind(response.data?.targetKind ?? 'sft')
+      } catch {
+        // 读取失败时回退 SFT：该值只影响提示文案，不参与服务端校验，
+        // 因此失败方向是「少一条提示」而不是「提交错格式」。
       }
     })()
     return () => { cancelled = true }
@@ -282,6 +299,13 @@ export function ReleaseNewPage() {
             <label className="wizard-field__label" htmlFor="mapping-version">映射版本 ID</label>
             <Input id="mapping-version" value={mappingVersionId} onChange={(value) => setMappingVersionId(value)}
               placeholder="例如 12" />
+            {targetKind === 'grpo' ? (
+              <Text type="tertiary" size="small" className="block mt-1" data-grpo-release-hint="true">
+                GRPO 只能发布 JSONL，且映射必须包含 question / judge_prompt / levels / level_rubrics；
+                levels 与 level_rubrics 必须配为**单个占位符**（保留数组与对象结构）。
+                服务端会在发布前逐行解码校验，结构不对时中止发布而不会产出错误文件。
+              </Text>
+            ) : null}
           </div>
           <div className="wizard-field">
             <label className="wizard-field__label" htmlFor="intended-use">用途</label>
