@@ -17,11 +17,24 @@ import (
 //	docker run --rm --network llm_default \
 //	  -e POSTGRES_DSN='postgres://llm_factory:llm_factory_dev@postgres:5432/llm_factory?sslmode=disable' \
 //	  -v <worktree>:/w -w /w golang:1.24-alpine go test ./internal/store/ -v
+// testPool 返回一个连到真实 Postgres 的连接池。
+//
+// DSN 优先读 **LLM_TEST_POSTGRES_DSN**（仓库其余集成测试的统一变量，
+// 也是 scripts/go-test-postgres.sh 与 CI integration job 设置的变量），
+// 再回退到旧的 POSTGRES_DSN。
+//
+// 为什么要统一（T32 发现的真实漏洞）：本文件此前只读 POSTGRES_DSN，
+// 于是 CI 里即使提供了 LLM_TEST_POSTGRES_DSN，本文件的 6 个用例也会
+// 静默 Skip —— 它们从未在 CI 跑过，而 `go test` 仍然全绿。
+// 「集成测试全部 Skip 也绿」正是 T32 验收项要拦的形态。
 func testPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dsn := os.Getenv("POSTGRES_DSN")
+	dsn := os.Getenv("LLM_TEST_POSTGRES_DSN")
 	if dsn == "" {
-		t.Skip("输入缺失：未设置 POSTGRES_DSN，跳过需要真实 Postgres 的测试")
+		dsn = os.Getenv("POSTGRES_DSN")
+	}
+	if dsn == "" {
+		t.Skip("输入缺失：未设置 LLM_TEST_POSTGRES_DSN（或 POSTGRES_DSN），跳过需要真实 Postgres 的测试")
 	}
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {

@@ -98,13 +98,39 @@ jobs:
           failed=0
           for t in stage_routes silent_guards capability_entries nmx_params \
                    artifact_download dataset_status app_ux cleaning_ux studio_shell studio_wizard \
-                   studio_review; do
+                   studio_review studio_browser_router; do
             f="test/l15_${t}.mjs"
             [ -f "$f" ] || { echo "缺少冻结测试 $f"; failed=1; continue; }
             echo "=== $f ==="
             node "$f" || failed=1
           done
           exit $failed
+
+      # 浏览器路由 E2E 的**断言结果**才是门禁（上一步），artifact 只是取证：
+      # T32 明确要求「录屏/截图与断言结果附 CI artifact，不以截图代替断言」。
+      - name: Upload browser-router E2E report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-router-report
+          path: test/artifacts/browser-router/report.json
+          if-no-files-found: warn
+
+  # 真实 DB 集成门禁（T32）。
+  #
+  # 为什么必须单独一个 job：Backend job 不提供 DSN，因此所有需要真实 Postgres
+  # 的测试都会静默 `t.Skip` —— `go test` 全绿只证明「编译通过 + 单元测试通过」。
+  # 而迁移、实验冻结、发布候选门槛、并发冻结、GRPO 质量路径**一条都没跑**。
+  # 本 job 用 scripts/go-test-postgres.sh 起临时 Postgres、应用全部迁移，
+  # 再由 scripts/check-integration-tests.sh 断言**必需的**集成测试真的执行了
+  # （没有 `--- PASS` 即失败，显示为 Skip、被改名或包编译失败都会命中）。
+  integration:
+    name: Integration (real Postgres + migrations)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Real Postgres + migrations + required integration tests
+        run: ./scripts/go-test-postgres.sh sh scripts/check-integration-tests.sh
 
   stack:
     name: Stack (compose up + migrate + healthz)
@@ -132,10 +158,42 @@ jobs:
           echo "::error::api did not become healthy"
           docker compose logs --tail=200
           exit 1
-      - name: Verify migrations applied
+      # T32：不能只 `\dt`（那只证明「有表」）。必须核对
+      #   * schema_migrations 与 sql/migrations 目录**一一对应**
+      #     —— 少记一条会在下次启动时重复执行迁移；
+      #   * 关键约束/索引真的建起来了（它们承载产品规则）。
+      - name: Verify migrations recorded and key constraints exist
         run: |
-          docker compose exec -T postgres \
-            psql -U llm_factory -d llm_factory -c '\dt'
+          expected=$(find sql/migrations -name '*.sql' | wc -l | tr -d ' ')
+          applied=$(docker compose exec -T postgres psql -tA -U llm_factory -d llm_factory \
+            -c 'SELECT COUNT(*) FROM schema_migrations' | tr -d '[:space:]')
+          echo "migrations applied=$applied expected=$expected"
+          if [ "$applied" != "$expected" ]; then
+            echo "::error::schema_migrations 有 $applied 行，而目录有 $expected 个迁移文件"
+            docker compose exec -T postgres psql -U llm_factory -d llm_factory \
+              -c 'SELECT filename FROM schema_migrations ORDER BY filename'
+            exit 1
+          fi
+          for probe in \
+            "uniq_experiment_score_current" \
+            "trg_project_members_keep_owner" \
+            "batches_blueprint_same_project" \
+            "sample_versions_batch_item_fk"; do
+            # 三类目录都要查：索引/表在 pg_class，触发器在 pg_trigger，
+            # 外键/约束在 pg_constraint。只查 pg_class 会误报「缺少触发器/外键」。
+            probe_sql="SELECT COUNT(*) FROM ("
+            probe_sql="${probe_sql}SELECT relname AS name FROM pg_class UNION ALL "
+            probe_sql="${probe_sql}SELECT tgname AS name FROM pg_trigger UNION ALL "
+            probe_sql="${probe_sql}SELECT conname AS name FROM pg_constraint"
+            probe_sql="${probe_sql}) catalog WHERE name = '${probe}'"
+            found=$(docker compose exec -T postgres psql -tA -U llm_factory -d llm_factory \
+              -c "$probe_sql" | tr -d '[:space:]')
+            if [ "$found" = "0" ]; then
+              echo "::error::迁移后缺少关键约束/索引 $probe"
+              exit 1
+            fi
+          done
+          echo "关键约束/索引齐全"
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs --tail=300
