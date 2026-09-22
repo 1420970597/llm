@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button, Card, Empty, Input, InputNumber, Spin, Tag, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, ArrowLeftRight, Pause, Play, RefreshCw, RotateCcw } from 'lucide-react'
@@ -645,6 +645,9 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   const [adoptionNotice, setAdoptionNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  // A retry after a network timeout must replay the same command. Generating
+  // the key inside submit would turn an uncertain retry into a second paid run.
+  const idempotencyKeyRef = useRef(newIdempotencyKey())
 
   const maxUnits = purpose === 'pilot' ? MAX_PILOT_UNITS : MAX_SCALE_UNITS
   const title = purpose === 'pilot' ? '小批试制' : '扩量规划'
@@ -734,7 +737,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
         `${projectPath(scope.projectId)}/batches`,
         payload,
         // 幂等键在本次提交内稳定：双击不会建出两个批次。
-        { headers: { 'Idempotency-Key': newIdempotencyKey() } },
+        { headers: { 'Idempotency-Key': idempotencyKeyRef.current } },
       )
       // 导航到**服务端分配**的批次 ID（不从本地状态拼，也不硬编码原型里的示例 ID）。
       const created = (response.data as { data?: { batchId?: number } }).data
