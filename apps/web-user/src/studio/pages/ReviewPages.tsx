@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button, Card, Checkbox, Empty, Input, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
-import { AlertTriangle, ChevronLeft, ChevronRight, Copy, RefreshCw, Save } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, ChevronRight, Copy, Expand, Minimize2, RefreshCw, Save } from 'lucide-react'
 import { client } from '../../lib/api'
 import { projectPath, studioApi } from '../../lib/api/studio'
 import type {
@@ -420,6 +420,11 @@ export function SampleReviewPage() {
   const [decisions, setDecisions] = useState<ReviewDecision[]>([])
   const [projection, setProjection] = useState<ReviewProjection | null>(null)
   const [blockers, setBlockers] = useState<ApiBlocker[]>([])
+  const [queueItems, setQueueItems] = useState<SampleSummary[]>([])
+  const [queueCursor, setQueueCursor] = useState('')
+  const [queueLoading, setQueueLoading] = useState(false)
+  const [queueError, setQueueError] = useState<string | null>(null)
+  const [focusContent, setFocusContent] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [action, setAction] = useState<'accepted' | 'quarantined'>('accepted')
@@ -430,10 +435,55 @@ export function SampleReviewPage() {
   // 离线待同步（T29）：提交失败时**不显示成功**，而是提供「保存为本地草稿」。
   const [offlineNotice, setOfflineNotice] = useState<string | null>(null)
   const [pending, setPending] = useState(0)
+  const [copyFallback, setCopyFallback] = useState<string | null>(null)
 
   // 竞态防护：切样本时丢弃过期响应（见文件头说明）。
   const latestRequest = useRef(0)
   const contentRef = useRef<HTMLDivElement | null>(null)
+
+  // 队列筛选沿用数据页 URL。默认只取待判断，显式 status=all 才查看全部。
+  const rawQueueStatus = searchParams.get('status')
+  const queueStatus: ReviewStatusFilter =
+    rawQueueStatus === 'accepted' || rawQueueStatus === 'quarantined' || rawQueueStatus === 'conflict' || rawQueueStatus === 'all'
+      ? rawQueueStatus === 'all' ? '' : rawQueueStatus
+      : 'pending'
+  const queueSearch = searchParams.get('q')?.trim() ?? ''
+  const queueRequest = useRef(0)
+
+  const loadQueue = useCallback(async (cursor = '', append = false) => {
+    const requestID = queueRequest.current + 1
+    queueRequest.current = requestID
+    setQueueLoading(true)
+    setQueueError(null)
+    try {
+      const page = await studioApi.listSamples(scope.projectId, {
+        limit: 50,
+        status: queueStatus === '' ? 'all' : queueStatus,
+        q: queueSearch || undefined,
+        cursor: cursor || undefined,
+      })
+      if (requestID !== queueRequest.current) return
+      setQueueItems((previous) => {
+        const next = append ? [...previous, ...(page.items ?? [])] : (page.items ?? [])
+        const seen = new Set<string>()
+        return next.filter((item) => {
+          if (seen.has(item.resourceId)) return false
+          seen.add(item.resourceId)
+          return true
+        })
+      })
+      setQueueCursor(page.nextCursor ?? '')
+    } catch (queueLoadError) {
+      if (requestID !== queueRequest.current) return
+      setQueueError(queueLoadError instanceof Error ? queueLoadError.message : '加载审阅队列失败')
+    } finally {
+      if (requestID === queueRequest.current) setQueueLoading(false)
+    }
+  }, [queueSearch, queueStatus, scope.projectId])
+
+  useEffect(() => {
+    void loadQueue()
+  }, [loadQueue])
 
   const refreshPending = useCallback(() => {
     const actorId = currentActorID()
@@ -474,17 +524,62 @@ export function SampleReviewPage() {
     void load()
   }, [load])
 
-  /** 下一条 / 上一条：沿用当前筛选条件（`searchParams`）。 */
+  useEffect(() => {
+    // 切换样本时，判断理由和复制回退内容都属于上一条，不能带到新样本。
+    setAction('accepted')
+    setReason('')
+    setSubmitError(null)
+    setSavedNotice(null)
+    setOfflineNotice(null)
+    setCopyFallback(null)
+  }, [sampleID])
+
+  const queueWithCurrent = useMemo(() => {
+    if (!detail) return queueItems
+    if (queueItems.some((item) => item.resourceId === detail.sample.resourceId)) return queueItems
+    // 从其它页面（例如“全部”或质量报告）直达样本时，仍把当前对象保留在队列首位，
+    // 但不伪造它属于当前筛选；后续刷新会由服务端结果替换。
+    return [detail.sample, ...queueItems]
+  }, [detail, queueItems])
+
+  const navigateToQueueItem = useCallback((resourceId: string) => {
+    const query = searchParams.toString()
+    navigate(`/p/${scope.projectId}/data/${resourceId}${query ? `?${query}` : ''}`)
+  }, [navigate, scope.projectId, searchParams])
+
+  /** 下一条 / 上一条：沿用当前筛选条件，并用服务端游标走完队列。 */
   const goRelative = useCallback(
     async (direction: 'next' | 'prev') => {
-      const params2 = new URLSearchParams(searchParams)
-      params2.set('limit', '50')
-      const response = await client.get<Page<SampleSummary>>(
-        `${projectPath(scope.projectId)}/samples?${params2.toString()}`,
-      )
-      const items = response.data.items ?? []
-      const index = items.findIndex((item) => item.resourceId === sampleID)
-      const target = direction === 'next' ? items[index + 1] : items[index - 1]
+      // 取消此前的「加载更多」响应，避免它在相对导航完成后覆盖完整队列。
+      queueRequest.current += 1
+      setQueueLoading(true)
+      setQueueError(null)
+      const items: SampleSummary[] = []
+      let cursor = ''
+      try {
+        // 相对导航不能只看首屏：游标分页后的样本也必须可以到达。
+        for (let pageIndex = 0; pageIndex < 100; pageIndex += 1) {
+          const page = await studioApi.listSamples(scope.projectId, {
+            limit: 50,
+            status: queueStatus === '' ? 'all' : queueStatus,
+            q: queueSearch || undefined,
+            cursor: cursor || undefined,
+          })
+          items.push(...(page.items ?? []))
+          if (!page.nextCursor) break
+          cursor = page.nextCursor
+        }
+      } catch (relativeError) {
+        setQueueError(relativeError instanceof Error ? relativeError.message : '加载审阅队列失败')
+        setQueueLoading(false)
+        return
+      }
+      const deduped = items.filter((item, index, all) => all.findIndex((candidate) => candidate.resourceId === item.resourceId) === index)
+      setQueueItems(deduped)
+      setQueueCursor('')
+      setQueueLoading(false)
+      const index = deduped.findIndex((item) => item.resourceId === sampleID)
+      const target = direction === 'next' ? deduped[index + 1] : deduped[index - 1]
       if (!target) {
         // 「最后一条」必须可解释：明确告知，而不是静默什么都不做。
         setSavedNotice(direction === 'next' ? '已经是当前筛选下的最后一条' : '已经是第一条')
@@ -497,7 +592,7 @@ export function SampleReviewPage() {
           (searchParams.toString() ? `?${searchParams.toString()}` : ''),
       )
     },
-    [navigate, sampleID, scope.projectId, searchParams],
+    [navigate, queueSearch, queueStatus, sampleID, scope.projectId, searchParams],
   )
 
   const submit = useCallback(async () => {
@@ -526,6 +621,7 @@ export function SampleReviewPage() {
       setSavedNotice('判断已保存')
       // 刷新数据但**不动 URL**：因此返回时回到同一筛选与同一屏（T17 验收项）。
       await load()
+      await loadQueue()
     } catch (submitErrorValue) {
       // 409 时必须保留用户输入 —— 清空理由会让用户重打一遍，
       // 而那正是「过期返回 409 并保留输入」要避免的。
@@ -533,7 +629,7 @@ export function SampleReviewPage() {
     } finally {
       setSubmitting(false)
     }
-  }, [action, capabilities.canReview, detail, load, projection, reason, sampleID, scope.projectId])
+  }, [action, capabilities.canReview, detail, load, loadQueue, projection, reason, sampleID, scope.projectId])
 
   /**
    * 保存为本地草稿（T29）。
@@ -570,6 +666,7 @@ export function SampleReviewPage() {
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text)
+        setCopyFallback(null)
         setSavedNotice('内容已复制')
         return
       }
@@ -577,7 +674,8 @@ export function SampleReviewPage() {
     } catch {
       // 复制失败必须有回退路径：只弹一句「复制失败」而不给替代方案，
       // 用户就只能在长文本里手工选中。
-      setSavedNotice('浏览器不允许自动复制：请手动选中下方只读内容')
+      setCopyFallback(text)
+      setSavedNotice('浏览器不允许自动复制：请在只读文本框中手动复制')
     }
   }, [detail])
 
@@ -631,6 +729,15 @@ export function SampleReviewPage() {
           <Button size="small" onClick={() => navigate(`/p/${scope.projectId}/data/${sampleID}/history`)}>
             版本与来源
           </Button>
+          <Button
+            size="small"
+            icon={focusContent ? <Minimize2 size={14} /> : <Expand size={14} />}
+            title={focusContent ? '显示队列与证据' : '专注内容'}
+            aria-label={focusContent ? '显示队列与证据' : '专注内容'}
+            onClick={() => setFocusContent((current) => !current)}
+          >
+            {focusContent ? '显示队列与证据' : '专注内容'}
+          </Button>
         </div>
       </div>
 
@@ -648,33 +755,75 @@ export function SampleReviewPage() {
 
       {/* 三栏：队列 / 内容 / 证据。每栏独立，因此「内容 focus」不会因
           判断保存而丢失（保存只刷新数据，不卸载内容栏）。 */}
-      <div className="review-pane__columns">
-        <section className="review-pane__column" aria-label="待判断内容">
-          <Text strong className="block mb-2">
-            队列
-          </Text>
-          <ul className="review-queue">
-            {decisions.length === 0 ? (
-              <li className="review-queue__empty">还没有判断</li>
-            ) : (
-              decisions.map((decision) => (
-                <li key={decision.id} data-decision-id={decision.id}>
-                  <Tag size="small" color={statusColor(decision.action)}>
-                    {decision.action === 'accepted' ? '接纳' : '隔离'}
-                  </Tag>
-                  <Text size="small" className="block">
-                    {decision.reason}
-                  </Text>
-                  <Text type="tertiary" size="small">
-                    审阅者 {decision.reviewerId} · 第 {decision.reviewerRevision} 次
-                    {decision.supersedes ? ` · 更正 #${decision.supersedes}` : ''}
-                    {decision.resolutionOf ? ` · 协调 #${decision.resolutionOf}` : ''}
-                  </Text>
-                </li>
-              ))
-            )}
-          </ul>
-        </section>
+      <div
+        className="review-pane__columns"
+        style={focusContent ? { gridTemplateColumns: 'minmax(0, 1fr)' } : undefined}
+        data-review-focus={focusContent ? 'content' : 'all'}
+      >
+        {!focusContent ? (
+          <section className="review-pane__column" aria-label="待判断内容">
+            <div className="flex items-center justify-between mb-2">
+              <Text strong>队列</Text>
+              <Tag size="small" color="amber">
+                {queueItems.length}{queueCursor ? '+' : ''} 条
+              </Tag>
+            </div>
+            {queueError ? (
+              <div className="wizard-field__error mb-2" role="alert" data-review-queue-error="true">
+                {queueError}
+                <Button size="small" theme="borderless" onClick={() => void loadQueue()}>
+                  重试
+                </Button>
+              </div>
+            ) : null}
+            {queueLoading && queueItems.length === 0 ? <Spin size="small" tip="正在加载队列" /> : null}
+            <ul className="review-queue" data-review-queue="true">
+              {queueWithCurrent.length === 0 && !queueLoading ? (
+                <li className="review-queue__empty">这个筛选下没有待判断内容</li>
+              ) : (
+                queueWithCurrent.map((item) => {
+                  const active = item.resourceId === sampleID
+                  return (
+                    <li key={item.resourceId} className={active ? 'review-queue__item--active' : undefined}>
+                      <button
+                        type="button"
+                        className="review-queue__button"
+                        aria-current={active ? 'page' : undefined}
+                        aria-label={`打开 ${item.title || item.sampleKey}`}
+                        onClick={() => navigateToQueueItem(item.resourceId)}
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          padding: 0,
+                          border: 0,
+                          background: 'transparent',
+                          textAlign: 'left',
+                          cursor: active ? 'default' : 'pointer',
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <Text strong size="small">{item.title || item.sampleKey}</Text>
+                          <Tag size="small" color={statusColor(item.reviewStatus)}>
+                            {REVIEW_STATUS_LABEL[item.reviewStatus] ?? item.reviewStatus}
+                          </Tag>
+                        </div>
+                        <Text type="tertiary" size="small" className="block mt-1">
+                          {item.resourceId} · v{item.latestVersion}
+                          {item.aggregateReviewRevision > 0 ? ` · 判断 ${item.aggregateReviewRevision} 次` : ''}
+                        </Text>
+                      </button>
+                    </li>
+                  )
+                })
+              )}
+            </ul>
+            {queueCursor ? (
+              <Button size="small" className="mt-2" loading={queueLoading} onClick={() => void loadQueue(queueCursor, true)}>
+                加载更多队列
+              </Button>
+            ) : null}
+          </section>
+        ) : null}
 
         <section
           className="review-pane__column review-pane__content"
@@ -684,7 +833,9 @@ export function SampleReviewPage() {
           data-content-focus="true"
         >
           <div className="flex items-center justify-between mb-2">
-            <Text strong>内容（只读）</Text>
+            <Text strong>
+              {detail.sample.targetKind.toLowerCase().includes('grpo') ? '教师提示词与奖励判据（只读）' : '内容（只读）'}
+            </Text>
             <Button size="small" icon={<Copy size={13} />} onClick={() => void copyContent()}>
               复制
             </Button>
@@ -693,12 +844,44 @@ export function SampleReviewPage() {
           <pre className="review-content" data-content-readonly="true">
             {JSON.stringify(detail.version.payload, null, 2)}
           </pre>
+          {copyFallback !== null ? (
+            <div className="mt-3" data-copy-fallback="true">
+              <div className="flex items-center justify-between mb-1">
+                <Text type="tertiary" size="small">手动复制（只读）</Text>
+                <Button size="small" theme="borderless" onClick={() => setCopyFallback(null)}>
+                  关闭
+                </Button>
+              </div>
+              <TextArea
+                value={copyFallback}
+                readOnly
+                autosize={{ minRows: 6, maxRows: 16 }}
+                aria-label="手动复制内容"
+              />
+            </div>
+          ) : null}
         </section>
 
-        <section className="review-pane__column" aria-label="证据与判断">
+        {!focusContent ? <section className="review-pane__column" aria-label="证据与判断">
           <Text strong className="block mb-2">
             证据与判断
           </Text>
+          <div className="flex flex-wrap gap-2 mb-2" data-review-evidence-links="true">
+            <Button
+              size="small"
+              theme="borderless"
+              onClick={() => navigate(`/p/${scope.projectId}/rules?sampleVersionId=${detail.version.versionId}`)}
+            >
+              查看策略
+            </Button>
+            <Button
+              size="small"
+              theme="borderless"
+              onClick={() => navigate(`/p/${scope.projectId}/quality?sampleVersionId=${detail.version.versionId}`)}
+            >
+              完整评估
+            </Button>
+          </div>
           <ul className="review-evidence">
             <li>
               必需证据版本：<code>{projection?.evidenceRevision ?? 0}</code>
@@ -711,6 +894,31 @@ export function SampleReviewPage() {
               生成来源：<code>{detail.version.source.blueprintContentHash.slice(0, 8) || '（未记录）'}</code>
             </li>
           </ul>
+
+          <div className="mt-3" data-review-decision-history="true">
+            <Text type="tertiary" size="small" className="block mb-1">
+              判断历史（{decisions.length}）
+            </Text>
+            {decisions.length === 0 ? (
+              <Text type="tertiary" size="small">还没有判断记录</Text>
+            ) : (
+              <ul className="review-evidence">
+                {decisions.map((decision) => (
+                  <li key={decision.id}>
+                    <Tag size="small" color={statusColor(decision.action)}>
+                      {decision.action === 'accepted' ? '接纳' : '隔离'}
+                    </Tag>{' '}
+                    <Text size="small">{decision.reason}</Text>
+                    <Text type="tertiary" size="small" className="block">
+                      审阅者 {decision.reviewerId} · 第 {decision.reviewerRevision} 次
+                      {decision.supersedes ? ` · 更正 #${decision.supersedes}` : ''}
+                      {decision.resolutionOf ? ` · 协调 #${decision.resolutionOf}` : ''}
+                    </Text>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
           {blockers.length > 0 ? (
             <div className="mt-2" data-review-blockers="true">
@@ -801,7 +1009,7 @@ export function SampleReviewPage() {
               />
             </div>
           ) : null}
-        </section>
+        </section> : null}
       </div>
     </div>
   )
