@@ -1241,3 +1241,110 @@ export const recipeApi = {
       )
       .then((response) => response.data),
 }
+
+// ---------------------------------------------------------------------------
+// 今日工作、动态、搜索与评论（T27）：工作区作用域
+// ---------------------------------------------------------------------------
+
+export type TodoItem = {
+  kind: string
+  projectId: number
+  count: number
+  summary: string
+  sampledIds?: number[]
+  links: Record<string, string>
+  updatedAt: string
+}
+
+export type ReadWatermark = {
+  userId: number
+  workspaceId: number
+  lastSeenAt: string
+  lastSeenEventId: number
+}
+
+export type ActivityItem = {
+  source: string
+  eventId: number
+  projectId: number
+  kind: string
+  actorId?: number
+  summary: string
+  detail?: string
+  createdAt: string
+  links: Record<string, string>
+  unread: boolean
+}
+
+export type SearchHit = {
+  kind: string
+  projectId?: number
+  objectId?: number
+  label: string
+  caption?: string
+  pagePath: string
+}
+
+export type StudioComment = {
+  id: number
+  projectId: number
+  anchorKind: 'sample_version' | 'batch'
+  anchorId: number
+  body: string
+  mentions: number[]
+  revision: number
+  supersedesId?: number
+  supersededBy?: number
+  authorId: number
+  createdAt: string
+  current: boolean
+}
+
+export const activityApi = {
+  /** `GET /v1/today`：待办聚合（每条带具体对象链接）。 */
+  today: (workspaceId?: number) =>
+    client
+      .get<{ todos: TodoItem[]; watermark: ReadWatermark; notes: string[] }>(
+        `/v1/today${workspaceId ? `?workspaceId=${workspaceId}` : ''}`,
+      )
+      .then((response) => response.data),
+
+  /** `GET /v1/activity`：带游标增量轮询。 */
+  activity: (params?: { cursor?: string; limit?: number; workspaceId?: number }) =>
+    client
+      .get<Page<ActivityItem> & { notes?: string[] }>(`/v1/activity${queryString(params as ListParams)}`)
+      .then((response) => response.data),
+
+  /** `POST /v1/activity/read`：只更新**当前用户**的阅读水位。 */
+  markRead: (workspaceId?: number) =>
+    client
+      .post<{ watermark: ReadWatermark; notes: string[] }>(
+        `/v1/activity/read${workspaceId ? `?workspaceId=${workspaceId}` : ''}`,
+      )
+      .then((response) => response.data),
+
+  /** `GET /v1/search`：只在可访问范围内搜索。 */
+  search: (keyword: string, workspaceId?: number) =>
+    client
+      .get<{ items: SearchHit[]; notes: string[] }>(
+        `/v1/search?q=${encodeURIComponent(keyword)}${workspaceId ? `&workspaceId=${workspaceId}` : ''}`,
+      )
+      .then((response) => response.data),
+
+  listComments: (projectId: number, anchorKind: string, anchorId: number) =>
+    client
+      .get<{ items: StudioComment[]; notes: string[]; viewerId: number }>(
+        `${projectPath(projectId)}/comments?anchorKind=${anchorKind}&anchorId=${anchorId}`,
+      )
+      .then((response) => response.data),
+
+  createComment: (
+    projectId: number,
+    payload: { anchorKind: string; anchorId: number; body: string; mentions?: number[] },
+  ) => client.post<StudioComment>(`${projectPath(projectId)}/comments`, payload).then((response) => response.data),
+
+  mentionCandidates: (projectId: number) =>
+    client
+      .get<Page<{ userId: number; role: string }>>(`${projectPath(projectId)}/mention-candidates`)
+      .then((response) => response.data),
+}

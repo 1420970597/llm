@@ -25,6 +25,7 @@ import {
   menuRoutes,
 } from './routes'
 import { newIdempotencyKey } from '../lib/api/studio'
+import { CommandSearch } from './pages/TodayPages'
 
 /**
  * 全局壳（Issue #160 T09）：4 全局入口 + 辅助入口 + 目录评审（仅非生产）。
@@ -116,6 +117,11 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
               >
                 <PanelLeftClose size={16} />
               </button>
+            </div>
+
+            {/* 命令搜索（T27）：Esc 关闭、回车打开第一条、关闭后焦点回到触发点。 */}
+            <div className="sidebar-nav-section" data-command-search-slot="true">
+              <CommandSearch />
             </div>
 
             {/* 第一层：全局四入口。 */}

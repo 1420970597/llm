@@ -17,6 +17,7 @@ import { ComparePage } from './pages/ComparePage'
 import { QualityListPage, QualityNewPage, QualityReportPage, RulesPage } from './pages/QualityPages'
 import { DeliveriesPage, ReleaseCardPage, ReleaseNewPage, ReleasesListPage } from './pages/ReleasePages'
 import { RecipeDetailPage, RecipesListPage } from './pages/RecipesPages'
+import { ActivityPage, TodayPage } from './pages/TodayPages'
 import {
   allStudioRoutes,
   auxiliaryRoutes,
@@ -57,6 +58,9 @@ const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   'project.newRelease': () => <ReleaseNewPage />,
   'project.releaseCard': () => <ReleaseCardPage />,
   deliveries: () => <DeliveriesPage />,
+  // 今日工作与动态（T27）：工作区作用域。
+  today: () => <TodayPage />,
+  activity: () => <ActivityPage />,
   // 方案库（T26）：工作区作用域的全局入口，不属于任何项目。
   recipes: () => <RecipesListPage />,
   'recipe.detail': () => <RecipeDetailPage />,
