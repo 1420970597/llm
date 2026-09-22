@@ -88,7 +88,7 @@
 | 2026-09-21 | T15 | §2.6 要求「预览不写处置、不入收费模型队列」，但未规定如何保证 | **不为预览建表、预览端点在 store 里只有 SELECT**。理由：「预览前后无变化」不能靠「记得回滚」，而要靠「根本没有写路径」。响应显式带 `sideEffects: false`，使前端与验收脚本能**断言**这一点。命中数达上限时返回 `truncated: true`（否则用户会以为「就这么多命中」）|
 | 2026-09-21 | T15 | 规则与证据的取值集合已在 §5/T04 冻结，T15 未说明是否复用 | **复用** `RuleMatch*`/`RuleSeverity*`/`RuleAction*`（studio_docs.go）：另立一套会让「质量策略版本」与「规则证据」对同一概念用不同字符串，而那种不一致只在运行时以「评估时规则被跳过」的形式出现。同时明确：匹配方式是**闭合集合**（§5 禁止任意脚本节点）；建议动作里**没有「自动隔离」**，它们只是建议，不自动执行 |
 | 2026-09-21 | T15 | 规则命中证据要保留什么，契约未逐列规定 | 冻结为：规则**表达式快照**、匹配方式、字段、严重度、建议动作、命中偏移（以**字符/rune** 计，字节偏移会让中文高亮错位）与片段。只存 rule_id 会让历史命中在规则被改后显示成新规则的结果，而「当时为什么拦下它」是申诉与复核的唯一依据。`sample_version_id` 与 `quality_policy_version_id` 都用 ON DELETE RESTRICT：证据与其引用的版本不得被静默删除 |
-| 2026-09-21 | T15 | T15 尚未全部交付（已交付迁移 0029 与模型判据；纯预览端点、证据追加与测试仍待续）| **已交付**：迁移 0029（rule_evaluations / rule_evidence，含表达式快照、rune 偏移、RESTRICT 外键）、`internal/model/rule_evidence.go`（校验即编译 regex、服务端长度/命中上限、证据冻结）。**未交付**：store 层的纯预览与证据追加（落点在 `internal/store`）、项目规则 API 与规则页（T19）|
+| 2026-09-21 | T15 | T15 尚未全部交付（已交付迁移 0029 与模型判据；纯预览端点、证据追加与测试仍待续）| **已交付**：迁移 0029（rule_evaluations / rule_evidence，含表达式快照、rune 偏移、RESTRICT 外键）、`internal/model/rule_evidence.go`（校验即编译 regex、服务端长度/命中上限、证据冻结）。**新增交付**：`internal/store/rule_store.go`（`PreviewRules` 纯 SELECT、`RecordRuleEvaluation` 只追加证据、`ListRuleEvidence`）与测试；`internal/cleaning` 暴露 `MatchStart/MatchEnd`（本来就是它算出来的 rune 偏移）并新增 `MatchKeywordsAll`（全部命中位置，而 `MatchKeywords` 的「每关键词首处」行为保持不变，以免影响已冻结的清洗语义）。**未交付**：项目规则 API 与规则页（T19）|
 ---
 
 ## 2. 必须先定清的固定口径

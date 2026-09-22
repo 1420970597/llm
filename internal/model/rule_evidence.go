@@ -47,26 +47,16 @@ const (
 	MaxRuleMatchesPerContent = 5000
 )
 
-// RuleSpec 是一条规则的 typed 定义（质量策略版本 payload 里的一项）。
-type RuleSpec struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	MatchType       string `json:"matchType"`
-	Expression      string `json:"expression"`
-	Field           string `json:"field"`
-	Severity        string `json:"severity"`
-	SuggestedAction string `json:"suggestedAction"`
-	// Note 是面向用户的说明（为什么有这条规则）。
-	Note string `json:"note,omitempty"`
-}
-
-// ValidateRuleSpec 校验一条规则（服务端）。
+// ValidateRuleSpec 校验一条质量策略规则（服务端）。
 //
 // 关键：**正则表达式必须在这里被真正编译**。只在界面校验是不够的 ——
 // 客户端可以绕过界面直接调 API，而非法 regex 一旦落库，之后每次扫描都会
 // 在运行期失败（那时错误信息与「哪条规则写坏了」已经隔了几层）。
 // 因此校验即编译：编译不过就拒绝保存。
-func ValidateRuleSpec(rule RuleSpec) error {
+//
+// 报错文案只说「不是合法正则」，不透出 Go 的编译错误原文：
+// 它含内部语法细节，而用户需要知道的是「这条表达式写错了」。
+func ValidateRuleSpec(rule QualityRule) error {
 	field := "rules." + strings.TrimSpace(rule.ID)
 	if strings.TrimSpace(rule.ID) == "" {
 		return FieldErrors{{Field: "rules[].id", Message: "规则 ID 必填（它是历史命中证据的稳定引用）"}}
@@ -82,16 +72,12 @@ func ValidateRuleSpec(rule RuleSpec) error {
 	switch rule.MatchType {
 	case RuleMatchRegex:
 		if _, err := regexp.Compile(rule.Expression); err != nil {
-			// 报错文案只说「不是合法正则」，不把 Go 的编译错误原文透出去：
-			// 它含内部语法细节，而用户需要知道的是「这条表达式写错了」。
 			return FieldErrors{{Field: field + ".expression",
 				Message: "不是合法的正则表达式，请修正后保存（非法规则不会入库）"}}
 		}
-	case RuleMatchContains, RuleMatchStructure:
-		// 字面包含与结构检查不需要编译（结构检查的表达式是少量内置形式，
-		// 例如 len>0，由执行侧解释）。
-	case RuleMatchFieldCheck:
-		// 字段检查同理。
+	case RuleMatchContains, RuleMatchStructure, RuleMatchFieldCheck:
+		// 字面包含、结构检查与字段检查不需要编译：
+		// 后两者的表达式是少量内置形式（例如 len>0），由执行侧解释。
 	default:
 		return FieldErrors{{Field: field + ".matchType",
 			Message: "匹配类型只能是 contains、regex、field_check 或 structure"}}
@@ -172,7 +158,7 @@ type RuleEvidence struct {
 // 显式带上**规则快照**（表达式/严重度/建议动作）：这些字段在规则被改后会
 // 与「当前规则」不同，而证据必须保留当时的值 —— 否则「为什么当时拦下了它」
 // 在规则调整后无法回答。
-func RuleEvidenceFromHit(rule RuleSpec, hit RulePreviewHit, evaluationID, projectID, sampleID, sampleVersionID int64, contentHash string) RuleEvidence {
+func RuleEvidenceFromHit(rule QualityRule, hit RulePreviewHit, evaluationID, projectID, sampleID, sampleVersionID int64, contentHash string) RuleEvidence {
 	return RuleEvidence{
 		EvaluationID: evaluationID, ProjectID: projectID,
 		SampleID: sampleID, SampleVersionID: sampleVersionID, ContentHash: contentHash,
