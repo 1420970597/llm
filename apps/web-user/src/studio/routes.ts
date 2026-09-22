@@ -630,14 +630,14 @@ export type BreadcrumbItem = {
 export function breadcrumbsFor(pathname: string, params: Record<string, string | number>): BreadcrumbItem[] {
   const current = matchRoute(pathname)
   if (!current) {
-    return [{ label: '数据项目', path: fillRoutePath('/projects', {}) }]
+    return [{ label: '数据项目', path: fillRoutePathByKey('projects', {}) }]
   }
   if (current.kind === 'project') {
     const items: BreadcrumbItem[] = [
-      { label: '数据项目', path: '/projects' },
+      { label: '数据项目', path: fillRoutePathByKey('projects', {}) },
       {
         label: `项目 ${params.projectId ?? ''}`.trim(),
-        path: fillRoutePath('/p/:projectId/overview', params),
+        path: fillRoutePathByKey('project.overview', params),
       },
     ]
     // 子页（navParent 非空）先给出所属标签，再给出自己。
@@ -652,6 +652,17 @@ export function breadcrumbsFor(pathname: string, params: Record<string, string |
       items.push({ label: current.label })
     }
     return items
+  }
+  // 入口详情页与向导步骤同样从唯一元数据表推导父级，避免详情页
+  // 丢失所属入口或在新增步骤时需要再维护一张面包屑映射表。
+  if (current.navParent) {
+    const parent = allStudioRoutes.find((route) => route.key === current.navParent)
+    if (parent) {
+      return [
+        { label: parent.label, path: fillRoutePath(parent.path, params) },
+        { label: current.label },
+      ]
+    }
   }
   return [{ label: current.label }]
 }

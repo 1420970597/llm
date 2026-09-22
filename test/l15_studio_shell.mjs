@@ -46,6 +46,7 @@ const WEB_ROOT = path.join(REPO_ROOT, 'apps', 'web-user')
 const STUDIO_ROOT = path.join(WEB_ROOT, 'src', 'studio')
 const ROUTES_SOURCE = path.join(STUDIO_ROOT, 'routes.ts')
 const STUDIO_ROUTES_SOURCE = path.join(STUDIO_ROOT, 'StudioRoutes.tsx')
+const STUDIO_LAYOUT_SOURCE = path.join(STUDIO_ROOT, 'StudioLayout.tsx')
 const NGINX_CONF = path.join(REPO_ROOT, 'deployments', 'docker', 'nginx', 'web-user.conf')
 
 const webRequire = createRequire(path.join(WEB_ROOT, 'package.json'))
@@ -79,6 +80,34 @@ const routesSource = routesSourceRaw
 // 断言用到它，而它原本声明在文件后半段 —— 在其之前引用会抛
 // ReferenceError（守卫自己当场报出过这个错误）。
 const studioRoutesSource = readFileSync(STUDIO_ROUTES_SOURCE, 'utf8')
+const studioLayoutSource = readFileSync(STUDIO_LAYOUT_SOURCE, 'utf8')
+
+// 链接构造器与默认入口只能通过路由元数据解析：项目路由不在 menuRoutes
+// 中，直接查菜单会把 projectHref('project.overview') 静默降级到错误入口。
+record(
+  '项目链接使用完整路由元数据而非菜单子集',
+  studioLayoutSource.includes('fillRoutePathByKey(key, { projectId })') &&
+    !studioLayoutSource.includes("menuRoutes().find((item) => item.key === key)"),
+  'projectHref 通过 fillRoutePathByKey 解析项目路由',
+)
+record(
+  '面包屑路径使用路由元数据',
+  (() => {
+    const body = routesSourceRaw.slice(routesSourceRaw.indexOf('export function breadcrumbsFor'))
+    return body.includes("fillRoutePathByKey('projects', {})") &&
+      body.includes("fillRoutePathByKey('project.overview', params)") &&
+      !body.includes("path: '/projects'") &&
+      !body.includes("fillRoutePath('/p/:projectId/overview', params)")
+  })(),
+  'projects 与 project.overview 均按 key 解析',
+)
+record(
+  'Atelier 默认入口与错误边界使用路由元数据',
+  studioRoutesSource.includes("fillRoutePathByKey('today', {})") &&
+    studioRoutesSource.includes("fillRoutePathByKey('projects', {})") &&
+    studioRoutesSource.includes('<Route index element={<Navigate to={studioDefaultPath()} replace />} />'),
+  '默认入口为 today，根路径在认证壳内跳转，错误边界回到 projects',
+)
 
 /**
  * 项目路由路径只允许出现在 routes.ts。
@@ -380,6 +409,19 @@ record(
   '面包屑包含层级（数据项目 → 项目 → 所属标签 → 当前页）',
   crumbLabels[0] === '数据项目' && crumbLabels.includes('生产') && crumbLabels[crumbLabels.length - 1] === '扩量规划',
   crumbLabels.join(' / '),
+)
+
+const detailCrumbs = prodRoutes.breadcrumbsFor('/recipes/7', { recipeId: 7 })
+const wizardCrumbs = prodRoutes.breadcrumbsFor('/new/coverage', {})
+record(
+  '入口详情与向导步骤面包屑保留父级路径',
+  detailCrumbs[0]?.label === '方案库' &&
+    detailCrumbs[0]?.path === '/recipes' &&
+    wizardCrumbs[0]?.label === '新建项目' &&
+    wizardCrumbs[0]?.path === '/new',
+  `详情=${detailCrumbs.map((item) => `${item.label}:${item.path ?? '-'}`).join(' / ')}；向导=${wizardCrumbs
+    .map((item) => `${item.label}:${item.path ?? '-'}`)
+    .join(' / ')}`,
 )
 
 /** 每个可跳转路径都能从元数据生成（前端不自行拼 URL）。 */

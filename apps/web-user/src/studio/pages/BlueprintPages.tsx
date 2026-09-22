@@ -65,7 +65,34 @@ type DocumentVersion = {
   createdAt: string
 }
 
-type VersionsResponse = { items: DocumentVersion[]; nextCursor: string; sortKey: string }
+type DocumentHead = {
+  id: number
+  projectId: number
+  kind: string
+  logicalId: string
+  currentVersion: number
+  /** 文档头的乐观锁 revision，而不是当前版本号。 */
+  revision: number
+}
+
+type VersionsResponse = {
+  items: DocumentVersion[]
+  nextCursor?: string
+  sortKey: string
+  /** 没有保存过版本时服务端省略该字段。 */
+  document?: DocumentHead
+  canEdit?: boolean
+}
+
+/** 版本详情端点返回 `{ document, version, references, readOnly }`。 */
+function versionFromResponse(body: unknown): DocumentVersion {
+  if (body && typeof body === 'object') {
+    const record = body as { version?: DocumentVersion; data?: DocumentVersion }
+    if (record.version) return record.version
+    if (record.data) return record.data
+  }
+  return body as DocumentVersion
+}
 
 /** 节点 payload 的读写：按 payloadField 取该节点在 Nodes 下的对象。 */
 function nodeValues(payload: Record<string, unknown> | null, spec: NodeSpec): Record<string, unknown> {
@@ -100,17 +127,20 @@ export function BlueprintPage() {
   const [error, setError] = useState<string | null>(null)
   const [versions, setVersions] = useState<DocumentVersion[]>([])
   const [current, setCurrent] = useState<DocumentVersion | null>(null)
+  // 文档头 revision 与版本号是两个不同的概念：保存命令必须携带前者。
+  const [headRevision, setHeadRevision] = useState(0)
   const [draft, setDraft] = useState<Record<string, unknown> | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [changeReason, setChangeReason] = useState('')
   const [compareVersion, setCompareVersion] = useState<number | null>(null)
+  const [canEdit, setCanEdit] = useState(false)
 
   // `?node=` 与 `?version=` 都来自 URL：分享链接要能指向同一个节点与版本。
   const activeNodeKey = searchParams.get('node') ?? ''
   const viewingVersion = searchParams.get('version')
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (versionOverride?: string | null) => {
     setLoading(true)
     setError(null)
     try {
@@ -121,13 +151,18 @@ export function BlueprintPage() {
       setSpecs(nodesResponse.data.items ?? [])
       const list = versionsResponse.data.items ?? []
       setVersions(list)
+      setHeadRevision(versionsResponse.data.document?.revision ?? 0)
+      setCanEdit(versionsResponse.data.canEdit === true)
 
-      if (viewingVersion) {
+      // 保存后调用 load(null) 时不能依赖仍捕获着旧 URL 的 viewingVersion。
+      const requestedVersion = versionOverride === undefined ? viewingVersion : versionOverride
+
+      if (requestedVersion) {
         // 历史版本：按 URL 拉取那一版（只读），并把它作为对比基准。
         const response = await client.get<{ data?: DocumentVersion } & DocumentVersion>(
-          `${projectPath(scope.projectId)}/blueprint-versions/${viewingVersion}`,
+          `${projectPath(scope.projectId)}/blueprint-versions/${requestedVersion}`,
         )
-        const version = (response.data as { data?: DocumentVersion }).data ?? (response.data as DocumentVersion)
+        const version = versionFromResponse(response.data)
         setCurrent(version)
         setDraft(version.payload)
         setCompareVersion(version.version)
@@ -137,7 +172,7 @@ export function BlueprintPage() {
         const response = await client.get<{ data?: DocumentVersion } & DocumentVersion>(
           `${projectPath(scope.projectId)}/blueprint-versions/${latest.version}`,
         )
-        const version = (response.data as { data?: DocumentVersion }).data ?? (response.data as DocumentVersion)
+        const version = versionFromResponse(response.data)
         setCurrent(version)
         setDraft(version.payload)
         setCompareVersion(null)
@@ -162,10 +197,12 @@ export function BlueprintPage() {
     [specs, activeNodeKey],
   )
 
-  const isReadOnly = compareVersion !== null && compareVersion !== current?.version
+  // URL 中存在 version 就代表「历史查看」；current 此时恰好也是被查看的
+  // 历史版本，拿两者比较会把只读状态错误地判成可编辑。
+  const isReadOnly = viewingVersion !== null
 
   const save = useCallback(async () => {
-    if (!draft || !activeSpec) return
+    if (!draft || !activeSpec || !canEdit) return
     // 提交前清理「非法 JSON 中间态」标记：它是编辑器的临时状态，
     // 不能进入 payload（那会让服务端看到一个不认识的字段）。
     const cleaned = stripInvalidJSONMarkers(draft)
@@ -183,7 +220,7 @@ export function BlueprintPage() {
         {
           // expectedRevision 用**当前头记录**的 revision：不匹配返回 409 并保留草稿
           //（契约 §1.4「不匹配返回 409，并保留用户草稿」）。
-          expectedRevision: current ? undefined : 0,
+          expectedRevision: headRevision,
           logicalId: 'main',
           changeReason: changeReason.trim(),
           payload: cleaned,
@@ -196,7 +233,7 @@ export function BlueprintPage() {
         params.delete('version')
         return params
       })
-      await load()
+      await load(null)
     } catch (saveErrorValue) {
       const apiError = saveErrorValue as { statusCode?: number; message?: string }
       if (apiError.statusCode === 409) {
@@ -207,7 +244,7 @@ export function BlueprintPage() {
     } finally {
       setSaving(false)
     }
-  }, [activeSpec, changeReason, current, draft, load, scope.projectId, setSearchParams])
+  }, [activeSpec, canEdit, changeReason, draft, headRevision, load, scope.projectId, setSearchParams])
 
   if (loading) {
     return (
@@ -234,6 +271,13 @@ export function BlueprintPage() {
   }
 
   const nodeValuesForActive = activeSpec ? nodeValues(draft, activeSpec) : {}
+  const relatedPage = activeSpec?.key === 'coverage'
+    ? { route: 'project.coverage', label: '覆盖矩阵' }
+    : activeSpec?.key === 'standard'
+      ? { route: 'project.standard', label: '思维标准' }
+      : activeSpec?.key === 'rules'
+        ? { route: 'project.rules', label: '规则策略' }
+        : null
 
   return (
     <div className="console-page blueprint-page" data-studio-page="blueprint">
@@ -303,7 +347,7 @@ export function BlueprintPage() {
                 <NodeFields
                   spec={activeSpec}
                   values={nodeValuesForActive}
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || !canEdit}
                   onChange={(name, value) => {
                     if (!draft || !activeSpec) return
                     const nextValues = { ...nodeValuesForActive, [name]: value }
@@ -318,6 +362,7 @@ export function BlueprintPage() {
                 </Text>
                 <TextArea
                   value={changeReason}
+                  disabled={!canEdit}
                   onChange={(value) => setChangeReason(value)}
                   placeholder="例如：把并发从 8 提到 12"
                   autosize={{ minRows: 2, maxRows: 4 }}
@@ -337,11 +382,12 @@ export function BlueprintPage() {
                   type="primary"
                   icon={<Save size={14} />}
                   loading={saving}
+                  disabled={isReadOnly || !canEdit}
                   onClick={() => void save()}
                 >
                   保存为新版本
                 </Button>
-                {current ? (
+                {current && canEdit ? (
                   <Button
                     icon={<Copy size={14} />}
                     onClick={() => {
@@ -397,18 +443,13 @@ export function BlueprintPage() {
               ))}
             </ul>
           )}
-          <div className="mt-3">
-            <Button
-              size="small"
-              onClick={() =>
-                navigate(
-                  `/p/${scope.projectId}/${activeSpec?.key === 'coverage' ? 'coverage' : 'standard'}`,
-                )
-              }
-            >
-              查看{activeSpec?.key === 'coverage' ? '覆盖矩阵' : '思维标准'}
-            </Button>
-          </div>
+          {relatedPage ? (
+            <div className="mt-3">
+              <Button size="small" onClick={() => navigate(scope.href(relatedPage.route))}>
+                查看{relatedPage.label}
+              </Button>
+            </div>
+          ) : null}
           {current ? (
             <Text type="tertiary" size="small" className="block mt-3">
               当前版本内容 hash：{current.contentHash}

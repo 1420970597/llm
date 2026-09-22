@@ -244,6 +244,37 @@ func TestStudioListQueryRejectsUnsupportedFilters(t *testing.T) {
 	}
 }
 
+// TestNormalizeSampleReviewStatusKeepsDefaultAndExplicitAllDistinct verifies
+// the query contract used by both the review queue and quality/release
+// planning.  An omitted status means the pending queue; `status=all` is an
+// explicit request for every effective review state.  Collapsing the two
+// values would either hide accepted samples from planning or flood the review
+// queue with already-processed samples.
+func TestNormalizeSampleReviewStatusKeepsDefaultAndExplicitAllDistinct(t *testing.T) {
+	tests := []struct {
+		name     string
+		raw      string
+		status   string
+		explicit bool
+		valid    bool
+	}{
+		{name: "omitted defaults to pending queue", raw: "", status: "", explicit: false, valid: true},
+		{name: "all explicitly selects every state", raw: "all", status: "", explicit: true, valid: true},
+		{name: "accepted selects accepted only", raw: model.EffectiveAccepted, status: model.EffectiveAccepted, explicit: true, valid: true},
+		{name: "invalid is rejected", raw: "done", status: "", explicit: false, valid: false},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			status, explicit, valid := normalizeSampleReviewStatus(testCase.raw)
+			if status != testCase.status || explicit != testCase.explicit || valid != testCase.valid {
+				t.Fatalf("normalizeSampleReviewStatus(%q) = (%q, %t, %t), want (%q, %t, %t)",
+					testCase.raw, status, explicit, valid,
+					testCase.status, testCase.explicit, testCase.valid)
+			}
+		})
+	}
+}
+
 // TestStudioBudgetExhaustedMapsTo429 断言预算失败映射为契约 §1.2 的 429。
 func TestStudioBudgetExhaustedMapsTo429(t *testing.T) {
 	app := &application{}

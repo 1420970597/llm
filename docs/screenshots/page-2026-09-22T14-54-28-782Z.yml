@@ -1,0 +1,137 @@
+- generic [ref=e1]:
+  - generic [ref=e83]:
+    - generic [ref=e84]:
+      - generic [ref=e85]:
+        - listitem [ref=e86]:
+          - img "L" [ref=e88]
+        - generic [ref=e89]:
+          - generic [ref=e90]: 企业数据工厂
+          - generic [ref=e91]: 管理员
+      - generic [ref=e92]:
+        - generic [ref=e95]:
+          - button "新建任务" [ref=e96] [cursor=pointer]
+          - button "我的任务" [ref=e101] [cursor=pointer]
+        - menu [ref=e107]:
+          - listitem [ref=e108] [cursor=pointer]:
+            - menuitem "业务导航" [expanded] [ref=e109]
+            - list [ref=e118]:
+              - menuitem "工作台" [ref=e119]
+              - menuitem "新建任务" [ref=e127]
+              - menuitem "我的任务" [ref=e132]
+              - menuitem "数据资产" [ref=e139]
+              - menuitem "质量评估" [ref=e145]
+              - menuitem "数据清洗" [ref=e151]
+              - menuitem "账户与帮助" [ref=e156]
+          - listitem [ref=e164] [cursor=pointer]:
+            - menuitem "系统设置" [ref=e165]
+      - generic [ref=e172]:
+        - generic [ref=e173]:
+          - generic [ref=e174]:
+            - generic [ref=e175]: 任务
+            - strong [ref=e177]: "53"
+          - generic [ref=e178]:
+            - generic [ref=e179]: 队列
+            - strong [ref=e181]: "0"
+        - generic [ref=e182]:
+          - listitem [ref=e183]:
+            - img "A" [ref=e185]
+          - generic [ref=e186]: admin@company.com
+          - button [ref=e187] [cursor=pointer]
+    - generic [ref=e193]:
+      - button [ref=e194] [cursor=pointer]
+      - generic [ref=e199]: 新建任务
+      - button [ref=e202] [cursor=pointer]
+    - generic [ref=e210]:
+      - generic [ref=e211]:
+        - generic [ref=e212]:
+          - generic [ref=e213]: 新建任务
+          - heading "先填主题和目标规模，立即创建新任务" [level=2] [ref=e400]
+          - generic [ref=e215]: 只填任务主题和目标规模即可。
+        - generic [ref=e216]:
+          - button "返回我的任务" [ref=e401] [cursor=pointer]
+          - button "刷新" [ref=e403] [cursor=pointer]
+      - generic [ref=e232]:
+        - generic [ref=e234]:
+          - heading "任务基础信息" [level=4] [ref=e404]
+          - generic [ref=e236]: 先填任务主题和目标规模，再决定是否估算或创建。
+          - generic [ref=e237]:
+            - generic [ref=e238]:
+              - generic [ref=e405]: 任务名称（可选）
+              - textbox "例如：行业研究问答任务" [ref=e407]
+            - generic [ref=e242]:
+              - generic [ref=e408]: 任务主题
+              - textbox [ref=e410]: 企业知识库问答
+            - generic [ref=e246]:
+              - generic [ref=e411]: 目标样本数（条）
+              - generic [ref=e412]:
+                - spinbutton [ref=e414]: "1"
+                - generic [ref=e415]:
+                  - img "chevron_up" [ref=e417]
+                  - img "chevron_down" [ref=e421]
+              - generic [ref=e424]: 先小规模验证，再逐步放大。
+            - generic [ref=e250]:
+              - generic [ref=e425]: 领域数 n
+              - generic [ref=e426]:
+                - spinbutton "留空用策略默认值" [ref=e428]: "0"
+                - generic [ref=e429]:
+                  - img "chevron_up" [ref=e431]
+                  - img "chevron_down" [ref=e435]
+              - generic [ref=e438]: 关键词下要生成多少个领域；留空（0）表示沿用生成策略里的领域数。
+            - generic [ref=e439]:
+              - generic [ref=e440]: 每领域方向数 m
+              - generic [ref=e441]:
+                - spinbutton "默认 3" [ref=e443]: "0"
+                - generic [ref=e444]:
+                  - img "chevron_up" [ref=e446]
+                  - img "chevron_down" [ref=e450]
+              - generic [ref=e453]: 每个领域下再生成多少个具体方向；n × m 就是方向总条目数。留空（0）用默认值 3。
+            - generic [ref=e454]:
+              - generic [ref=e455]: 每方向问题数 x
+              - generic [ref=e456]:
+                - spinbutton "默认 5" [ref=e458]: "0"
+                - generic [ref=e459]:
+                  - img "chevron_up" [ref=e461]
+                  - img "chevron_down" [ref=e465]
+              - generic [ref=e468]: 每个方向生成多少道具体问题；n × m × x 就是问题总量。留空（0）用默认值 5。
+            - generic [ref=e469]:
+              - generic [ref=e470]: 生成策略
+              - combobox "selected" [ref=e471] [cursor=pointer]:
+                - generic [ref=e472]: 默认策略
+            - generic [ref=e479]:
+              - generic [ref=e480]: AI 服务
+              - combobox "selected" [ref=e481] [cursor=pointer]:
+                - generic [ref=e482]: gpt-6-astra
+            - generic [ref=e489]:
+              - generic [ref=e490]: 存储配置
+              - combobox "selected" [ref=e491] [cursor=pointer]:
+                - generic [ref=e492]: 默认结果存储
+          - generic [ref=e499]:
+            - button "估算规模" [active] [ref=e500] [cursor=pointer]
+            - button "创建任务" [ref=e507] [cursor=pointer]
+        - generic [ref=e263]:
+          - heading "估算结果" [level=4] [ref=e516]
+          - generic [ref=e265]: 看方向数和题目量，再决定是否创建。
+          - generic [ref=e532]:
+            - generic [ref=e534]:
+              - generic [ref=e535]: 领域数
+              - generic [ref=e543]: "10"
+              - generic [ref=e544]: 建议领域数
+            - generic [ref=e546]:
+              - generic [ref=e547]: 每领域问题数
+              - generic [ref=e554]: "2"
+              - generic [ref=e555]: 单领域问题量
+            - generic [ref=e557]:
+              - generic [ref=e558]: 预计问题总量
+              - generic [ref=e573]: "20"
+              - generic [ref=e574]: 待生成问题
+            - generic [ref=e576]:
+              - generic [ref=e577]: 预计样本总量
+              - generic [ref=e586]: "20"
+              - generic [ref=e587]: 最终样本规模
+  - generic [ref=e388]:
+    - alert "success type":
+      - generic [ref=e588]:
+        - img "tick_circle" [ref=e589]
+        - generic [ref=e592]: 计划估算已刷新
+        - button [ref=e594] [cursor=pointer]:
+          - img "close" [ref=e596]

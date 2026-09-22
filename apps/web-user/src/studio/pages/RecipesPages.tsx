@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button, Card, Empty, Input, Select, Spin, Tag, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle } from 'lucide-react'
 import { recipeApi } from '../../lib/api/studio'
@@ -156,6 +156,7 @@ export function RecipesListPage() {
 export function RecipeDetailPage() {
   const { recipeId } = useParams()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { Title, Text } = Typography
   const [detail, setDetail] = useState<RecipeDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -168,6 +169,7 @@ export function RecipeDetailPage() {
   const [projectGoal, setProjectGoal] = useState('')
 
   const parsedRecipeID = Number.parseInt(recipeId ?? '', 10)
+  const requestedVersionID = Number.parseInt(searchParams.get('version') ?? '', 10)
 
   const load = useCallback(async () => {
     if (!Number.isFinite(parsedRecipeID) || parsedRecipeID <= 0) {
@@ -197,6 +199,12 @@ export function RecipeDetailPage() {
     () => (detail?.data.versions ?? []).filter((version) => version.status === 'published'),
     [detail],
   )
+  const selectedVersion = useMemo(() => {
+    if (requestedVersionID > 0) {
+      return publishedVersions.find((version) => version.id === requestedVersionID) ?? null
+    }
+    return publishedVersions[0] ?? null
+  }, [publishedVersions, requestedVersionID])
 
   const publish = useCallback(
     async (version: RecipeVersion) => {
@@ -218,7 +226,7 @@ export function RecipeDetailPage() {
 
   const createProject = useCallback(async () => {
     if (!detail) return
-    if (publishedVersions.length === 0) {
+    if (!selectedVersion) {
       setError('该方案还没有已发布版本：请先发布一个版本，再用于创建项目。')
       return
     }
@@ -232,7 +240,7 @@ export function RecipeDetailPage() {
     setCopyResult(null)
     try {
       const response = await recipeApi.createProjectFromRecipe({
-        sourceRecipeVersionId: publishedVersions[0].id,
+        sourceRecipeVersionId: selectedVersion.id,
         name: projectName.trim(),
         goal: projectGoal.trim(),
         targetKind: detail.data.recipe.targetKind,
@@ -244,7 +252,7 @@ export function RecipeDetailPage() {
     } finally {
       setBusy(false)
     }
-  }, [detail, projectGoal, projectName, publishedVersions])
+  }, [detail, projectGoal, projectName, selectedVersion])
 
   if (loading) {
     return (
@@ -353,9 +361,9 @@ export function RecipeDetailPage() {
               </span>
               <span>
                 {version.status === 'published' ? (
-                  <Text type="tertiary" size="small">
-                    可用于创建项目
-                  </Text>
+                  <Button size="small" theme={selectedVersion?.id === version.id ? 'solid' : 'borderless'} onClick={() => setSearchParams((params) => { params.set('version', String(version.id)); return params })}>
+                    {selectedVersion?.id === version.id ? '已选择用于创建' : '选择此版本'}
+                  </Button>
                 ) : detail.capabilities.canPublish ? (
                   <Button size="small" theme="borderless" disabled={busy} onClick={() => void publish(version)}>
                     发布
@@ -377,7 +385,7 @@ export function RecipeDetailPage() {
         </Text>
         <Text type="tertiary" size="small" className="block mb-2">
           复制的是**选定版本的内容快照**：项目建成后与方案再无写入关系，之后改方案不会影响它。
-          {publishedVersions.length === 0 ? '当前没有已发布版本，暂时不能创建项目。' : null}
+          {selectedVersion ? `当前选择：v${selectedVersion.version}（版本 ID ${selectedVersion.id}）` : '当前没有已发布版本，暂时不能创建项目。'}
         </Text>
         <div className="wizard-grid">
           <div className="wizard-field">
@@ -401,7 +409,7 @@ export function RecipeDetailPage() {
         <div className="mt-3">
           <Button
             theme="solid"
-            disabled={busy || publishedVersions.length === 0}
+            disabled={busy || !selectedVersion}
             onClick={() => void createProject()}
             data-recipe-create="true"
           >

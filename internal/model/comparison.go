@@ -359,6 +359,9 @@ func ValidateAdoption(side, reason string, report ComparisonReport) error {
 func ComparisonCapabilities(role string, comparable bool, adopted bool) Capabilities {
 	isOwner := role == ProjectRoleOwner
 	return Capabilities{
+		// Compare uses the generic envelope fields as follows: canEdit means
+		// the owner may create/adopt a decision; canRun means a comparable
+		// baseline still has an unapplied adoption action.
 		CanEdit:     isOwner && comparable,
 		CanRun:      isOwner && comparable && !adopted,
 		CanReview:   isOwner || role == ProjectRoleReviewer,

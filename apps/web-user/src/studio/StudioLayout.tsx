@@ -20,8 +20,8 @@ import {
   activeNavKey,
   auxiliaryRoutes,
   breadcrumbsFor,
-  fillRoutePath,
   globalRoutes,
+  fillRoutePathByKey,
   menuRoutes,
 } from './routes'
 import { newIdempotencyKey } from '../lib/api/studio'
@@ -81,7 +81,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
     const current = menuRoutes().find((route) => route.key === activeKey)
     const label = current?.label ?? ''
     setAnnouncement(label ? `已进入${label}` : '')
-    document.title = label ? `${label} · 企业数据工厂` : '企业数据工厂'
+    document.title = label ? `${label} · Atelier · 数据项目工作室` : 'Atelier · 数据项目工作室'
   }, [activeKey])
 
   return (
@@ -107,7 +107,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
                 L
               </Avatar>
               <div className="sidebar-workspace-info">
-                <div className="sidebar-workspace-name">企业数据工厂</div>
+                <div className="sidebar-workspace-name">Atelier · 数据项目工作室</div>
                 <div className="sidebar-workspace-plan">{isAdmin ? '管理员' : '普通用户'}</div>
               </div>
               <button
@@ -234,7 +234,9 @@ export function Breadcrumbs({ items }: { items: { label: string; path?: string }
 
 /** 供页面引用的路由构造器（避免各处手写 `/p/${id}/...`）。 */
 export function projectHref(key: string, projectId: number | string): string {
-  const route = menuRoutes().find((item) => item.key === key)
-  if (!route) return fillRoutePath('/projects', {})
-  return fillRoutePath(route.path, { projectId })
+  try {
+    return fillRoutePathByKey(key, { projectId })
+  } catch {
+    return fillRoutePathByKey('projects', {})
+  }
 }

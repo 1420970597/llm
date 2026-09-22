@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Card, Empty, Input, InputNumber, Select, Spin, Tag, Typography } from '@douyinfe/semi-ui'
+import { Button, Card, Empty, Input, InputNumber, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 // AlertTriangle 来自 lucide-react（图标库），不是 semi-ui 的组件。
 import { AlertTriangle } from 'lucide-react'
 import { client } from '../../lib/api'
-import { projectPath, studioApi } from '../../lib/api/studio'
-import type { BatchSummary, Experiment, ExperimentDetail, Page, SampleSummary, RulePreviewResult } from '../../lib/api/studio'
+import { newIdempotencyKey, projectPath, studioApi } from '../../lib/api/studio'
+import type { BatchSummary, CreateExperimentRequest, Experiment, ExperimentDetail, Page, SampleSummary, RulePreviewResult } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 
 /**
@@ -75,13 +75,18 @@ export function QualityListPage() {
   const [experiments, setExperiments] = useState<Experiment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [canRun, setCanRun] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await studioApi.listExperiments(scope.projectId)
+      const [response, overview] = await Promise.all([
+        studioApi.listExperiments(scope.projectId),
+        studioApi.overviewEnvelope(scope.projectId),
+      ])
       setExperiments(response.items ?? [])
+      setCanRun(overview.capabilities.canRun === true)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载实验失败')
     } finally {
@@ -122,7 +127,7 @@ export function QualityListPage() {
             报告的分母是实验创建时**冻结**的样本版本数；待审阅不算接纳，隔离也不缩小分母。
           </Text>
         </div>
-        <Button theme="solid" type="primary" onClick={() => navigate(`/p/${scope.projectId}/quality/new`)}>
+        <Button theme="solid" type="primary" disabled={!canRun} onClick={() => navigate(`/p/${scope.projectId}/quality/new`)}>
           新建质量实验
         </Button>
       </div>
@@ -187,18 +192,28 @@ export function QualityNewPage() {
   const [selected, setSelected] = useState<number[]>([])
   const [judgeID, setJudgeID] = useState('')
   const [seed, setSeed] = useState('42')
+  const [teacherPromptVersion, setTeacherPromptVersion] = useState('')
+  const [baselineAnswerVersion, setBaselineAnswerVersion] = useState('')
+  const [boundaryReferenceJSON, setBoundaryReferenceJSON] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // 实验创建会冻结范围并入队，网络超时后的重试必须回放同一命令，
+  // 不能因为重新点击而产生第二份实验/第二次裁判费用。
+  const idempotencyKeyRef = useRef(newIdempotencyKey())
   // GRPO 与 SFT 的量表不同（T24）：GRPO 使用服务端内置量表，
   // 因此界面必须知道项目目标类型，而不是一律提交 SFT 的 accuracy 维度。
   const [targetKind, setTargetKind] = useState('sft')
+  const [canRun, setCanRun] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
       try {
-        const response = await client.get<{ targetKind?: string }>(`${projectPath(scope.projectId)}/overview`)
-        if (!cancelled) setTargetKind(response.data?.targetKind ?? 'sft')
+        const response = await studioApi.overviewEnvelope(scope.projectId)
+        if (!cancelled) {
+          setTargetKind(response.data.targetKind ?? 'sft')
+          setCanRun(response.capabilities.canRun === true)
+        }
       } catch {
         // 概览读取失败时回退到 SFT：SFT 路径要求**显式量表**，
         // 因此失败方向是「多填一个量表」而不是「用错量表」——
@@ -233,6 +248,10 @@ export function QualityNewPage() {
 
   const submit = useCallback(async () => {
     setError(null)
+    if (!canRun) {
+      setError('当前项目没有运行质量实验的权限；请联系项目负责人')
+      return
+    }
     if (selected.length === 0) {
       setError('实验范围不能为空：请至少选择一个样本版本（空范围的分母为 0，无法得出结论）')
       return
@@ -240,6 +259,28 @@ export function QualityNewPage() {
     if (judgeID.trim() === '') {
       setError('实验至少需要一名裁判；请填写裁判连接 ID（独立性由服务端校验）')
       return
+    }
+    let targetConfig: CreateExperimentRequest['targetConfig'] | undefined
+    if (isGRPO) {
+      if (boundaryReferenceJSON.trim() !== '') {
+        try {
+          const parsed = JSON.parse(boundaryReferenceJSON) as NonNullable<CreateExperimentRequest['targetConfig']>['boundaryReference']
+          if (!parsed || !Array.isArray(parsed.items)) throw new Error('边界参考集必须包含 items 数组')
+          targetConfig = {
+            teacherPromptVersion: teacherPromptVersion.trim() || undefined,
+            baselineAnswerVersion: baselineAnswerVersion.trim() || undefined,
+            boundaryReference: parsed,
+          }
+        } catch (parseError) {
+          setError(parseError instanceof Error ? parseError.message : '边界参考集 JSON 无效')
+          return
+        }
+      } else {
+        targetConfig = {
+          teacherPromptVersion: teacherPromptVersion.trim() || undefined,
+          baselineAnswerVersion: baselineAnswerVersion.trim() || undefined,
+        }
+      }
     }
     setBusy(true)
     try {
@@ -254,7 +295,9 @@ export function QualityNewPage() {
           : { dimensions: [{ key: 'accuracy', label: '准确', weight: 1, min: 0, max: 10 }] },
         judgeConnectionIds: [Number(judgeID)],
         missingScorePolicy: 'exclude',
-      })
+        batchId: batchID.trim() === '' ? undefined : Number(batchID),
+        targetConfig,
+      }, { idempotencyKey: idempotencyKeyRef.current })
       // 202 后进入报告页：此时状态是排队/运行中，**不显示**最终分数。
       navigate(`/p/${scope.projectId}/quality/${experiment.id}`)
     } catch (submitError) {
@@ -262,7 +305,7 @@ export function QualityNewPage() {
     } finally {
       setBusy(false)
     }
-  }, [isGRPO, judgeID, navigate, scope.projectId, seed, selected])
+  }, [baselineAnswerVersion, batchID, boundaryReferenceJSON, canRun, isGRPO, judgeID, navigate, scope.projectId, seed, selected, teacherPromptVersion])
 
   return (
     <div className="console-page" data-studio-page="quality-new">
@@ -291,6 +334,7 @@ export function QualityNewPage() {
             label: `${batch.resourceId}（${batch.purpose === 'pilot' ? '试制' : '扩量'}）`,
           }))}
           onChange={(value) => setBatchID(String(value))}
+          disabled={!canRun}
         />
       </Card>
 
@@ -320,6 +364,20 @@ export function QualityNewPage() {
         )}
       </Card>
 
+      {isGRPO ? (
+        <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-grpo-target-config="true">
+          <Text strong className="block mb-2">GRPO 冻结配置（可选参考集）</Text>
+          <Text type="tertiary" size="small" className="block mb-2">
+            教师提示词与基准回答版本会随实验冻结；没有边界参考集时，边界稳定性记为缺分，不会伪造 0 分或满分。
+          </Text>
+          <div className="wizard-fields">
+            <Input aria-label="教师提示词版本" value={teacherPromptVersion} onChange={setTeacherPromptVersion} placeholder="教师提示词版本（可选）" disabled={!canRun} />
+            <Input aria-label="基准回答版本" value={baselineAnswerVersion} onChange={setBaselineAnswerVersion} placeholder="基准回答版本（可选）" disabled={!canRun} />
+            <TextArea aria-label="边界参考集 JSON" value={boundaryReferenceJSON} onChange={setBoundaryReferenceJSON} autosize={{ minRows: 3, maxRows: 8 }} placeholder='{"id":"boundary-v1","source":"manual","sampled":true,"items":[{"level":"中","input":"示例","expected":"accept"}]}' disabled={!canRun} />
+          </div>
+        </Card>
+      ) : null}
+
       <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-scope-picker="true">
         <Text strong className="block mb-2">
           检查范围（冻结为分母）
@@ -338,17 +396,21 @@ export function QualityNewPage() {
               <input
                 type="checkbox"
                 aria-label={`选择 ${sample.title || sample.sampleKey}`}
-                checked={selected.includes(sample.sampleId)}
+                checked={sample.latestVersionId > 0 && selected.includes(sample.latestVersionId)}
+                disabled={!canRun || sample.latestVersionId <= 0}
                 onChange={(event) => {
+                  const versionID = sample.latestVersionId
+                  if (versionID <= 0) return
                   setSelected((previous) =>
                     event.target.checked
-                      ? [...previous, sample.sampleId]
-                      : previous.filter((id) => id !== sample.sampleId),
+                      ? [...previous, versionID]
+                      : previous.filter((id) => id !== versionID),
                   )
                 }}
               />
               <span>
                 {sample.title || sample.sampleKey} · v{sample.latestVersion}
+                {sample.latestVersionId > 0 ? `（版本 ID ${sample.latestVersionId}）` : '（暂无内容版本）'}
               </span>
               <span>
                 <Tag size="small">{sample.reviewStatus}</Tag>
@@ -369,6 +431,7 @@ export function QualityNewPage() {
               value={judgeID}
               onChange={(value) => setJudgeID(value)}
               placeholder="例如 5"
+              disabled={!canRun}
             />
             <Text type="tertiary" size="small" className="block mt-1">
               服务端会**再次**检查独立性与同源别名：与生成来源同一接入点的连接不能自评。
@@ -382,6 +445,7 @@ export function QualityNewPage() {
               id="sampling-seed"
               value={Number(seed) || 0}
               onChange={(value) => setSeed(String(value ?? 0))}
+              disabled={!canRun}
             />
           </div>
         </div>
@@ -393,7 +457,7 @@ export function QualityNewPage() {
         </div>
       ) : null}
 
-      <Button theme="solid" type="primary" loading={busy} onClick={() => void submit()}>
+      <Button theme="solid" type="primary" loading={busy} disabled={!canRun} onClick={() => void submit()}>
         创建并冻结实验
       </Button>
     </div>

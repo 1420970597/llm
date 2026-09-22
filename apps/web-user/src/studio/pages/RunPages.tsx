@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button, Card, Empty, Input, InputNumber, Spin, Tag, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, ArrowLeftRight, Pause, Play, RefreshCw, RotateCcw } from 'lucide-react'
-import { projectPath } from '../../lib/api/studio'
+import { newIdempotencyKey, projectPath, studioApi } from '../../lib/api/studio'
 import type {
   BatchDetail,
+  BatchCapabilities,
   BatchFailure,
+  BatchSnapshot,
   BatchSummary,
   CreateBatchRequest,
+  AdoptedBatch,
   Page,
 } from '../../lib/api/studio'
 import { client } from '../../lib/api'
@@ -73,15 +76,18 @@ export function RunsPage() {
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState<number | null>(null)
+  const [canRun, setCanRun] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await client.get<Page<BatchSummary>>(
-        `${projectPath(scope.projectId)}/batches?limit=50`,
-      )
+      const [response, overview] = await Promise.all([
+        client.get<Page<BatchSummary>>(`${projectPath(scope.projectId)}/batches?limit=50`),
+        studioApi.overviewEnvelope(scope.projectId),
+      ])
       setBatches(response.data.items ?? [])
+      setCanRun(overview.capabilities.canRun === true)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载批次失败')
     } finally {
@@ -127,10 +133,12 @@ export function RunsPage() {
           <Button icon={<RefreshCw size={14} />} onClick={() => void load()} disabled={loading}>
             刷新
           </Button>
-          <Button onClick={() => navigate(`/p/${scope.projectId}/pilot`)}>新建试制</Button>
-          <Button theme="solid" type="primary" onClick={() => navigate(`/p/${scope.projectId}/runs/new`)}>
-            扩量规划
-          </Button>
+          {canRun ? <Button onClick={() => navigate(`/p/${scope.projectId}/pilot`)}>新建试制</Button> : null}
+          {canRun ? (
+            <Button theme="solid" type="primary" onClick={() => navigate(`/p/${scope.projectId}/runs/new`)}>
+              扩量规划
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -191,7 +199,7 @@ export function RunsPage() {
               <span data-count="failed">{batch.failedUnits}</span>
               <span data-count="inFlight">{batch.inFlightUnits}</span>
               <span className="batch-row__actions">
-                {batch.status === 'running' || batch.status === 'queued' ? (
+                {batch.capabilities?.canPause && (batch.status === 'running' || batch.status === 'queued') ? (
                   <Button
                     size="small"
                     icon={<Pause size={13} />}
@@ -201,7 +209,7 @@ export function RunsPage() {
                     暂停
                   </Button>
                 ) : null}
-                {batch.status === 'paused' || batch.status === 'pause_requested' ? (
+                {batch.capabilities?.canResume && (batch.status === 'paused' || batch.status === 'pause_requested') ? (
                   <Button
                     size="small"
                     icon={<Play size={13} />}
@@ -211,7 +219,7 @@ export function RunsPage() {
                     继续
                   </Button>
                 ) : null}
-                {batch.failedUnits > 0 ? (
+                {batch.capabilities?.canRetryFailed && batch.failedUnits > 0 ? (
                   <Button
                     size="small"
                     icon={<RotateCcw size={13} />}
@@ -249,6 +257,11 @@ export function BatchDetailPage() {
   const { Title, Text } = Typography
   const batchId = params.batchId ?? ''
   const [detail, setDetail] = useState<BatchDetail | null>(null)
+  const [capabilities, setCapabilities] = useState<BatchCapabilities>({
+    canPause: false,
+    canResume: false,
+    canRetryFailed: false,
+  })
   const [events, setEvents] = useState<BatchEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -260,16 +273,13 @@ export function BatchDetailPage() {
     setError(null)
     try {
       const [detailResponse, eventsResponse] = await Promise.all([
-        client.get<{ data?: BatchDetail } & BatchDetail>(
-          `${projectPath(scope.projectId)}/batches/${batchId}`,
-        ),
+        studioApi.getBatchEnvelope(scope.projectId, batchId),
         client.get<Page<BatchEvent>>(
           `${projectPath(scope.projectId)}/batches/${batchId}/events?limit=30`,
         ),
       ])
-      const payload =
-        (detailResponse.data as { data?: BatchDetail }).data ?? (detailResponse.data as BatchDetail)
-      setDetail(payload)
+      setDetail(detailResponse.data)
+      setCapabilities(detailResponse.capabilities)
       setEvents(eventsResponse.data.items ?? [])
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载批次详情失败')
@@ -339,7 +349,7 @@ export function BatchDetailPage() {
           </Text>
         </div>
         <div className="flex gap-2">
-          {isRunning ? (
+          {capabilities.canPause && isRunning ? (
             <Button
               icon={<Pause size={14} />}
               loading={busy}
@@ -348,12 +358,12 @@ export function BatchDetailPage() {
               暂停
             </Button>
           ) : null}
-          {isPaused ? (
+          {capabilities.canResume && isPaused ? (
             <Button icon={<Play size={14} />} loading={busy} onClick={() => void control('resume')}>
               继续
             </Button>
           ) : null}
-          {detail.batch.failedUnits > 0 ? (
+          {capabilities.canRetryFailed && detail.batch.failedUnits > 0 ? (
             <Button
               icon={<RotateCcw size={14} />}
               loading={busy}
@@ -509,15 +519,18 @@ export function FailuresPage() {
   const [error, setError] = useState<string | null>(null)
   const [resetItems, setResetItems] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
+  const [canRetryFailed, setCanRetryFailed] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await client.get<Page<BatchFailure>>(
-        `${projectPath(scope.projectId)}/batches/${batchId}/failures?limit=50`,
-      )
+      const [response, batch] = await Promise.all([
+        client.get<Page<BatchFailure>>(`${projectPath(scope.projectId)}/batches/${batchId}/failures?limit=50`),
+        studioApi.getBatchEnvelope(scope.projectId, batchId),
+      ])
       setFailures(response.data.items ?? [])
+      setCanRetryFailed(batch.capabilities.canRetryFailed === true)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载失败项失败')
     } finally {
@@ -556,9 +569,11 @@ export function FailuresPage() {
             只恢复**可重试**的失败单元；成功内容保留，因此反复点击不会重复产出。
           </Text>
         </div>
-        <Button icon={<RotateCcw size={14} />} loading={busy} onClick={() => void retry()}>
-          恢复失败项
-        </Button>
+        {canRetryFailed ? (
+          <Button icon={<RotateCcw size={14} />} loading={busy} onClick={() => void retry()}>
+            恢复失败项
+          </Button>
+        ) : null}
       </div>
 
       {/* 「恢复了 0 项」与「点了没反应」必须能区分。 */}
@@ -633,17 +648,74 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
    * 它只影响提示文案与 coverageSlice 的初值，**不触发**任何重生成。
    */
   const slice = searchParams.get('slice') ?? ''
+  const baselineID = Number(searchParams.get('baselineId') ?? 0)
+  const fromBatchID = Number(searchParams.get('fromBatchId') ?? 0)
 
   const [unitCount, setUnitCount] = useState(purpose === 'pilot' ? '12' : '500')
   const [budgetLimitMinor, setBudgetLimitMinor] = useState('')
   const [blueprintVersionId, setBlueprintVersionId] = useState('')
   const [coverageVersionId, setCoverageVersionId] = useState('')
   const [standardVersionId, setStandardVersionId] = useState('')
+  const [qualityPolicyVersionId, setQualityPolicyVersionId] = useState('')
+  const [mappingVersionId, setMappingVersionId] = useState('')
+  /**
+   * 采用指针只保存批次/基准 ID；版本快照必须再从批次详情读取。
+   * 不把版本 ID 放在 URL 或 localStorage，避免用户改 URL 后把另一套配置
+   * 伪装成比较采用的方案。五类版本都是该批次真正执行时冻结的值。
+   */
+  const [adoptedBatch, setAdoptedBatch] = useState<(AdoptedBatch & { snapshot: BatchSnapshot }) | null>(null)
+  const [adoptionNotice, setAdoptionNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [canRun, setCanRun] = useState(false)
+  // A retry after a network timeout must replay the same command. Generating
+  // the key inside submit would turn an uncertain retry into a second paid run.
+  const idempotencyKeyRef = useRef(newIdempotencyKey())
+
+  useEffect(() => {
+    let cancelled = false
+    void studioApi.overviewEnvelope(scope.projectId).then((overview) => {
+      if (!cancelled) setCanRun(overview.capabilities.canRun === true)
+    }).catch(() => {
+      if (!cancelled) setCanRun(false)
+    })
+    return () => { cancelled = true }
+  }, [scope.projectId])
 
   const maxUnits = purpose === 'pilot' ? MAX_PILOT_UNITS : MAX_SCALE_UNITS
   const title = purpose === 'pilot' ? '小批试制' : '扩量规划'
+
+  // 采用比较方案后，扩量规划页必须恢复服务端保存的采用指针。
+  // URL 只携带比较/来源上下文；版本快照仍由服务端返回，避免客户端伪造配置。
+  useEffect(() => {
+    if (purpose !== 'scale' || (baselineID <= 0 && fromBatchID <= 0)) return
+    let cancelled = false
+    void studioApi.adoptedBatch(scope.projectId).then(async (adopted) => {
+      if (cancelled || !adopted.adopted || !adopted.batchId) return
+      if (fromBatchID > 0 && adopted.batchId !== fromBatchID) return
+
+      // `/adopted-batch` 是服务端持久化的采用指针，批次详情则是唯一可信的
+      // 五类版本快照来源。先读指针再读详情，不能让客户端通过 query 参数
+      // 自己拼 blueprint/coverage/standard/quality/mapping 版本。
+      const detail = await studioApi.getBatch(scope.projectId, `b_${adopted.batchId}`)
+      if (cancelled) return
+      setAdoptedBatch({ ...adopted, snapshot: detail.snapshot })
+      const snapshot = detail.snapshot
+      const formatVersion = (value: number | undefined): string =>
+        value && value > 0 ? `#${value}` : '未引用'
+      setBlueprintVersionId(snapshot.blueprintVersionId && snapshot.blueprintVersionId > 0 ? String(snapshot.blueprintVersionId) : '')
+      setCoverageVersionId(snapshot.coverageVersionId && snapshot.coverageVersionId > 0 ? String(snapshot.coverageVersionId) : '')
+      setStandardVersionId(snapshot.standardVersionId && snapshot.standardVersionId > 0 ? String(snapshot.standardVersionId) : '')
+      setQualityPolicyVersionId(snapshot.qualityPolicyVersionId && snapshot.qualityPolicyVersionId > 0 ? String(snapshot.qualityPolicyVersionId) : '')
+      setMappingVersionId(snapshot.mappingVersionId && snapshot.mappingVersionId > 0 ? String(snapshot.mappingVersionId) : '')
+      setAdoptionNotice(
+        `已带入比较基准 #${adopted.baselineId ?? baselineID} 采用的批次 ${adopted.batchId ?? fromBatchID}；已恢复蓝图 ${formatVersion(snapshot.blueprintVersionId)}、覆盖 ${formatVersion(snapshot.coverageVersionId)}、标准 ${formatVersion(snapshot.standardVersionId)}、质量策略 ${formatVersion(snapshot.qualityPolicyVersionId)}、映射 ${formatVersion(snapshot.mappingVersionId)}。请补充本次扩量范围与预算。`,
+      )
+    }).catch(() => {
+      if (!cancelled) setAdoptionNotice('比较采用记录暂时无法读取，请确认版本快照后再提交扩量。')
+    })
+    return () => { cancelled = true }
+  }, [baselineID, fromBatchID, purpose, scope.projectId])
 
   /**
    * 执行前核对（T13 要求「扩量：执行前核对」）。
@@ -684,6 +756,10 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   const ready = checklist.every((item) => item.ok)
 
   const submit = useCallback(async () => {
+    if (!canRun) {
+      setError('当前项目没有运行权限；请联系项目负责人')
+      return
+    }
     if (!ready) {
       setError('请先修正核对项中的问题')
       return
@@ -695,8 +771,8 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       blueprintVersionId: Number(blueprintVersionId),
       coverageVersionId: coverageVersionId.trim() === '' ? 0 : Number(coverageVersionId),
       standardVersionId: standardVersionId.trim() === '' ? 0 : Number(standardVersionId),
-      qualityPolicyVersionId: 0,
-      mappingVersionId: 0,
+      qualityPolicyVersionId: qualityPolicyVersionId.trim() === '' ? 0 : Number(qualityPolicyVersionId),
+      mappingVersionId: mappingVersionId.trim() === '' ? 0 : Number(mappingVersionId),
       unitCount: Number(unitCount),
       budget: { currency: 'CNY' },
     }
@@ -712,7 +788,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
         `${projectPath(scope.projectId)}/batches`,
         payload,
         // 幂等键在本次提交内稳定：双击不会建出两个批次。
-        { headers: { 'Idempotency-Key': crypto.randomUUID() } },
+        { headers: { 'Idempotency-Key': idempotencyKeyRef.current } },
       )
       // 导航到**服务端分配**的批次 ID（不从本地状态拼，也不硬编码原型里的示例 ID）。
       const created = (response.data as { data?: { batchId?: number } }).data
@@ -727,12 +803,15 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       setSubmitting(false)
     }
   }, [
+    canRun,
     blueprintVersionId,
     budgetLimitMinor,
     coverageVersionId,
+    mappingVersionId,
     navigate,
     purpose,
     ready,
+    qualityPolicyVersionId,
     scope.projectId,
     slice,
     standardVersionId,
@@ -763,6 +842,17 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
         </Card>
       ) : null}
 
+      {adoptionNotice ? (
+        <Card className="console-card mb-3" bodyStyle={{ padding: 12 }} data-adoption-context="true">
+          <Text size="small">{adoptionNotice}</Text>
+          {adoptedBatch?.side ? (
+            <Text type="tertiary" size="small" className="block mt-1">
+              采用侧：{adoptedBatch.side === 'left' ? '左侧方案' : '右侧方案'}；本页只创建新的扩量批次，不会修改原试制批次。
+            </Text>
+          ) : null}
+        </Card>
+      ) : null}
+
       <Card className="console-card" bodyStyle={{ padding: 20 }}>
         <div className="wizard-fields">
           <Field label="蓝图版本 ID" required fieldId="plan-blueprint">
@@ -787,6 +877,22 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
               value={standardVersionId}
               onChange={(value) => setStandardVersionId(value)}
               placeholder="留空 = 不使用标准步骤"
+            />
+          </Field>
+          <Field label="质量策略版本 ID" fieldId="plan-quality-policy">
+            <Input
+              id="plan-quality-policy"
+              value={qualityPolicyVersionId}
+              onChange={(value) => setQualityPolicyVersionId(value)}
+              placeholder="留空 = 不绑定质量策略"
+            />
+          </Field>
+          <Field label="映射版本 ID" fieldId="plan-mapping">
+            <Input
+              id="plan-mapping"
+              value={mappingVersionId}
+              onChange={(value) => setMappingVersionId(value)}
+              placeholder="留空 = 使用默认映射"
             />
           </Field>
           <Field label={`计划单元数（1–${maxUnits}）`} required fieldId="plan-units">
@@ -836,7 +942,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
         <Button
           theme="solid"
           type="primary"
-          disabled={!ready}
+          disabled={!ready || !canRun}
           loading={submitting}
           onClick={() => void submit()}
         >

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -108,14 +109,18 @@ type sampleSummary struct {
 	Title         string `json:"title"`
 	TargetKind    string `json:"targetKind"`
 	LatestVersion int    `json:"latestVersion"`
-	OriginBatchID *int64 `json:"originBatchId,omitempty"`
-	CreatedAt     string `json:"createdAt"`
-	UpdatedAt     string `json:"updatedAt"`
+	// LatestVersionID 是当前指针对应的 sample_versions.id。命令 API（实验、
+	// 发布、规则预览）接受的是这个行 ID，而不是样本身份或样本内版本号。
+	LatestVersionID int64  `json:"latestVersionId"`
+	OriginBatchID   *int64 `json:"originBatchId,omitempty"`
+	CreatedAt       string `json:"createdAt"`
+	UpdatedAt       string `json:"updatedAt"`
 	// 审阅投影随列表一起返回（T17）：队列页要显示「哪些待审」，
 	// 逐条查会变成 N+1 次请求，而队列正是「一次看一屏」的场景。
-	ReviewStatus            string `json:"reviewStatus"`
-	AggregateReviewRevision int64  `json:"aggregateReviewRevision"`
-	ReviewConflict          bool   `json:"reviewConflict"`
+	ReviewStatus            string                    `json:"reviewStatus"`
+	AggregateReviewRevision int64                     `json:"aggregateReviewRevision"`
+	ReviewConflict          bool                      `json:"reviewConflict"`
+	Capabilities            studio.SampleCapabilities `json:"capabilities"`
 }
 
 // toSampleSummary 转换样本（不含审阅投影）。
@@ -131,15 +136,19 @@ func toSampleSummary(sample model.Sample) sampleSummary {
 		Title:         sample.Title,
 		TargetKind:    sample.TargetKind,
 		LatestVersion: sample.LatestVersion,
+		// 详情路径只携带样本身份；调用方若需要精确版本 ID，应使用列表读模型
+		// 或详情中的 version.versionId。这里保持零值，避免按版本号猜行 ID。
 		OriginBatchID: sample.OriginBatchID,
 		CreatedAt:     studio.FormatTime(sample.CreatedAt),
 		UpdatedAt:     studio.FormatTime(sample.UpdatedAt),
+		Capabilities:  studio.SampleCapabilities{CanViewHistory: true},
 	}
 }
 
 // toSampleSummaryWithReview 转换列表项（列表已在同一次查询里带出投影）。
 func toSampleSummaryWithReview(item store.SampleWithReview) sampleSummary {
 	summary := toSampleSummary(item.Sample)
+	summary.LatestVersionID = item.LatestVersionID
 	summary.ReviewStatus = item.ReviewStatus
 	summary.AggregateReviewRevision = item.AggregateReviewRevision
 	summary.ReviewConflict = item.ReviewConflict
@@ -169,7 +178,8 @@ func (app *application) listSamples(w http.ResponseWriter, r *http.Request) {
 		app.writeStudioError(w, r, studio.NewError(studio.CodeNotFound, msgProjectNotFound))
 		return
 	}
-	if _, err := app.studio.Authorize(r.Context(), projectID, user.ID, store.AuthzRead); err != nil {
+	decision, err := app.studio.Authorize(r.Context(), projectID, user.ID, store.AuthzRead)
+	if err != nil {
 		app.writeStudioError(w, r, err)
 		return
 	}
@@ -184,11 +194,13 @@ func (app *application) listSamples(w http.ResponseWriter, r *http.Request) {
 	//（它们没有投影行，按 pending 处理）。
 	// 显式指定任何一个审阅状态（含 accepted）时不再套用「只看未审阅」，
 	// 否则「筛选已接纳」会永远得到空列表 —— 而那会让人以为判断丢了。
-	reviewedExplicitly := query.Status != ""
-	reviewStatus := query.Status
-	switch reviewStatus {
-	case "", model.EffectivePending, model.EffectiveAccepted, model.EffectiveQuarantined, model.EffectiveConflict:
-	default:
+	// `status=all` is an explicit full-range request used by quality/release
+	// planning. It must not be confused with an omitted status: omitted means
+	// the review queue's default pending-only view, while `all` means include
+	// every effective review state. Normalize it before passing the query to
+	// the store so the SQL remains a single, auditable predicate.
+	reviewStatus, reviewedExplicitly, valid := normalizeSampleReviewStatus(query.Status)
+	if !valid {
 		app.writeStudioError(w, r, studio.NewValidationError(
 			"审阅状态筛选只能是 pending、accepted、quarantined 或 conflict",
 			[]model.FieldError{{Field: "status",
@@ -241,12 +253,31 @@ func (app *application) listSamples(w http.ResponseWriter, r *http.Request) {
 
 	summaries := make([]sampleSummary, 0, len(samples))
 	for _, sample := range samples {
-		summaries = append(summaries, toSampleSummaryWithReview(sample))
+		summary := toSampleSummaryWithReview(sample)
+		summary.Capabilities.CanReview = decision.Role == model.ProjectRoleOwner || decision.Role == model.ProjectRoleReviewer
+		summaries = append(summaries, summary)
 	}
 	app.writeJSON(w, http.StatusOK, studio.NewPage(summaries, query.Limit, "createdAt:desc",
 		func(summary sampleSummary) studio.Cursor {
 			return studio.Cursor{Time: parseAPITime(summary.CreatedAt), ID: summary.SampleID}
 		}))
+}
+
+// normalizeSampleReviewStatus keeps the two intentional meanings of an empty
+// status separate: an omitted value selects the review queue default, while
+// an explicit `all` asks for the complete sample set. The store receives an
+// empty ReviewStatus for both because `UnreviewedOnly` carries that distinction.
+func normalizeSampleReviewStatus(raw string) (status string, explicit bool, valid bool) {
+	switch raw {
+	case "":
+		return "", false, true
+	case "all":
+		return "", true, true
+	case model.EffectivePending, model.EffectiveAccepted, model.EffectiveQuarantined, model.EffectiveConflict:
+		return raw, true, true
+	default:
+		return "", false, false
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -327,9 +358,10 @@ func (app *application) getSample(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	capabilities := app.sampleCapabilities(r.Context(), projectID, user.ID)
 	envelope := studio.NewEnvelope(
 		studio.SampleResourceID(sample.ID), "ready", int64(sample.LatestVersion), sample.UpdatedAt,
-		studio.SampleCapabilities{CanViewHistory: true},
+		capabilities,
 		studio.Links{
 			"self":    sampleLinks(projectID, sample.ID)["self"],
 			"history": sampleLinks(projectID, sample.ID)["history"],
@@ -340,6 +372,8 @@ func (app *application) getSample(w http.ResponseWriter, r *http.Request) {
 	// 审阅投影必须**真实加载**再补进摘要（T17）：不加载就填默认值会把
 	// 「已被接纳」显示成「待判断」，而用户会据此重复审一遍已经看过的东西。
 	summary := toSampleSummary(sample)
+	summary.LatestVersionID = version.ID
+	summary.Capabilities = capabilities
 	if projection, err := app.studio.Reviews.GetProjection(r.Context(), projectID, version.ID); err == nil {
 		applyReviewProjection(&summary, projection)
 	} else {
@@ -379,11 +413,26 @@ func (app *application) getSampleVersion(w http.ResponseWriter, r *http.Request)
 	envelope := studio.NewEnvelope(
 		studio.SampleResourceID(sample.ID)+"/v"+strconv.Itoa(versionNumber), "ready",
 		int64(versionNumber), sample.UpdatedAt,
-		studio.SampleCapabilities{CanViewHistory: true},
+		app.sampleCapabilities(r.Context(), projectID, user.ID),
 		sampleLinks(projectID, sample.ID), nil,
 	)
 	envelope.Data = toSampleVersionView(version)
 	app.writeStudioEnvelope(w, http.StatusOK, envelope)
+}
+
+// sampleCapabilities derives the command affordances for a sample from the
+// current server-side project role.  The read endpoint has already established
+// AuthzRead in resolveSamplePath; this second check is intentionally separate:
+// a viewer may read the immutable content, but only an owner/reviewer may
+// submit a judgment.  Capabilities are only UI hints, so an unavailable authz
+// check fails closed (the write endpoint still performs the authoritative
+// check).
+func (app *application) sampleCapabilities(ctx context.Context, projectID, userID int64) studio.SampleCapabilities {
+	capabilities := studio.SampleCapabilities{CanViewHistory: true}
+	if _, err := app.studio.Authorize(ctx, projectID, userID, store.AuthzReview); err == nil {
+		capabilities.CanReview = true
+	}
+	return capabilities
 }
 
 // getSampleHistory 是「版本与来源」页的数据（契约 §3 的 D03）。

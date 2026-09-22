@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button, Card, Empty, Input, Spin, Tag, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, CirclePlus, RefreshCw } from 'lucide-react'
 import { client } from '../../lib/api'
-import { projectPath } from '../../lib/api/studio'
+import { studioApi } from '../../lib/api/studio'
 import type { ProjectOverviewData } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
@@ -228,8 +228,8 @@ export function ProjectOverviewPage() {
     setLoading(true)
     setError(null)
     try {
-      const response = await client.get<ProjectOverviewData>(`${projectPath(scope.projectId)}/overview`)
-      setOverview(response.data)
+      const response = await studioApi.overview(scope.projectId)
+      setOverview(response)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载项目概览失败')
     } finally {

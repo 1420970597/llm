@@ -31,14 +31,18 @@ import (
 
 // Service 是 Atelier 指挥层的依赖聚合。
 type Service struct {
-	Pool             *pgxpool.Pool
-	Projects         *store.ProjectStore
-	Authz            *store.AuthzStore
-	Documents        *store.DocumentStore
-	Batches          *store.BatchStore
-	Jobs             *store.JobStore
-	Usage            *store.UsageStore
-	Reviews          *store.ReviewStore
+	Pool      *pgxpool.Pool
+	Projects  *store.ProjectStore
+	Authz     *store.AuthzStore
+	Documents *store.DocumentStore
+	Batches   *store.BatchStore
+	Jobs      *store.JobStore
+	Usage     *store.UsageStore
+	Reviews   *store.ReviewStore
+	// Rules 提供质量策略规则的纯读预览与不可变命中证据。
+	// 预览端点走这里而不是直接在 handler 里查库，确保项目作用域校验
+	// 与其它 Atelier 命令使用同一组 store 依赖。
+	Rules            *store.RuleStore
 	Experiments      *store.ExperimentStore
 	Selections       *store.SelectionStore
 	Comparisons      *store.ComparisonStore
@@ -61,6 +65,7 @@ func New(pool *pgxpool.Pool) *Service {
 		Jobs:             store.NewJobStore(pool),
 		Usage:            store.NewUsageStore(pool),
 		Reviews:          store.NewReviewStore(pool),
+		Rules:            store.NewRuleStore(pool),
 		Experiments:      store.NewExperimentStore(pool),
 		Selections:       store.NewSelectionStore(pool),
 		Comparisons:      store.NewComparisonStore(pool),
@@ -411,6 +416,9 @@ type BatchSummary struct {
 	BudgetLimitMinor int64  `json:"budgetLimitMinor"`
 	CreatedAt        string `json:"createdAt"`
 	UpdatedAt        string `json:"updatedAt"`
+	// Capabilities are included on list rows as a fail-closed UI hint. The
+	// authoritative command endpoints still recalculate authorization.
+	Capabilities BatchCapabilities `json:"capabilities"`
 }
 
 // ToBatchSummary 把批次模型转成列表项。
@@ -431,6 +439,16 @@ func ToBatchSummary(batch model.Batch) BatchSummary {
 		CreatedAt:        FormatTime(batch.CreatedAt),
 		UpdatedAt:        FormatTime(batch.UpdatedAt),
 	}
+}
+
+// ToBatchSummaryWithCapabilities is the role-aware form used by HTTP read
+// models. Keeping the base converter role-free avoids accidentally trusting a
+// caller-supplied role in worker/service code, while list/detail handlers can
+// attach the current user's UI affordances explicitly.
+func ToBatchSummaryWithCapabilities(batch model.Batch, capabilities BatchCapabilities) BatchSummary {
+	summary := ToBatchSummary(batch)
+	summary.Capabilities = capabilities
+	return summary
 }
 
 // BatchBudgetView 是批次级预算台账视图（T07 的三个计数器 + 上限）。

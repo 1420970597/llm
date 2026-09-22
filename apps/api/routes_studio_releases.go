@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -50,13 +51,16 @@ func registerReleaseRoutes(mux *http.ServeMux, app *application) {
 
 // releaseCandidateRequest 是创建/修订候选的请求体（契约 §2.8）。
 type releaseCandidateRequest struct {
-	ReleaseName      string         `json:"releaseName"`
-	SampleVersionIDs []int64        `json:"sampleVersionIds"`
-	MappingVersionID int64          `json:"mappingVersionId"`
-	Format           string         `json:"format"`
-	IntendedUse      string         `json:"intendedUse"`
-	Limitations      []string       `json:"limitations"`
-	Provenance       map[string]any `json:"provenance"`
+	ReleaseName      string  `json:"releaseName"`
+	SampleVersionIDs []int64 `json:"sampleVersionIds"`
+	// SelectionSnapshotID 是发布页从审阅工作区带来的服务端冻结范围。
+	// 与 sampleVersionIds 互斥；候选 store 会再次鉴权并解析快照。
+	SelectionSnapshotID int64          `json:"selectionSnapshotId"`
+	MappingVersionID    int64          `json:"mappingVersionId"`
+	Format              string         `json:"format"`
+	IntendedUse         string         `json:"intendedUse"`
+	Limitations         []string       `json:"limitations"`
+	Provenance          map[string]any `json:"provenance"`
 }
 
 // createReleaseCandidate 创建发布候选（同事务分配 candidateId + releaseId + 版本名）。
@@ -75,13 +79,14 @@ func (app *application) createReleaseCandidate(w http.ResponseWriter, r *http.Re
 		MappingVersionID: request.MappingVersionID, Format: request.Format,
 		IntendedUse: request.IntendedUse, Limitations: request.Limitations,
 		Provenance: request.Provenance, SampleVersionIDs: request.SampleVersionIDs,
-		CreatedBy: &user.ID,
+		SelectionSnapshotID: request.SelectionSnapshotID,
+		CreatedBy:           &user.ID,
 	})
 	if err != nil {
 		app.writeReleaseError(w, r, err)
 		return
 	}
-	app.writeReleaseEnvelope(w, http.StatusCreated, projectID, release, role)
+	app.writeReleaseEnvelope(w, r.Context(), http.StatusCreated, projectID, release, role)
 }
 
 // getReleaseCard 返回发布 + 数据卡 + 制品（L03）。
@@ -110,7 +115,7 @@ func (app *application) getReleaseCard(w http.ResponseWriter, r *http.Request) {
 	manifest, manifestHash, manifestErr := app.studio.ReleaseArtifacts.GetManifest(
 		r.Context(), releaseID, release.CandidateRevision)
 	if manifestErr != nil && !errors.Is(manifestErr, store.ErrArtifactNotFound) {
-		app.writeStudioError(w, r, err)
+		app.writeStudioError(w, r, manifestErr)
 		return
 	}
 	_ = user
@@ -128,24 +133,43 @@ func (app *application) getReleaseCard(w http.ResponseWriter, r *http.Request) {
 		Blockers []studio.Blocker `json:"blockers"`
 	}{
 		Release: release, Artifacts: artifacts, Manifest: manifest, ManifestHash: manifestHash,
-		Blockers: app.releaseBlockers(projectID, release),
+		Blockers: app.releaseBlockers(r.Context(), projectID, release),
 	}
 	app.writeStudioEnvelope(w, http.StatusOK, envelope)
 }
 
 // releaseBlockers 把门槛快照转成带链接的 blocker（契约 §2.8）。
-func (app *application) releaseBlockers(projectID int64, release store.Release) []studio.Blocker {
+func (app *application) releaseBlockers(ctx context.Context, projectID int64, release store.Release) []studio.Blocker {
 	blockers := []studio.Blocker{}
 	for _, blocker := range release.Blockers {
 		item := studio.Blocker{Code: blocker.Code, Message: blocker.Message}
 		if blocker.SampleVersionID != nil {
-			// 每条 blocker 必须能点到**具体对象**，否则用户要在几万条里自己找。
-			item.Link = fmt.Sprintf("%s/samples/versions/%d", projectPrefix+"/"+strconv.FormatInt(projectID, 10),
-				*blocker.SampleVersionID)
+			// blocker 只保存 sample_versions.id；SPA 页面需要样本身份与
+			// 样本内版本号才能打开 `/p/:id/data/s_x?version=n`。
+			// 先按行 ID 解析，禁止把版本行 ID 当成 sampleId 拼进 URL。
+			var version model.SampleVersion
+			var err error
+			if app.studio != nil && app.studio.Batches != nil {
+				version, err = app.studio.Batches.GetSampleVersionByID(ctx, projectID, *blocker.SampleVersionID)
+			} else {
+				err = errors.New("sample version store unavailable")
+			}
+			if err == nil {
+				item.Link = releaseSampleVersionLink(projectID, version)
+			}
 		}
 		blockers = append(blockers, item)
 	}
 	return blockers
+}
+
+// releaseSampleVersionLink is the single URL conversion for a blocker that
+// points at a sample_versions row.  The row ID is deliberately not exposed in
+// the SPA path: the data page resolves a stable sample identity plus its
+// sample-local version number.
+func releaseSampleVersionLink(projectID int64, version model.SampleVersion) string {
+	return fmt.Sprintf("/p/%d/data/%s?version=%d", projectID,
+		studio.SampleResourceID(version.SampleID), version.Version)
 }
 
 // listReleases 列出项目的发布（L01）。
@@ -182,7 +206,7 @@ func (app *application) publishRelease(w http.ResponseWriter, r *http.Request) {
 		app.writeReleaseError(w, r, err)
 		return
 	}
-	app.writeReleaseEnvelope(w, http.StatusAccepted, projectID, frozen, role)
+	app.writeReleaseEnvelope(w, r.Context(), http.StatusAccepted, projectID, frozen, role)
 }
 
 // createNextCandidate 从已发布版本创建下一版候选（契约 §2.10）。
@@ -245,7 +269,7 @@ func (app *application) createNextCandidate(w http.ResponseWriter, r *http.Reque
 		app.writeReleaseError(w, r, err)
 		return
 	}
-	app.writeReleaseEnvelope(w, http.StatusCreated, projectID, next, role)
+	app.writeReleaseEnvelope(w, r.Context(), http.StatusCreated, projectID, next, role)
 }
 
 // releaseNextCandidateLinks 给出「创建下一版」的入口信息（页面链接，不自行拼 URL）。
@@ -454,7 +478,7 @@ func (app *application) parseReleaseID(w http.ResponseWriter, r *http.Request) (
 }
 
 // writeReleaseEnvelope 写一个发布响应。
-func (app *application) writeReleaseEnvelope(w http.ResponseWriter, status int, projectID int64, release store.Release, role string) {
+func (app *application) writeReleaseEnvelope(w http.ResponseWriter, ctx context.Context, status int, projectID int64, release store.Release, role string) {
 	envelope := studio.NewEnvelope(
 		strconv.FormatInt(release.ID, 10), release.Status, release.CandidateRevision,
 		release.UpdatedAt, model.ReleaseCapabilities(role, release.Status),
@@ -464,7 +488,7 @@ func (app *application) writeReleaseEnvelope(w http.ResponseWriter, status int, 
 		Blockers []studio.Blocker `json:"blockers"`
 		Warnings []string         `json:"warnings"`
 	}{
-		Release: release, Blockers: app.releaseBlockers(projectID, release),
+		Release: release, Blockers: app.releaseBlockers(ctx, projectID, release),
 		Warnings: releaseWarnings(release),
 	}
 	app.writeStudioEnvelope(w, status, envelope)
@@ -518,6 +542,11 @@ func (app *application) writeReleaseError(w http.ResponseWriter, r *http.Request
 	case errors.Is(err, store.ErrReleaseNotFound), errors.Is(err, store.ErrArtifactNotFound):
 		app.writeAPIError(w, r, http.StatusNotFound, studio.CodeNotFound,
 			"未找到该发布版本或交付文件", nil)
+	case errors.Is(err, store.ErrSelectionSnapshotNotFound):
+		// 快照按项目作用域与有效期读取；过期/跨项目 ID 不得变成 500，
+		// 页面据此回到审阅工作区重新冻结范围。
+		app.writeAPIError(w, r, http.StatusNotFound, studio.CodeNotFound,
+			"发布选择范围不存在或已过期，请重新选择", nil)
 	case errors.Is(err, pgx.ErrNoRows):
 		app.writeAPIError(w, r, http.StatusNotFound, studio.CodeNotFound, msgProjectNotFound, nil)
 	default:

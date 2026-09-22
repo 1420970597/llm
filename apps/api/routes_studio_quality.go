@@ -27,6 +27,9 @@ func registerQualityRoutes(mux *http.ServeMux, app *application) {
 	mux.HandleFunc("POST "+base, app.createExperiment)
 	mux.HandleFunc("GET "+base, app.listExperiments)
 	mux.HandleFunc("GET "+base+"/{experimentId}", app.getExperiment)
+	// 规则预览是质量策略页面的纯读命令（契约 §2.6）。它不属于
+	// experiments 子资源，否则前端会误以为预览会创建实验/进入收费队列。
+	mux.HandleFunc("POST "+projectPrefix+"/{projectId}/rule-previews", app.previewRules)
 }
 
 // experimentRequest 是创建实验的请求体（契约 §2.5）。
@@ -40,6 +43,84 @@ type experimentRequest struct {
 	// TargetConfig 是 GRPO 专属配置（T24）：教师提示词版本、基准回答版本
 	// 与边界参考集。参考集的 hash 由服务端复算（不接受客户端声明）。
 	TargetConfig json.RawMessage `json:"targetConfig"`
+}
+
+// rulePreviewRequest 是规则预览请求（契约 §2.6）。
+//
+// 预览接收的是冻结的策略版本与样本版本行 ID，而不是样本身份或当前
+// 筛选条件；这样同一请求在数据继续生成时仍能复现相同范围。
+type rulePreviewRequest struct {
+	QualityPolicyVersionID int64   `json:"qualityPolicyVersionId"`
+	SampleVersionIDs       []int64 `json:"sampleVersionIds"`
+	MaxHits                int     `json:"maxHits"`
+}
+
+// previewRules 执行质量规则的纯读预览（契约 §2.6）。
+//
+// 授权仍按项目当前状态重新检查；「前端只读按钮」不是安全边界。规则与
+// 内容由 RuleStore 按项目作用域查询，未知版本/跨项目 ID 会被拒绝，不能
+// 静默缩小扫描分母。RuleStore 内部只有 SELECT，因此该端点不会改处置、
+// 内容或作业队列。
+func (app *application) previewRules(w http.ResponseWriter, r *http.Request) {
+	user, ok := requestUser(r)
+	if !ok {
+		app.writeStudioError(w, r, studio.NewError(studio.CodeUnauthorized, msgAuthRequired))
+		return
+	}
+	projectID, err := parseProjectID(r.PathValue("projectId"))
+	if err != nil {
+		app.writeStudioError(w, r, studio.NewError(studio.CodeNotFound, msgProjectNotFound))
+		return
+	}
+	if _, err := app.studio.Authorize(r.Context(), projectID, user.ID, store.AuthzRead); err != nil {
+		app.writeStudioError(w, r, err)
+		return
+	}
+
+	var request rulePreviewRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		app.writeStudioError(w, r, studio.NewValidationError("请求格式有误，请检查策略版本与样本范围", nil))
+		return
+	}
+	if request.QualityPolicyVersionID <= 0 {
+		app.writeStudioError(w, r, studio.NewValidationError(
+			"必须选择质量策略版本", []model.FieldError{{Field: "qualityPolicyVersionId", Message: "策略版本 ID 必须为正数"}}))
+		return
+	}
+	if len(request.SampleVersionIDs) == 0 {
+		app.writeStudioError(w, r, studio.NewValidationError(
+			"必须选择至少一个样本版本", []model.FieldError{{Field: "sampleVersionIds", Message: "预览范围不能为空"}}))
+		return
+	}
+	for _, versionID := range request.SampleVersionIDs {
+		if versionID <= 0 {
+			app.writeStudioError(w, r, studio.NewValidationError(
+				"样本版本 ID 无效", []model.FieldError{{Field: "sampleVersionIds", Message: "样本版本 ID 必须为正数"}}))
+			return
+		}
+	}
+	if request.MaxHits < 0 {
+		app.writeStudioError(w, r, studio.NewValidationError(
+			"命中上限无效", []model.FieldError{{Field: "maxHits", Message: "命中上限不能为负数"}}))
+		return
+	}
+	// 0 表示使用服务端默认值；非零值不能突破单次响应的服务端上限。
+	maxHits := request.MaxHits
+	if maxHits > model.MaxRuleMatchesPerContent {
+		maxHits = model.MaxRuleMatchesPerContent
+	}
+	if app.studio.Rules == nil {
+		// 生产构造总会注入 Rules；保留显式错误避免测试/错误装配时 panic。
+		app.writeStudioError(w, r, studio.NewError(studio.CodeUnavailable, "规则预览服务尚未初始化，请稍后重试"))
+		return
+	}
+	result, err := app.studio.Rules.PreviewRules(r.Context(), projectID,
+		request.QualityPolicyVersionID, request.SampleVersionIDs, maxHits)
+	if err != nil {
+		app.writeStudioError(w, r, err)
+		return
+	}
+	app.writeJSON(w, http.StatusOK, result)
 }
 
 // createExperiment 冻结一个实验（契约 §2.5）。
