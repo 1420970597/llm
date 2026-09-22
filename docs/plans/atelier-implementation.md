@@ -108,7 +108,7 @@
 | 2026-09-21 | T21 | §7.1 的编号表未给 T21 预留编号（0031–0034 已分配、0035/0036 已被 T17/T18 占用）| 新增 **0037**（release_manifests / release_artifacts）。不重编号已冻结的 0031–0034：重编号会让已写完的任务记录与迁移文件对不上 |
 | 2026-09-21 | T21 | 契约要求「manifest hash 不把自己包含进 hash 输入」但未规定规范化细节 | 冻结为：hash 输入 = `CanonicalManifestBytes`（条目按 (sampleId, sampleVersionId) 排序、Limitations 去重排序、ItemCount 从 Items 派生、无缩进），且**不含任何 hash 字段**。排序是必需的：清单顺序取决于数据库返回顺序（无 ORDER BY 时未定义），不排序会让同样内容的两份 manifest 产出不同 hash，于是「重试是否得到同一份文件」无法验证 |
 | 2026-09-21 | T21 | 「已发布文件不可变」如何由对象路径保证 | `ArtifactObjectKey` = `releases/{id}/r{revision}/export-{format}-{hash前16位}.jsonl`：路径含内容 hash，因此同内容重传写同一位置（幂等），而内容不同自然写到另一 key（覆盖等于写入另一内容）。路径**不含** `latest`（下载禁止 latest 回退，路径也不给它留位置）。另：`RegisterArtifact` 在同 hash 时回放既有行，在**已确认**时拒绝不同 hash 的登记 —— 那正是「重复消息产生两个有效发布」的形态 |
-| 2026-09-21 | T21 | T21 尚未全部交付（已交付迁移 0037 + hash 规则 + 制品 store；发布作业执行与下载端点待续）| **已交付**：迁移 0037、`internal/model/release_artifact.go`（hash 分层与规范化、可发布判定、上传校验、对象路径）、`internal/store/release_artifact_store.go`（manifest/制品登记幂等、状态机、`PublishReleaseIfReady` 唯一发布入口）与两侧测试。**未交付**：worker 的发布作业执行（流式编码 + 上传 + 校验）、下载端点与 T22 的页面 |
+| 2026-09-21 | T21 | T21 尚未全部交付（已交付迁移 0037 + hash 规则 + 制品 store；发布作业执行与下载端点待续）| **已交付**：迁移 0037、`internal/model/release_artifact.go`（hash 分层与规范化、可发布判定、上传校验、对象路径）、`internal/store/release_artifact_store.go`（manifest/制品登记幂等、状态机、`PublishReleaseIfReady` 唯一发布入口）与两侧测试。**新增交付**：`internal/studio/release_build.go`（编码与校验）与其测试 —— 读**冻结清单**、按冻结的 `mapping_version_id` 取映射、JSONL **逐行分块编码**（峰值内存与批大小有关而非文件大小）、`reasoning` 字段命名映射、档位保留数组、显式的 `MaxArtifactBytes` 上限。**未交付**：worker 的作业注册与对象存储上传/读回校验、下载端点与 T22 的页面 |
 ---
 
 ## 2. 必须先定清的固定口径
