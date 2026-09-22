@@ -232,6 +232,11 @@ func TestRecipeLifecycle(t *testing.T) {
 	if reloaded.PublishedVersion != 2 || reloaded.LatestVersion != 2 || reloaded.VersionCount != 2 {
 		t.Fatalf("读模型计数不符：%+v", reloaded)
 	}
+	// 摘要必须由**最新一版**的 payload 派生（方案卡上那行「整套方法」）：
+	// 它不可能来自 recipes 行本身 —— 内容只存在版本里。
+	if reloaded.Summary == nil || *reloaded.Summary != "蓝图 · 覆盖 · 标准 · 质量策略 · 映射" {
+		t.Fatalf("GetRecipe 的方案摘要应由最新一版 payload 派生，实际 %v", reloaded.Summary)
+	}
 
 	list, err := fixture.recipes.ListRecipes(ctx, fixture.workspaceID, fixture.otherMemberID, model.TargetKindSFT, 10)
 	if err != nil {
@@ -241,6 +246,9 @@ func TestRecipeLifecycle(t *testing.T) {
 	for _, item := range list {
 		if item.ID == recipe.ID {
 			found = true
+			if item.Summary == nil || *item.Summary != "蓝图 · 覆盖 · 标准 · 质量策略 · 映射" {
+				t.Fatalf("列表项的方案摘要应由最新一版 payload 派生，实际 %v", item.Summary)
+			}
 		}
 	}
 	if !found {
