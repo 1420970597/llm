@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import type { ReactNode } from 'react'
 import { Button, Card, Empty, Input, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, Download, RefreshCw } from 'lucide-react'
 import { client } from '../../lib/api'
@@ -15,6 +16,19 @@ import type {
   SampleSummary,
 } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
+
+type BlockerLinkProps = {
+  link: string
+  children: ReactNode
+}
+
+/** 服务端可返回页面链接或外部链接；项目内页面必须保留 Atelier 壳与上下文。 */
+function BlockerLink({ link, children }: BlockerLinkProps) {
+  if (link.startsWith('/')) {
+    return <Link className="console-link" to={link}>{children}</Link>
+  }
+  return <a className="console-link" href={link}>{children}</a>
+}
 
 /**
  * 发布与交付页面（Issue #160 T22）：发布列表、准备发布、候选数据卡、交付库。
@@ -364,7 +378,7 @@ export function ReleaseNewPage() {
             <div key={`${blocker.code}-${index}`} className="flex items-start gap-2">
               <AlertTriangle size={14} className="mt-1 text-amber-500" aria-hidden />
               {blocker.link ? (
-                <a className="console-link" href={blocker.link}>{blocker.message}</a>
+                <BlockerLink link={blocker.link}>{blocker.message}</BlockerLink>
               ) : (
                 <Text size="small">{blocker.message}</Text>
               )}
@@ -424,8 +438,13 @@ export function ReleaseCardPage() {
       await studioApi.publishRelease(scope.projectId, releaseID)
       await load()
     } catch (publishError) {
-      // 门槛未过返回 409 + 数据卡里的 blocker；这里只展示服务端文案。
-      setActionError(publishError instanceof Error ? publishError.message : '发布失败')
+      // 门槛未过返回 409 + 结构化 blocker；保留它们让用户能直接跳到
+      // 样本/证据，而不是把服务端给出的可执行链压成一句错误文本。
+      const apiError = publishError as { message?: string; blockers?: ReleaseBlocker[] }
+      if (Array.isArray(apiError.blockers) && apiError.blockers.length > 0) {
+        setCard((previous) => previous ? { ...previous, blockers: apiError.blockers ?? previous.blockers } : previous)
+      }
+      setActionError(apiError.message ?? '发布失败')
     } finally {
       setBusy(false)
     }
@@ -503,7 +522,7 @@ export function ReleaseCardPage() {
             <div key={`${blocker.code}-${index}`} className="flex items-start gap-2 mb-1">
               <AlertTriangle size={14} className="mt-1 text-amber-500" aria-hidden />
               {blocker.link ? (
-                <a className="console-link" href={blocker.link}>{blocker.message}</a>
+                <BlockerLink link={blocker.link}>{blocker.message}</BlockerLink>
               ) : (
                 <Text size="small">{blocker.message}</Text>
               )}
