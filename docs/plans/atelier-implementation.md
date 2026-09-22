@@ -85,6 +85,10 @@
 | 2026-09-21 | T14 | §2.3 要求「隔离不缩小分母」，但未规定样本版本可否被删除 | `experiment_items.sample_version_id` 用 **ON DELETE RESTRICT**：用 CASCADE 会让「删一个样本」静默缩小历史实验的分母，而那正是「分母可以被做小」的形态。分母因此永久等于创建时冻结的行数 |
 | 2026-09-21 | T14 | 独立性判定缺少可依据的字段 | 冻结判据为**endpoint 指纹不同**（不是连接 ID 不同）：同一真实来源的别名连接（主/备用账号指向同一 endpoint）不算两名裁判。指纹缺失时**保守判为不独立** —— 反过来会让独立性在配置不全时静默失效，而失效方向是「本该拦住的自评被放行」。`experiment_items.generator_source/generator_fingerprint` **由样本来源推导**并冻结，不接受客户端传入（否则请求体里带一个 generatorConnectionId 就能绕过检查）|
 | 2026-09-21 | T14 | T14 尚未全部交付（本轮完成迁移 0028 + 模型判据与测试；store/worker/报告的落库与执行路径仍待续） | 已交付且经 门禁验证的部分：迁移 0028（experiments/experiment_items/experiment_scores，含可空分值、RESTRICT 外键、只追加的评分与部分唯一索引）、`internal/model/experiment.go` 的判据与统计（独立性、固定分母、零分母无结论、归一化、量表校验、GRPO 在 T24 前不可运行）、`internal/model/experiment_test.go`。**已交付**：`internal/store/experiment_store.go`（创建即冻结、只追加的评分与 supersede、固定分母报告、续跑清单）、`internal/store/sample_query.go` 的按 ID 读取（执行侧按**冻结的版本 ID**取内容）、`internal/studio/experiment_runner.go`（逐项执行、缺分与出错区分、续跑不重评）与三个测试文件。**归属他处**：项目实验 API 与质量页按契约 §3 由 T19 增量交付|
+| 2026-09-21 | T15 | §2.6 要求「预览不写处置、不入收费模型队列」，但未规定如何保证 | **不为预览建表、预览端点在 store 里只有 SELECT**。理由：「预览前后无变化」不能靠「记得回滚」，而要靠「根本没有写路径」。响应显式带 `sideEffects: false`，使前端与验收脚本能**断言**这一点。命中数达上限时返回 `truncated: true`（否则用户会以为「就这么多命中」）|
+| 2026-09-21 | T15 | 规则与证据的取值集合已在 §5/T04 冻结，T15 未说明是否复用 | **复用** `RuleMatch*`/`RuleSeverity*`/`RuleAction*`（studio_docs.go）：另立一套会让「质量策略版本」与「规则证据」对同一概念用不同字符串，而那种不一致只在运行时以「评估时规则被跳过」的形式出现。同时明确：匹配方式是**闭合集合**（§5 禁止任意脚本节点）；建议动作里**没有「自动隔离」**，它们只是建议，不自动执行 |
+| 2026-09-21 | T15 | 规则命中证据要保留什么，契约未逐列规定 | 冻结为：规则**表达式快照**、匹配方式、字段、严重度、建议动作、命中偏移（以**字符/rune** 计，字节偏移会让中文高亮错位）与片段。只存 rule_id 会让历史命中在规则被改后显示成新规则的结果，而「当时为什么拦下它」是申诉与复核的唯一依据。`sample_version_id` 与 `quality_policy_version_id` 都用 ON DELETE RESTRICT：证据与其引用的版本不得被静默删除 |
+| 2026-09-21 | T15 | T15 尚未全部交付（已交付迁移 0029 与模型判据；纯预览端点、证据追加与测试仍待续）| **已交付**：迁移 0029（rule_evaluations / rule_evidence，含表达式快照、rune 偏移、RESTRICT 外键）、`internal/model/rule_evidence.go`（校验即编译 regex、服务端长度/命中上限、证据冻结）。**未交付**：store 层的纯预览与证据追加（落点在 `internal/store`）、项目规则 API 与规则页（T19）|
 ---
 
 ## 2. 必须先定清的固定口径
