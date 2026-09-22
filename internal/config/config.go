@@ -54,6 +54,28 @@ type APIConfig struct {
 	BootstrapStorageAccessKeyID  string
 	BootstrapStorageSecretKey    string
 	BootstrapStorageUsePathStyle bool
+
+	// StudioEnabled 是 Atelier 新能力的**总开关**（Issue #160 T33）。
+	//
+	// 语义：false 时**拒绝新的 Studio 命令**（设计/运行/判断/发布），
+	// 但读取与已发布文件下载仍然可用。回退时用户还能把数据拿走 ——
+	// 一个「关掉后连自己已经发布的东西都下载不了」的开关不会被人敢用。
+	StudioEnabled bool
+	// StudioDisabledProjectIDs 是项目级回退名单（灰度用）。
+	// 用环境变量而不是表：回退必须在**不依赖数据库写权限**的前提下可用，
+	// 而一次部署就能同时改完所有副本。
+	StudioDisabledProjectIDs []int64
+	// StudioDisabledProjectsRaw 保留原始写法以支持「id:原因」形式
+	//（例如 `12:发布积压,13:成本失控`）：只记 ID 的回退名单在一周后
+	// 没人记得为什么被关，而原因会显示在状态接口里。
+	StudioDisabledProjectsRaw string
+
+	// LegacyWritesFrozen 冻结旧 dataset 中心的写入口（Issue #160 T31）。
+	//
+	// 为什么是启动期配置而不是表：冻结必须**先于**迁移生效（T31：「每个 dataset
+	// 迁移前冻结旧写入口并等在途完成」），而靠表意味着要写一次数据库才能冻结 ——
+	// 那次写入本身就发生在未冻结的窗口里。
+	LegacyWritesFrozen bool
 }
 
 type WorkerConfig struct {
@@ -70,6 +92,30 @@ type WorkerConfig struct {
 	QueueName        string
 	EncryptionKey    string
 	MigrationPath    string
+
+	// StudioQueueName 是 Atelier 新作业（`studio.*`）的独立队列（Issue #160 T06）。
+	//
+	// 为什么**必须**是独立队列而不是复用 QueueName：旧消费者按
+	// `{type, datasetId}` 解析消息，它既不认识 `{schemaVersion, jobId}`，
+	// 也不可能在解析失败时保持沉默（`type` 为空会走 `default:` 分支打印
+	// 「worker ignored job type=」然后**丢掉消息**）。用两条队列让
+	// 「旧 worker 不得误吞新消息」成为结构性事实，而不是靠双方的约定。
+	StudioQueueName string
+
+	// StudioConcurrency 是单进程同时处理的 Studio 作业数上界。
+	//
+	// 串行（=1）会让一个长批次占满 worker，用户看到别的批次一直排队；
+	// 无上限则无法解释「在途数量」与预算预留。取一个小上界：
+	// 批次内部的并发度由批次自己的 generation_config.concurrency 决定
+	//（T12），这里只控制「同时有几个批次在跑」。
+	StudioConcurrency int
+
+	// StudioEnabled 是 worker 侧的同一开关（T33）。
+	//
+	// false 时 worker **不再抢占新的 Studio 作业**，但正在执行的那个作业
+	// 会正常跑完（ctx 不被取消）。“停止新请求，在途仍会完成”与 T13 的
+	// 暂停语义一致 —— 中途杀进程会把一个已经花钱的批次丢在中途。
+	StudioEnabled bool
 }
 
 func LoadAPIConfig() APIConfig {
@@ -120,6 +166,13 @@ func LoadAPIConfig() APIConfig {
 		BootstrapStorageAccessKeyID:  getenv("S3_ACCESS_KEY", "minioadmin"),
 		BootstrapStorageSecretKey:    getenv("S3_SECRET_KEY", "minioadmin"),
 		BootstrapStorageUsePathStyle: getenvBool("S3_USE_PATH_STYLE", true),
+
+		// Atelier 特性开关（Issue #160 T33）。
+		// 默认**开启**：新能力是当前主线，关掉它属于运维动作。
+		StudioEnabled:             getenvBool("STUDIO_ENABLED", true),
+		StudioDisabledProjectIDs:  parseInt64List(getenv("STUDIO_DISABLED_PROJECT_IDS", "")),
+		StudioDisabledProjectsRaw: getenv("STUDIO_DISABLED_PROJECT_IDS", ""),
+		LegacyWritesFrozen:        getenvBool("LEGACY_WRITES_FROZEN", false),
 	}
 }
 
@@ -144,7 +197,36 @@ func LoadWorkerConfig() WorkerConfig {
 		QueueName:        getenv("WORKER_QUEUE_NAME", "dataset-generation"),
 		EncryptionKey:    getenv("APP_ENCRYPTION_KEY", "phase1-dev-only-32-byte-secret!!!"),
 		MigrationPath:    getenv("MIGRATION_PATH", "sql/migrations"),
+
+		// 默认在旧队列名后加 `-studio`：一个只需要 `WORKER_QUEUE_NAME` 的部署
+		// 自动获得两条互不干扰的队列，无需运维记忆两个变量；
+		// 需要时用 WORKER_STUDIO_QUEUE_NAME 覆盖。
+		StudioQueueName:   getenv("WORKER_STUDIO_QUEUE_NAME", getenv("WORKER_QUEUE_NAME", "dataset-generation")+"-studio"),
+		StudioConcurrency: getenvInt("WORKER_STUDIO_CONCURRENCY", 2),
+		// 默认与 API 侧同值：一个只改一侧的部署会让「API 停止新命令、
+		// worker 继续跑旧队列」变成长期状态（而不是回退状态）。
+		StudioEnabled: getenvBool("STUDIO_ENABLED", true),
 	}
+}
+
+// parseInt64List 解析逗号分隔的整数列表（用于项目级回退名单）。
+//
+// 非法项被**保留为可诊断的信号**而不是静默丢弃：调用方（rollout）会把
+// 解析失败的项目当作「未知」并在状态里报告。这里的契约是「只解析，不判断」。
+func parseInt64List(raw string) []int64 {
+	values := []int64{}
+	for _, part := range strings.Split(raw, ",") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		parsed, err := strconv.ParseInt(trimmed, 10, 64)
+		if err != nil || parsed <= 0 {
+			continue
+		}
+		values = append(values, parsed)
+	}
+	return values
 }
 
 func getenv(key, fallback string) string {

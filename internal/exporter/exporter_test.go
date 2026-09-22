@@ -233,11 +233,14 @@ func TestTemplateConcatenation(t *testing.T) {
 	}
 }
 
-// TestBuiltinSpecsCoverFormats 断言三份内置映射的格式都真实注册过。
+// TestBuiltinSpecsCoverFormats 断言内置映射的格式都真实注册过。
+//
+// 数量断言不是“凑数”：条目数变化时必须有人确认“新条目确实是内置契约”。
+// T25 新增 `grpo-jsonl-v2`（结构化 GRPO 导出形状）因此从 3 变 4。
 func TestBuiltinSpecsCoverFormats(t *testing.T) {
 	specs := BuiltinSpecs()
-	if len(specs) != 3 {
-		t.Fatalf("期望 3 份内置映射，实际 %d", len(specs))
+	if len(specs) != 4 {
+		t.Fatalf("期望 4 份内置映射，实际 %d", len(specs))
 	}
 	for _, spec := range specs {
 		if _, ok := Get(spec.Format); !ok {
@@ -246,6 +249,47 @@ func TestBuiltinSpecsCoverFormats(t *testing.T) {
 		if len(spec.FieldMap) == 0 {
 			t.Fatalf("内置映射 %s 没有字段定义", spec.Name)
 		}
+	}
+
+	// T25：结构化 GRPO 导出形状必须是**单占位符**，即 `{{field}}`。
+	// 写成裸字段名或模板拼接会把数组压成字符串（`stringify` 对切片返回空串），
+	// 而那种文件在字节层面看起来仍然“像 JSONL”。
+	var structured *model.ExportMapping
+	for index := range specs {
+		if specs[index].Name == "grpo-jsonl-v2" {
+			structured = &specs[index]
+		}
+	}
+	if structured == nil {
+		t.Fatal("必须存在 grpo-jsonl-v2（T25 的结构化 GRPO 映射）")
+	}
+	if structured.Format != model.ExportFormatJSONL {
+		t.Fatalf("grpo-jsonl-v2 必须是 jsonl，实际 %s", structured.Format)
+	}
+	for _, field := range model.GRPORequiredExportFields() {
+		source, found := structured.FieldMap[field]
+		if !found {
+			t.Fatalf("grpo-jsonl-v2 缺少必需字段 %q", field)
+		}
+		expr, _ := source.(string)
+		trimmed := strings.TrimSpace(expr)
+		if !strings.HasPrefix(trimmed, "{{") || !strings.HasSuffix(trimmed, "}}") ||
+			strings.Count(trimmed, "{{") != 1 {
+			t.Fatalf("字段 %q 必须是单个占位符（如 {{{{levels}}}}），实际 %q", field, expr)
+		}
+	}
+	// 旧映射保留 `reward_levels`（逗号串）以免破坏第一轮导出。
+	legacy := false
+	for _, spec := range specs {
+		if spec.Name == "grpo-jsonl" {
+			legacy = true
+			if _, found := spec.FieldMap["reward_levels"]; !found {
+				t.Fatal("旧 grpo-jsonl 必须保留 reward_levels（第一轮导出仍在使用）")
+			}
+		}
+	}
+	if !legacy {
+		t.Fatal("必须保留旧 grpo-jsonl：新形状与旧导出隔离共存，不就地修改旧映射")
 	}
 }
 

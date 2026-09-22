@@ -1066,3 +1066,766 @@ select:focus {
     border-radius: 22px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Atelier 壳层样式（Issue #160 T09）
+ *
+ * 为什么与旧控制台共用一套 CSS 变量而不是另起一套主题：
+ * 两套主题会让「同一个按钮在两个壳里颜色不同」，而用户感知到的是系统不一致。
+ * 变量已在文件头定义，这里只补新壳需要的**结构**类。
+ * --------------------------------------------------------------------------- */
+
+/* 全局侧边导航项（新壳）。旧控制台用 Semi 的 Nav 组件，新壳用 NavLink，
+ * 因此需要自己的样式；配色沿用 --accent / --panel 系列保持一致。 */
+.sidebar-nav-section {
+  padding: 0 12px 8px;
+}
+
+.sidebar-nav-heading {
+  padding: 10px 6px 6px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--text-soft);
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-nav-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.sidebar-nav-item--active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.sidebar-nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.sidebar-nav-item__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-collapse-button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.sidebar-collapse-button:hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.sidebar-account {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* 项目壳：标题 + 六标签 + 内容区。 */
+.project-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px 32px;
+}
+
+.project-layout__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.project-layout__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 8px;
+}
+
+.project-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  color: var(--text-soft);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.project-tab:hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.project-tab--active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.project-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 待交付标记：与 SideNav 的「待交付」语义一致，提示该模块由哪个任务交付。 */
+.project-tab__badge {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(217, 119, 6, 0.14);
+  color: var(--warning);
+}
+
+.project-tab--active .project-tab__badge {
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+
+.project-layout__body {
+  display: block;
+}
+
+/* 面包屑：由元数据派生，因此样式只需要处理排列与层级。 */
+.console-breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.console-breadcrumbs__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.console-breadcrumbs__item a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.console-breadcrumbs__item a:hover {
+  color: var(--accent-strong);
+  text-decoration: underline;
+}
+
+/* 首页统计瓦片：分列展示，因此不做「合并成一个完成度」的视觉暗示。 */
+.console-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.console-stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 4px 0;
+}
+
+/* 项目卡片：整卡可点，因此必须是真实 button（键盘可达）。 */
+.project-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.project-card--button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-strong);
+  border-radius: 12px;
+}
+
+.project-card--button:hover {
+  border-color: var(--panel-border-strong);
+}
+
+.project-card--button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.console-link {
+  color: var(--accent-strong);
+}
+
+/* 屏幕阅读器专用：视觉用户看不到，但焦点/播报链路完整（T29 无障基础）。 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * 生产工作区样式（Issue #160 T13）
+ * --------------------------------------------------------------------------- */
+
+/* 批次表：计划/完成/失败/在途**分列**，因此不做「合并成进度条」的视觉暗示。 */
+.batch-table {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--panel-strong);
+}
+
+.batch-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.7fr 1.6fr repeat(4, 0.7fr) 2.4fr;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--panel-border);
+  font-size: 13px;
+}
+
+.batch-row--head {
+  border-top: none;
+  background: var(--bg-strong);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.batch-row__link {
+  border: none;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+}
+
+.batch-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.batch-status {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.batch-status--running {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--accent-strong);
+}
+
+.batch-status--paused {
+  background: rgba(217, 119, 6, 0.14);
+  color: var(--warning);
+}
+
+.batch-status--failed {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+.batch-status--done {
+  background: rgba(22, 163, 74, 0.14);
+  color: var(--success);
+}
+
+.batch-status--queued {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--text-soft);
+}
+
+.batch-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.batch-snapshot,
+.batch-steps,
+.batch-events,
+.preflight-list,
+.failure-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.batch-snapshot li,
+.batch-steps li,
+.batch-events li,
+.preflight-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--panel-border);
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.batch-steps li {
+  justify-content: space-between;
+}
+
+.batch-events__type {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.batch-events__time {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.preflight-ok {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.preflight-block {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.preflight-detail {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.failure-list {
+  display: grid;
+  gap: 10px;
+}
+
+/* 蓝图页样式（T11）：三栏布局 + 只读历史提示。 */
+.blueprint-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr) 240px;
+  gap: 16px;
+}
+
+.blueprint-readonly-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background: rgba(217, 119, 6, 0.12);
+  color: var(--warning);
+}
+
+.blueprint-nodes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.blueprint-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--panel-strong);
+  color: var(--text-soft);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.blueprint-node--active {
+  border-color: var(--panel-border-strong);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.blueprint-node__badge {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(217, 119, 6, 0.14);
+  color: var(--warning);
+}
+
+.blueprint-history__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.blueprint-history__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--panel-strong);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.blueprint-history__item--active {
+  border-color: var(--panel-border-strong);
+  background: var(--accent-soft);
+}
+
+.blueprint-history__hash {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--text-muted);
+}
+
+.blueprint-history__reason {
+  color: var(--text-muted);
+}
+
+.blueprint-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  font: inherit;
+  background: var(--panel-strong);
+  color: var(--text);
+}
+
+.blueprint-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.coverage-matrix {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.coverage-directions {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+
+.coverage-directions li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--panel-border);
+  font-size: 13px;
+}
+
+.coverage-direction__name {
+  flex: 1;
+  min-width: 0;
+}
+
+.coverage-direction__quota {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.coverage-gap {
+  border: none;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.standard-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.standard-step__index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.console-page__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.console-card {
+  background: var(--panel-strong);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+}
+
+.wizard-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wizard-field__label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.wizard-field__required {
+  color: #b91c1c;
+}
+
+.wizard-field__error {
+  margin-top: 4px;
+  color: #b91c1c;
+  font-size: 12px;
+}
+
+.wizard-triple {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.wizard-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.wizard-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ---------------------------------------------------------------------------
+ * 三栏审阅样式（Issue #160 T17）
+ * --------------------------------------------------------------------------- */
+
+.sample-table {
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--panel-strong);
+}
+
+.sample-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 2fr) 0.6fr 1.2fr 1.6fr;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--panel-border);
+  font-size: 13px;
+}
+
+.sample-row--head {
+  border-top: none;
+  background: var(--bg-strong);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* 三栏：窄屏下改为纵向堆叠（390px 可操作是 T17 验收项）。 */
+.review-pane__columns {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(0, 2.4fr) minmax(240px, 1.2fr);
+  gap: 14px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .review-pane__columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sample-row {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+}
+
+.review-pane__column {
+  background: var(--panel-strong);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 14px;
+  min-width: 0;
+}
+
+.review-pane__content:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 长文本必须可换行且不撑破容器（T17 验收项「长文本无异常遮挡」）。 */
+.review-content {
+  margin: 0;
+  max-height: 60vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.review-queue,
+.review-evidence,
+.version-timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.review-queue li,
+.version-timeline li {
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--panel-border);
+}
+
+.review-queue__empty {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.review-evidence li {
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-soft);
+  word-break: break-word;
+}
+
+.version-timeline {
+  display: grid;
+  gap: 10px;
+}
+
+/* ---------------------------------------------------------------------------
+   无障碍与窄屏（Issue #160 T29）
+   ---------------------------------------------------------------------------
+   三条最容易被忽略、而后果最直接的可访问性问题：
+   1. 键盘焦点不可见：`:focus-visible` 在暗色/浅色下都要有明确轮廓 —— 靠浏览器
+      默认轮廓在自定义背景上经常几乎看不见；
+   2. 中文长文本不换行：长 URL/长英文串会把容器撑破（`overflow-wrap` 必须显式写，
+      否则用户的截图里正文被裁掉一半）；
+   3. 触屏目标太小：390px 下小于 32px 的行内按钮很难点中（点错会提交错误操作）。
+   --------------------------------------------------------------------------- */
+:focus-visible {
+  outline: 2px solid #165dff;
+  outline-offset: 2px;
+}
+
+.review-evidence,
+.comparison-row,
+.console-card,
+.sidebar-nav-item__label {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 触屏目标的可用性下限（不为设计美观牺牲可点性）。 */
+button,
+[role='button'],
+a {
+  min-height: 28px;
+}
+
+@media (max-width: 768px) {
+  /* 窄屏下按钮更宽松：390/768 是 T29 明确要求验证的宽度。 */
+  button,
+  [role='button'] {
+    min-height: 36px;
+  }
+  .comparison-row {
+    /* 窄屏不横向挤压：宁可允许横向滚动，也不要让单元格内容互相遮挡。 */
+    min-width: 640px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

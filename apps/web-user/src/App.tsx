@@ -95,6 +95,7 @@ import {
 } from './lib/enumLabels'
 import { APP_BUILD_TIME, APP_VERSION_SHORT, APP_VERSION_UNKNOWN } from './buildInfo'
 import { CleaningView } from './views/CleaningView'
+import { studioRouteTree } from './studio/StudioRoutes'
 import { EvaluationView } from './views/EvaluationView'
 
 const { Title, Text } = Typography
@@ -4190,6 +4191,16 @@ export default function App() {
           )
         }
       />
+      {/*
+        Atelier 主线路由（Issue #160 T09）。
+        路由本身由 src/studio/routes.ts 的元数据派生，这里不写路径字面量 ——
+        导航、面包屑、高亮与实现状态都由同一份元数据算出，
+        因此「菜单与路由漂移」在结构上不可能发生。
+        legacy 的 /console/* 全部保留（契约 §7 的过渡期要求），
+        它们是过渡入口，不是新主线的替代品。
+      */}
+      {studioRouteTree({ user, onLogout: handleLogout })}
+
       <Route
         path="/*"
         element={

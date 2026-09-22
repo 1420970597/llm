@@ -18,6 +18,16 @@ type ProviderConfig struct {
 	ProviderType    string
 	ReasoningEffort string
 	APIKey          string
+
+	// IncludeUsage 要求供应商在流式响应里回传 token 用量
+	// （OpenAI 形态为 `stream_options.include_usage=true`）。
+	//
+	// 为什么默认关闭（Issue #160 T07）：部分 OpenAI 兼容接入点会拒绝
+	// 不认识的字段（400 invalid_request_error），一律加上会让原本可用的
+	// 部署直接失败。因此它必须是**显式**选择，由需要计费用的新路径
+	// （T12 的 Studio 生成）通过 WithUsageReporting 打开，
+	// 旧路径行为保持不变。
+	IncludeUsage bool
 }
 
 func GenerateDomains(ctx context.Context, provider ProviderConfig, dataset model.Dataset, promptTemplate *model.PromptTemplate) ([]model.Domain, []model.DomainEdge, error) {

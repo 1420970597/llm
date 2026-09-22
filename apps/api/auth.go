@@ -101,6 +101,17 @@ func (app *application) middleware(next http.Handler) http.Handler {
 			}
 		}
 
+		// 旧写入口冻结（T31）：在**认证之后、路由之前**拒绝。
+		//
+		// 放在这里而不是逐个 handler：旧端点数以十计，逐个加检查必然漏一个，
+		// 而漏掉的那个会在迁移期间继续写旧库（新旧两套数据同时被写）。
+		// 放在认证之后：未登录用户应该得到 401（与其它端点一致），
+		// 而不是先知道「系统正在迁移」这一运维状态。
+		if app.cfg.LegacyWritesFrozen && isLegacyWriteRequest(r.Method, r.URL.Path) {
+			app.writeError(w, http.StatusConflict, legacyWritesFrozenError())
+			return
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -141,7 +152,43 @@ func (app *application) withSessionUser(r *http.Request) *http.Request {
 		return r
 	}
 
-	return r.WithContext(context.WithValue(r.Context(), userContextKey, payload.User))
+	// 从服务端当前状态刷新身份（Issue #160 T03）。
+	//
+	// 为什么不能只信 cookie：cookie 是 24 小时的**角色副本**。
+	// 管理员在库里被降级为 user 后，旧 cookie 里的 `role="admin"`
+	// 仍然能让 /api/v1/admin/* 通过检查 —— 那就是一个最长 24 小时的
+	// 权限提升窗口，而它恰好是 T03 要求关闭的东西。
+	//
+	// 失败时**取不到就不认这个会话**（fail closed）：数据库不可用时
+	// 「继续信任旧角色」等于「数据库故障时权限全部放开」。
+	current, err := app.loadSessionUser(r.Context(), payload.User.ID)
+	if err != nil {
+		return r
+	}
+	return r.WithContext(context.WithValue(r.Context(), userContextKey, current))
+}
+
+// sessionUserLoader 接口化「按 ID 取当前用户」这一步。
+//
+// 为什么要接口而不是直接调 app.auth：这条路径的**两个分支**（刷新成功 → 用库里的
+// 角色；刷新失败 → 丢弃会话）都必须在测试里跑到，而它们正好是 T03 的核心断言。
+// 直接调 store 会让测试必须连库才能验证「撤权立即生效」，而那种测试在没设 DSN 时
+// 静默 Skip —— 那么 CI 上就没人守着这个安全属性了。
+func (app *application) loadSessionUser(ctx context.Context, userID int64) (model.User, error) {
+	if app.sessionUsers != nil {
+		return app.sessionUsers(ctx, userID)
+	}
+	return app.currentSessionUser(ctx, userID)
+}
+
+// currentSessionUser 按会话里的用户 ID 重新读取服务端当前用户。
+//
+// 返回错误时调用方会丢弃会话：账号被删、库不可达都属于「不能确认身份」的情形。
+func (app *application) currentSessionUser(ctx context.Context, userID int64) (model.User, error) {
+	if userID <= 0 || app.auth == nil {
+		return model.User{}, errors.New("会话身份不可确认")
+	}
+	return app.auth.GetUserByID(ctx, userID)
 }
 
 func (app *application) currentUser(r *http.Request) (model.User, bool) {

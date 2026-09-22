@@ -29,6 +29,14 @@ type Record struct {
 	RewardScore    float64
 	HasReward      bool
 	RewardLevels   []string
+	// LevelRubrics 是 GRPO 的档位判据（T25）。
+	//
+	// 用 typed 数组而不是 map/字符串：导出契约要求 `level_rubrics` 是
+	// 对象数组且与 `levels` 一一对应，而 typed 结构体的字段顺序确定，
+	// 因此「同一份内容两次编码得到相同字节」（T21 的 hash 复算依赖它）。
+	LevelRubrics []model.GRPORubricExport
+	// FrameworkRef 是 GRPO 判据的框架来源（provenance），可空。
+	FrameworkRef string
 }
 
 // Exporter 一种导出格式。

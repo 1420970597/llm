@@ -86,3 +86,24 @@ func (s *AuthStore) GetUserByID(ctx context.Context, id int64) (model.User, erro
 	}
 	return user, nil
 }
+
+// GetUserByEmail 按邮箱读取用户（Issue #160 T02：解析默认工作区的初始管理员）。
+//
+// 与 Authenticate 的区别：不校验密码。因此它**不能**用于登录路径，
+// 只用于「服务端已经知道该用户应当存在」的初始化与治理场景。
+// 邮箱统一小写并去空白，与 EnsureBootstrapUser / Authenticate 的归一化一致 ——
+// 三处不一致会让「引导建的用户」在后续按邮箱查不到。
+func (s *AuthStore) GetUserByEmail(ctx context.Context, email string) (model.User, error) {
+	normalized := strings.ToLower(strings.TrimSpace(email))
+	if normalized == "" {
+		return model.User{}, pgx.ErrNoRows
+	}
+
+	var user model.User
+	err := s.db.QueryRow(ctx, `SELECT id, email, role FROM users WHERE email = $1`, normalized).
+		Scan(&user.ID, &user.Email, &user.Role)
+	if err != nil {
+		return model.User{}, err
+	}
+	return user, nil
+}

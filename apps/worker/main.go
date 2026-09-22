@@ -134,6 +134,15 @@ func main() {
 	// 重复入队最多触发一次「不满足前置条件」的快速失败，不会产生重复数据。
 	go recoverStalledJobs(ctx, jobCtx)
 
+	// Atelier 新作业的执行侧（Issue #160 T06）。它使用**独立队列**，
+	// 与上面的旧消费者并存：旧消费者不理解 `{schemaVersion, jobId}`，
+	// 新消费者不理解 `{type, datasetId}`，两者靠队列名分开而不是靠约定。
+	studioRuntime := startStudioRuntime(ctx, pool, redisClient, cfg)
+	// 注入凭证解密器（T07「凭证单独取，不能冻结明文密钥」）。
+	// 用 extras 而不是给 StudioJobEnv 加字段：后者会让每个后续任务都要改
+	// 那个结构体与它的所有构造点，而 extras 是 T06 留好的扩展点。
+	studioRuntime.env.SetExtra("secretBox", box)
+
 	go consumeJobs(ctx, jobCtx)
 
 	mux := http.NewServeMux()
@@ -240,8 +249,22 @@ func consumeJobs(ctx context.Context, jc *jobContext) {
 			continue
 		}
 
+		// 旧队列上出现**新格式**消息时回投 Studio 队列（T06 验收项：
+		// 「旧 `{type,datasetId}` 消费者不得误吞新消息」）。
+		// 不回投的话，下面的 switch 会因为 `type` 为空落进 `default:` 分支，
+		// 打印一行「worker ignored job type=」后把消息**丢掉** ——
+		// 而那个作业已经落在 jobs 表里，会永久停在 pending。
+		raw := []byte(result[1])
+		if forward, target := routeLegacyQueueMessage(raw, routingStudioQueue); forward {
+			if err := jc.redis.LPush(ctx, target, raw).Err(); err != nil {
+				log.Printf("worker studio message forward failed target=%s err=%v", target, err)
+			}
+			log.Printf("worker forwarded studio message to queue=%s", target)
+			continue
+		}
+
 		var job jobPayload
-		if err := json.Unmarshal([]byte(result[1]), &job); err != nil {
+		if err := json.Unmarshal(raw, &job); err != nil {
 			log.Printf("worker payload decode failed: %v", err)
 			continue
 		}

@@ -31,7 +31,14 @@ func recordFields(record Record) map[string]any {
 		"judge_prompt":     record.JudgePrompt,
 		"difficulty":       record.Difficulty,
 		"domain_name":      record.DomainName,
-		"reward_levels":    strings.Join(record.RewardLevels, ","),
+		// levels / level_rubrics 是 T25 的 GRPO 导出字段，**保留数组与对象结构**
+		//（`{{levels}}` 是单占位符，resolveAny 会返回原始类型而不是字符串）。
+		"levels":        record.RewardLevels,
+		"level_rubrics": record.LevelRubrics,
+		"framework_ref": record.FrameworkRef,
+		// reward_levels 是**第一轮冻结契约**里的字段名，语义是「可映射为
+		// 逗号字符串」。新映射不再使用它（T25），但保留以免破坏旧映射表达式。
+		"reward_levels": strings.Join(record.RewardLevels, ","),
 	}
 	if record.HasReward {
 		fields["reward_score"] = record.RewardScore
@@ -192,6 +199,26 @@ func BuiltinSpecs() []model.ExportMapping {
 				"reward_levels": "{{rewardLevels}}",
 				"domain_name":   "{{domainName}}",
 				"difficulty":    "{{difficulty}}",
+			},
+		},
+		// grpo-jsonl-v2 是 Atelier 的 GRPO 导出形状（T25），与上面的旧映射
+		// **隔离**共存而不是就地修改旧映射：旧映射服务第一轮的 dataset 导出
+		//（那时没有逐档判据），把它的字段改成 levels/level_rubrics 会让旧导出
+		// 多出一个永远为 null 的 level_rubrics，而旧导出无法修复这一点。
+		{
+			Name:       "grpo-jsonl-v2",
+			Format:     "jsonl",
+			TargetKind: "grpo",
+			IsBuiltin:  true,
+			FieldMap: map[string]any{
+				"question":     "{{question}}",
+				"judge_prompt": "{{judgePrompt}}",
+				// 单占位符保留原始类型：levels 是字符串数组、level_rubrics 是对象数组。
+				// 写成 `{{...}}` 模板拼接（或旧 reward_levels 的逗号串）会把结构压平，
+				// 而 T25 明确禁止。服务端在发布时逐行校验这一点。
+				"levels":        "{{levels}}",
+				"level_rubrics": "{{level_rubrics}}",
+				"framework_ref": "{{framework_ref}}",
 			},
 		},
 	}

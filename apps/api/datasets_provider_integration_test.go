@@ -63,9 +63,27 @@ func TestCreateDatasetProviderGateIntegration(t *testing.T) {
 	}
 
 	datasetName := fmt.Sprintf("l15-r7-%d-%d", os.Getpid(), time.Now().UnixNano())
+
+	// 造一条本测试专用的存储配置（issue #83 / T32）：
+	// `createDataset` 会拒绝「没有可用结果存储」的请求（答案/评分/导出三个阶段
+	// 都要写对象存储），而**干净的临时库没有任何存储行** —— 不 seed 的话
+	// 这条测试在 CI 的真实 DB job 里必然以 400 失败，而那条失败与
+	// 本测试真正断言的「providerId 校验」毫无关系。
+	// 实测于 T24 引入 `scripts/go-test-postgres.sh` 后首次以真实 DB 跑通全量测试时发现。
+	storageName := "l15-r7-fixture-storage-" + datasetName
+	var storageID int64
+	if err := pool.QueryRow(ctx, `
+	  INSERT INTO storage_profiles
+	    (name, provider, endpoint, region, bucket, access_key_id, secret_key_masked,
+	     use_path_style, is_active, is_default)
+	  VALUES ($1, 'minio', 'http://127.0.0.1:9', '', 'fixture-bucket', 'fixture-key', '****', TRUE, TRUE, TRUE)
+	  RETURNING id`, storageName).Scan(&storageID); err != nil {
+		t.Fatalf("seed storage profile: %v", err)
+	}
 	defer func() {
 		_, _ = pool.Exec(ctx, `DELETE FROM datasets WHERE name = $1`, datasetName)
 		_, _ = pool.Exec(ctx, `DELETE FROM model_providers WHERE name = $1`, testProviderName)
+		_, _ = pool.Exec(ctx, `DELETE FROM storage_profiles WHERE name = $1`, storageName)
 	}()
 
 	app := &application{

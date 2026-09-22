@@ -15,6 +15,7 @@ import (
 	"github.com/1420970597/llm/internal/migrate"
 	"github.com/1420970597/llm/internal/model"
 	"github.com/1420970597/llm/internal/store"
+	"github.com/1420970597/llm/internal/studio"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -31,7 +32,23 @@ type application struct {
 	rewards        *store.RewardStore
 	artifacts      *store.ArtifactStore
 	generationRuns *store.GenerationRunStore
-	redis          *redis.Client
+	// Atelier 主线（Issue #160 T02/T03）：项目与工作区作用域、项目级授权、命令幂等。
+	projects    *store.ProjectStore
+	authz       *store.AuthzStore
+	documents   *store.DocumentStore
+	idempotency *store.IdempotencyStore
+	// recipes 是方案库（T26）：方案与「以方案创建项目」走它。
+	// 与 studio 分开：方案不是项目作用域对象（属于工作区），而 studio 的
+	// 授权/读模型都以项目为入口。
+	recipes *store.RecipeStore
+	redis   *redis.Client
+	// studio 是 Atelier 命令层（T08）：授权、幂等、分页与读模型都收在它里，
+	// 使 handler 只做「解析 → 调用 → 写响应」。
+	studio *studio.Service
+	// sessionUsers 是「按会话里的用户 ID 读服务端当前身份」的可替换实现（T03）。
+	// 生产始终为 nil（走 app.auth）；测试注入假实现以在无数据库环境下
+	// 覆盖「撤权立即生效」这两个分支。
+	sessionUsers func(ctx context.Context, userID int64) (model.User, error)
 }
 
 func main() {
@@ -71,7 +88,13 @@ func main() {
 		rewards:        store.NewRewardStore(pool),
 		artifacts:      store.NewArtifactStore(pool, redisClient, cfg.QueueName),
 		generationRuns: store.NewGenerationRunStore(pool),
+		projects:       store.NewProjectStore(pool),
+		authz:          store.NewAuthzStore(pool),
+		documents:      store.NewDocumentStore(pool),
+		recipes:        store.NewRecipeStore(pool),
+		idempotency:    store.NewIdempotencyStore(pool),
 		redis:          redisClient,
+		studio:         studio.NewWithRollout(pool, studioRolloutFromConfig(cfg)),
 	}
 
 	if err := app.reasoning.EnsureSchemaReady(ctx); err != nil {
@@ -83,6 +106,20 @@ func main() {
 	}
 	if err := app.auth.EnsureBootstrapUser(ctx, cfg.DefaultUserEmail, cfg.DefaultUserPassword, "user"); err != nil {
 		log.Fatalf("bootstrap user failed: %v", err)
+	}
+
+	// 幂等创建默认工作区（Issue #160 T02 契约 §4.1「首版可以默认一个 workspace」）。
+	//
+	// 为什么必须做：项目、成员与将来的连接治理都挂在 workspace 上，
+	// 而「表为空」会让第一次创建项目就失败在一个与用户输入无关的原因上。
+	// 这里用固定 slug 做唯一键，不依赖「第一条记录」这种脆弱约定。
+	//
+	// 失败**不阻断启动**：与 provider/storage 引导一致，少一个初始化步骤
+	// 不该升级为「容器起不来」；此时创建项目会返回可操作的中文提示。
+	if workspace, err := app.projects.EnsureDefaultWorkspace(ctx, bootstrapUserID(ctx, app)); err != nil {
+		log.Printf("WARNING: 默认工作区初始化失败: %v（服务继续启动，项目 API 会提示工作区未初始化）", err)
+	} else {
+		log.Printf("default workspace ensured: id=%d slug=%s", workspace.ID, workspace.Slug)
 	}
 
 	// 从环境变量幂等引导默认 LLM provider（密钥加密落库，不写入日志）。

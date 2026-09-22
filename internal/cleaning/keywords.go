@@ -50,6 +50,16 @@ type Match struct {
 	MatchedText string `json:"matchedText"`
 	Snippet     string `json:"snippet"`
 	Severity    string `json:"severity"`
+	// MatchStart/MatchEnd 是命中的**字符（rune）偏移**。
+	//
+	// 为什么是 rune 而不是字节：界面高亮按字符计数，而中文一个字占 3 字节，
+	// 用字节偏移会让高亮位置错位 —— 而那是用户能直接看到的错误。
+	//
+	// 这两个字段**本来就是这段代码算出来的**（start/end 局部变量），
+	// 只是此前没有透出；T15 的命中证据需要它们，因此在这里暴露而不是
+	// 另写一份带偏移的匹配器（两份实现必然漂移）。
+	MatchStart int `json:"matchStart"`
+	MatchEnd   int `json:"matchEnd"`
 }
 
 // 关键词分类。
@@ -288,6 +298,8 @@ func MatchKeywords(content string, keywords []model.CleaningKeyword) []Match {
 			MatchedText: string(origRunes[start:end]),
 			Snippet:     Snippet(content, start, end, 30),
 			Severity:    kw.Severity,
+			MatchStart:  start,
+			MatchEnd:    end,
 		})
 	}
 	return matches
@@ -340,4 +352,115 @@ func ruleAppliesToStage(rule model.CleaningRule, stage string) bool {
 		}
 	}
 	return false
+}
+
+// MatchKeywordsAll 返回**每一处**命中（而不是每个关键词的第一处）。
+//
+// 为什么与 MatchKeywords 并存而不是改它：
+//
+//	MatchKeywords 的「每关键词只取第一处」是既有清洗链路的既定行为
+//	（L11 的扫描按「命中/未命中」判定处置，重复命中不改变结论），
+//	改它会影响已冻结的清洗语义与既有测试。
+//
+//	而 T15 的规则**预览**要显示「命中位置」——用户需要看到全部位置
+//	（例如「这段内容在 3 处出现了拒答模板」），只给第一处会让人以为只有一处。
+//
+// 两者共用同一套归一化与偏移计算（都在本文件的匹配逻辑里），
+// 因此不会出现「预览的位置与执行的位置不一致」。
+//
+// limit 为单条内容的命中上限（T15 的服务端计算上限）：达到上限即停止，
+// 由调用方标记截断 —— 不设上限时一个过宽的表达式（例如 `.*`）
+// 会在一条内容上产出几十万次命中，既不增加信息量又会撑爆响应体。
+func MatchKeywordsAll(content string, keywords []model.CleaningKeyword, limit int) []Match {
+	matches := make([]Match, 0, 8)
+	if content == "" || len(keywords) == 0 || limit <= 0 {
+		return matches
+	}
+
+	origRunes := []rune(content)
+	hay := string(normalize(content))
+
+	for _, kw := range keywords {
+		if !kw.IsActive || kw.Pattern == "" {
+			continue
+		}
+		mode := kw.MatchMode
+		if mode == "" {
+			mode = ModeContains
+		}
+
+		switch mode {
+		case ModeRegex:
+			re, err := compilePattern(kw.Pattern)
+			if err != nil {
+				// 非法正则视为该关键词不可用，不阻断整轮扫描（与 MatchKeywords 一致）。
+				continue
+			}
+			for _, loc := range re.FindAllStringIndex(hay, limit-len(matches)) {
+				start := utf8.RuneCountInString(hay[:loc[0]])
+				end := utf8.RuneCountInString(hay[:loc[1]])
+				matches = append(matches, matchAt(kw, content, origRunes, start, end))
+				if len(matches) >= limit {
+					return matches
+				}
+			}
+
+		case ModePrefix:
+			needle := string(normalize(kw.Pattern))
+			if needle == "" || !strings.HasPrefix(hay, needle) {
+				continue
+			}
+			end := utf8.RuneCountInString(needle)
+			matches = append(matches, matchAt(kw, content, origRunes, 0, end))
+			if len(matches) >= limit {
+				return matches
+			}
+
+		default: // ModeContains
+			needle := string(normalize(kw.Pattern))
+			if needle == "" {
+				continue
+			}
+			offset := 0
+			for len(matches) < limit {
+				idx := strings.Index(hay[offset:], needle)
+				if idx < 0 {
+					break
+				}
+				start := utf8.RuneCountInString(hay[:offset+idx])
+				end := start + utf8.RuneCountInString(needle)
+				matches = append(matches, matchAt(kw, content, origRunes, start, end))
+				// 前进一个 needle 长度（而不是一个字符），避免在重叠匹配上纠缠：
+				// 预览要的是「命中位置」，重叠位置既不增加信息量又会放大命中数。
+				offset += idx + len(needle)
+				if offset >= len(hay) {
+					break
+				}
+			}
+		}
+	}
+	return matches
+}
+
+// matchAt 组装一处命中（MatchKeywords 与 MatchKeywordsAll 共用）。
+func matchAt(kw model.CleaningKeyword, content string, origRunes []rune, start, end int) Match {
+	if start < 0 {
+		start = 0
+	}
+	if end > len(origRunes) {
+		end = len(origRunes)
+	}
+	if start > end {
+		start = end
+	}
+	return Match{
+		KeywordID:   kw.ID,
+		Pattern:     kw.Pattern,
+		Category:    kw.Category,
+		MatchedText: string(origRunes[start:end]),
+		Snippet:     Snippet(content, start, end, 30),
+		Severity:    kw.Severity,
+		MatchStart:  start,
+		MatchEnd:    end,
+	}
 }
