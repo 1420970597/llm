@@ -143,15 +143,29 @@ func (app *application) releaseBlockers(ctx context.Context, projectID int64, re
 			// blocker 只保存 sample_versions.id；SPA 页面需要样本身份与
 			// 样本内版本号才能打开 `/p/:id/data/s_x?version=n`。
 			// 先按行 ID 解析，禁止把版本行 ID 当成 sampleId 拼进 URL。
-			version, err := app.studio.Batches.GetSampleVersionByID(ctx, projectID, *blocker.SampleVersionID)
+			var version model.SampleVersion
+			var err error
+			if app.studio != nil && app.studio.Batches != nil {
+				version, err = app.studio.Batches.GetSampleVersionByID(ctx, projectID, *blocker.SampleVersionID)
+			} else {
+				err = errors.New("sample version store unavailable")
+			}
 			if err == nil {
-				item.Link = fmt.Sprintf("/p/%d/data/%s?version=%d", projectID,
-					studio.SampleResourceID(version.SampleID), version.Version)
+				item.Link = releaseSampleVersionLink(projectID, version)
 			}
 		}
 		blockers = append(blockers, item)
 	}
 	return blockers
+}
+
+// releaseSampleVersionLink is the single URL conversion for a blocker that
+// points at a sample_versions row.  The row ID is deliberately not exposed in
+// the SPA path: the data page resolves a stable sample identity plus its
+// sample-local version number.
+func releaseSampleVersionLink(projectID int64, version model.SampleVersion) string {
+	return fmt.Sprintf("/p/%d/data/%s?version=%d", projectID,
+		studio.SampleResourceID(version.SampleID), version.Version)
 }
 
 // listReleases 列出项目的发布（L01）。

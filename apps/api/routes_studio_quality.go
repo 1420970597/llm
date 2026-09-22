@@ -51,8 +51,8 @@ type experimentRequest struct {
 // 筛选条件；这样同一请求在数据继续生成时仍能复现相同范围。
 type rulePreviewRequest struct {
 	QualityPolicyVersionID int64   `json:"qualityPolicyVersionId"`
-	SampleVersionIDs      []int64 `json:"sampleVersionIds"`
-	MaxHits               int     `json:"maxHits"`
+	SampleVersionIDs       []int64 `json:"sampleVersionIds"`
+	MaxHits                int     `json:"maxHits"`
 }
 
 // previewRules 执行质量规则的纯读预览（契约 §2.6）。
