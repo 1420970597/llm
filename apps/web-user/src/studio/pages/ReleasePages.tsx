@@ -177,12 +177,17 @@ export function ReleaseNewPage() {
   const { Title, Text } = Typography
 
   // `?selection=` 指向服务端选择快照（T17）：URL 只带快照 ID，不带 ID 列表。
-  const selectionSnapshotID = Number(searchParams.get('selection') ?? 0)
+  // 非法值必须在页面层被识别为错误，不能悄悄回退成手工范围。
+  const selectionParam = searchParams.get('selection')
+  const parsedSelectionID = selectionParam ? Number(selectionParam) : 0
+  const selectionSnapshotID = Number.isSafeInteger(parsedSelectionID) && parsedSelectionID > 0 ? parsedSelectionID : 0
+  const hasInvalidSelectionParam = Boolean(selectionParam) && selectionSnapshotID === 0
 
   const [samples, setSamples] = useState<SampleSummary[]>([])
   const [batches, setBatches] = useState<BatchSummary[]>([])
   const [selected, setSelected] = useState<number[]>([])
   const [selectionSnapshotItems, setSelectionSnapshotItems] = useState<number[] | null>(null)
+  const [selectionSnapshotState, setSelectionSnapshotState] = useState<'none' | 'loading' | 'ready' | 'invalid'>('none')
   const [releaseName, setReleaseName] = useState('v1.0')
   const [mappingVersionId, setMappingVersionId] = useState('')
   const [intendedUse, setIntendedUse] = useState('')
@@ -229,28 +234,70 @@ export function ReleaseNewPage() {
 
   // 从服务端选择快照恢复范围（**重新鉴权**由服务端完成）。
   useEffect(() => {
-    if (selectionSnapshotID <= 0) return
+    if (selectionParam && selectionSnapshotID <= 0) {
+      setSelectionSnapshotState('invalid')
+      setSelectionSnapshotItems(null)
+      setSnapshotNotice('发布范围快照链接无效，请从样本工作区重新选择范围')
+      return
+    }
+    if (selectionSnapshotID <= 0) {
+      setSelectionSnapshotState('none')
+      setSelectionSnapshotItems(null)
+      return
+    }
+    setSelectionSnapshotState('loading')
+    setSelectionSnapshotItems(null)
     let cancelled = false
     void (async () => {
       try {
         const resolved = await studioApi.getSelectionSnapshot(scope.projectId, selectionSnapshotID)
         if (cancelled) return
+        if (resolved.snapshot?.projectId !== scope.projectId || resolved.snapshot?.id !== selectionSnapshotID) {
+          setSelectionSnapshotState('invalid')
+          setSnapshotNotice('选择范围与当前项目不一致，请从样本工作区重新选择')
+          return
+        }
+        if (resolved.snapshot?.purpose !== 'release') {
+          setSelectionSnapshotState('invalid')
+          setSnapshotNotice('这份选择范围不是发布用途，不能用于创建发布候选；请重新冻结发布范围')
+          return
+        }
+        if (resolved.count !== resolved.items.length || resolved.snapshot.itemCount !== resolved.count) {
+          setSelectionSnapshotState('invalid')
+          setSnapshotNotice('选择范围明细不完整，已停止提交；请重新冻结发布范围')
+          return
+        }
         // 快照存的是**内容版本行 ID**；恢复时直接作为候选范围，不能只显示数量。
         setSelectionSnapshotItems(resolved.items ?? [])
+        setSelectionSnapshotState('ready')
         setSnapshotNotice(`已从服务端选择范围恢复 ${resolved.count} 个内容版本（快照 ${selectionSnapshotID}）。`)
       } catch (snapshotError) {
         if (!cancelled) {
+          setSelectionSnapshotState('invalid')
+          setSelectionSnapshotItems(null)
           setSnapshotNotice(snapshotError instanceof Error ? snapshotError.message : '选择范围已过期，请重新选择')
         }
       }
     })()
     return () => { cancelled = true }
-  }, [scope.projectId, selectionSnapshotID])
+  }, [scope.projectId, selectionParam, selectionSnapshotID])
 
   const submit = useCallback(async () => {
     setError(null)
     setBlockers([])
-    const selectedVersionIDs = selectionSnapshotItems ?? selected
+    if (hasInvalidSelectionParam || selectionSnapshotState === 'invalid') {
+      setError('发布范围快照无效或已过期，请返回样本工作区重新选择')
+      return
+    }
+    if (selectionSnapshotID > 0 && selectionSnapshotState === 'loading') {
+      setError('正在恢复服务端发布范围，请稍候再提交')
+      return
+    }
+    if (selectionSnapshotID > 0 && selectionSnapshotState !== 'ready') {
+      setError('尚未恢复服务端发布范围，请返回样本工作区重新选择')
+      return
+    }
+    const selectedVersionIDs = selectionSnapshotID > 0 ? selectionSnapshotItems ?? [] : selected
     if (selectedVersionIDs.length === 0) {
       setError('发布范围不能为空：请选择要发布的内容版本')
       return
@@ -341,7 +388,7 @@ export function ReleaseNewPage() {
         <Text strong className="block mb-2">发布范围（已接纳的内容版本）</Text>
         <Text type="tertiary" size="small" className="block mb-2">
           已选 {(selectionSnapshotItems ?? selected).length} 条
-          {selectionSnapshotItems ? '（来自服务端冻结快照）' : '（当前页）'}。候选保存的是**具体内容版本**，不是筛选条件。
+          {selectionSnapshotID > 0 ? '（来自服务端冻结快照，范围已锁定）' : '（当前页）'}。候选保存的是**具体内容版本**，不是筛选条件。
         </Text>
         {samples.length === 0 ? (
           <Empty description="还没有已接纳的内容。请先在审阅队列中完成判断。" />
@@ -352,7 +399,7 @@ export function ReleaseNewPage() {
               <div key={sample.sampleId} className="sample-row">
                 <input type="checkbox" aria-label={`选择 ${sample.title || sample.sampleKey}`}
                   checked={sample.latestVersionId > 0 && selected.includes(sample.latestVersionId)}
-                  disabled={sample.latestVersionId <= 0}
+                  disabled={selectionSnapshotID > 0 || sample.latestVersionId <= 0}
                   onChange={(event) => {
                     const versionID = sample.latestVersionId
                     if (versionID <= 0) return
