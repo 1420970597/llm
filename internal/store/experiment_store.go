@@ -533,16 +533,21 @@ func (s *ExperimentStore) RefreshExperimentCounts(ctx context.Context, experimen
 		return model.Experiment{}, err
 	}
 
-	// 终态判定（§4.2 的实验状态机）：
-	//   pending>0            → 尚未跑完；running（若已经开始）或 queued
-	//   有 error 且无 pending → partial_failed（有结果但覆盖不完整）
-	//   全部 scored          → completed
+	// 终态判定（§4.2 的实验状态机 + #160「失败不能伪装为 completed 100%」）：
+	//   pending>0 且无终态问题 → running（尚未跑完）
+	//   有 error 或 missing     → partial_failed（有结果但覆盖不完整）
+	//   全部 scored             → completed
+	//
+	// **missing 必须计入 partial_failed**（由测试发现的真实缺陷）：
+	// 只看出错会让「3 项全部缺分」显示成 completed —— 而缺分意味着某个维度
+	// 根本没有覆盖，把它标成「已完成」正是 issue 明确禁止的
+	// 「失败伪装成 completed 100%」：用户会以为质量检查已经做完。
 	status := model.ExperimentStatusQueued
 	switch {
+	case errCount > 0 || missing > 0:
+		status = model.ExperimentStatusPartialFailed
 	case pending > 0:
 		status = model.ExperimentStatusRunning
-	case errCount > 0:
-		status = model.ExperimentStatusPartialFailed
 	default:
 		status = model.ExperimentStatusCompleted
 	}
