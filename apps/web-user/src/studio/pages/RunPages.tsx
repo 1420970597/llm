@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button, Card, Empty, Input, InputNumber, Spin, Tag, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, ArrowLeftRight, Pause, Play, RefreshCw, RotateCcw } from 'lucide-react'
-import { projectPath } from '../../lib/api/studio'
+import { newIdempotencyKey, projectPath, studioApi } from '../../lib/api/studio'
 import type {
   BatchDetail,
   BatchFailure,
@@ -633,17 +633,39 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
    * 它只影响提示文案与 coverageSlice 的初值，**不触发**任何重生成。
    */
   const slice = searchParams.get('slice') ?? ''
+  const baselineID = Number(searchParams.get('baselineId') ?? 0)
+  const fromBatchID = Number(searchParams.get('fromBatchId') ?? 0)
 
   const [unitCount, setUnitCount] = useState(purpose === 'pilot' ? '12' : '500')
   const [budgetLimitMinor, setBudgetLimitMinor] = useState('')
   const [blueprintVersionId, setBlueprintVersionId] = useState('')
   const [coverageVersionId, setCoverageVersionId] = useState('')
   const [standardVersionId, setStandardVersionId] = useState('')
+  const [adoptedBatch, setAdoptedBatch] = useState<{ batchId?: number; baselineId?: number; side?: 'left' | 'right' } | null>(null)
+  const [adoptionNotice, setAdoptionNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const maxUnits = purpose === 'pilot' ? MAX_PILOT_UNITS : MAX_SCALE_UNITS
   const title = purpose === 'pilot' ? '小批试制' : '扩量规划'
+
+  // 采用比较方案后，扩量规划页必须恢复服务端保存的采用指针。
+  // URL 只携带比较/来源上下文；版本快照仍由服务端返回，避免客户端伪造配置。
+  useEffect(() => {
+    if (purpose !== 'scale' || (baselineID <= 0 && fromBatchID <= 0)) return
+    let cancelled = false
+    void studioApi.adoptedBatch(scope.projectId).then((adopted) => {
+      if (cancelled || !adopted.adopted) return
+      if (fromBatchID > 0 && adopted.batchId !== fromBatchID) return
+      setAdoptedBatch(adopted)
+      setAdoptionNotice(
+        `已带入比较基准 #${adopted.baselineId ?? baselineID} 采用的批次 ${adopted.batchId ?? fromBatchID}；请补充本次扩量范围与预算。`,
+      )
+    }).catch(() => {
+      if (!cancelled) setAdoptionNotice('比较采用记录暂时无法读取，请确认版本快照后再提交扩量。')
+    })
+    return () => { cancelled = true }
+  }, [baselineID, fromBatchID, purpose, scope.projectId])
 
   /**
    * 执行前核对（T13 要求「扩量：执行前核对」）。
@@ -712,7 +734,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
         `${projectPath(scope.projectId)}/batches`,
         payload,
         // 幂等键在本次提交内稳定：双击不会建出两个批次。
-        { headers: { 'Idempotency-Key': crypto.randomUUID() } },
+        { headers: { 'Idempotency-Key': newIdempotencyKey() } },
       )
       // 导航到**服务端分配**的批次 ID（不从本地状态拼，也不硬编码原型里的示例 ID）。
       const created = (response.data as { data?: { batchId?: number } }).data
@@ -760,6 +782,17 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
             来自覆盖矩阵的缺口方向：<code>{slice}</code>。本次规划只针对该切片，
             **不会**触发任何已有内容的重生成。
           </Text>
+        </Card>
+      ) : null}
+
+      {adoptionNotice ? (
+        <Card className="console-card mb-3" bodyStyle={{ padding: 12 }} data-adoption-context="true">
+          <Text size="small">{adoptionNotice}</Text>
+          {adoptedBatch?.side ? (
+            <Text type="tertiary" size="small" className="block mt-1">
+              采用侧：{adoptedBatch.side === 'left' ? '左侧方案' : '右侧方案'}；本页只创建新的扩量批次，不会修改原试制批次。
+            </Text>
+          ) : null}
         </Card>
       ) : null}
 
