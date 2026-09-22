@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -184,6 +185,73 @@ func TestCreateCandidatePassesCleanGate(t *testing.T) {
 		if item.EffectiveAction != model.EffectiveAccepted {
 			t.Fatalf("清单项必须冻结当时的有效处置，实际 %s", item.EffectiveAction)
 		}
+	}
+}
+
+// TestCreateCandidateResolvesReleaseSelectionSnapshot covers the Review →
+// Release handoff.  The candidate command receives only a snapshot ID; the
+// store must resolve its server-owned items, retain the snapshot provenance,
+// and reject snapshots created for another purpose.
+func TestCreateCandidateResolvesReleaseSelectionSnapshot(t *testing.T) {
+	fixture := newReleaseFixture(t)
+	ctx := context.Background()
+	selections := NewSelectionStore(fixture.pool)
+
+	releaseSnapshot, err := selections.Create(ctx, CreateSelectionSnapshotInput{
+		ProjectID:        fixture.projectID,
+		Purpose:          "release",
+		CreatedBy:        &fixture.userID,
+		SampleVersionIDs: fixture.versionIDs,
+	})
+	if err != nil {
+		t.Fatalf("create release selection snapshot: %v", err)
+	}
+	release, err := fixture.releases.CreateReleaseCandidate(ctx, CreateReleaseCandidateInput{
+		ProjectID:           fixture.projectID,
+		ReleaseName:         "v-snapshot-1.0",
+		MappingVersionID:    fixture.mappingVersionID,
+		Format:              "jsonl",
+		IntendedUse:         "SFT 训练",
+		SelectionSnapshotID: releaseSnapshot.ID,
+		CreatedBy:           &fixture.userID,
+	})
+	if err != nil {
+		t.Fatalf("create candidate from release snapshot: %v", err)
+	}
+	items, err := fixture.releases.ListReleaseItems(ctx, release.ID, release.CandidateRevision, 10)
+	if err != nil {
+		t.Fatalf("list snapshot candidate items: %v", err)
+	}
+	if len(items) != len(fixture.versionIDs) {
+		t.Fatalf("snapshot candidate should contain %d items, got %d", len(fixture.versionIDs), len(items))
+	}
+	var provenance map[string]any
+	if err := json.Unmarshal(release.Provenance, &provenance); err != nil {
+		t.Fatalf("decode release provenance: %v", err)
+	}
+	if got, ok := provenance["selectionSnapshotId"].(float64); !ok || int64(got) != releaseSnapshot.ID {
+		t.Fatalf("release provenance must retain selection snapshot id %d, got %#v", releaseSnapshot.ID, provenance)
+	}
+
+	exportSnapshot, err := selections.Create(ctx, CreateSelectionSnapshotInput{
+		ProjectID:        fixture.projectID,
+		Purpose:          "export",
+		CreatedBy:        &fixture.userID,
+		SampleVersionIDs: fixture.versionIDs,
+	})
+	if err != nil {
+		t.Fatalf("create export selection snapshot: %v", err)
+	}
+	if _, err := fixture.releases.CreateReleaseCandidate(ctx, CreateReleaseCandidateInput{
+		ProjectID:           fixture.projectID,
+		ReleaseName:         "v-snapshot-1.1",
+		MappingVersionID:    fixture.mappingVersionID,
+		Format:              "jsonl",
+		IntendedUse:         "SFT 训练",
+		SelectionSnapshotID: exportSnapshot.ID,
+		CreatedBy:           &fixture.userID,
+	}); !IsStoreValidationError(err) {
+		t.Fatalf("non-release snapshot must be rejected, got %v", err)
 	}
 }
 
