@@ -43,7 +43,11 @@ TestRunGRPOExperimentSeparatesLocalAndJudgeDimensions
 TestCreateDatasetProviderGateIntegration
 TestInsertQuestionsSkipsExactDuplicates
 TestDifficultyStatsAlwaysIncludesThreeLevels
-TestListDirectionsReadsCurrentChainStandardVersion"
+TestListDirectionsReadsCurrentChainStandardVersion
+TestInventoryPlansLegacyDatasets
+TestInventoryIsReadOnly
+TestInventoryReportsStaleDatabase
+TestInventorySourceHasNoWriteOrModelCalls"
 
 echo "[integration] go test ./... -v -count=1"
 output_file="$(mktemp)"

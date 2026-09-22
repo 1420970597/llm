@@ -17,6 +17,7 @@ import (
 //	docker run --rm --network llm_default \
 //	  -e POSTGRES_DSN='postgres://llm_factory:llm_factory_dev@postgres:5432/llm_factory?sslmode=disable' \
 //	  -v <worktree>:/w -w /w golang:1.24-alpine go test ./internal/store/ -v
+//
 // testPool 返回一个连到真实 Postgres 的连接池。
 //
 // DSN 优先读 **LLM_TEST_POSTGRES_DSN**（仓库其余集成测试的统一变量，
