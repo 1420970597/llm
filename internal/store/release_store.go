@@ -57,10 +57,16 @@ var (
 
 // Release 是一次发布（稳定身份）。
 type Release struct {
-	ID              int64           `json:"id"`
-	ProjectID       int64           `json:"projectId"`
-	ReleaseName     string          `json:"releaseName"`
-	Status          string          `json:"status"`
+	ID          int64  `json:"id"`
+	ProjectID   int64  `json:"projectId"`
+	ReleaseName string `json:"releaseName"`
+	Status      string `json:"status"`
+	// TargetKind 来自项目的目标类型。
+	//
+	// 为什么发布需要它：SFT 与 GRPO 的样本 payload 结构不同（reasoning vs
+	// levels/level_rubrics），而导出编码器必须按它选择字段。发布记录里存一份
+	// 使「这次发布的是什么类型的数据」不依赖项目的**当前**目标类型。
+	TargetKind      string          `json:"targetKind"`
 	IntendedUse     string          `json:"intendedUse"`
 	Limitations     []string        `json:"limitations"`
 	Provenance      json.RawMessage `json:"provenance"`
@@ -432,8 +438,10 @@ func (s *ReleaseStore) GetRelease(ctx context.Context, projectID, releaseID int6
 	err := s.db.QueryRow(ctx, `
     SELECT r.id, r.project_id, r.release_name, r.status, r.intended_use, r.limitations, r.provenance,
            r.quality_snapshot, r.coverage_summary, r.created_by, r.published_at, r.created_at, r.updated_at,
-           c.id, c.revision, c.blockers, c.format, c.mapping_version_id
+           c.id, c.revision, c.blockers, c.format, c.mapping_version_id,
+           p.target_kind
     FROM releases r
+    JOIN projects p ON p.id = r.project_id
     LEFT JOIN LATERAL (
       SELECT id, revision, blockers, format, mapping_version_id FROM release_candidates
       WHERE release_id = r.id ORDER BY revision DESC LIMIT 1
@@ -443,7 +451,7 @@ func (s *ReleaseStore) GetRelease(ctx context.Context, projectID, releaseID int6
 		&release.IntendedUse, &limitationsJSON, &provenance, &quality, &coverage,
 		&release.CreatedBy, &release.PublishedAt, &release.CreatedAt, &release.UpdatedAt,
 		&release.CandidateID, &candidateRevision, &blockersJSON, &release.Format,
-		&release.MappingVersionID)
+		&release.MappingVersionID, &release.TargetKind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Release{}, ErrReleaseNotFound
 	}
@@ -461,6 +469,24 @@ func (s *ReleaseStore) GetRelease(ctx context.Context, projectID, releaseID int6
 	release.QualitySnapshot = json.RawMessage(quality)
 	release.CoverageSummary = json.RawMessage(coverage)
 	return release, nil
+}
+
+// GetReleaseByID 按 ID 读取发布（**不经项目作用域**）。
+//
+// 存在的理由：发布作业由 outbox 派发，作业载荷里只有 releaseId 而没有
+// 项目 ID（契约 §5 的事件载荷「只含对象 ID 与版本」）。worker 因此需要
+// 一条按 ID 读取的路径 —— 它是系统级动作，不经过用户授权。
+// **不要**在 API 层用它：那会绕过项目作用域校验（API 一律用 GetRelease）。
+func (s *ReleaseStore) GetReleaseByID(ctx context.Context, releaseID int64) (Release, error) {
+	var projectID int64
+	if err := s.db.QueryRow(ctx, `
+    SELECT project_id FROM releases WHERE id = $1`, releaseID).Scan(&projectID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Release{}, ErrReleaseNotFound
+		}
+		return Release{}, err
+	}
+	return s.GetRelease(ctx, projectID, releaseID)
 }
 
 // ListReleases 列出项目的发布（候选与已发布都返回，界面自行区分）。
