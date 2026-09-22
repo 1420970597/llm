@@ -991,7 +991,7 @@ export const studioApi = {
         `${projectPath(projectId)}/samples/${sampleId}/versions/${version}/decisions`,
         payload,
       )
-      .then((response) => response.data),
+      .then((response) => unwrapStudioData<DecisionResult>(response)),
 
   /** `GET .../decisions`：返回**全部**判断（含被取代的）与当前投影。 */
   listDecisions: (projectId: number, sampleId: string, version: number) =>
@@ -1041,7 +1041,7 @@ export const studioApi = {
   createSelectionSnapshot: (projectId: number, payload: CreateSelectionSnapshotRequest) =>
     client
       .post(`${projectPath(projectId)}/selection-snapshots`, payload)
-      .then((response) => response.data as SelectionSnapshot),
+      .then((response) => unwrapStudioData<SelectionSnapshot>(response)),
 
   /** `POST P/releases`：创建候选（同事务分配 candidateId + releaseId + 版本名）。 */
   createReleaseCandidate: (projectId: number, payload: CreateReleaseCandidateRequest) =>
