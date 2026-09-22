@@ -122,11 +122,13 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
     void load('', false)
   }, [load])
 
-  const toggle = useCallback((sampleID: number, checked: boolean) => {
+  // 选择快照、质量实验与发布命令都接受 sample_versions.id；样本身份
+  // sampleId 只用于页面路由和展示，不能作为冻结范围的键。
+  const toggle = useCallback((sampleVersionID: number, checked: boolean) => {
     setSelected((previous) => {
       const next = new Set(previous)
-      if (checked) next.add(sampleID)
-      else next.delete(sampleID)
+      if (checked) next.add(sampleVersionID)
+      else next.delete(sampleVersionID)
       return next
     })
   }, [])
@@ -136,7 +138,9 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
     setSnapshotNotice(null)
     try {
       const snapshot = await studioApi.createSelectionSnapshot(scope.projectId, {
-        purpose: 'export',
+        // 审阅工作区的冻结范围会沿用到发布/交付，使用 release 口径让服务端
+        // 拒绝把一个仅供导出的快照误带进发布候选。
+        purpose: 'release',
         fromFilter: {
           reviewStatus: reviewStatus === '' ? undefined : reviewStatus,
           search: search.trim() === '' ? undefined : search.trim(),
@@ -279,9 +283,13 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
             {samples.map((sample) => (
               <div key={sample.sampleId} className="sample-row" data-sample-id={sample.resourceId}>
                 <Checkbox
-                  checked={selected.has(sample.sampleId)}
+                  checked={sample.latestVersionId > 0 && selected.has(sample.latestVersionId)}
+                  disabled={sample.latestVersionId <= 0}
                   aria-label={`选择 ${sample.title || sample.sampleKey}`}
-                  onChange={(event) => toggle(sample.sampleId, Boolean(event.target.checked))}
+                  onChange={(event) => {
+                    if (sample.latestVersionId <= 0) return
+                    toggle(sample.latestVersionId, Boolean(event.target.checked))
+                  }}
                 />
                 <span>
                   <Text strong>{sample.title || sample.sampleKey}</Text>
@@ -289,7 +297,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
                     {sample.resourceId}
                   </Text>
                 </span>
-                <span>v{sample.latestVersion}</span>
+                <span>v{sample.latestVersion}（版本 ID {sample.latestVersionId || '暂无'}）</span>
                 <span>
                   <Tag size="small" color={statusColor(sample.reviewStatus)}>
                     {REVIEW_STATUS_LABEL[sample.reviewStatus] ?? sample.reviewStatus}
