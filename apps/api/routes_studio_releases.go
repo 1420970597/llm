@@ -51,13 +51,16 @@ func registerReleaseRoutes(mux *http.ServeMux, app *application) {
 
 // releaseCandidateRequest 是创建/修订候选的请求体（契约 §2.8）。
 type releaseCandidateRequest struct {
-	ReleaseName      string         `json:"releaseName"`
-	SampleVersionIDs []int64        `json:"sampleVersionIds"`
-	MappingVersionID int64          `json:"mappingVersionId"`
-	Format           string         `json:"format"`
-	IntendedUse      string         `json:"intendedUse"`
-	Limitations      []string       `json:"limitations"`
-	Provenance       map[string]any `json:"provenance"`
+	ReleaseName      string  `json:"releaseName"`
+	SampleVersionIDs []int64 `json:"sampleVersionIds"`
+	// SelectionSnapshotID 是发布页从审阅工作区带来的服务端冻结范围。
+	// 与 sampleVersionIds 互斥；候选 store 会再次鉴权并解析快照。
+	SelectionSnapshotID int64          `json:"selectionSnapshotId"`
+	MappingVersionID    int64          `json:"mappingVersionId"`
+	Format              string         `json:"format"`
+	IntendedUse         string         `json:"intendedUse"`
+	Limitations         []string       `json:"limitations"`
+	Provenance          map[string]any `json:"provenance"`
 }
 
 // createReleaseCandidate 创建发布候选（同事务分配 candidateId + releaseId + 版本名）。
@@ -76,7 +79,8 @@ func (app *application) createReleaseCandidate(w http.ResponseWriter, r *http.Re
 		MappingVersionID: request.MappingVersionID, Format: request.Format,
 		IntendedUse: request.IntendedUse, Limitations: request.Limitations,
 		Provenance: request.Provenance, SampleVersionIDs: request.SampleVersionIDs,
-		CreatedBy: &user.ID,
+		SelectionSnapshotID: request.SelectionSnapshotID,
+		CreatedBy:           &user.ID,
 	})
 	if err != nil {
 		app.writeReleaseError(w, r, err)

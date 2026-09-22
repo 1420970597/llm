@@ -590,7 +590,9 @@ export type ReleaseCard = {
 export type CreateReleaseCandidateRequest = {
   releaseName: string
   /** 具体内容版本（不是筛选条件）。 */
-  sampleVersionIds: number[]
+  sampleVersionIds?: number[]
+  /** 服务端选择快照；与 sampleVersionIds 互斥。 */
+  selectionSnapshotId?: number
   mappingVersionId: number
   format?: string
   intendedUse: string

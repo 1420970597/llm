@@ -96,7 +96,11 @@ type CreateReleaseCandidateInput struct {
 	Provenance       map[string]any
 	// SampleVersionIDs 是**具体范围**（不是筛选条件）。
 	SampleVersionIDs []int64
-	CreatedBy        *int64
+	// SelectionSnapshotID 是服务端冻结的发布范围。存在时由 store 重新读取
+	// 快照明细，调用方提供的 SampleVersionIDs 不参与取值，避免客户端改写
+	// 「审阅页看到的范围」与「实际候选范围」之间的边界。
+	SelectionSnapshotID int64
+	CreatedBy           *int64
 }
 
 // CreateReleaseCandidate 创建候选：同事务分配 releaseId + 候选 + 清单 + 门槛。
@@ -108,7 +112,10 @@ func (s *ReleaseStore) CreateReleaseCandidate(ctx context.Context, input CreateR
 	if err := model.ValidateReleaseName(input.ReleaseName); err != nil {
 		return Release{}, err
 	}
-	if len(input.SampleVersionIDs) == 0 {
+	if input.SelectionSnapshotID > 0 && len(input.SampleVersionIDs) > 0 {
+		return Release{}, &apiStoreError{Message: "发布范围同时指定了选择快照和内容版本，不能混用"}
+	}
+	if input.SelectionSnapshotID <= 0 && len(input.SampleVersionIDs) == 0 {
 		return Release{}, &apiStoreError{Message: "发布范围不能为空，请先选择要发布的内容版本"}
 	}
 	if input.Format == "" {
@@ -120,6 +127,27 @@ func (s *ReleaseStore) CreateReleaseCandidate(ctx context.Context, input CreateR
 	if err := validateReleaseTargetFormatTx(ctx, s.db, input.ProjectID, input.MappingVersionID, input.Format); err != nil {
 		return Release{}, err
 	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Release{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if input.SelectionSnapshotID > 0 {
+		input.SampleVersionIDs, err = resolveReleaseSelectionSnapshotTx(ctx, tx, input.ProjectID, input.SelectionSnapshotID)
+		if err != nil {
+			return Release{}, err
+		}
+		if len(input.SampleVersionIDs) == 0 {
+			return Release{}, &apiStoreError{Message: "发布选择快照为空，请返回样本工作区重新选择范围"}
+		}
+		if input.Provenance == nil {
+			input.Provenance = map[string]any{}
+		}
+		// 服务端写入的值覆盖客户端同名字段，数据卡中的用途来源可追溯。
+		input.Provenance["selectionSnapshotId"] = input.SelectionSnapshotID
+	}
+
 	limitations, err := json.Marshal(input.Limitations)
 	if err != nil {
 		return Release{}, err
@@ -128,12 +156,6 @@ func (s *ReleaseStore) CreateReleaseCandidate(ctx context.Context, input CreateR
 	if err != nil {
 		return Release{}, err
 	}
-
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return Release{}, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
 
 	// **先校验范围再写 release 行**（这是一次真实缺陷的修复，由测试发现）：
 	// 初版先插入 releases 再在重建清单时校验范围，于是「项目不存在」或
@@ -773,6 +795,56 @@ func insertCandidateTx(ctx context.Context, tx pgx.Tx, releaseID int64, input Cr
 		return 0, err
 	}
 	return candidateID, nil
+}
+
+// resolveReleaseSelectionSnapshotTx resolves a release-purpose selection while
+// holding the snapshot row lock used by candidate creation.  The purpose check
+// is deliberately server-side: a client must not be able to reuse an
+// experiment/export snapshot by merely changing the URL or request body.
+func resolveReleaseSelectionSnapshotTx(ctx context.Context, tx pgx.Tx, projectID, snapshotID int64) ([]int64, error) {
+	var purpose string
+	var itemCount int
+	if err := tx.QueryRow(ctx, `
+    SELECT purpose, item_count
+    FROM sample_selection_snapshots
+    WHERE id = $1 AND project_id = $2
+      AND (expires_at IS NULL OR expires_at > NOW())
+    FOR SHARE`, snapshotID, projectID).Scan(&purpose, &itemCount); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrSelectionSnapshotNotFound
+		}
+		return nil, err
+	}
+	if purpose != "release" {
+		return nil, &apiStoreError{Message: "该选择快照不是发布用途，不能创建发布候选"}
+	}
+
+	rows, err := tx.Query(ctx, `
+    SELECT sample_version_id
+    FROM sample_selection_items
+    WHERE snapshot_id = $1
+    ORDER BY sample_version_id`, snapshotID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make([]int64, 0, itemCount)
+	for rows.Next() {
+		var versionID int64
+		if err := rows.Scan(&versionID); err != nil {
+			return nil, err
+		}
+		ids = append(ids, versionID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(ids) != itemCount {
+		return nil, &apiStoreError{Message: fmt.Sprintf(
+			"发布选择快照明细不完整（记录 %d 条、实际 %d 条），请重新选择范围",
+			itemCount, len(ids))}
+	}
+	return ids, nil
 }
 
 // rebuildReleaseItemsTx 重建清单（先删该修订的旧行再插）。

@@ -310,9 +310,15 @@ export function ReleaseNewPage() {
     try {
       const result = await studioApi.createReleaseCandidate(scope.projectId, {
         releaseName: releaseName.trim(),
-        // 这里提交的是**sample_versions 行 ID**；样本身份 ID 与样本内版本号
-        // 都不能替代它。候选因此冻结了用户此刻明确选择的内容。
-        sampleVersionIds: selectedVersionIDs,
+        // 从审阅页进入时只提交服务端快照 ID；后端会在候选事务内
+        // 重新鉴权并解析明细，客户端不能通过篡改版本列表改变发布范围。
+        ...(selectionSnapshotID > 0
+          ? { selectionSnapshotId: selectionSnapshotID }
+          : {
+              // 手工范围提交的是**sample_versions 行 ID**；样本身份 ID
+              // 与样本内版本号都不能替代它。
+              sampleVersionIds: selectedVersionIDs,
+            }),
         mappingVersionId: Number(mappingVersionId) || 0,
         format: 'jsonl',
         intendedUse: intendedUse.trim(),
