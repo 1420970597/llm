@@ -26,6 +26,7 @@ import {
   globalDetailRoutes,
   globalRoutes,
   isCatalogRouteMounted,
+  fillRoutePathByKey,
   projectDetailRoutes,
   projectRoutes,
   wizardRoutes,
@@ -294,7 +295,7 @@ class StudioErrorBoundary extends Component<{ children: ReactNode; onLogout: () 
               {this.state.message}
             </Text>
             <div className="mt-3 flex gap-2">
-              <Button size="small" onClick={() => window.location.assign('/projects')}>
+              <Button size="small" onClick={() => window.location.assign(fillRoutePathByKey('projects', {}))}>
                 返回数据项目
               </Button>
               <Button size="small" onClick={this.props.onLogout}>
@@ -358,11 +359,10 @@ function legacyHrefFor(route: StudioRouteMeta, projectId?: string, search = ''):
 /**
  * StudioFallback 是 `/` 的落点。
  *
- * 落到 `/projects` 而不是 `/today`：今日工作（T27）尚未交付，
- * 让新用户一进来看到一个「尚未交付」的页面是最差的首次体验。
+ * 今日工作是 Atelier 的默认入口，用户进入系统后先看到待办和下一决定。
  */
 export function studioDefaultPath(): string {
-  return '/projects'
+  return fillRoutePathByKey('today', {})
 }
 
 /** 供测试引用：当前构建下已挂载的目录评审路由数（生产必须为 0）。 */

@@ -630,14 +630,14 @@ export type BreadcrumbItem = {
 export function breadcrumbsFor(pathname: string, params: Record<string, string | number>): BreadcrumbItem[] {
   const current = matchRoute(pathname)
   if (!current) {
-    return [{ label: '数据项目', path: fillRoutePath('/projects', {}) }]
+    return [{ label: '数据项目', path: fillRoutePathByKey('projects', {}) }]
   }
   if (current.kind === 'project') {
     const items: BreadcrumbItem[] = [
-      { label: '数据项目', path: '/projects' },
+      { label: '数据项目', path: fillRoutePathByKey('projects', {}) },
       {
         label: `项目 ${params.projectId ?? ''}`.trim(),
-        path: fillRoutePath('/p/:projectId/overview', params),
+        path: fillRoutePathByKey('project.overview', params),
       },
     ]
     // 子页（navParent 非空）先给出所属标签，再给出自己。
