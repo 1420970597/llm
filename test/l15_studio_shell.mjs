@@ -104,8 +104,9 @@ record(
 record(
   'Atelier 默认入口与错误边界使用路由元数据',
   studioRoutesSource.includes("fillRoutePathByKey('today', {})") &&
-    studioRoutesSource.includes("fillRoutePathByKey('projects', {})"),
-  '默认入口为 today，错误边界回到 projects',
+    studioRoutesSource.includes("fillRoutePathByKey('projects', {})") &&
+    studioRoutesSource.includes('<Route index element={<Navigate to={studioDefaultPath()} replace />} />'),
+  '默认入口为 today，根路径在认证壳内跳转，错误边界回到 projects',
 )
 
 /**
@@ -408,6 +409,19 @@ record(
   '面包屑包含层级（数据项目 → 项目 → 所属标签 → 当前页）',
   crumbLabels[0] === '数据项目' && crumbLabels.includes('生产') && crumbLabels[crumbLabels.length - 1] === '扩量规划',
   crumbLabels.join(' / '),
+)
+
+const detailCrumbs = prodRoutes.breadcrumbsFor('/recipes/7', { recipeId: 7 })
+const wizardCrumbs = prodRoutes.breadcrumbsFor('/new/coverage', {})
+record(
+  '入口详情与向导步骤面包屑保留父级路径',
+  detailCrumbs[0]?.label === '方案库' &&
+    detailCrumbs[0]?.path === '/recipes' &&
+    wizardCrumbs[0]?.label === '新建项目' &&
+    wizardCrumbs[0]?.path === '/new',
+  `详情=${detailCrumbs.map((item) => `${item.label}:${item.path ?? '-'}`).join(' / ')}；向导=${wizardCrumbs
+    .map((item) => `${item.label}:${item.path ?? '-'}`)
+    .join(' / ')}`,
 )
 
 /** 每个可跳转路径都能从元数据生成（前端不自行拼 URL）。 */

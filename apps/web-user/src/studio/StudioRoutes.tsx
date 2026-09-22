@@ -191,6 +191,11 @@ export function studioRouteTree({ user, onLogout }: StudioRouteTreeProps) {
           </AuthenticatedShell>
         }
       >
+        {/* Atelier 的默认落点是「今日工作」。放在 pathless 认证壳内，
+            未登录时仍由 AuthenticatedShell 统一带回登录页；已登录访问根路径
+            不应再落入旧 /console 外壳。 */}
+        <Route index element={<Navigate to={studioDefaultPath()} replace />} />
+
         {/* 项目向导三步（W03–W05）：不是菜单项，但同样由元数据派生。 */}
         {wizardRoutes.map((route) => (
           <Route key={route.key} path={route.path} element={<ModuleElement route={route} />} />
