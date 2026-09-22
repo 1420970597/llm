@@ -194,11 +194,13 @@ func (app *application) listSamples(w http.ResponseWriter, r *http.Request) {
 	//（它们没有投影行，按 pending 处理）。
 	// 显式指定任何一个审阅状态（含 accepted）时不再套用「只看未审阅」，
 	// 否则「筛选已接纳」会永远得到空列表 —— 而那会让人以为判断丢了。
-	reviewedExplicitly := query.Status != ""
-	reviewStatus := query.Status
-	switch reviewStatus {
-	case "", model.EffectivePending, model.EffectiveAccepted, model.EffectiveQuarantined, model.EffectiveConflict:
-	default:
+	// `status=all` is an explicit full-range request used by quality/release
+	// planning. It must not be confused with an omitted status: omitted means
+	// the review queue's default pending-only view, while `all` means include
+	// every effective review state. Normalize it before passing the query to
+	// the store so the SQL remains a single, auditable predicate.
+	reviewStatus, reviewedExplicitly, valid := normalizeSampleReviewStatus(query.Status)
+	if !valid {
 		app.writeStudioError(w, r, studio.NewValidationError(
 			"审阅状态筛选只能是 pending、accepted、quarantined 或 conflict",
 			[]model.FieldError{{Field: "status",
@@ -259,6 +261,23 @@ func (app *application) listSamples(w http.ResponseWriter, r *http.Request) {
 		func(summary sampleSummary) studio.Cursor {
 			return studio.Cursor{Time: parseAPITime(summary.CreatedAt), ID: summary.SampleID}
 		}))
+}
+
+// normalizeSampleReviewStatus keeps the two intentional meanings of an empty
+// status separate: an omitted value selects the review queue default, while
+// an explicit `all` asks for the complete sample set. The store receives an
+// empty ReviewStatus for both because `UnreviewedOnly` carries that distinction.
+func normalizeSampleReviewStatus(raw string) (status string, explicit bool, valid bool) {
+	switch raw {
+	case "":
+		return "", false, true
+	case "all":
+		return "", true, true
+	case model.EffectivePending, model.EffectiveAccepted, model.EffectiveQuarantined, model.EffectiveConflict:
+		return raw, true, true
+	default:
+		return "", false, false
+	}
 }
 
 // ---------------------------------------------------------------------------
