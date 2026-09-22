@@ -6,8 +6,10 @@ import { newIdempotencyKey, projectPath, studioApi } from '../../lib/api/studio'
 import type {
   BatchDetail,
   BatchFailure,
+  BatchSnapshot,
   BatchSummary,
   CreateBatchRequest,
+  AdoptedBatch,
   Page,
 } from '../../lib/api/studio'
 import { client } from '../../lib/api'
@@ -641,7 +643,14 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   const [blueprintVersionId, setBlueprintVersionId] = useState('')
   const [coverageVersionId, setCoverageVersionId] = useState('')
   const [standardVersionId, setStandardVersionId] = useState('')
-  const [adoptedBatch, setAdoptedBatch] = useState<{ batchId?: number; baselineId?: number; side?: 'left' | 'right' } | null>(null)
+  const [qualityPolicyVersionId, setQualityPolicyVersionId] = useState('')
+  const [mappingVersionId, setMappingVersionId] = useState('')
+  /**
+   * 采用指针只保存批次/基准 ID；版本快照必须再从批次详情读取。
+   * 不把版本 ID 放在 URL 或 localStorage，避免用户改 URL 后把另一套配置
+   * 伪装成比较采用的方案。五类版本都是该批次真正执行时冻结的值。
+   */
+  const [adoptedBatch, setAdoptedBatch] = useState<(AdoptedBatch & { snapshot: BatchSnapshot }) | null>(null)
   const [adoptionNotice, setAdoptionNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -657,12 +666,25 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   useEffect(() => {
     if (purpose !== 'scale' || (baselineID <= 0 && fromBatchID <= 0)) return
     let cancelled = false
-    void studioApi.adoptedBatch(scope.projectId).then((adopted) => {
-      if (cancelled || !adopted.adopted) return
+    void studioApi.adoptedBatch(scope.projectId).then(async (adopted) => {
+      if (cancelled || !adopted.adopted || !adopted.batchId) return
       if (fromBatchID > 0 && adopted.batchId !== fromBatchID) return
-      setAdoptedBatch(adopted)
+
+      // `/adopted-batch` 是服务端持久化的采用指针，批次详情则是唯一可信的
+      // 五类版本快照来源。先读指针再读详情，不能让客户端通过 query 参数
+      // 自己拼 blueprint/coverage/standard/quality/mapping 版本。
+      const detail = await studioApi.getBatch(scope.projectId, `b_${adopted.batchId}`)
+      if (cancelled) return
+      setAdoptedBatch({ ...adopted, snapshot: detail.snapshot })
+      const snapshot = detail.snapshot
+      const formatVersion = (value: number | undefined) => value && value > 0 ? `#${value}` : '未引用'
+      setBlueprintVersionId(snapshot.blueprintVersionId && snapshot.blueprintVersionId > 0 ? String(snapshot.blueprintVersionId) : '')
+      setCoverageVersionId(snapshot.coverageVersionId && snapshot.coverageVersionId > 0 ? String(snapshot.coverageVersionId) : '')
+      setStandardVersionId(snapshot.standardVersionId && snapshot.standardVersionId > 0 ? String(snapshot.standardVersionId) : '')
+      setQualityPolicyVersionId(snapshot.qualityPolicyVersionId && snapshot.qualityPolicyVersionId > 0 ? String(snapshot.qualityPolicyVersionId) : '')
+      setMappingVersionId(snapshot.mappingVersionId && snapshot.mappingVersionId > 0 ? String(snapshot.mappingVersionId) : '')
       setAdoptionNotice(
-        `已带入比较基准 #${adopted.baselineId ?? baselineID} 采用的批次 ${adopted.batchId ?? fromBatchID}；请补充本次扩量范围与预算。`,
+        `已带入比较基准 #${adopted.baselineId ?? baselineID} 采用的批次 ${adopted.batchId ?? fromBatchID}；已恢复蓝图 ${formatVersion(snapshot.blueprintVersionId)}、覆盖 ${formatVersion(snapshot.coverageVersionId)}、标准 ${formatVersion(snapshot.standardVersionId)}、质量策略 ${formatVersion(snapshot.qualityPolicyVersionId)}、映射 ${formatVersion(snapshot.mappingVersionId)}。请补充本次扩量范围与预算。`,
       )
     }).catch(() => {
       if (!cancelled) setAdoptionNotice('比较采用记录暂时无法读取，请确认版本快照后再提交扩量。')
@@ -720,8 +742,8 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       blueprintVersionId: Number(blueprintVersionId),
       coverageVersionId: coverageVersionId.trim() === '' ? 0 : Number(coverageVersionId),
       standardVersionId: standardVersionId.trim() === '' ? 0 : Number(standardVersionId),
-      qualityPolicyVersionId: 0,
-      mappingVersionId: 0,
+      qualityPolicyVersionId: qualityPolicyVersionId.trim() === '' ? 0 : Number(qualityPolicyVersionId),
+      mappingVersionId: mappingVersionId.trim() === '' ? 0 : Number(mappingVersionId),
       unitCount: Number(unitCount),
       budget: { currency: 'CNY' },
     }
@@ -755,9 +777,11 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
     blueprintVersionId,
     budgetLimitMinor,
     coverageVersionId,
+    mappingVersionId,
     navigate,
     purpose,
     ready,
+    qualityPolicyVersionId,
     scope.projectId,
     slice,
     standardVersionId,
@@ -823,6 +847,22 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
               value={standardVersionId}
               onChange={(value) => setStandardVersionId(value)}
               placeholder="留空 = 不使用标准步骤"
+            />
+          </Field>
+          <Field label="质量策略版本 ID" fieldId="plan-quality-policy">
+            <Input
+              id="plan-quality-policy"
+              value={qualityPolicyVersionId}
+              onChange={(value) => setQualityPolicyVersionId(value)}
+              placeholder="留空 = 不绑定质量策略"
+            />
+          </Field>
+          <Field label="映射版本 ID" fieldId="plan-mapping">
+            <Input
+              id="plan-mapping"
+              value={mappingVersionId}
+              onChange={(value) => setMappingVersionId(value)}
+              placeholder="留空 = 使用默认映射"
             />
           </Field>
           <Field label={`计划单元数（1–${maxUnits}）`} required fieldId="plan-units">

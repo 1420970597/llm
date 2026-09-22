@@ -132,7 +132,21 @@ export function ComparePage() {
         side,
         reason: reason.trim(),
       })
-      setNextStep({ label: result.nextStep.label, href: result.nextStep.href })
+      // 只把服务端返回的批次/基准指针放进 URL。版本 ID 等配置仍由
+      // `/adopted-batch` + `/batches/{id}` 读取，避免把可编辑的 query
+      // 参数当成执行配置。不要直接使用服务端 href：这里固定为本项目
+      // 的 SPA 路由，防止 API 链接或外部地址把用户带出 Atelier。
+      const planningParams = new URLSearchParams()
+      const prefill = result.nextStep.prefill ?? {}
+      for (const key of ['fromBatchId', 'baselineId'] as const) {
+        const value = Number(prefill[key])
+        if (Number.isSafeInteger(value) && value > 0) planningParams.set(key, String(value))
+      }
+      const query = planningParams.toString()
+      setNextStep({
+        label: result.nextStep.label,
+        href: `/p/${scope.projectId}/runs/new${query ? `?${query}` : ''}`,
+      })
       setReason('')
       await load()
     } catch (adoptErrorValue) {
