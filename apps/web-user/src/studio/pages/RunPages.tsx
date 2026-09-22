@@ -677,7 +677,8 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       if (cancelled) return
       setAdoptedBatch({ ...adopted, snapshot: detail.snapshot })
       const snapshot = detail.snapshot
-      const formatVersion = (value: number | undefined) => value && value > 0 ? `#${value}` : '未引用'
+      const formatVersion = (value: number | undefined): string =>
+        value && value > 0 ? `#${value}` : '未引用'
       setBlueprintVersionId(snapshot.blueprintVersionId && snapshot.blueprintVersionId > 0 ? String(snapshot.blueprintVersionId) : '')
       setCoverageVersionId(snapshot.coverageVersionId && snapshot.coverageVersionId > 0 ? String(snapshot.coverageVersionId) : '')
       setStandardVersionId(snapshot.standardVersionId && snapshot.standardVersionId > 0 ? String(snapshot.standardVersionId) : '')
