@@ -144,6 +144,17 @@
 | 2026-09-22 | T34 | 契约要求文档含「模型/费用未知边界、操作/恢复/迁移 runbook、字段 schema、版本与数据保留策略」，但未规定落点 | 落成两份新文档：`docs/plans/atelier-field-schema-and-retention.md`（样本/导出字段 schema、版本语义、保留与删除策略、模型与费用的未知边界、质量结论的置信边界）与已有的 `docs/plans/studio-rollout-runbook.md`（操作/恢复）＋`docs/plans/legacy-migration-report.md`（迁移）。另外把 T24–T33 新增的端点与字段登记进 `docs/plans/atelier-api-contract.md` §8，标明「增量交付、不改变 §1–§7」，避免新端点只存在于代码里 |
 | 2026-09-22 | T34 | 交付状态 | **已交付（方案与文档部分）**：`docs/plans/atelier-acceptance-protocol.md`（参与者/任务脚本/三角色越权验证/记录表/DoD 证据清单/阻塞分级/收尾条件）、`docs/plans/atelier-field-schema-and-retention.md`（字段 schema + 版本语义 + 保留策略 + 未知费用边界 + 置信边界）、`atelier-api-contract.md` §8（T24–T33 增量端点登记）、`todo.md` 的 T01–T34 状态表（与本节一致）。**未交付（并如实标注）**：5–8 名真实参与者的会话、阻塞级问题的处置记录、真实 provider/对象存储故障注入。因此 **T34 不能勾选，总 Issue #160 也不能关闭** |
 | 2026-09-22 | T26 | 契约要求「以方案创建项目复制实际配置，保留 sourceRecipeVersionId」，未规定「复制」的边界 | 冻结为：复制的是方案版本里的**内容快照**，并把它写成**新项目自己的文档版本**，同时把蓝图里的四类版本引用（覆盖/标准/质量策略/映射）**重映射**到新项目里刚创建的版本行。理由：来源蓝图里的 `coverageVersionId` 等指向来源项目的版本行，原样带过来要么违反「引用必须同项目」的复合外键（复制直接失败），要么指向不属于本项目的版本（看起来复制成功、其实引用是错的）。占位字段 `SourceRecipeVersionID` 因此从「只校验形态」升级为真实输入，并**参与创建幂等摘要**（同键配不同方案版本 → 409，而不是把另一版方案的项目当回放返回）|
+| 2026-09-22 | T27 | 契约要求「动态读取持久化事件」但未规定是否新建事件表 | **不新建事件表**：动态直接读取既有的 `batch_events` 与 `audit_logs`。另建一张事件表意味着每条现有写路径都要多写一行，而漏写一处的表现是「某类事件在动态里永远不出现」——那种缺口不会报错，只会让用户以为没发生。代价是合并流的分页游标必须带**来源**（见下一条）|
+| 2026-09-22 | T27 | 契约未规定多来源合并流的分页键 | 新增 `model.ActivityCursor{Time, Source, ID}`，**不复用**共享的 `Cursor{Time, ID}`：`batch_events` 与 `audit_logs` 的主键各自递增，`(时间, ID)` 不是全序，会漏行或重复行。测试逐页拉取（limit=2）断言 7 条事件**无重复无遗漏**，并含「游标未前进」的收敛保护 |
+| 2026-09-22 | T27 | 「评论更正」如何与部分唯一索引共存（实测踩到 23505 与 23503） | 采用与 `experiment_scores` 相同的顺序：先 `nextval` 预分配新行 id → 标记旧行 `superseded_by = 新 id` → 用显式 id 插入新行。若先插入再标记，两行在那一刻都是 `superseded_by IS NULL`，部分唯一索引立刻报 23505；而「先标记」又需要外键**推迟到提交时检查**，因此 0033 把修订链的两个外键写成 `DEFERRABLE INITIALLY DEFERRED` |
+| 2026-09-22 | T27 | 交付状态 | **已交付**：迁移 0033、`internal/model/activity.go`（待办/动态/游标/评论）、`internal/store/activity_store.go`（待办聚合、动态分页、阅读水位、评论、搜索）、`apps/api/routes_studio_activity.go`（今日工作/动态/已读/搜索/评论 4 端点）、`TodayPages.tsx`（今日工作/动态/命令搜索）、`CommentsPanel.tsx`（审阅页讨论面板）、5 个真实 DB 测试 + 前端构建。**未交付**：SSE 实时推送（T27 明确属后续优化）、真实浏览器下的 390/768/1440 与键盘走查（属 T29/T34）|
+| 2026-09-22 | T28 | T03 已有项目级成员命令，T28 未说明工作区成员如何与之分工 | 新增 `internal/store/workspace_member_store.go`：工作区成员列表/添加/角色变更/移除（要求工作区管理员），与项目成员管理**职责分开**。三条规则由测试冻结：最后一名工作区管理员不可移除或降级；仍是某项目最后一名 owner 时拒绝移除并列出阻塞项目（blocker 带 `Link` 可直达）；移除成功时**同时清理**其在本工作区的项目成员关系 —— 否则界面说「已移出」而数据仍可读 |
+| 2026-09-22 | T28 | 「连接页复用 provider/storage 管理能力」如何不泄露密钥 | 新增独立的只读端点 `GET /api/v1/settings/connection-options`（返回掩码标识），**不**把 `/api/v1/admin/providers` 开放给普通用户：后者是可写资源，当公共选项列表等于把治理面入口发出去。前端连接页只读，并写明「新增/修改与测试连接在管理员页、测试与保存分离」|
+| 2026-09-22 | T28 | 交付状态 | **已交付**：`workspace_member_store.go`、`apps/api/routes_studio_settings.go`（工作区成员 3 端点 + connection-options + `GET P/budget`）、`SettingsPages.tsx`（连接与存储/团队与角色/帮助）、`settingsApi`、`/settings/*` 与 `/help` 翻为 available，及 3 个真实 DB 测试。**未交付**：邮件邀请（T28 明确「邮件邀请未接入则不放假按钮」）、连接/存储的测试按钮（属管理员页既有能力，本轮未改）|
+| 2026-09-22 | T29 | 契约要求「离线写入不显示成功」，但未规定哪些操作可以入队 | 冻结为**允许清单**（`queueableKinds` 只含非收费、可安全重放的草稿意图）：启动运行/发布/成员与连接变更**拒绝入队**。用允许清单而不是禁止清单：新增一种写操作时它默认不可入队，必须显式加进来；反过来会让将来新增的收费操作默认可以后台重放，而那是会真实花钱的。另：条目绑定 actor（键含 userId，冲刷时校验当前账号）、离线只返回「待同步（未提交）」、TTL ≤ 15 分钟、revision 冲突保留草稿、权限失败清理并停止同步、配额失败显式报错 |
+| 2026-09-22 | T29 | 「换账号不误提交」如何保证 | 队列键含 userId（与 T10 向导草稿同一形态的隐私约束），读取时再按 actor 过滤，冲刷前校验当前账号一致；换账号冲刷不提交任何内容、也不返回成功。守卫 `test/l15_offline_queue.mjs` 对这条与「收费操作拒绝入队」做了**变异自证**（放宽允许清单必须被断言捕获） |
+| 2026-09-22 | T29 | 交付状态 | **已交付**：`lib/pendingQueue.ts`（允许清单/TTL/actor 绑定/冲突保留/撤权清理/配额报错）、审阅页「保存为本地草稿（待同步）」接入与待同步计数、退出账号清理队列、无障碍与窄屏 CSS（`:focus-visible`、中文长文本 `overflow-wrap`、触屏目标下限、`prefers-reduced-motion`）、守卫 `test/l15_offline_queue.mjs`（已加入 CI）|
+| 2026-09-22 | T29 | **未执行（如实标注）** | 真实浏览器断网切换与 390/768/1440 实测、键盘走查、10 万样本基准（设备/并发/响应时间）。T29 的验收项要求「拟定基准并记录实测数据、不预报未经测量的性能提升」，因此本行不勾选、文档也不给数值结论 |
 | 2026-09-22 | T26 | rubric 版本引用无法复制，契约未规定如何处理 | `BlueprintEvaluationNode.RubricVersionID` 指向的版本行在本轮的五类文档里没有对应类型（没有 rubric 文档）。处理：**清空并在复制结果里标记** `clearedRubricVersion`，界面提示「请重新选择量表」。不原样保留是因为它必然指向跨项目版本（见上一条）；也不静默忽略，因为那会让用户以为评估节点还能直接用 |
 | 2026-09-22 | T26 | §3.1 的「全局四入口」与方案详情路由的关系 | 详情页（`/recipes/:recipeId`）放进新的 `globalDetailRoutes` 而不是 `globalRoutes`：契约 §3.1 规定「四入口」是导航项，详情页不是第五个入口。`test/l15_studio_shell.mjs` 直接断言 `globalRoutes` 数量（防止产品目标被悄悄缩减），因此把详情页混进去会（正确地）让守卫变红；守卫的路线总数与分解注释同步更新为 34 |
 | 2026-09-22 | T26 | 「只有已发布版本可复制」如何落实 | 三条一起：① store 的 `RecipeVersionForCopy` 拒绝草稿（`ErrRecipeVersionNotPublished` → 409）；② 保存版本必须给**变更理由**（否则使用者无法判断该选哪一版）；③ 界面列表把「已发布版本」单独一列，草稿行只提供「发布」按钮，不画「用它建项目」（把不可用动作画在界面上，用户点下去只会拿到 409）|
@@ -516,7 +527,7 @@ Decision:     追加式。更正通过 supersedes；有效处置是审计日志�
 | 0030 | `sql/migrations/0030_studio_review.sql` | T16 |
 | 0031 | `sql/migrations/0031_studio_releases.sql` | T20 |
 | 0032 | `sql/migrations/0032_studio_recipes.sql` | T26（已交付；`projects.source_recipe_version_id` 也在这里）|
-| 0033 | `sql/migrations/0033_studio_activity_comments.sql` | T27 |
+| 0033 | `sql/migrations/0033_studio_activity_comments.sql` | T27（已交付：活动水位 + 评论）|
 | 0034 | `sql/migrations/0034_studio_legacy_imports.sql` | T31（T30 的盘点工具不建表）|
 | 0038 | `sql/migrations/0038_studio_grpo_quality.sql` | T24 |
 
