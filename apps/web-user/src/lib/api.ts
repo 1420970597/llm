@@ -9,6 +9,8 @@ export type ApiError = Error & {
    * 而排查问题时需要第一手信息。原文只进 console / 埋点，**不上面向用户的界面**。
    */
   rawMessage?: string
+  /** Atelier 错误体中的结构化阻塞项，供发布/命令页保留可执行入口。 */
+  blockers?: Array<{ code: string; message: string; link?: string }>
 }
 
 // client 导出供模块化 API 使用（Atelier 的 api/studio.ts 复用它的会话与
@@ -794,6 +796,11 @@ client.interceptors.response.use(
     const message = localizeApiMessage(rawMessage, statusCode, fallbackMessage)
     const nextError: ApiError = new Error(message)
     nextError.statusCode = statusCode
+    // Atelier 错误体把 blockers 放在 `error.blockers`；不能只保留本地化
+    // message，否则发布门槛失败会退化成一句无法定位的通用提示。
+    if (Array.isArray(errorPayload?.blockers)) {
+      nextError.blockers = errorPayload.blockers
+    }
     // 保留原文供排查：界面上不带它，但 console / 埋点可拿到第一手信息。
     nextError.rawMessage = rawMessage
     return Promise.reject(nextError)
