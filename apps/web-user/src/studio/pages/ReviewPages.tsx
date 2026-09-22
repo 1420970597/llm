@@ -133,28 +133,50 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
     })
   }, [])
 
+  /**
+   * 把当前工作区的范围交给服务端冻结，然后直达发布准备。
+   *
+   * 选择快照是发布流程的边界：页面不能把样本身份 ID 或当前筛选
+   * 直接带到候选命令里。服务端会在创建快照时重新校验项目作用域，
+   * 发布页只接收一个短的 `selection` ID。
+   */
+  const freezeForRelease = useCallback(
+    async (sampleVersionIDs?: number[]) => {
+      setSnapshotNotice(null)
+      try {
+        const snapshot = await studioApi.createSelectionSnapshot(scope.projectId, {
+          purpose: 'release',
+          ...(sampleVersionIDs && sampleVersionIDs.length > 0
+            ? { sampleVersionIds: sampleVersionIDs }
+            : {
+                fromFilter: {
+                  reviewStatus: reviewStatus === '' ? undefined : reviewStatus,
+                  search: search.trim() === '' ? undefined : search.trim(),
+                },
+              }),
+        })
+        setSnapshotID(snapshot.id)
+        navigate(`/p/${scope.projectId}/releases/new?selection=${encodeURIComponent(String(snapshot.id))}`)
+      } catch (snapshotError) {
+        setSnapshotNotice(snapshotError instanceof Error ? snapshotError.message : '冻结选择范围失败')
+      }
+    },
+    [navigate, reviewStatus, scope.projectId, search],
+  )
+
   /** 大范围选择：让**服务端**按当前筛选解析并冻结成快照。 */
   const snapshotAll = useCallback(async () => {
-    setSnapshotNotice(null)
-    try {
-      const snapshot = await studioApi.createSelectionSnapshot(scope.projectId, {
-        // 审阅工作区的冻结范围会沿用到发布/交付，使用 release 口径让服务端
-        // 拒绝把一个仅供导出的快照误带进发布候选。
-        purpose: 'release',
-        fromFilter: {
-          reviewStatus: reviewStatus === '' ? undefined : reviewStatus,
-          search: search.trim() === '' ? undefined : search.trim(),
-        },
-      })
-      setSnapshotID(snapshot.id)
-      setSnapshotNotice(
-        `已按当前筛选冻结 ${snapshot.itemCount} 条到服务端选择范围（ID ${snapshot.id}）。` +
-          '范围由服务端解析，URL 里不会出现这些 ID。',
-      )
-    } catch (snapshotError) {
-      setSnapshotNotice(snapshotError instanceof Error ? snapshotError.message : '冻结选择范围失败')
+    await freezeForRelease()
+  }, [freezeForRelease])
+
+  /** 小范围选择：只冻结当前页明确勾选的内容版本。 */
+  const snapshotSelected = useCallback(async () => {
+    if (selected.size === 0) {
+      setSnapshotNotice('请先选择至少一个内容版本，再准备发布')
+      return
     }
-  }, [reviewStatus, scope.projectId, search])
+    await freezeForRelease(Array.from(selected).sort((left, right) => left - right))
+  }, [freezeForRelease, selected])
 
   const title = queueMode ? '审阅队列' : '样本工作区'
 
@@ -215,8 +237,11 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
             它由服务端解析，因此不会出现「以为选了 40 条、实际提交 12 条」。
           </Text>
           <div className="mt-2 flex gap-2">
-            <Button size="small" onClick={() => void snapshotAll()}>
-              按筛选条件冻结范围
+            <Button size="small" theme="solid" type="primary" onClick={() => void snapshotSelected()} data-selection-release="true">
+              导出所选并准备发布
+            </Button>
+            <Button size="small" onClick={() => void snapshotAll()} data-snapshot-all="true">
+              按筛选条件全选并准备发布
             </Button>
             <Button size="small" onClick={() => setSelected(new Set())}>
               清空当前页选择
@@ -226,7 +251,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
       ) : (
         <div className="mb-3">
           <Button size="small" onClick={() => void snapshotAll()} data-snapshot-all="true">
-            按当前筛选冻结选择范围（服务端解析）
+            按当前筛选冻结并准备发布（服务端解析）
           </Button>
         </div>
       )}
