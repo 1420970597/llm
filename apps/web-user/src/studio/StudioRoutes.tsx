@@ -18,6 +18,7 @@ import { QualityListPage, QualityNewPage, QualityReportPage, RulesPage } from '.
 import { DeliveriesPage, ReleaseCardPage, ReleaseNewPage, ReleasesListPage } from './pages/ReleasePages'
 import { RecipeDetailPage, RecipesListPage } from './pages/RecipesPages'
 import { ActivityPage, TodayPage } from './pages/TodayPages'
+import { ConnectionsPage, HelpPage, TeamPage } from './pages/SettingsPages'
 import {
   allStudioRoutes,
   auxiliaryRoutes,
@@ -61,6 +62,10 @@ const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   // 今日工作与动态（T27）：工作区作用域。
   today: () => <TodayPage />,
   activity: () => <ActivityPage />,
+  // 设置与帮助（T28）：辅助入口，不与主流程争菜单位置。
+  'settings.connections': () => <ConnectionsPage />,
+  'settings.team': () => <TeamPage />,
+  help: () => <HelpPage />,
   // 方案库（T26）：工作区作用域的全局入口，不属于任何项目。
   recipes: () => <RecipesListPage />,
   'recipe.detail': () => <RecipeDetailPage />,

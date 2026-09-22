@@ -1348,3 +1348,96 @@ export const activityApi = {
       .get<Page<{ userId: number; role: string }>>(`${projectPath(projectId)}/mention-candidates`)
       .then((response) => response.data),
 }
+
+// ---------------------------------------------------------------------------
+// 设置页（T28）：连接选项、成员、预算
+// ---------------------------------------------------------------------------
+
+export type ConnectionProviderOption = {
+  id: number
+  name: string
+  model: string
+  providerType: string
+  isActive: boolean
+  /** 掩码后的标识：**永远不是密钥本体**。 */
+  apiKeyMasked: string
+}
+
+export type ConnectionStorageOption = {
+  id: number
+  name: string
+  provider: string
+  endpoint: string
+  bucket: string
+  isActive: boolean
+  isDefault: boolean
+  secretKeyMasked: string
+}
+
+export type ConnectionOptions = {
+  providers: ConnectionProviderOption[]
+  storageProfiles: ConnectionStorageOption[]
+  notes: string[]
+}
+
+export type WorkspaceMemberRecord = {
+  userId: number
+  email: string
+  role: string
+  userRole: string
+  createdAt: string
+}
+
+export type ProjectMemberRecord = {
+  userId: number
+  role: string
+  email?: string
+}
+
+export type ProjectBudgetView = {
+  budget: {
+    projectId: number
+    currency: string
+    limitMinor: number
+    reservedMinor: number
+    settledMinor: number
+    uncertainMinor: number
+  }
+  notes: string[]
+}
+
+export const settingsApi = {
+  /** `GET /v1/settings/connection-options`：只读、无密钥（普通用户可用）。 */
+  connectionOptions: () =>
+    client.get<ConnectionOptions>('/v1/settings/connection-options').then((response) => response.data),
+
+  workspaceMembers: (workspaceId?: number) =>
+    client
+      .get<Page<WorkspaceMemberRecord> & { notes: string[] }>(
+        `/v1/workspace/members${workspaceId ? `?workspaceId=${workspaceId}` : ''}`,
+      )
+      .then((response) => response.data),
+
+  upsertWorkspaceMember: (payload: { email?: string; userId?: number; role: string; workspaceId?: number }) =>
+    client.post<WorkspaceMemberRecord>('/v1/workspace/members', payload).then((response) => response.data),
+
+  removeWorkspaceMember: (userId: number, workspaceId?: number) =>
+    client
+      .delete(`/v1/workspace/members/${userId}${workspaceId ? `?workspaceId=${workspaceId}` : ''}`)
+      .then((response) => response.data),
+
+  projectMembers: (projectId: number) =>
+    client
+      .get<Page<ProjectMemberRecord>>(`${projectPath(projectId)}/members`)
+      .then((response) => response.data),
+
+  upsertProjectMember: (projectId: number, payload: { userId: number; role: string; reason?: string }) =>
+    client.post(`${projectPath(projectId)}/members`, payload).then((response) => response.data),
+
+  removeProjectMember: (projectId: number, userId: number) =>
+    client.delete(`${projectPath(projectId)}/members/${userId}`).then((response) => response.data),
+
+  /** `GET P/budget`：配置/预留/实际/未知（未知按预留金额占用）。 */
+  projectBudget: (projectId: number) =>
+    client.get<ProjectBudgetView>(`${projectPath(projectId)}/budget`).then((response) => response.data),
+}

@@ -64,7 +64,10 @@ TestRecipeDuplicateNameRejected
 TestTodosArePermissionFiltered
 TestActivityPaginationAndWatermark
 TestCommentsAreRevisionChainAndNotDecisions
-TestSearchOnlyAccessibleProjects"
+TestSearchOnlyAccessibleProjects
+TestLastWorkspaceAdminCannotBeRemoved
+TestRemoveWorkspaceMemberBlockedByLastProjectOwner
+TestResolveUserIDByEmail"
 
 echo "[integration] go test ./... -v -count=1"
 output_file="$(mktemp)"

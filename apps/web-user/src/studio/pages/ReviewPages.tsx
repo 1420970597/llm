@@ -6,6 +6,7 @@ import { client } from '../../lib/api'
 import { projectPath, studioApi } from '../../lib/api/studio'
 import type { ApiBlocker, Page, ReviewDecision, ReviewProjection, SampleSummary, SampleVersionView } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
+import { CommentPanel } from '../CommentsPanel'
 
 /**
  * 数据工作区页面（Issue #160 T17）：样本列表、三栏审阅、版本与来源历史。
@@ -653,6 +654,17 @@ export function SampleReviewPage() {
               </Button>
             </div>
           </div>
+
+          {/* 评论面板（T27）：锚定**当前内容版本**，与判断分开 —— 讨论不改处置。 */}
+          {detail?.version?.versionId ? (
+            <div className="mt-3">
+              <CommentPanel
+                projectId={scope.projectId}
+                anchorKind="sample_version"
+                anchorId={detail.version.versionId}
+              />
+            </div>
+          ) : null}
         </section>
       </div>
     </div>

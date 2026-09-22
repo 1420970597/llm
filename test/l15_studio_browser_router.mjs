@@ -276,7 +276,14 @@ try {
       `第二次渲染包含 id=9：${second.includes('data-studio-project-id="9"')}，含 id=7（泄漏）：${leaked}`)
 
     // 未实现的模块必须显示**诚实的能力状态**，而不是空白页。
-    const planned = routes.allStudioRoutes.find((route) => route.moduleStatus === 'planned')
+    //
+    // 只挑**生产构建里会挂载**的 planned 路由：`/catalog` 是设计/验收工具，
+    // 生产不挂载（这正是 `isCatalogRouteMounted()` 的意义），拿它当样本会
+    // 渲染出空内容 —— 那不是「能力状态没显示」，而是「这条路由本来就不该在
+    // 生产里存在」。随任务推进 planned 会自然减少，因此这一条允许无样本。
+    const planned = routes.allStudioRoutes.find(
+      (route) => route.moduleStatus === 'planned' && route.kind !== 'catalog',
+    )
     if (planned) {
       const plannedPath = planned.path
         .replace(':projectId', '7')
@@ -290,7 +297,7 @@ try {
       record(`未交付模块显示能力状态（${plannedPath}）`, honest,
         honest ? '输出包含能力状态提示' : `未找到能力状态提示；输出片段：${html.slice(0, 120)}`)
     } else {
-      recordSkip('未交付模块显示能力状态', '当前所有路由都是 available')
+      recordSkip('未交付模块显示能力状态', '当前没有未交付的业务模块（planned 只剩不进入生产菜单的目录评审页）')
     }
 
     // 非法项目 ID：壳层抛错，必须有**可读文案**（不能白屏、不能是原始堆栈）。
