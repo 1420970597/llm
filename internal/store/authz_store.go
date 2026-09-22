@@ -240,8 +240,22 @@ func (s *AuthzStore) UpsertProjectMember(ctx context.Context, projectID, actorID
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	// 逐条检查事务内的当前状态：不能用事务外的判断，否则两个并发降级
-	// 请求会各自看到「还有另一个 owner」而同时通过（经典 write-skew）。
+	// 串行化同一项目的**成员变更**。
+	//
+	// 必须在**公共行**上加锁（项目行），而不是只锁目标成员行：
+	// 「至少留一名 owner」是一个**跨行**不变量，而两个不同 owner 的并发降级
+	// 会锁到**不同**的成员行 —— 于是两边都数到 2 个 owner、都通过检查、
+	// 同时降级，项目变成**零 owner**（谁也无法再管理它）。
+	//
+	// 这是一次真实缺陷的修复（由 `TestAuthzLastOwnerCheckIsRaceSafe` 在
+	// 全量并行负载下发现；孤立运行时不复现，因为窗口很窄）：
+	// 原先的注释写的是「事务内检查可防 write-skew」，但机制上做不到 ——
+	// 事务内的**读**只保证读到的是一致快照，不保证别的并发事务不写。
+	if _, err := tx.Exec(ctx, `
+    SELECT id FROM projects WHERE id = $1 FOR UPDATE`, projectID); err != nil {
+		return err
+	}
+
 	var currentRole string
 	err = tx.QueryRow(ctx, `
     SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2 FOR UPDATE`,
