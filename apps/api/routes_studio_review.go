@@ -329,9 +329,16 @@ func (app *application) createSelectionSnapshot(w http.ResponseWriter, r *http.R
 	if request.FromFilter != nil {
 		// 按筛选条件在**服务端**解析成具体 ID：前端只传条件，
 		// 因此不存在「客户端可改的 ID 列表」这一回事。
+		reviewStatus := request.FromFilter.ReviewStatus
+		// `all` is an explicit full-range selector. The store represents that
+		// as an empty predicate, while an omitted status remains the pending
+		// queue default at the list endpoint.
+		if reviewStatus == "all" {
+			reviewStatus = ""
+		}
 		resolved, err := app.studio.Batches.ListSampleVersionIDsByFilter(r.Context(), store.SampleVersionFilter{
 			ProjectID:    projectID,
-			ReviewStatus: request.FromFilter.ReviewStatus,
+			ReviewStatus: reviewStatus,
 			BatchID:      request.FromFilter.BatchID,
 			Search:       request.FromFilter.Search,
 		}, store.MaxSelectionSnapshotItems)

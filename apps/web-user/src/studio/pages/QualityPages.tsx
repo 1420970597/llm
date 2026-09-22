@@ -75,13 +75,18 @@ export function QualityListPage() {
   const [experiments, setExperiments] = useState<Experiment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [canRun, setCanRun] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await studioApi.listExperiments(scope.projectId)
+      const [response, overview] = await Promise.all([
+        studioApi.listExperiments(scope.projectId),
+        studioApi.overviewEnvelope(scope.projectId),
+      ])
       setExperiments(response.items ?? [])
+      setCanRun(overview.capabilities.canRun === true)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载实验失败')
     } finally {
@@ -122,7 +127,7 @@ export function QualityListPage() {
             报告的分母是实验创建时**冻结**的样本版本数；待审阅不算接纳，隔离也不缩小分母。
           </Text>
         </div>
-        <Button theme="solid" type="primary" onClick={() => navigate(`/p/${scope.projectId}/quality/new`)}>
+        <Button theme="solid" type="primary" disabled={!canRun} onClick={() => navigate(`/p/${scope.projectId}/quality/new`)}>
           新建质量实验
         </Button>
       </div>
@@ -198,13 +203,17 @@ export function QualityNewPage() {
   // GRPO 与 SFT 的量表不同（T24）：GRPO 使用服务端内置量表，
   // 因此界面必须知道项目目标类型，而不是一律提交 SFT 的 accuracy 维度。
   const [targetKind, setTargetKind] = useState('sft')
+  const [canRun, setCanRun] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
       try {
-        const response = await studioApi.overview(scope.projectId)
-        if (!cancelled) setTargetKind(response.targetKind ?? 'sft')
+        const response = await studioApi.overviewEnvelope(scope.projectId)
+        if (!cancelled) {
+          setTargetKind(response.data.targetKind ?? 'sft')
+          setCanRun(response.capabilities.canRun === true)
+        }
       } catch {
         // 概览读取失败时回退到 SFT：SFT 路径要求**显式量表**，
         // 因此失败方向是「多填一个量表」而不是「用错量表」——
@@ -239,6 +248,10 @@ export function QualityNewPage() {
 
   const submit = useCallback(async () => {
     setError(null)
+    if (!canRun) {
+      setError('当前项目没有运行质量实验的权限；请联系项目负责人')
+      return
+    }
     if (selected.length === 0) {
       setError('实验范围不能为空：请至少选择一个样本版本（空范围的分母为 0，无法得出结论）')
       return
@@ -292,7 +305,7 @@ export function QualityNewPage() {
     } finally {
       setBusy(false)
     }
-  }, [baselineAnswerVersion, batchID, boundaryReferenceJSON, isGRPO, judgeID, navigate, scope.projectId, seed, selected, teacherPromptVersion])
+  }, [baselineAnswerVersion, batchID, boundaryReferenceJSON, canRun, isGRPO, judgeID, navigate, scope.projectId, seed, selected, teacherPromptVersion])
 
   return (
     <div className="console-page" data-studio-page="quality-new">
@@ -321,6 +334,7 @@ export function QualityNewPage() {
             label: `${batch.resourceId}（${batch.purpose === 'pilot' ? '试制' : '扩量'}）`,
           }))}
           onChange={(value) => setBatchID(String(value))}
+          disabled={!canRun}
         />
       </Card>
 
@@ -357,9 +371,9 @@ export function QualityNewPage() {
             教师提示词与基准回答版本会随实验冻结；没有边界参考集时，边界稳定性记为缺分，不会伪造 0 分或满分。
           </Text>
           <div className="wizard-fields">
-            <Input aria-label="教师提示词版本" value={teacherPromptVersion} onChange={setTeacherPromptVersion} placeholder="教师提示词版本（可选）" />
-            <Input aria-label="基准回答版本" value={baselineAnswerVersion} onChange={setBaselineAnswerVersion} placeholder="基准回答版本（可选）" />
-            <TextArea aria-label="边界参考集 JSON" value={boundaryReferenceJSON} onChange={setBoundaryReferenceJSON} autosize={{ minRows: 3, maxRows: 8 }} placeholder='{"id":"boundary-v1","source":"manual","sampled":true,"items":[{"level":"中","input":"示例","expected":"accept"}]}' />
+            <Input aria-label="教师提示词版本" value={teacherPromptVersion} onChange={setTeacherPromptVersion} placeholder="教师提示词版本（可选）" disabled={!canRun} />
+            <Input aria-label="基准回答版本" value={baselineAnswerVersion} onChange={setBaselineAnswerVersion} placeholder="基准回答版本（可选）" disabled={!canRun} />
+            <TextArea aria-label="边界参考集 JSON" value={boundaryReferenceJSON} onChange={setBoundaryReferenceJSON} autosize={{ minRows: 3, maxRows: 8 }} placeholder='{"id":"boundary-v1","source":"manual","sampled":true,"items":[{"level":"中","input":"示例","expected":"accept"}]}' disabled={!canRun} />
           </div>
         </Card>
       ) : null}
@@ -383,7 +397,7 @@ export function QualityNewPage() {
                 type="checkbox"
                 aria-label={`选择 ${sample.title || sample.sampleKey}`}
                 checked={sample.latestVersionId > 0 && selected.includes(sample.latestVersionId)}
-                disabled={sample.latestVersionId <= 0}
+                disabled={!canRun || sample.latestVersionId <= 0}
                 onChange={(event) => {
                   const versionID = sample.latestVersionId
                   if (versionID <= 0) return
@@ -417,6 +431,7 @@ export function QualityNewPage() {
               value={judgeID}
               onChange={(value) => setJudgeID(value)}
               placeholder="例如 5"
+              disabled={!canRun}
             />
             <Text type="tertiary" size="small" className="block mt-1">
               服务端会**再次**检查独立性与同源别名：与生成来源同一接入点的连接不能自评。
@@ -430,6 +445,7 @@ export function QualityNewPage() {
               id="sampling-seed"
               value={Number(seed) || 0}
               onChange={(value) => setSeed(String(value ?? 0))}
+              disabled={!canRun}
             />
           </div>
         </div>
@@ -441,7 +457,7 @@ export function QualityNewPage() {
         </div>
       ) : null}
 
-      <Button theme="solid" type="primary" loading={busy} onClick={() => void submit()}>
+      <Button theme="solid" type="primary" loading={busy} disabled={!canRun} onClick={() => void submit()}>
         创建并冻结实验
       </Button>
     </div>

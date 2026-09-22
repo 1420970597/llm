@@ -81,6 +81,7 @@ type VersionsResponse = {
   sortKey: string
   /** 没有保存过版本时服务端省略该字段。 */
   document?: DocumentHead
+  canEdit?: boolean
 }
 
 /** 版本详情端点返回 `{ document, version, references, readOnly }`。 */
@@ -133,6 +134,7 @@ export function BlueprintPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [changeReason, setChangeReason] = useState('')
   const [compareVersion, setCompareVersion] = useState<number | null>(null)
+  const [canEdit, setCanEdit] = useState(false)
 
   // `?node=` 与 `?version=` 都来自 URL：分享链接要能指向同一个节点与版本。
   const activeNodeKey = searchParams.get('node') ?? ''
@@ -150,6 +152,7 @@ export function BlueprintPage() {
       const list = versionsResponse.data.items ?? []
       setVersions(list)
       setHeadRevision(versionsResponse.data.document?.revision ?? 0)
+      setCanEdit(versionsResponse.data.canEdit === true)
 
       // 保存后调用 load(null) 时不能依赖仍捕获着旧 URL 的 viewingVersion。
       const requestedVersion = versionOverride === undefined ? viewingVersion : versionOverride
@@ -199,7 +202,7 @@ export function BlueprintPage() {
   const isReadOnly = viewingVersion !== null
 
   const save = useCallback(async () => {
-    if (!draft || !activeSpec) return
+    if (!draft || !activeSpec || !canEdit) return
     // 提交前清理「非法 JSON 中间态」标记：它是编辑器的临时状态，
     // 不能进入 payload（那会让服务端看到一个不认识的字段）。
     const cleaned = stripInvalidJSONMarkers(draft)
@@ -241,7 +244,7 @@ export function BlueprintPage() {
     } finally {
       setSaving(false)
     }
-  }, [activeSpec, changeReason, draft, headRevision, load, scope.projectId, setSearchParams])
+  }, [activeSpec, canEdit, changeReason, draft, headRevision, load, scope.projectId, setSearchParams])
 
   if (loading) {
     return (
@@ -344,7 +347,7 @@ export function BlueprintPage() {
                 <NodeFields
                   spec={activeSpec}
                   values={nodeValuesForActive}
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || !canEdit}
                   onChange={(name, value) => {
                     if (!draft || !activeSpec) return
                     const nextValues = { ...nodeValuesForActive, [name]: value }
@@ -359,6 +362,7 @@ export function BlueprintPage() {
                 </Text>
                 <TextArea
                   value={changeReason}
+                  disabled={!canEdit}
                   onChange={(value) => setChangeReason(value)}
                   placeholder="例如：把并发从 8 提到 12"
                   autosize={{ minRows: 2, maxRows: 4 }}
@@ -378,12 +382,12 @@ export function BlueprintPage() {
                   type="primary"
                   icon={<Save size={14} />}
                   loading={saving}
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || !canEdit}
                   onClick={() => void save()}
                 >
                   保存为新版本
                 </Button>
-                {current ? (
+                {current && canEdit ? (
                   <Button
                     icon={<Copy size={14} />}
                     onClick={() => {

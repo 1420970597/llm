@@ -839,6 +839,15 @@ export type ComparisonDetail = {
   adopted: boolean
 }
 
+export type ComparisonCapabilities = {
+  canEdit: boolean
+  canRun: boolean
+  canReview: boolean
+  canPublish: boolean
+  canDownload: boolean
+  canManageMembers: boolean
+}
+
 export type CreateComparisonBaselineRequest = {
   name?: string
   metric: 'paired' | 'coverage'
@@ -1151,6 +1160,12 @@ export const studioApi = {
     client
       .get(`${projectPath(projectId)}/comparison-baselines/${baselineId}`)
       .then((response) => unwrapStudioData<ComparisonDetail>(response)),
+  getComparisonBaselineEnvelope: (projectId: number, baselineId: number) =>
+    client
+      .get<TypedEnvelope<ComparisonDetail, ComparisonCapabilities>>(
+        `${projectPath(projectId)}/comparison-baselines/${baselineId}`,
+      )
+      .then((response) => response.data),
 
   listComparisonBaselines: (projectId: number) =>
     client

@@ -84,6 +84,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
   const { Title, Text } = Typography
 
   const reviewStatus = reviewStatusFrom(searchParams)
+  const showAllStatuses = searchParams.get('status') === 'all'
   const search = searchParams.get('q') ?? ''
 
   const [samples, setSamples] = useState<SampleSummary[]>([])
@@ -117,7 +118,10 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
       setError(null)
       try {
         const params = new URLSearchParams({ limit: '20' })
-        if (reviewStatus !== '') params.set('status', reviewStatus)
+        // 空字符串有两种语义：未指定状态时后端默认 pending；显式
+        // `status=all` 则必须把 all 传给服务端，才能真正查询全量。
+        if (showAllStatuses) params.set('status', 'all')
+        else if (reviewStatus !== '') params.set('status', reviewStatus)
         if (search.trim() !== '') params.set('q', search.trim())
         if (cursor !== '') params.set('cursor', cursor)
         const response = await client.get<Page<SampleSummary>>(
@@ -135,7 +139,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
         if (requestID === latestRequest.current) setLoading(false)
       }
     },
-    [reviewStatus, scope.projectId, search],
+    [reviewStatus, scope.projectId, search, showAllStatuses],
   )
 
   useEffect(() => {

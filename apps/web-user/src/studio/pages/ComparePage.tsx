@@ -49,23 +49,31 @@ export function ComparePage() {
   const [reason, setReason] = useState('')
   const [adoptError, setAdoptError] = useState<string | null>(null)
   const [nextStep, setNextStep] = useState<{ label: string; href: string } | null>(null)
+  const [canCompare, setCanCompare] = useState(false)
+  const [canAdopt, setCanAdopt] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [listResponse, batchResponse] = await Promise.all([
+      const [listResponse, batchResponse, overview] = await Promise.all([
         studioApi.listComparisonBaselines(scope.projectId),
         client.get<Page<BatchSummary>>(`${projectPath(scope.projectId)}/batches?limit=50`),
+        studioApi.overviewEnvelope(scope.projectId),
       ])
       setBaselines(listResponse.items ?? [])
       setBatches(batchResponse.data.items ?? [])
+      setCanCompare(overview.capabilities.canRun === true)
 
       if (baselineID > 0) {
-        const comparison = await studioApi.getComparisonBaseline(scope.projectId, baselineID)
-        setDetail(comparison)
+        const comparison = await studioApi.getComparisonBaselineEnvelope(scope.projectId, baselineID)
+        setDetail(comparison.data)
+        // 采用是对象编辑动作，且只能对尚未采用的可比基准执行；
+        // 同时要求服务端声明 canRun，避免把已采用的基准重新提交。
+        setCanAdopt(comparison.capabilities.canEdit === true && comparison.capabilities.canRun === true)
       } else {
         setDetail(null)
+        setCanAdopt(false)
       }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载比较数据失败')
@@ -86,6 +94,10 @@ export function ComparePage() {
 
   const createBaseline = useCallback(async () => {
     setCreateError(null)
+    if (!canCompare) {
+      setCreateError('当前项目没有比较权限；请联系项目负责人')
+      return
+    }
     const left = Number(leftBatch)
     const right = Number(rightBatch)
     if (!left || !right) {
@@ -116,10 +128,14 @@ export function ComparePage() {
     } finally {
       setBusy(false)
     }
-  }, [leftBatch, rightBatch, scope.projectId, setSearchParams])
+  }, [canCompare, leftBatch, rightBatch, scope.projectId, setSearchParams])
 
   const adopt = useCallback(async () => {
     if (!detail) return
+    if (!canAdopt) {
+      setAdoptError('当前账号没有采用方案的权限；请联系项目负责人')
+      return
+    }
     setAdoptError(null)
     if (reason.trim() === '') {
       setAdoptError('采用方案必须写明依据（没有依据的决定无法在以后复核）')
@@ -153,7 +169,7 @@ export function ComparePage() {
     } finally {
       setBusy(false)
     }
-  }, [detail, load, reason, scope.projectId, side])
+  }, [canAdopt, detail, load, reason, scope.projectId, side])
 
   if (loading) {
     return (
@@ -240,7 +256,7 @@ export function ComparePage() {
             }))}
             onChange={(value) => setRightBatch(String(value))}
           />
-          <Button loading={busy} onClick={() => void createBaseline()}>
+          <Button loading={busy} disabled={!canCompare} onClick={() => void createBaseline()}>
             创建并比较
           </Button>
         </div>
@@ -358,7 +374,7 @@ export function ComparePage() {
                 采用哪一侧
               </Text>
               <div className="flex flex-wrap items-center gap-2">
-                <Select
+                {canAdopt ? <Select
                   value={side}
                   style={{ width: 160 }}
                   aria-label="采用哪一侧"
@@ -367,20 +383,20 @@ export function ComparePage() {
                     { value: 'right', label: '右侧方案' },
                   ]}
                   onChange={(value) => setSide(value === 'left' ? 'left' : 'right')}
-                />
+                /> : null}
                 <Tag size="small">采用只更新项目采用指针，不会自动运行或发布</Tag>
               </div>
               <div className="mt-2">
                 <Text type="tertiary" size="small" className="block mb-1">
                   依据（必填）
                 </Text>
-                <TextArea
+                {canAdopt ? <TextArea
                   value={reason}
                   onChange={(value) => setReason(value)}
                   autosize={{ minRows: 2, maxRows: 4 }}
                   placeholder="例如：右侧在准确维度更好且成本相近；样本量只够作方向性参考"
                   data-field="adopt-reason"
-                />
+                /> : null}
               </div>
               {adoptError ? (
                 <div className="wizard-field__error mt-1" role="alert">
@@ -388,9 +404,9 @@ export function ComparePage() {
                 </div>
               ) : null}
               <div className="mt-2">
-                <Button theme="solid" type="primary" loading={busy} onClick={() => void adopt()}>
+                {canAdopt ? <Button theme="solid" type="primary" loading={busy} onClick={() => void adopt()}>
                   采用并规划扩量
-                </Button>
+                </Button> : null}
               </div>
               {nextStep ? (
                 <div className="mt-2 flex items-center gap-2" data-adopt-next-step="true">
