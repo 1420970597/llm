@@ -13,6 +13,7 @@ import { NewProjectWizard } from './pages/NewProjectWizard'
 import { BlueprintPage, CoveragePage, StandardPage } from './pages/BlueprintPages'
 import { BatchDetailPage, BatchPlanningPage, FailuresPage, RunsPage } from './pages/RunPages'
 import { SampleHistoryPage, SampleListPage, SampleReviewPage } from './pages/ReviewPages'
+import { ComparePage } from './pages/ComparePage'
 import {
   allStudioRoutes,
   auxiliaryRoutes,
@@ -48,6 +49,7 @@ import {
 const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   projects: () => <ProjectsPage />,
   'project.overview': () => <ProjectOverviewPage />,
+  'project.compare': () => <ComparePage />,
   'project.data': () => <SampleListPage />,
   'project.review': () => <SampleListPage queueMode />,
   'project.sample': () => <SampleReviewPage />,

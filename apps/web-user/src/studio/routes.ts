@@ -196,7 +196,7 @@ export const projectDetailRoutes: StudioRouteMeta[] = [
     label: '试制对比',
     caption: '同基准 A/B 与采用方案',
     kind: 'project',
-    moduleStatus: 'planned',
+    moduleStatus: 'available',
     task: 'T18',
     navParent: 'project.runs',
     permission: 'run',

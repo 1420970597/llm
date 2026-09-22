@@ -417,6 +417,9 @@ func (app *application) writeReviewCommandError(w http.ResponseWriter, r *http.R
 	case errors.Is(err, store.ErrEvidenceRevisionStale):
 		app.writeAPIError(w, r, http.StatusConflict, studio.CodeRevisionStale,
 			"必需证据集已变化，请基于最新证据重新判断后再提交", nil)
+	case errors.Is(err, store.ErrComparisonBaselineNotFound):
+		app.writeAPIError(w, r, http.StatusNotFound, studio.CodeNotFound,
+			"未找到该比较基准，请返回比较页刷新后重试", nil)
 	case errors.Is(err, store.ErrReviewConflictUnresolved):
 		app.writeAPIError(w, r, http.StatusConflict, studio.CodeConflict, err.Error(), nil)
 	case errors.Is(err, pgx.ErrNoRows):

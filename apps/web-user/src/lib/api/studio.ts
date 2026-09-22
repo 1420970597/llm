@@ -505,6 +505,104 @@ export type CreateSelectionSnapshotRequest = {
 }
 
 // ---------------------------------------------------------------------------
+// 同基准比较（契约 §3 的 P06）
+// ---------------------------------------------------------------------------
+
+/** 配对观测的维度差异。`delta` = 右 - 左（正数表示右侧更好）。 */
+export type PairedDimensionDiff = {
+  dimension: string
+  leftMean: number
+  rightMean: number
+  delta: number
+  /** 参与该维度计算的配对数（分母，必须与 pairedCount 一起看）。 */
+  pairs: number
+  /** 至少一侧缺分的观测数：不参与均值、也不补 0。 */
+  missing: number
+}
+
+/**
+ * 可比性说明。
+ *
+ * `label` 与 `disclaimers` 是**报告的一部分**（不是界面文案）：
+ * 换一个界面仍然要说同一件事，因此它们随数据一起返回。
+ */
+export type Comparability = {
+  comparable: boolean
+  label: string
+  disclaimers: string[]
+}
+
+export type ComparisonCosts = {
+  leftActualMinor: number
+  leftUncertainMinor: number
+  rightActualMinor: number
+  rightUncertainMinor: number
+  currency: string
+}
+
+export type ComparisonReport = {
+  baselineId: number
+  metric: string
+  comparability: Comparability
+  /** 配对完成数：配对口径下的**唯一有效样本量**。 */
+  pairedCount: number
+  leftOnlyCount: number
+  rightOnlyCount: number
+  dimensions: PairedDimensionDiff[]
+  risks: string[]
+  costs: ComparisonCosts
+}
+
+export type ComparisonBaseline = {
+  id: number
+  projectId: number
+  inputRef: string
+  coverageSlice: Record<string, unknown>
+  samplingSeed: number
+  rubric: { dimensions: Array<{ key: string; label: string; weight: number; min: number; max: number }> }
+  judges: Array<{ connectionId: number; label: string; endpointFingerprint: string }>
+  metric: string
+  leftBatchId?: number
+  rightBatchId?: number
+  name: string
+  createdAt: string
+}
+
+export type ComparisonDetail = {
+  baseline: ComparisonBaseline
+  report: ComparisonReport
+  adopted: boolean
+}
+
+export type CreateComparisonBaselineRequest = {
+  name?: string
+  metric: 'paired' | 'coverage'
+  /** 逐题配对**必须**固定输入问题版本（否则差异主要来自输入）。 */
+  inputRef?: string
+  coverageSlice?: Record<string, unknown>
+  samplingSeed?: number
+  rubric: ComparisonBaseline['rubric']
+  judges: ComparisonBaseline['judges']
+  leftBatchId: number
+  rightBatchId: number
+}
+
+export type AdoptComparisonResult = {
+  baseline: ComparisonBaseline
+  adoptedSide: 'left' | 'right'
+  adoptedBatchId: number
+  /** 采用只规划新批次：这里给出扩量入口与预填参数，**不**自动创建。 */
+  nextStep: { label: string; href: string; prefill: Record<string, unknown> }
+}
+
+export type AdoptedBatch = {
+  adopted: boolean
+  batchId?: number
+  baselineId?: number
+  side?: 'left' | 'right'
+}
+
+// ---------------------------------------------------------------------------
 // 请求辅助
 // ---------------------------------------------------------------------------
 
@@ -697,6 +795,35 @@ export const studioApi = {
     client
       .post(`${projectPath(projectId)}/selection-snapshots`, payload)
       .then((response) => response.data as SelectionSnapshot),
+
+  /** `POST P/comparison-baselines`：冻结比较前提。 */
+  createComparisonBaseline: (projectId: number, payload: CreateComparisonBaselineRequest) =>
+    client
+      .post(`${projectPath(projectId)}/comparison-baselines`, payload)
+      .then((response) => response.data as ComparisonBaseline),
+
+  /** `GET P/comparison-baselines/{id}`：基准 + 报告（一起返回，避免两秒内自相矛盾）。 */
+  getComparisonBaseline: (projectId: number, baselineId: number) =>
+    client
+      .get(`${projectPath(projectId)}/comparison-baselines/${baselineId}`)
+      .then((response) => response.data as ComparisonDetail),
+
+  listComparisonBaselines: (projectId: number) =>
+    client
+      .get<Page<ComparisonBaseline>>(`${projectPath(projectId)}/comparison-baselines`)
+      .then((response) => response.data),
+
+  /** `POST .../adopt`：采用只更新指针并记录依据，不自动运行或发布。 */
+  adoptComparison: (projectId: number, baselineId: number, payload: { side: 'left' | 'right'; reason: string }) =>
+    client
+      .post(`${projectPath(projectId)}/comparison-baselines/${baselineId}/adopt`, payload)
+      .then((response) => response.data as AdoptComparisonResult),
+
+  /** `GET P/adopted-batch`：`/runs/new` 用它预填版本。 */
+  adoptedBatch: (projectId: number) =>
+    client
+      .get<AdoptedBatch>(`${projectPath(projectId)}/adopted-batch`)
+      .then((response) => response.data),
 
   /** `GET P/selection-snapshots/{id}`：**重新鉴权**后解析范围。 */
   getSelectionSnapshot: (projectId: number, snapshotId: number) =>
