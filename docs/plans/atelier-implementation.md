@@ -101,6 +101,10 @@
 | 2026-09-21 | T18 | T18 的比较口径与前端呈现 | 已交付：迁移 0036、`internal/model/comparison.go`（判据）、`internal/store/comparison_store.go`（配对观测与采用）、`apps/api/routes_studio_compare.go`（创建基准/读报告/采用/采用指针）、`ComparePage.tsx`（可比性优先显示 + 维度差异 + 风险 + 成本分列 + 采用表单）。**关键决定**：配对键用 `samples.sample_key`（单元键），评分取当前有效且 `score_state='scored'` 的行，归一化在 Go 侧按**基准冻结的量表**做；采用只写「只追加的依据 + 一行指针」，并返回扩量预填参数而**不**自动创建批次 |
 | 2026-09-21 | T19 | §3 的 Q01–Q05 与 T14/T15 的数据面如何划分 | 实验/规则的**命令与读模型**落在 `apps/api/routes_studio_quality.go`（实验创建/列表/报告、`POST P/rule-previews`），因为 T14/T15 交付的是数据与判据，而端点服务的是页面。页面落在 `QualityPages.tsx`（列表/创建/报告/规则）。**关键决定**：报告页在 `queued`/`running` 时**不显示均值**，只显示完成覆盖 —— 基于部分样本的均值会被当成结论（T19 验收项）；实验 ID 只来自路由参数，因此刷新与分享恢复同一实验，不依赖内存里的 selectedRunId/tabKey |
 | 2026-09-21 | T19 | 裁判身份如何传入才不能被绕过 | 前端只传 `judgeConnectionIds`，**指纹由服务端从连接的当前配置读取**并生成裁判快照。不接受客户端传 fingerprint —— 那会让「同源自评」只需伪造一个指纹就能绕过独立性检查（T14 验收项要求独立性判定不可被客户端绕过）|
+| 2026-09-21 | T20 | §2.5 的「发布名」与「发布 ID」在表结构上如何共存 | `releases.id` 就是稳定的 releaseId（表主键，因此不存在「重新分配」的可能），`release_name` + `release_name_key`（规范化键）承担项目内唯一。规范化键是必需的：直接用 release_name 会让 `V1.2` 与 `v1.2` 同时存在，而用户会以为是同一版。版本名**禁止** `latest`（下载路径禁止 latest 回退，而叫 latest 的版本名会让用户以为文件总是最新）|
+| 2026-09-21 | T20 | §2.9 的门槛检查时点未规定 | 冻结事务**重新判定门槛**（用当前判断/证据），而不是信任创建时的 blockers：blockers 是**创建那一刻**的检查结果，而发布可能发生在几分钟甚至几天后，期间有人隔离了一条或发现了新风险。同时校验每条清单项的 `aggregate_review_revision`/`evidence_revision` 与当前一致，不一致返回 409 并要求重新确认。门槛未通过时**不写入清单**：写入会让「被挡住的候选」拥有一份看起来可发布的文件范围 |
+| 2026-09-21 | T20 | §2.8 的候选清单与「排除项」的关系 | 清单存**具体 sample_version + 内容 hash + 来源 hash**；被排除项以 `excluded_reason` 标记并**仍计入分母**（§2.3「发布范围可缩小但保留原范围指标」）。分子（接纳数）按冻结范围内的接纳统计，因此「排除几条差的」不能提高接纳率。来源 hash 取自 `sample_versions` 自身字段，**不**取「当前项目采用版本」——后者会让发布时改一次蓝图把历史内容的来源改写成新版本（T20 验收项禁止「以当前项目版本冒充样本来源版本」）|
+| 2026-09-21 | T20 | T20 尚未全部交付（已交付迁移 0031、门槛判据与 store；项目命令 API、发布作业与页面属 T21/T22）| **已交付**：迁移 0031（releases/release_candidates/release_items/release_gates）、`internal/model/release.go`（六类门槛判据与 blocker）、`internal/store/release_store.go`（身份分配、抗并发冻结、幂等重复发布、outbox 同事务）与两侧测试。**未交付**：项目发布命令 API、T21 的制品/manifest/hash 与发布作业执行、T22 的发布页与交付库 |
 ---
 
 ## 2. 必须先定清的固定口径
