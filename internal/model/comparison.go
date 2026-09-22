@@ -98,11 +98,17 @@ func ValidateComparisonBaseline(baseline ComparisonBaseline) error {
 	return nil
 }
 
-// PairedObservation 是同一题在两方案下的一次配对观测。
+// PairedObservation 是同一题在某维度上、两方案各一次评分。
 type PairedObservation struct {
-	// PairKey 是配对的键（例如问题稳定 ID）。两侧必须用**同一个键空间**，
+	// PairKey 是配对的键（单元键/问题稳定 ID）。两侧必须用**同一个键空间**，
 	// 否则「配对完成数」会统计出不相交的集合。
 	PairKey string
+	// Dimension 是该观测所属的维度。
+	//
+	// 初版把维度归属留给调用方「第一个维度」，那在多维度量表下会把所有
+	// 维度的分数都算进第一个维度 —— 报告看起来正常，但每个维度的均值都是错的。
+	// 因此维度必须随观测一起来。
+	Dimension string
 	// LeftScore/RightScore 为 nil 表示该侧缺分（不是 0）。
 	LeftScore  *float64
 	RightScore *float64
@@ -186,21 +192,15 @@ func BuildComparisonReport(baseline ComparisonBaseline, observations []PairedObs
 		dimensions[dimension.Key] = &PairedDimensionDiff{Dimension: dimension.Key}
 	}
 
-	// 观测里没有维度信息时（当前形态：每维一次观测），用第一个维度归属。
-	// 这样设计是为了让纯函数的输入保持「配对键 + 两个分数」这种最小形态，
-	// 而维度归属由调用方按维度分别调用本函数。
-	defaultDimension := ""
-	if len(baseline.Rubric.Dimensions) > 0 {
-		defaultDimension = baseline.Rubric.Dimensions[0].Key
-	}
-
 	leftSum, leftCount := map[string]float64{}, map[string]int{}
 	rightSum, rightCount := map[string]float64{}, map[string]int{}
 
 	for _, observation := range observations {
-		dimensionKey := defaultDimension
+		dimensionKey := observation.Dimension
 		diff := dimensions[dimensionKey]
 		if diff == nil {
+			// 观测引用了量表里没有的维度：跳过而不是归到某个维度 ——
+			// 归错会让某个维度的均值包含不属于它的分数。
 			continue
 		}
 		switch {
@@ -303,13 +303,28 @@ func comparisonRisks(report ComparisonReport) []string {
 				dimension.Dimension, dimension.Missing))
 		}
 	}
-	if report.Costs.LeftUncertainMinor > 0 || report.Costs.RightUncertainMinor > 0 {
-		risks = append(risks, fmt.Sprintf(
-			"存在未知费用（左 %d 分、右 %d 分）：超时或断连的调用可能已产生费用，"+
-				"成本对比因此是不完整的", report.Costs.LeftUncertainMinor, report.Costs.RightUncertainMinor))
-	}
 	if report.PairedCount == 0 {
 		risks = append(risks, "没有配对完成的观测，报告不能支持任何方案对比结论")
+	}
+	return risks
+}
+
+// ComparisonCostRisks 给出成本维度的风险说明。
+//
+// 抽成独立函数是因为报告构建是**纯函数**（读不到数据库），
+// 而成本来自 store。把它独立出来使「未知费用必须出现在结论旁边」这条
+// 不依赖调用顺序：谁组装报告谁就得调用它并追加到 Risks。
+func ComparisonCostRisks(costs ComparisonCosts) []string {
+	risks := []string{}
+	if costs.LeftUncertainMinor > 0 || costs.RightUncertainMinor > 0 {
+		risks = append(risks, fmt.Sprintf(
+			"存在未知费用（左 %d %s、右 %d %s）：超时或断连的调用可能已产生费用，"+
+				"成本对比因此不完整", costs.LeftUncertainMinor, costs.Currency,
+			costs.RightUncertainMinor, costs.Currency))
+	}
+	if costs.LeftActualMinor == 0 && costs.RightActualMinor == 0 &&
+		costs.LeftUncertainMinor == 0 && costs.RightUncertainMinor == 0 {
+		risks = append(risks, "两侧都还没有已结算费用：成本对比暂不可用（不代表免费）")
 	}
 	return risks
 }

@@ -12,6 +12,11 @@ import (
 
 func score(value float64) *float64 { return &value }
 
+// obs 构造一条配对观测（维度固定为量表里的 accuracy）。
+func obs(pairKey string, left, right *float64) PairedObservation {
+	return PairedObservation{PairKey: pairKey, Dimension: "accuracy", LeftScore: left, RightScore: right}
+}
+
 func validBaseline() ComparisonBaseline {
 	return ComparisonBaseline{
 		Metric:       ComparisonMetricPaired,
@@ -30,8 +35,8 @@ func validBaseline() ComparisonBaseline {
 // 用户会据此选择一个更差的方案，而且看上去一切正常。
 func TestBuildComparisonReportDeltaDirection(t *testing.T) {
 	observations := []PairedObservation{
-		{PairKey: "q1", LeftScore: score(4), RightScore: score(8)},
-		{PairKey: "q2", LeftScore: score(6), RightScore: score(10)},
+		obs("q1", score(4), score(8)),
+		obs("q2", score(6), score(10)),
 	}
 	report := BuildComparisonReport(validBaseline(), observations)
 
@@ -60,10 +65,10 @@ func TestBuildComparisonReportDeltaDirection(t *testing.T) {
 // 而那正是「拿两个任意批次相减」在逐题层面的形态。
 func TestBuildComparisonReportExcludesSingleSidedObservations(t *testing.T) {
 	observations := []PairedObservation{
-		{PairKey: "q1", LeftScore: score(10), RightScore: score(10)},
-		{PairKey: "q2", LeftScore: score(0), RightScore: nil},  // 只在左侧
-		{PairKey: "q3", LeftScore: nil, RightScore: score(10)}, // 只在右侧
-		{PairKey: "q4", LeftScore: nil, RightScore: nil},       // 两侧都没分
+		obs("q1", score(10), score(10)),
+		obs("q2", score(0), nil),  // 只在左侧
+		obs("q3", nil, score(10)), // 只在右侧
+		obs("q4", nil, nil),       // 两侧都没分
 	}
 	report := BuildComparisonReport(validBaseline(), observations)
 
@@ -94,7 +99,7 @@ func TestBuildComparisonReportExcludesSingleSidedObservations(t *testing.T) {
 func TestComparabilityIsExplicitAboutWhatCanBeClaimed(t *testing.T) {
 	// 逐题配对：可以说「同一题在两方案下的差异」。
 	paired := BuildComparisonReport(validBaseline(), []PairedObservation{
-		{PairKey: "q1", LeftScore: score(5), RightScore: score(7)},
+		obs("q1", score(5), score(7)),
 	})
 	if !paired.Comparability.Comparable {
 		t.Fatalf("逐题配对且有配对观测时应可比，实际 %s", paired.Comparability.Label)
@@ -109,7 +114,7 @@ func TestComparabilityIsExplicitAboutWhatCanBeClaimed(t *testing.T) {
 	coverageBaseline.InputRef = ""
 	coverageBaseline.CoverageSlice = map[string]any{"domain": "cold-chain"}
 	coverage := BuildComparisonReport(coverageBaseline, []PairedObservation{
-		{PairKey: "d1", LeftScore: score(5), RightScore: score(7)},
+		obs("d1", score(5), score(7)),
 	})
 	if !strings.Contains(coverage.Comparability.Label, "输入不同") {
 		t.Fatalf("覆盖比较的标签必须写明输入不同，实际 %q", coverage.Comparability.Label)
@@ -121,7 +126,7 @@ func TestComparabilityIsExplicitAboutWhatCanBeClaimed(t *testing.T) {
 
 	// 没有任何配对观测 → **不可比**（而不是「差异为 0」）。
 	empty := BuildComparisonReport(validBaseline(), []PairedObservation{
-		{PairKey: "q1", LeftScore: score(5), RightScore: nil},
+		obs("q1", score(5), nil),
 	})
 	if empty.Comparability.Comparable {
 		t.Fatal("配对完成数为 0 时必须判为不可比（否则「差异 0」会被当成结论）")
@@ -134,7 +139,7 @@ func TestComparabilityIsExplicitAboutWhatCanBeClaimed(t *testing.T) {
 	unknown := validBaseline()
 	unknown.Metric = "something-else"
 	if report := BuildComparisonReport(unknown, []PairedObservation{
-		{PairKey: "q1", LeftScore: score(5), RightScore: score(6)},
+		obs("q1", score(5), score(6)),
 	}); report.Comparability.Comparable {
 		t.Fatal("口径未知时不得给出「可比」标签")
 	}
@@ -148,11 +153,8 @@ func TestComparabilityIsExplicitAboutWhatCanBeClaimed(t *testing.T) {
 func TestComparabilityAlwaysDisclaimsSignificance(t *testing.T) {
 	observations := []PairedObservation{}
 	for index := 0; index < 200; index++ {
-		observations = append(observations, PairedObservation{
-			PairKey:    "q" + string(rune('a'+index%26)) + string(rune('0'+index/26)),
-			LeftScore:  score(5),
-			RightScore: score(6),
-		})
+		observations = append(observations, obs(
+			"q"+string(rune('a'+index%26))+string(rune('0'+index/26)), score(5), score(6)))
 	}
 	report := BuildComparisonReport(validBaseline(), observations)
 	disclaimers := strings.Join(report.Comparability.Disclaimers, " ")
@@ -162,7 +164,7 @@ func TestComparabilityAlwaysDisclaimsSignificance(t *testing.T) {
 
 	// 小样本必须额外提示样本量不足。
 	small := BuildComparisonReport(validBaseline(), []PairedObservation{
-		{PairKey: "q1", LeftScore: score(5), RightScore: score(6)},
+		obs("q1", score(5), score(6)),
 	})
 	if !strings.Contains(strings.Join(small.Comparability.Disclaimers, " "), "样本量不足") {
 		t.Fatalf("小样本必须提示样本量不足，实际 %q", small.Comparability.Disclaimers)
@@ -217,7 +219,7 @@ func TestValidateComparisonBaseline(t *testing.T) {
 // 「采用 A/B 只更新指针并记录依据」。
 func TestValidateAdoptionRequiresReasonAndComparability(t *testing.T) {
 	comparable := BuildComparisonReport(validBaseline(), []PairedObservation{
-		{PairKey: "q1", LeftScore: score(5), RightScore: score(7)},
+		obs("q1", score(5), score(7)),
 	})
 	if err := ValidateAdoption("right", "右侧在准确维度更好且成本相近", comparable); err != nil {
 		t.Fatalf("合法采用不应报错：%v", err)
@@ -232,7 +234,7 @@ func TestValidateAdoptionRequiresReasonAndComparability(t *testing.T) {
 	}
 	// 不可比的比较不能作为采用依据。
 	incomparable := BuildComparisonReport(validBaseline(), []PairedObservation{
-		{PairKey: "q1", LeftScore: score(5), RightScore: nil},
+		obs("q1", score(5), nil),
 	})
 	if err := ValidateAdoption("right", "理由", incomparable); err == nil {
 		t.Fatal("不可比的比较不得作为采用依据")
