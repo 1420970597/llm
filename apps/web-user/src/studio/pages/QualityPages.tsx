@@ -197,8 +197,8 @@ export function QualityNewPage() {
     let cancelled = false
     void (async () => {
       try {
-        const response = await client.get<{ targetKind?: string }>(`${projectPath(scope.projectId)}/overview`)
-        if (!cancelled) setTargetKind(response.data?.targetKind ?? 'sft')
+        const response = await studioApi.overview(scope.projectId)
+        if (!cancelled) setTargetKind(response.targetKind ?? 'sft')
       } catch {
         // 概览读取失败时回退到 SFT：SFT 路径要求**显式量表**，
         // 因此失败方向是「多填一个量表」而不是「用错量表」——

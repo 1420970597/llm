@@ -42,6 +42,21 @@ export type Envelope = {
   data: unknown
 }
 
+/**
+ * Atelier 单对象接口统一使用 `{ ...envelope, data: T }`。
+ *
+ * 旧控制台接口仍直接返回资源或分页页，因此这里不能改 axios 全局响应拦截器；
+ * 只在 Studio API 边界解包，避免页面把 envelope 当成业务对象而出现「请求成功、
+ * 页面空白」的隐性故障。对已经是分页/裸对象的响应保持原值，便于渐进兼容。
+ */
+export function unwrapStudioData<T>(response: { data: unknown }): T {
+  const body = response.data as { data?: T } | null | undefined
+  if (body && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'data')) {
+    return body.data as T
+  }
+  return response.data as T
+}
+
 /** 服务端判定的能力位：**仅辅助 UI**，不是安全边界（契约 §4）。 */
 export type ProjectCapabilities = {
   canEdit: boolean
@@ -898,7 +913,7 @@ export function projectPath(projectId: number): string {
 export const studioApi = {
   /** `GET P/overview`（契约 §3）。 */
   overview: (projectId: number) =>
-    client.get<ProjectOverviewData>(`${projectPath(projectId)}/overview`).then((response) => response.data),
+    client.get<Envelope>(`${projectPath(projectId)}/overview`).then((response) => unwrapStudioData<ProjectOverviewData>(response)),
 
   /** `GET P/batches`（契约 §3）：服务端分页，不按最大 ID 猜「当前运行」。 */
   listBatches: (projectId: number, params?: ListParams) =>
@@ -908,7 +923,7 @@ export const studioApi = {
 
   /** `GET P/batches/{batchId}`（契约 §3 的 R02）。 */
   getBatch: (projectId: number, batchId: string) =>
-    client.get<BatchDetail>(`${projectPath(projectId)}/batches/${batchId}`).then((response) => response.data),
+    client.get<Envelope>(`${projectPath(projectId)}/batches/${batchId}`).then((response) => unwrapStudioData<BatchDetail>(response)),
 
   /** `GET P/batches/{batchId}/failures`（契约 §3 的 R03）。 */
   listBatchFailures: (projectId: number, batchId: string, params?: ListParams) =>
@@ -932,18 +947,18 @@ export const studioApi = {
   createBatch: (projectId: number, payload: CreateBatchRequest, options?: CommandOptions) =>
     client
       .post(`${projectPath(projectId)}/batches`, payload, { headers: commandHeaders(options) })
-      .then((response) => response.data as BatchSummary),
+      .then((response) => unwrapStudioData<BatchSummary>(response)),
 
   /** 批次控制（契约 §2.4）：暂停只阻止新提交，在途仍会计费。 */
   pauseBatch: (projectId: number, batchId: string) =>
-    client.post(`${projectPath(projectId)}/batches/${batchId}/pause`).then((response) => response.data as BatchSummary),
+    client.post(`${projectPath(projectId)}/batches/${batchId}/pause`).then((response) => unwrapStudioData<BatchSummary>(response)),
   resumeBatch: (projectId: number, batchId: string) =>
-    client.post(`${projectPath(projectId)}/batches/${batchId}/resume`).then((response) => response.data as BatchSummary),
+    client.post(`${projectPath(projectId)}/batches/${batchId}/resume`).then((response) => unwrapStudioData<BatchSummary>(response)),
   /** 恢复失败项：只重跑失败/未完成项，成功内容保留。 */
   retryFailed: (projectId: number, batchId: string) =>
     client
       .post(`${projectPath(projectId)}/batches/${batchId}/retry-failed`)
-      .then((response) => response.data as { batch: BatchSummary; resetItems: number }),
+      .then((response) => unwrapStudioData<{ batch: BatchSummary; resetItems: number }>(response)),
 
   /** `GET P/samples`（契约 §3）：服务端分页；`status`/`risk` 尚未接入（T16/T17）。 */
   listSamples: (projectId: number, params?: ListParams) =>
@@ -953,7 +968,7 @@ export const studioApi = {
 
   /** `GET P/samples/{sampleId}`（契约 §3 的 D02：内容只读）。 */
   getSample: (projectId: number, sampleId: string) =>
-    client.get<SampleDetail>(`${projectPath(projectId)}/samples/${sampleId}`).then((response) => response.data),
+    client.get<Envelope>(`${projectPath(projectId)}/samples/${sampleId}`).then((response) => unwrapStudioData<SampleDetail>(response)),
 
   /** `GET P/samples/{sampleId}/history`（契约 §3 的 D03）。 */
   listSampleHistory: (projectId: number, sampleId: string, params?: ListParams) =>
@@ -965,7 +980,7 @@ export const studioApi = {
   getSampleVersion: (projectId: number, sampleId: string, version: number) =>
     client
       .get<SampleVersionView>(`${projectPath(projectId)}/samples/${sampleId}/versions/${version}`)
-      .then((response) => response.data),
+      .then((response) => unwrapStudioData<SampleVersionView>(response)),
 
   /** `POST P/samples/{sampleId}/versions/{version}/decisions`（契约 §2.7）。 */
   submitDecision: (projectId: number, sampleId: string, version: number, payload: SubmitDecisionRequest) =>
@@ -1030,7 +1045,7 @@ export const studioApi = {
   createReleaseCandidate: (projectId: number, payload: CreateReleaseCandidateRequest) =>
     client
       .post(`${projectPath(projectId)}/releases`, payload)
-      .then((response) => response.data as { data: { release: ReleaseRecord; blockers: ReleaseBlocker[] } }),
+      .then((response) => unwrapStudioData<{ release: ReleaseRecord; blockers: ReleaseBlocker[] }>(response)),
 
   listReleases: (projectId: number) =>
     client
@@ -1041,19 +1056,19 @@ export const studioApi = {
   getReleaseCard: (projectId: number, releaseId: number) =>
     client
       .get(`${projectPath(projectId)}/releases/${releaseId}`)
-      .then((response) => response.data as { data: ReleaseCard; status: string }),
+      .then((response) => unwrapStudioData<ReleaseCard>(response)),
 
   /** `POST .../publish`：冻结并发布（202 + building；相同命令返回同一个 release）。 */
   publishRelease: (projectId: number, releaseId: number) =>
     client
       .post(`${projectPath(projectId)}/releases/${releaseId}/publish`)
-      .then((response) => response.data as { data: { release: ReleaseRecord } }),
+      .then((response) => unwrapStudioData<{ release: ReleaseRecord }>(response)),
 
   /** `POST .../next-candidate`：复制候选但**不改原版**。 */
   createNextCandidate: (projectId: number, releaseId: number, releaseName?: string) =>
     client
       .post(`${projectPath(projectId)}/releases/${releaseId}/next-candidate`, { releaseName })
-      .then((response) => response.data as { data: { release: ReleaseRecord } }),
+      .then((response) => unwrapStudioData<{ release: ReleaseRecord }>(response)),
 
   /** `GET P/releases/{releaseId}/artifacts/{artifactId}/download`。 */
   downloadArtifactURL: (projectId: number, releaseId: number, artifactId: number) =>
@@ -1067,7 +1082,7 @@ export const studioApi = {
   createExperiment: (projectId: number, payload: CreateExperimentRequest) =>
     client
       .post(`${projectPath(projectId)}/experiments`, payload)
-      .then((response) => response.data as Experiment),
+      .then((response) => unwrapStudioData<Experiment>(response)),
 
   listExperiments: (projectId: number) =>
     client
@@ -1078,7 +1093,7 @@ export const studioApi = {
   getExperiment: (projectId: number, experimentId: number) =>
     client
       .get(`${projectPath(projectId)}/experiments/${experimentId}`)
-      .then((response) => response.data as ExperimentDetail),
+      .then((response) => unwrapStudioData<ExperimentDetail>(response)),
 
   /** `POST P/rule-previews`：纯预览（不写处置、不入收费模型队列）。 */
   previewRules: (
@@ -1093,13 +1108,13 @@ export const studioApi = {
   createComparisonBaseline: (projectId: number, payload: CreateComparisonBaselineRequest) =>
     client
       .post(`${projectPath(projectId)}/comparison-baselines`, payload)
-      .then((response) => response.data as ComparisonBaseline),
+      .then((response) => unwrapStudioData<ComparisonBaseline>(response)),
 
   /** `GET P/comparison-baselines/{id}`：基准 + 报告（一起返回，避免两秒内自相矛盾）。 */
   getComparisonBaseline: (projectId: number, baselineId: number) =>
     client
       .get(`${projectPath(projectId)}/comparison-baselines/${baselineId}`)
-      .then((response) => response.data as ComparisonDetail),
+      .then((response) => unwrapStudioData<ComparisonDetail>(response)),
 
   listComparisonBaselines: (projectId: number) =>
     client
@@ -1110,7 +1125,7 @@ export const studioApi = {
   adoptComparison: (projectId: number, baselineId: number, payload: { side: 'left' | 'right'; reason: string }) =>
     client
       .post(`${projectPath(projectId)}/comparison-baselines/${baselineId}/adopt`, payload)
-      .then((response) => response.data as AdoptComparisonResult),
+      .then((response) => unwrapStudioData<AdoptComparisonResult>(response)),
 
   /** `GET P/adopted-batch`：`/runs/new` 用它预填版本。 */
   adoptedBatch: (projectId: number) =>

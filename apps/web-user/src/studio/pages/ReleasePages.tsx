@@ -257,9 +257,9 @@ export function ReleaseNewPage() {
           .map((line) => line.trim())
           .filter((line) => line !== ''),
       })
-      setBlockers(result.data.blockers ?? [])
+      setBlockers(result.blockers ?? [])
       // 导航到**服务端分配的**稳定 releaseId。
-      navigate(`/p/${scope.projectId}/releases/${result.data.release.id}`)
+      navigate(`/p/${scope.projectId}/releases/${result.release.id}`)
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : '创建发布候选失败')
     } finally {
@@ -400,7 +400,7 @@ export function ReleaseCardPage() {
     setError(null)
     try {
       const response = await studioApi.getReleaseCard(scope.projectId, releaseID)
-      setCard(response.data)
+      setCard(response)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载数据卡失败')
     } finally {
@@ -431,7 +431,7 @@ export function ReleaseCardPage() {
     setActionError(null)
     try {
       const result = await studioApi.createNextCandidate(scope.projectId, releaseID)
-      navigate(`/p/${scope.projectId}/releases/${result.data.release.id}`)
+      navigate(`/p/${scope.projectId}/releases/${result.release.id}`)
     } catch (nextError) {
       setActionError(nextError instanceof Error ? nextError.message : '创建下一版失败')
     } finally {
