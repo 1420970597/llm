@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/1420970597/llm/internal/config"
 	"github.com/1420970597/llm/internal/model"
@@ -130,16 +132,21 @@ func TestLegacyDatasetProjectMapping(t *testing.T) {
 	}
 	defer pool.Close()
 
+	// 唯一键里带**运行标签**：slug/email 这类唯一键如果在两次运行之间复用，
+	// 上一次残留（清理不完整时）会让第二次运行直接 23505 失败 ——
+	// 而那种失败与断言对象毫无关系，只在「同一个库上连跑两遍」时出现
+	//（T32 的集成门禁要求连跑不互相污染，因此必须避免）。
 	suffix := strings.ReplaceAll(t.Name(), "/", "_")
+	runTag := suffix + "-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	var workspaceID, userID int64
 	if err := pool.QueryRow(ctx, `
     INSERT INTO workspaces (name, slug) VALUES ($1, $2) RETURNING id`,
-		"legacy-route-"+suffix, "legacy-route-"+suffix).Scan(&workspaceID); err != nil {
+		"legacy-route-"+suffix, "legacy-route-"+runTag).Scan(&workspaceID); err != nil {
 		t.Fatalf("seed workspace: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
     INSERT INTO users (email, hashed_password, role) VALUES ($1, 'x', 'user') RETURNING id`,
-		"legacy-route-"+suffix+"@example.test").Scan(&userID); err != nil {
+		"legacy-route-"+runTag+"@example.test").Scan(&userID); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
 	var datasetID, mappedDatasetID int64
@@ -165,9 +172,14 @@ func TestLegacyDatasetProjectMapping(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		cleanup := context.Background()
+		// 顺序很关键：audit_logs 用 workspace_id 引用工作区且**不是** CASCADE，
+		// 先删工作区会外键失败（而 `_, _ =` 会把它静默吞掉，于是残留导致下次 23505）。
+		// 这里按**稳定前缀**清理：连上以前运行留下的残留一起清掉。
+		_, _ = pool.Exec(cleanup, `DELETE FROM audit_logs WHERE workspace_id IN
+      (SELECT id FROM workspaces WHERE slug LIKE 'legacy-route-%')`)
 		_, _ = pool.Exec(cleanup, `DELETE FROM projects WHERE workspace_id = $1`, workspaceID)
 		_, _ = pool.Exec(cleanup, `DELETE FROM datasets WHERE root_keyword = 'x' AND name LIKE $1`, "legacy-route-%"+suffix)
-		_, _ = pool.Exec(cleanup, `DELETE FROM users WHERE id = $1`, userID)
+		_, _ = pool.Exec(cleanup, `DELETE FROM users WHERE email LIKE $1`, "legacy-route-%@example.test")
 		_, _ = pool.Exec(cleanup, `DELETE FROM workspaces WHERE id = $1`, workspaceID)
 	})
 
