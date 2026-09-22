@@ -68,6 +68,7 @@ export type StudioLayoutProps = {
 export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps) {
   const location = useLocation()
   const navigate = useNavigate()
+  const breadcrumbs = useBreadcrumbs()
   const [collapsed, setCollapsed] = useState(false)
 
   // 当前高亮项：由元数据派生。子页高亮到自己的 navParent，
@@ -85,7 +86,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
   }, [activeKey])
 
   return (
-    <div className="app-layout">
+    <div className="app-layout atelier-shell">
       <nav
         className="app-layout__sidebar"
         aria-label="主导航"
@@ -103,12 +104,9 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
         ) : (
           <>
             <div className="sidebar-workspace-header">
-              <Avatar color="blue" size="small">
-                L
-              </Avatar>
               <div className="sidebar-workspace-info">
-                <div className="sidebar-workspace-name">Atelier · 数据项目工作室</div>
-                <div className="sidebar-workspace-plan">{isAdmin ? '管理员' : '普通用户'}</div>
+                <div className="sidebar-workspace-name">Atelier</div>
+                <div className="sidebar-workspace-plan">数据项目工作室 · {isAdmin ? '管理员' : '普通用户'}</div>
               </div>
               <button
                 type="button"
@@ -121,7 +119,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
             </div>
 
             {/* 命令搜索（T27）：Esc 关闭、回车打开第一条、关闭后焦点回到触发点。 */}
-            <div className="sidebar-nav-section" data-command-search-slot="true">
+            <div className="sidebar-nav-section atelier-command-search-slot" data-command-search-slot="true">
               <CommandSearch />
             </div>
 
@@ -163,6 +161,10 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
       </nav>
 
       <main className="app-layout__content" id="studio-main" tabIndex={-1}>
+        <header className="atelier-topbar">
+          <div className="atelier-topbar__crumbs"><Breadcrumbs items={breadcrumbs} /></div>
+          <div className="atelier-topbar__actions"><CommandSearch /><Avatar color="purple" size="small">{userEmail.slice(0, 1).toUpperCase() || 'A'}</Avatar></div>
+        </header>
         {/* 屏幕阅读器播报当前层级：视觉用户从高亮看出所在位置，
             而听觉用户需要等价的信号（T29 的无障碍要求，T09 先打地桩）。 */}
         <span className="sr-only" role="status" aria-live="polite">

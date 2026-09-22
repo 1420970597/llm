@@ -17,7 +17,6 @@ import {
   projectDetailRoutes,
   projectRoutes,
 } from './routes'
-import { Breadcrumbs } from './StudioLayout'
 
 /**
  * 项目壳（Issue #160 T09）：六项目工作区标签 + 面包屑 + 项目作用域。
@@ -106,16 +105,15 @@ export function ProjectLayout() {
   return (
     // key=projectId：切换项目时整棵子树重新挂载，上一个项目的在飞请求
     // 与本地状态一并丢弃（T09 验收项「切项目清除旧请求/缓存泄漏」）。
-    <div className="project-layout" key={scope.projectId} data-studio-project-id={scope.projectId}>
-      <header className="project-layout__header">
-        <Breadcrumbs items={crumbs} />
+    <div className="project-layout atelier-project-shell" key={scope.projectId} data-studio-project-id={scope.projectId}>
+      <header className="project-layout__header atelier-project-header">
         <Title heading={4} className="!mb-0">
           {projectName}
         </Title>
         <Text type="tertiary">{activeTabCaption(activeTab)}</Text>
       </header>
 
-      <nav className="project-layout__tabs" aria-label="项目工作区">
+      <nav className="project-layout__tabs atelier-project-tabs" aria-label="项目工作区">
         {projectRoutes.map((route) => (
           <NavLink
             key={route.key}

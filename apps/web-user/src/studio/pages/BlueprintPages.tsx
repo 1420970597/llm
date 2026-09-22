@@ -291,12 +291,25 @@ export function BlueprintPage() {
         </div>
       ) : null}
 
+      <header className="atelier-page-intro blueprint-page-intro">
+        <div>
+          <div className="eyebrow">DESIGN / BLUEPRINT</div>
+          <h1>生产蓝图</h1>
+          <Text type="tertiary">先看清步骤关系，再调整当前步骤。改动保存为新方案，不覆盖已运行批次。</Text>
+        </div>
+        <Button theme="solid" type="primary" onClick={() => navigate(scope.href('project.pilot'))}>小批试制 →</Button>
+      </header>
+
       <div className="blueprint-layout">
-        <aside className="blueprint-nodes" aria-label="蓝图节点">
+        <section className="blueprint-canvas" aria-label="生产流程画布">
+          <div className="blueprint-canvas__eyebrow">ATELIER / PRODUCTION BLUEPRINT / v{current?.version ?? '—'}</div>
+          <div className="blueprint-canvas__hint">先看清步骤关系，再调整当前步骤。每个节点都是可键盘访问的按钮。</div>
+          <div className="blueprint-nodes">
           {specs.map((spec) => (
             <button
               key={spec.key}
               type="button"
+              data-node-key={spec.key}
               className={
                 spec.key === activeSpec?.key ? 'blueprint-node blueprint-node--active' : 'blueprint-node'
               }
@@ -308,7 +321,8 @@ export function BlueprintPage() {
                 })
               }}
             >
-              <span className="blueprint-node__label">{spec.label}</span>
+              <span className="blueprint-node__icon" aria-hidden>◇</span>
+              <span className="blueprint-node__copy"><span className="blueprint-node__label">{spec.label}</span><span className="blueprint-node__caption">{spec.caption}</span></span>
               {spec.availability === 'planned' ? (
                 <span className="blueprint-node__badge" title={`由 ${spec.task} 交付`}>
                   待交付
@@ -316,9 +330,10 @@ export function BlueprintPage() {
               ) : null}
             </button>
           ))}
-        </aside>
+          </div>
+        </section>
 
-        <section className="blueprint-inspector">
+        <section className="blueprint-inspector" aria-label="步骤检查器">
           {activeSpec ? (
             <>
               <Title heading={5} className="!mb-1">

@@ -265,90 +265,75 @@ export function ProjectOverviewPage() {
     )
   }
 
+  const versionRows = [
+    ['蓝图', overview.versions.blueprint],
+    ['覆盖', overview.versions.coverage],
+    ['标准', overview.versions.standard],
+    ['质量策略', overview.versions.qualityPolicy],
+    ['映射', overview.versions.mapping],
+  ] as const
+
   return (
-    <div className="console-page" data-studio-page="overview">
-      <Card className="console-card mb-3" bodyStyle={{ padding: 16 }}>
-        <Text strong className="block">
-          下一决定
-        </Text>
-        <Text type="tertiary" className="block mt-1">
-          {overview.nextAction.message}
-        </Text>
-        <div className="mt-3">
-          <Button size="small" theme="solid" type="primary" onClick={() => navigate(overview.nextAction.href)}>
-            前往
-          </Button>
+    <div className="console-page atelier-overview-page" data-studio-page="overview">
+      <header className="atelier-page-intro">
+        <div>
+          <div className="eyebrow">PROJECT / {overview.targetKind === 'grpo' ? 'GRPO' : 'SFT'}</div>
+          <h1>数据项目 · {scope.projectId}</h1>
+          <Text type="tertiary">目标：{overview.goal || '尚未填写交付目标'}</Text>
         </div>
-      </Card>
+        <Button theme="solid" type="primary" onClick={() => navigate(overview.nextAction.href)}>
+          进入工作区 →
+        </Button>
+      </header>
 
-      <div className="console-stat-grid">
-        <StatTile label="计划问题数（n×m×x）" value={String(overview.stats.plannedQuestions)} hint="这是计划量，不是已产出" />
-        <StatTile label="已生成样本版本" value={String(overview.stats.generated)} hint="按内容版本计，重生成会产生新版本" />
-        <StatTile label="纳入检查" value={String(overview.stats.inspected)} hint="由质量实验冻结的范围决定（T14）" />
-        <StatTile
-          label="接纳率"
-          value={overview.stats.acceptanceRateDisplay}
-          hint="分母为 0 时显示「无结论」，不是 100%"
-        />
-      </div>
+      <section className="atelier-overview-metrics" aria-label="项目摘要">
+        <div><span>目标问题</span><strong>{overview.stats.plannedQuestions.toLocaleString()}</strong><small>计划量，不是已产出</small></div>
+        <div><span>当前方案</span><strong>v{overview.versions.blueprint?.version ?? '—'}</strong><small>{overview.versions.blueprint ? '所有历史版本保留' : '尚未保存'}</small></div>
+        <div><span>待处理决定</span><strong>{overview.stats.pendingReview.toLocaleString()}</strong><small>等待人工判断的内容版本</small></div>
+        <div><span>交付映射</span><strong>{overview.versions.mapping ? `v${overview.versions.mapping.version}` : '—'}</strong><small>{overview.stats.acceptanceRateDisplay}</small></div>
+      </section>
 
-      <div className="console-stat-grid">
-        <StatTile label="批次总数" value={String(overview.batches.total)} hint={`试制 ${overview.batches.pilot} · 扩量 ${overview.batches.scale}`} />
-        <StatTile label="运行中" value={String(overview.batches.running)} hint="含排队与暂停请求中" />
-        <StatTile label="失败/部分失败" value={String(overview.batches.failed)} hint="成功内容已保留，可只恢复失败项" />
-        <StatTile
-          label="预算占用"
-          value={formatMinor(overview.budget.settledMinor + overview.budget.uncertainMinor + overview.budget.reservedMinor)}
-          hint={overview.budget.limitMinor > 0 ? `上限 ${formatMinor(overview.budget.limitMinor)}` : '未设上限'}
-        />
-      </div>
-
-      <Card className="console-card" bodyStyle={{ padding: 16 }}>
-        <Text strong className="block mb-2">
-          版本
-        </Text>
-        <div className="flex flex-wrap gap-3">
-          {[
-            ['蓝图', overview.versions.blueprint],
-            ['覆盖', overview.versions.coverage],
-            ['标准', overview.versions.standard],
-            ['质量策略', overview.versions.qualityPolicy],
-            ['映射', overview.versions.mapping],
-          ].map(([label, summary]) => {
-            const version = summary as ProjectOverviewData['versions']['blueprint']
-            return (
-              <div key={String(label)} className="flex items-center gap-2">
-                <Text type="tertiary" size="small">
-                  {String(label)}
-                </Text>
-                {version ? (
-                  <Tag size="small">v{version.version}</Tag>
-                ) : (
-                  <Tag size="small" color="grey">
-                    未保存
-                  </Tag>
-                )}
+      <div className="atelier-overview-grid">
+        <section className="atelier-journey-panel">
+          <div className="atelier-section-heading"><div><div className="eyebrow">PROJECT JOURNEY</div><h2>当前旅程</h2></div></div>
+          <div className="atelier-journey-list">
+            {[
+              ['01 设计', '范围与方案已经就绪', '方案节点有独立职责，改动后可以先做试制。', 'project.blueprint', '生产蓝图 →'],
+              ['02 试制', '比较方案，再投入下一批', `试制 ${overview.batches.pilot} 批 · 扩量 ${overview.batches.scale} 批`, 'project.compare', '查看试制对比 →'],
+              ['03 数据与质量', '把质量证据转成具体判断', `${overview.stats.generated} 个已生成版本 · ${overview.stats.acceptanceRateDisplay}`, 'project.quality', '进入质量实验室 →'],
+              ['04 发布', '冻结内容，交付可复现版本', `${overview.batches.failed} 个失败/部分失败批次仍可恢复`, 'project.releases', '准备发布 →'],
+            ].map(([step, title, detail, route, action]) => (
+              <div className="atelier-journey-row" key={step}>
+                <div><Tag size="small">{step}</Tag><h3>{title}</h3><Text type="tertiary" size="small">{detail}</Text></div>
+                <Button theme="borderless" onClick={() => navigate(scope.href(route))}>{action}</Button>
               </div>
-            )
-          })}
-        </div>
-      </Card>
-    </div>
-  )
-}
+            ))}
+          </div>
+        </section>
 
-function StatTile({ label, value, hint }: { label: string; value: string; hint: string }) {
-  const { Text } = Typography
-  return (
-    <Card className="console-card" bodyStyle={{ padding: 14 }}>
-      <Text type="tertiary" size="small" className="block">
-        {label}
-      </Text>
-      <div className="console-stat-value">{value}</div>
-      <Text type="tertiary" size="small" className="block">
-        {hint}
-      </Text>
-    </Card>
+        <aside className="atelier-overview-side">
+          <section className="atelier-detail-panel">
+            <div className="eyebrow">PROJECT PROMISE</div><h2>项目约定</h2>
+            <dl>
+              <div><dt>训练类型</dt><dd>{overview.targetKind === 'grpo' ? 'GRPO' : 'SFT'}</dd></div>
+              <div><dt>计划规模</dt><dd>{overview.stats.plannedQuestions.toLocaleString()} 题</dd></div>
+              <div><dt>批次</dt><dd>{overview.batches.total}（试制 {overview.batches.pilot}）</dd></div>
+              <div><dt>预算占用</dt><dd>{formatMinor(overview.budget.settledMinor + overview.budget.uncertainMinor + overview.budget.reservedMinor)}</dd></div>
+            </dl>
+          </section>
+          <section className="atelier-detail-panel">
+            <div className="eyebrow">NEXT DECISION</div><h2>{overview.nextAction.message}</h2>
+            <Button theme="solid" type="primary" onClick={() => navigate(overview.nextAction.href)}>继续这一步</Button>
+          </section>
+          <section className="atelier-detail-panel">
+            <div className="eyebrow">VERSION LEDGER</div><h2>当前版本</h2>
+            <div className="atelier-version-list">
+              {versionRows.map(([label, version]) => <div key={label}><span>{label}</span><strong>{version ? `v${version.version}` : '未保存'}</strong></div>)}
+            </div>
+          </section>
+        </aside>
+      </div>
+    </div>
   )
 }
 
