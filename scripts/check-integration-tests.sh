@@ -60,7 +60,11 @@ TestRecipePrivateVisibility
 TestRecipeCopyWritesDocumentsInOneTransaction
 TestRecipeCopyRejectsDraftAndTargetMismatch
 TestRecipeUpgradeDoesNotAffectCopiedProject
-TestRecipeDuplicateNameRejected"
+TestRecipeDuplicateNameRejected
+TestTodosArePermissionFiltered
+TestActivityPaginationAndWatermark
+TestCommentsAreRevisionChainAndNotDecisions
+TestSearchOnlyAccessibleProjects"
 
 echo "[integration] go test ./... -v -count=1"
 output_file="$(mktemp)"
