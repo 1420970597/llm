@@ -81,7 +81,8 @@ func (app *application) submitDecision(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, err := app.studio.Authorize(r.Context(), projectID, user.ID, store.AuthzReview); err != nil {
+	decision, err := app.studio.Authorize(r.Context(), projectID, user.ID, store.AuthzReview)
+	if err != nil {
 		app.writeStudioError(w, r, err)
 		return
 	}
@@ -106,7 +107,7 @@ func (app *application) submitDecision(w http.ResponseWriter, r *http.Request) {
 	envelope := studio.NewEnvelope(
 		studio.SampleResourceID(sample.ID)+"/v"+strconv.Itoa(version.Version), "ready",
 		result.Projection.AggregateReviewRevision, version.CreatedAt,
-		model.ReviewProjectionCapabilities(model.ProjectRoleOwner, result.Projection.EffectiveAction),
+		model.ReviewProjectionCapabilities(decision.Role, result.Projection.EffectiveAction),
 		decisionLinks(projectID, sample.ID, version.Version), nil,
 	)
 	envelope.Data = struct {

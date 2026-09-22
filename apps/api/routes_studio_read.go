@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -335,7 +336,7 @@ func (app *application) getSample(w http.ResponseWriter, r *http.Request) {
 
 	envelope := studio.NewEnvelope(
 		studio.SampleResourceID(sample.ID), "ready", int64(sample.LatestVersion), sample.UpdatedAt,
-		studio.SampleCapabilities{CanViewHistory: true},
+		app.sampleCapabilities(r.Context(), projectID, user.ID),
 		studio.Links{
 			"self":    sampleLinks(projectID, sample.ID)["self"],
 			"history": sampleLinks(projectID, sample.ID)["history"],
@@ -386,11 +387,26 @@ func (app *application) getSampleVersion(w http.ResponseWriter, r *http.Request)
 	envelope := studio.NewEnvelope(
 		studio.SampleResourceID(sample.ID)+"/v"+strconv.Itoa(versionNumber), "ready",
 		int64(versionNumber), sample.UpdatedAt,
-		studio.SampleCapabilities{CanViewHistory: true},
+		app.sampleCapabilities(r.Context(), projectID, user.ID),
 		sampleLinks(projectID, sample.ID), nil,
 	)
 	envelope.Data = toSampleVersionView(version)
 	app.writeStudioEnvelope(w, http.StatusOK, envelope)
+}
+
+// sampleCapabilities derives the command affordances for a sample from the
+// current server-side project role.  The read endpoint has already established
+// AuthzRead in resolveSamplePath; this second check is intentionally separate:
+// a viewer may read the immutable content, but only an owner/reviewer may
+// submit a judgment.  Capabilities are only UI hints, so an unavailable authz
+// check fails closed (the write endpoint still performs the authoritative
+// check).
+func (app *application) sampleCapabilities(ctx context.Context, projectID, userID int64) studio.SampleCapabilities {
+	capabilities := studio.SampleCapabilities{CanViewHistory: true}
+	if _, err := app.studio.Authorize(ctx, projectID, userID, store.AuthzReview); err == nil {
+		capabilities.CanReview = true
+	}
+	return capabilities
 }
 
 // getSampleHistory 是「版本与来源」页的数据（契约 §3 的 D03）。
