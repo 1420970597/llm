@@ -377,6 +377,8 @@ export type SampleSummary = {
   title: string
   targetKind: string
   latestVersion: number
+  /** 当前样本指针对应的 `sample_versions.id`（命令冻结必须使用它）。 */
+  latestVersionId: number
   originBatchId?: number
   createdAt: string
   updatedAt: string

@@ -20,6 +20,12 @@ import (
 // 逐条查会变成 N+1 次请求，而队列页正是「一次看一屏」的场景。
 type SampleWithReview struct {
 	model.Sample
+	// LatestVersionID 是当前样本指针对应的**内容版本行 ID**。
+	//
+	// `latestVersion` 是人类可读的样本内版本号，质量实验与发布却必须冻结
+	// `sample_versions.id`。列表读模型一次带回这个 ID，避免前端把样本身份
+	// 错当成可提交给命令 API 的版本 ID。
+	LatestVersionID int64 `json:"latestVersionId"`
 	// ReviewStatus 是**当前采用版本**的有效处置（无投影时视为 pending）。
 	ReviewStatus string `json:"reviewStatus"`
 	// AggregateReviewRevision 供前端显示「这一条判断改过几次」，
@@ -79,12 +85,20 @@ func (s *BatchStore) ListSamples(ctx context.Context, query SampleListQuery) ([]
 	// 用 LEFT JOIN 而不是 INNER JOIN：从未判断过的内容必须出现在待审阅队列里，
 	// 而 INNER JOIN 会把它们全部排除，得到一个永远空着的队列。
 	rows, err := s.db.Query(ctx, `
-    SELECT s.id, s.project_id, s.sample_key, s.target_kind, s.title, s.origin_batch_id,
-           s.latest_version, s.created_at, s.updated_at,
-           COALESCE(rp.effective_action, 'pending') AS review_status,
-           COALESCE(rp.aggregate_review_revision, 0) AS aggregate_review_revision,
-           COALESCE(rp.conflict, FALSE) AS review_conflict
+	SELECT s.id, s.project_id, s.sample_key, s.target_kind, s.title, s.origin_batch_id,
+	       s.latest_version, COALESCE(latest_sv.id, 0) AS latest_version_id,
+	       s.created_at, s.updated_at,
+	       COALESCE(rp.effective_action, 'pending') AS review_status,
+	       COALESCE(rp.aggregate_review_revision, 0) AS aggregate_review_revision,
+	       COALESCE(rp.conflict, FALSE) AS review_conflict
     FROM samples s
+    LEFT JOIN LATERAL (
+      SELECT sv.id
+      FROM sample_versions sv
+      WHERE sv.sample_id = s.id AND sv.project_id = s.project_id
+        AND sv.version = s.latest_version
+      LIMIT 1
+    ) latest_sv ON TRUE
     LEFT JOIN LATERAL (
       SELECT p.effective_action, p.aggregate_review_revision, p.conflict
       FROM review_projections p
@@ -113,7 +127,7 @@ func (s *BatchStore) ListSamples(ctx context.Context, query SampleListQuery) ([]
 	for rows.Next() {
 		var item SampleWithReview
 		if err := rows.Scan(&item.ID, &item.ProjectID, &item.SampleKey, &item.TargetKind,
-			&item.Title, &item.OriginBatchID, &item.LatestVersion,
+			&item.Title, &item.OriginBatchID, &item.LatestVersion, &item.LatestVersionID,
 			&item.CreatedAt, &item.UpdatedAt,
 			&item.ReviewStatus, &item.AggregateReviewRevision, &item.ReviewConflict); err != nil {
 			return nil, err

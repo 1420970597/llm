@@ -246,8 +246,8 @@ export function ReleaseNewPage() {
     try {
       const result = await studioApi.createReleaseCandidate(scope.projectId, {
         releaseName: releaseName.trim(),
-        // 这里提交的是**样本 ID**（服务端按当前采用版本落到具体内容版本）；
-        // 真正的范围确认在数据卡页完成。
+        // 这里提交的是**sample_versions 行 ID**；样本身份 ID 与样本内版本号
+        // 都不能替代它。候选因此冻结了用户此刻明确选择的内容。
         sampleVersionIds: selected,
         mappingVersionId: Number(mappingVersionId) || 0,
         format: 'jsonl',
@@ -333,13 +333,18 @@ export function ReleaseNewPage() {
             {samples.slice(0, 50).map((sample) => (
               <div key={sample.sampleId} className="sample-row">
                 <input type="checkbox" aria-label={`选择 ${sample.title || sample.sampleKey}`}
-                  checked={selected.includes(sample.sampleId)}
+                  checked={sample.latestVersionId > 0 && selected.includes(sample.latestVersionId)}
+                  disabled={sample.latestVersionId <= 0}
                   onChange={(event) => {
+                    const versionID = sample.latestVersionId
+                    if (versionID <= 0) return
                     setSelected((previous) => event.target.checked
-                      ? [...previous, sample.sampleId]
-                      : previous.filter((id) => id !== sample.sampleId))
+                      ? [...previous, versionID]
+                      : previous.filter((id) => id !== versionID))
                   }} />
-                <span>{sample.title || sample.sampleKey} · v{sample.latestVersion}</span>
+                <span>{sample.title || sample.sampleKey} · v{sample.latestVersion}
+                  {sample.latestVersionId > 0 ? `（版本 ID ${sample.latestVersionId}）` : '（暂无内容版本）'}
+                </span>
                 <span>{sample.originBatchId ? `#${sample.originBatchId}` : '—'}</span>
               </div>
             ))}

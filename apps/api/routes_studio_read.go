@@ -108,6 +108,9 @@ type sampleSummary struct {
 	Title         string `json:"title"`
 	TargetKind    string `json:"targetKind"`
 	LatestVersion int    `json:"latestVersion"`
+	// LatestVersionID 是当前指针对应的 sample_versions.id。命令 API（实验、
+	// 发布、规则预览）接受的是这个行 ID，而不是样本身份或样本内版本号。
+	LatestVersionID int64 `json:"latestVersionId"`
 	OriginBatchID *int64 `json:"originBatchId,omitempty"`
 	CreatedAt     string `json:"createdAt"`
 	UpdatedAt     string `json:"updatedAt"`
@@ -131,6 +134,8 @@ func toSampleSummary(sample model.Sample) sampleSummary {
 		Title:         sample.Title,
 		TargetKind:    sample.TargetKind,
 		LatestVersion: sample.LatestVersion,
+		// 详情路径只携带样本身份；调用方若需要精确版本 ID，应使用列表读模型
+		// 或详情中的 version.versionId。这里保持零值，避免按版本号猜行 ID。
 		OriginBatchID: sample.OriginBatchID,
 		CreatedAt:     studio.FormatTime(sample.CreatedAt),
 		UpdatedAt:     studio.FormatTime(sample.UpdatedAt),
@@ -140,6 +145,7 @@ func toSampleSummary(sample model.Sample) sampleSummary {
 // toSampleSummaryWithReview 转换列表项（列表已在同一次查询里带出投影）。
 func toSampleSummaryWithReview(item store.SampleWithReview) sampleSummary {
 	summary := toSampleSummary(item.Sample)
+	summary.LatestVersionID = item.LatestVersionID
 	summary.ReviewStatus = item.ReviewStatus
 	summary.AggregateReviewRevision = item.AggregateReviewRevision
 	summary.ReviewConflict = item.ReviewConflict
@@ -340,6 +346,7 @@ func (app *application) getSample(w http.ResponseWriter, r *http.Request) {
 	// 审阅投影必须**真实加载**再补进摘要（T17）：不加载就填默认值会把
 	// 「已被接纳」显示成「待判断」，而用户会据此重复审一遍已经看过的东西。
 	summary := toSampleSummary(sample)
+	summary.LatestVersionID = version.ID
 	if projection, err := app.studio.Reviews.GetProjection(r.Context(), projectID, version.ID); err == nil {
 		applyReviewProjection(&summary, projection)
 	} else {

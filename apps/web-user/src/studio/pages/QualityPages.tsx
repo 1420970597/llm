@@ -338,17 +338,21 @@ export function QualityNewPage() {
               <input
                 type="checkbox"
                 aria-label={`选择 ${sample.title || sample.sampleKey}`}
-                checked={selected.includes(sample.sampleId)}
+                checked={sample.latestVersionId > 0 && selected.includes(sample.latestVersionId)}
+                disabled={sample.latestVersionId <= 0}
                 onChange={(event) => {
+                  const versionID = sample.latestVersionId
+                  if (versionID <= 0) return
                   setSelected((previous) =>
                     event.target.checked
-                      ? [...previous, sample.sampleId]
-                      : previous.filter((id) => id !== sample.sampleId),
+                      ? [...previous, versionID]
+                      : previous.filter((id) => id !== versionID),
                   )
                 }}
               />
               <span>
                 {sample.title || sample.sampleKey} · v{sample.latestVersion}
+                {sample.latestVersionId > 0 ? `（版本 ID ${sample.latestVersionId}）` : '（暂无内容版本）'}
               </span>
               <span>
                 <Tag size="small">{sample.reviewStatus}</Tag>
