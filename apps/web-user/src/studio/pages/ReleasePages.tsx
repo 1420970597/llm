@@ -182,6 +182,7 @@ export function ReleaseNewPage() {
   const [samples, setSamples] = useState<SampleSummary[]>([])
   const [batches, setBatches] = useState<BatchSummary[]>([])
   const [selected, setSelected] = useState<number[]>([])
+  const [selectionSnapshotItems, setSelectionSnapshotItems] = useState<number[] | null>(null)
   const [releaseName, setReleaseName] = useState('v1.0')
   const [mappingVersionId, setMappingVersionId] = useState('')
   const [intendedUse, setIntendedUse] = useState('')
@@ -216,8 +217,8 @@ export function ReleaseNewPage() {
     let cancelled = false
     void (async () => {
       try {
-        const response = await client.get<{ targetKind?: string }>(`${projectPath(scope.projectId)}/overview`)
-        if (!cancelled) setTargetKind(response.data?.targetKind ?? 'sft')
+        const response = await studioApi.overview(scope.projectId)
+        if (!cancelled) setTargetKind(response.targetKind ?? 'sft')
       } catch {
         // 读取失败时回退 SFT：该值只影响提示文案，不参与服务端校验，
         // 因此失败方向是「少一条提示」而不是「提交错格式」。
@@ -234,7 +235,8 @@ export function ReleaseNewPage() {
       try {
         const resolved = await studioApi.getSelectionSnapshot(scope.projectId, selectionSnapshotID)
         if (cancelled) return
-        // 快照存的是**内容版本 ID**，而这里按样本选择；用数量提示用户。
+        // 快照存的是**内容版本行 ID**；恢复时直接作为候选范围，不能只显示数量。
+        setSelectionSnapshotItems(resolved.items ?? [])
         setSnapshotNotice(`已从服务端选择范围恢复 ${resolved.count} 个内容版本（快照 ${selectionSnapshotID}）。`)
       } catch (snapshotError) {
         if (!cancelled) {
@@ -248,7 +250,8 @@ export function ReleaseNewPage() {
   const submit = useCallback(async () => {
     setError(null)
     setBlockers([])
-    if (selected.length === 0) {
+    const selectedVersionIDs = selectionSnapshotItems ?? selected
+    if (selectedVersionIDs.length === 0) {
       setError('发布范围不能为空：请选择要发布的内容版本')
       return
     }
@@ -262,7 +265,7 @@ export function ReleaseNewPage() {
         releaseName: releaseName.trim(),
         // 这里提交的是**sample_versions 行 ID**；样本身份 ID 与样本内版本号
         // 都不能替代它。候选因此冻结了用户此刻明确选择的内容。
-        sampleVersionIds: selected,
+        sampleVersionIds: selectedVersionIDs,
         mappingVersionId: Number(mappingVersionId) || 0,
         format: 'jsonl',
         intendedUse: intendedUse.trim(),
@@ -279,7 +282,7 @@ export function ReleaseNewPage() {
     } finally {
       setBusy(false)
     }
-  }, [intendedUse, limitations, mappingVersionId, navigate, releaseName, scope.projectId, selected])
+  }, [intendedUse, limitations, mappingVersionId, navigate, releaseName, scope.projectId, selected, selectionSnapshotItems])
 
   return (
     <div className="console-page" data-studio-page="release-new">
@@ -337,7 +340,8 @@ export function ReleaseNewPage() {
       <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-range-picker="true">
         <Text strong className="block mb-2">发布范围（已接纳的内容版本）</Text>
         <Text type="tertiary" size="small" className="block mb-2">
-          已选 {selected.length} 条（当前页）。候选保存的是**具体内容版本**，不是筛选条件。
+          已选 {(selectionSnapshotItems ?? selected).length} 条
+          {selectionSnapshotItems ? '（来自服务端冻结快照）' : '（当前页）'}。候选保存的是**具体内容版本**，不是筛选条件。
         </Text>
         {samples.length === 0 ? (
           <Empty description="还没有已接纳的内容。请先在审阅队列中完成判断。" />
