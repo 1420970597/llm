@@ -274,7 +274,8 @@ func (s *RecipeStore) ListRecipes(ctx context.Context, workspaceID, userID int64
 	rows, err := s.db.Query(ctx, `
     SELECT r.id, r.workspace_id, r.name, r.name_key, r.description, r.target_kind, r.visibility,
            r.applicable_scope, r.limitations, r.created_by, r.created_at, r.updated_at,
-           COALESCE(v.latest_version, 0), COALESCE(v.published_version, 0), COALESCE(v.version_count, 0)
+           COALESCE(v.latest_version, 0), COALESCE(v.published_version, 0), COALESCE(v.version_count, 0),
+           lv.payload
     FROM recipes r
     LEFT JOIN LATERAL (
       SELECT MAX(version) AS latest_version,
@@ -282,6 +283,9 @@ func (s *RecipeStore) ListRecipes(ctx context.Context, workspaceID, userID int64
              COUNT(*) AS version_count
       FROM recipe_versions WHERE recipe_id = r.id
     ) v ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT payload FROM recipe_versions WHERE recipe_id = r.id ORDER BY version DESC LIMIT 1
+    ) lv ON TRUE
     WHERE r.workspace_id = $1
       AND ($2 = '' OR r.target_kind = $2)
       AND (r.visibility = 'workspace' AND EXISTS (
@@ -330,7 +334,8 @@ func (s *RecipeStore) GetRecipeInternal(ctx context.Context, recipeID int64) (mo
 	row := s.db.QueryRow(ctx, `
     SELECT r.id, r.workspace_id, r.name, r.name_key, r.description, r.target_kind, r.visibility,
            r.applicable_scope, r.limitations, r.created_by, r.created_at, r.updated_at,
-           COALESCE(v.latest_version, 0), COALESCE(v.published_version, 0), COALESCE(v.version_count, 0)
+           COALESCE(v.latest_version, 0), COALESCE(v.published_version, 0), COALESCE(v.version_count, 0),
+           lv.payload
     FROM recipes r
     LEFT JOIN LATERAL (
       SELECT MAX(version) AS latest_version,
@@ -338,6 +343,9 @@ func (s *RecipeStore) GetRecipeInternal(ctx context.Context, recipeID int64) (mo
              COUNT(*) AS version_count
       FROM recipe_versions WHERE recipe_id = r.id
     ) v ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT payload FROM recipe_versions WHERE recipe_id = r.id ORDER BY version DESC LIMIT 1
+    ) lv ON TRUE
     WHERE r.id = $1`, recipeID)
 	recipe, err := scanRecipeWithCounts(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -603,14 +611,22 @@ func recipeVersionStatus(publish bool) string {
 func scanRecipeWithCounts(row pgx.Row) (model.Recipe, error) {
 	var recipe model.Recipe
 	var limitations []byte
+	// latestPayload 用于派生「整套方法」摘要；为 NULL（还没有版本）时保持 nil。
+	var latestPayload []byte
 	err := row.Scan(&recipe.ID, &recipe.WorkspaceID, &recipe.Name, &recipe.NameKey, &recipe.Description,
 		&recipe.TargetKind, &recipe.Visibility, &recipe.ApplicableScope, &limitations, &recipe.CreatedBy,
 		&recipe.CreatedAt, &recipe.UpdatedAt, &recipe.LatestVersion, &recipe.PublishedVersion,
-		&recipe.VersionCount)
+		&recipe.VersionCount, &latestPayload)
 	if err != nil {
 		return model.Recipe{}, err
 	}
 	recipe.Limitations = decodeLimitations(limitations)
+	// 解析失败**不报错**：摘要只是展示信息，让一份坏 payload 把整个方案列表
+	// 读不出来是更差的取舍（那时用户连方案名都看不到）。
+	if payload, decodeErr := model.DecodeRecipePayload(latestPayload); decodeErr == nil {
+		summary := payload.Summarize()
+		recipe.Summary = &summary
+	}
 	return recipe, nil
 }
 

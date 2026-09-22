@@ -55,6 +55,15 @@ type Recipe struct {
 	PublishedVersion int `json:"publishedVersion"`
 	VersionCount     int `json:"versionCount"`
 
+	// Summary 是读模型字段：由**最新一版** payload 派生的一行内容摘要
+	// （RecipePayload.Summarize）。为 nil 表示当前没有可展示的摘要 ——
+	// 方案还没有任何版本，或最新一版的 payload 解析失败。
+	//
+	// 用指针而不是直接嵌进 Recipe 的必填字段：摘要是从版本内容**派生**出来的，
+	// 不是方案身份的一部分（身份只有 Name/Visibility/TargetKind 那几列），
+	// 用指针能让「派生不出来」在 JSON 里不出现，而不是出现一个看起来像内容的空串。
+	Summary *string `json:"summary,omitempty"`
+
 	CreatedBy *int64    `json:"createdBy,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -121,6 +130,66 @@ func (payload RecipePayload) Documents() []DocumentEntry {
 		entries = append(entries, DocumentEntry{Kind: KindBlueprint, Payload: *payload.Blueprint})
 	}
 	return entries
+}
+
+// recipeDocumentLabels 是五类文档在界面上的写法，顺序为**展示顺序**（蓝图在前）。
+//
+// 与 Documents() 的复制顺序刻意不同：复制顺序有依赖含义（蓝图必须最后写），
+// 而摘要读起来「蓝图 + 其余」才符合用户对「一整套方法」的直觉。
+var recipeDocumentLabels = []struct {
+	kind  DocumentKind
+	label string
+}{
+	{KindBlueprint, "蓝图"},
+	{KindCoverage, "覆盖"},
+	{KindStandard, "标准"},
+	{KindQualityPolicy, "质量策略"},
+	{KindMapping, "映射"},
+}
+
+// Summarize 返回方案内容的**一行**摘要，用于方案列表与今日工作的项目卡。
+//
+// 它只陈述「这一版里有哪些文档」这个事实：方案好不好只能由已发布版本的实际
+// 生产结果证明，摘要不替它下结论，也不编造进度类数字。
+//
+// 五类齐全时不写计数（那是方案库里的常态，写出来只是噪音）；缺文档时写出
+// 「n/5 份文档」，因为「这份方案能不能直接复制去建项目」正是用户看这一行时要判断的事。
+func (payload RecipePayload) Summarize() string {
+	included := make([]string, 0, len(recipeDocumentLabels))
+	for _, entry := range recipeDocumentLabels {
+		if payload.hasDocument(entry.kind) {
+			included = append(included, entry.label)
+		}
+	}
+	if len(included) == 0 {
+		return ""
+	}
+	joined := strings.Join(included, " · ")
+	if len(included) == len(recipeDocumentLabels) {
+		return joined
+	}
+	return fmt.Sprintf("%s（%d/%d 份文档）", joined, len(included), len(recipeDocumentLabels))
+}
+
+// hasDocument 报告方案里是否包含某一类文档。
+//
+// 用指针判空而不是看「值为零」：一份方案可以只固化蓝图（结构先定，其余进项目再补），
+// 于是「包含但内容为空」与「不包含」必须区分 —— 这正是 payload 用指针的原因（见类型注释）。
+func (payload RecipePayload) hasDocument(kind DocumentKind) bool {
+	switch kind {
+	case KindBlueprint:
+		return payload.Blueprint != nil
+	case KindCoverage:
+		return payload.Coverage != nil
+	case KindStandard:
+		return payload.Standard != nil
+	case KindQualityPolicy:
+		return payload.QualityPolicy != nil
+	case KindMapping:
+		return payload.Mapping != nil
+	default:
+		return false
+	}
 }
 
 // Validate 校验方案内容：至少一份文档，且每份文档自身合法。
