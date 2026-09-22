@@ -594,7 +594,7 @@ export function ReleaseCardPage() {
             </Button>
           ) : published && capabilities.canCreateNext ? (
             <Button loading={busy} onClick={() => void createNext()}>创建下一版</Button>
-          )}
+          ) : null}
         </div>
       </div>
 
