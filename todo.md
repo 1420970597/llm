@@ -679,12 +679,22 @@ M1 的任务级进度，避免两处状态漂移。每个任务关闭需附 PR�
 | M5 GRPO/方案/协作 | T23 GRPO 蓝图配置、生成适配与内容版本 | 已完成 |
 | M5 | T24 GRPO 质量适配器、边界实验与独立裁判 | 已完成 |
 | M5 | T25 GRPO 发布 JSONL 与端到端 UI | 已完成 |
-| M5 | T26–T29 | 待开始 |
+| M5 | T26 方案库、方案版本与复制项目 | 待开始 |
+| M5 | T27 今日工作、项目聚合、命令搜索与动态 | 待开始 |
+| M5 | T28 连接/存储、成员/角色、预算与帮助辅助页 | 待开始 |
+| M5 | T29 断网待同步、可访问性和大数据量交互 | 待开始 |
 | M6 迁移/门禁/灰度验收 | T30 旧数据迁移盘点、映射与 dry-run 工具 | 已完成 |
 | M6 | T31 幂等导入、旧路由兼容与核对 | 已完成（按项导入；批量吞吐与文件对账待续） |
 | M6 | T32 真实 DB、API、浏览器与故障验收接入 CI | 已完成 |
 | M6 | T33 可观测性、特性开关、灰度与回退手册 | 已完成（代码与手册；真实灰度/演练待执行） |
-| M6 | T34 真实用户任务验收、文档交付与总 Issue 关闭 | 待开始 |
+| M6 | T34 真实用户任务验收、文档交付与总 Issue 关闭 | 部分交付：验收方案/字段 schema/保留策略/runbook/状态对账已交付；**真实用户会话未执行**，故验收项不勾选 |
+
+> 状态口径：`已完成` 表示该任务的代码、测试与文档已交付并通过本地/CI 门禁；
+> 带括号说明的条目表示**部分验收项**需要真实环境或真实用户参与，尚未执行。
+> 任务级的取舍与交付明细见
+> [`docs/plans/atelier-implementation.md`](docs/plans/atelier-implementation.md) §1.1；
+> T34 的验收方案见 [`docs/plans/atelier-acceptance-protocol.md`](docs/plans/atelier-acceptance-protocol.md)；
+> 字段与保留策略见 [`docs/plans/atelier-field-schema-and-retention.md`](docs/plans/atelier-field-schema-and-retention.md)。
 
 ### 与第 17 节旧任务的关系
 

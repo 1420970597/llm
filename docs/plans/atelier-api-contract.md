@@ -437,3 +437,61 @@ POST P/releases/{releaseId}/next-candidate
 | `/api/v1/tasks/*`（`todo.md` §12.2 设想） | **从未实现**，不再是目标接口 |
 | `/api/v1/eval/*`、`/api/v1/cleaning/*` | 计算逻辑复用（T14/T15），但新实验/规则版本走项目命令 |
 | `/api/v1/admin/*` | 保留治理能力；T28 提供非秘密 connection-options 读接口给普通用户 |
+
+---
+
+## 8. T24–T33 的**增量**交付（不改变 §1–§7）
+
+§1–§7 是 T01 冻结的契约。后续任务以**同一信封/错误/分页/幂等约定**增量交付端点，
+不新增漂移的映射表。本节只登记「多了哪些端点、有哪些新字段」，schema 细节见各端点的
+实现与测试。
+
+### 8.1 T24 质量实验的 GRPO 适配
+
+| 端点 | 变化 |
+|---|---|
+| `POST P/experiments` | 请求新增 `targetConfig`（GRPO 专属：教师提示词版本 / 基准回答版本 / 边界参考集）。量表按 `target_kind` 强制匹配：GRPO 省略 `rubric` 时用内置量表（档位覆盖 / 边界稳定性 / 评分解释一致性） |
+| `GET P/experiments/{id}` | 报告新增 `targetKind` 维度语义；GRPO 的 `level_coverage` 由**确定性判据**给出（`judge_connection_id = 0` 的行），不按裁判数复制 |
+
+GRPO 实验的 target_config 字段：
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `teacherPromptVersion` | 否 | 教师提示词版本标识（结果关联用） |
+| `baselineAnswerVersion` | 否 | 基准回答版本标识；为空时 `boundary_stability` 记缺分 |
+| `boundaryReference.items[]` | 否 | `{level, input, expected: accept\|reject, note}`；冻结参考集 |
+| `boundaryReferenceHash` | 读 | 由服务端复算；客户端传入不一致即 422 |
+
+### 8.2 T25 GRPO 发布 JSONL
+
+GRPO 发布的每一行**必须**满足下列 schema（服务端逐行解码校验，不通过即中止发布）：
+
+| 字段 | 类型 | 约束 |
+|---|---|---|
+| `question` | string | 非空 |
+| `judge_prompt` | string | 非空 |
+| `levels` | string[] | ≥ 2 档、非空、不重复；**必须是数组**（逗号字符串会被拒绝） |
+| `level_rubrics` | object[] | 与 `levels` 一一对应；每项 `{level, criteria, accept_case, reject_case}`，`criteria` 非空 |
+| `framework_ref` | string | 可空（provenance） |
+
+GRPO 项目只能发布 `jsonl`；候选创建期与构建期各校验一次（502/409 归属见 §1.2）。
+
+### 8.3 T31 旧路由映射与旧写入口冻结
+
+| 端点 | 语义 |
+|---|---|
+| `GET /api/v1/legacy/datasets/{datasetId}/project` | 200 + `{datasetId, projectId, pagePath, migrationStatus, message}`；`migrationStatus ∈ {mapped, not_mapped}`。**未映射不是 404**：它是「尚未迁移」，前端据此渲染只读历史列表 |
+
+`LEGACY_WRITES_FROZEN=true` 时，`/api/v1/datasets` 等旧入口的写方法返回
+**409** + 迁移说明（读与下载不受影响）。`/api/v1/admin/*` 与 `/api/v1/projects` 不受此开关影响。
+
+### 8.4 T33 运维开关与诊断
+
+| 端点 | 权限 | 语义 |
+|---|---|---|
+| `GET /api/v1/studio/rollout` | 管理员 | `{enabled, disabledProjects[], notes[]}` |
+| `GET /api/v1/studio/health` | 管理员 | 运维快照（outbox/jobs/leases/budget/usage/experiments/releases + `notes[]` 解读） |
+
+`STUDIO_ENABLED=false` 时，项目级**写入**动作（design/run/review/publish）返回
+**503** + `DEPENDENCY_UNAVAILABLE`；读取、下载、成员管理与项目创建之外的读路径不受影响。
+未知动作按写入处理。
