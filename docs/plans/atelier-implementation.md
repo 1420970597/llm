@@ -105,6 +105,10 @@
 | 2026-09-21 | T20 | §2.9 的门槛检查时点未规定 | 冻结事务**重新判定门槛**（用当前判断/证据），而不是信任创建时的 blockers：blockers 是**创建那一刻**的检查结果，而发布可能发生在几分钟甚至几天后，期间有人隔离了一条或发现了新风险。同时校验每条清单项的 `aggregate_review_revision`/`evidence_revision` 与当前一致，不一致返回 409 并要求重新确认。门槛未通过时**不写入清单**：写入会让「被挡住的候选」拥有一份看起来可发布的文件范围 |
 | 2026-09-21 | T20 | §2.8 的候选清单与「排除项」的关系 | 清单存**具体 sample_version + 内容 hash + 来源 hash**；被排除项以 `excluded_reason` 标记并**仍计入分母**（§2.3「发布范围可缩小但保留原范围指标」）。分子（接纳数）按冻结范围内的接纳统计，因此「排除几条差的」不能提高接纳率。来源 hash 取自 `sample_versions` 自身字段，**不**取「当前项目采用版本」——后者会让发布时改一次蓝图把历史内容的来源改写成新版本（T20 验收项禁止「以当前项目版本冒充样本来源版本」）|
 | 2026-09-21 | T20 | T20 尚未全部交付（已交付迁移 0031、门槛判据与 store；项目命令 API、发布作业与页面属 T21/T22）| **已交付**：迁移 0031（releases/release_candidates/release_items/release_gates）、`internal/model/release.go`（六类门槛判据与 blocker）、`internal/store/release_store.go`（身份分配、抗并发冻结、幂等重复发布、outbox 同事务）与两侧测试。**未交付**：项目发布命令 API、T21 的制品/manifest/hash 与发布作业执行、T22 的发布页与交付库 |
+| 2026-09-21 | T21 | §7.1 的编号表未给 T21 预留编号（0031–0034 已分配、0035/0036 已被 T17/T18 占用）| 新增 **0037**（release_manifests / release_artifacts）。不重编号已冻结的 0031–0034：重编号会让已写完的任务记录与迁移文件对不上 |
+| 2026-09-21 | T21 | 契约要求「manifest hash 不把自己包含进 hash 输入」但未规定规范化细节 | 冻结为：hash 输入 = `CanonicalManifestBytes`（条目按 (sampleId, sampleVersionId) 排序、Limitations 去重排序、ItemCount 从 Items 派生、无缩进），且**不含任何 hash 字段**。排序是必需的：清单顺序取决于数据库返回顺序（无 ORDER BY 时未定义），不排序会让同样内容的两份 manifest 产出不同 hash，于是「重试是否得到同一份文件」无法验证 |
+| 2026-09-21 | T21 | 「已发布文件不可变」如何由对象路径保证 | `ArtifactObjectKey` = `releases/{id}/r{revision}/export-{format}-{hash前16位}.jsonl`：路径含内容 hash，因此同内容重传写同一位置（幂等），而内容不同自然写到另一 key（覆盖等于写入另一内容）。路径**不含** `latest`（下载禁止 latest 回退，路径也不给它留位置）。另：`RegisterArtifact` 在同 hash 时回放既有行，在**已确认**时拒绝不同 hash 的登记 —— 那正是「重复消息产生两个有效发布」的形态 |
+| 2026-09-21 | T21 | T21 尚未全部交付（已交付迁移 0037 + hash 规则 + 制品 store；发布作业执行与下载端点待续）| **已交付**：迁移 0037、`internal/model/release_artifact.go`（hash 分层与规范化、可发布判定、上传校验、对象路径）、`internal/store/release_artifact_store.go`（manifest/制品登记幂等、状态机、`PublishReleaseIfReady` 唯一发布入口）与两侧测试。**未交付**：worker 的发布作业执行（流式编码 + 上传 + 校验）、下载端点与 T22 的页面 |
 ---
 
 ## 2. 必须先定清的固定口径
