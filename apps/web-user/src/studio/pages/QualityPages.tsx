@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Card, Empty, Input, InputNumber, Select, Spin, Tag, Typography } from '@douyinfe/semi-ui'
+import { Button, Card, Empty, Input, InputNumber, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 // AlertTriangle 来自 lucide-react（图标库），不是 semi-ui 的组件。
 import { AlertTriangle } from 'lucide-react'
 import { client } from '../../lib/api'
 import { projectPath, studioApi } from '../../lib/api/studio'
-import type { BatchSummary, Experiment, ExperimentDetail, Page, SampleSummary, RulePreviewResult } from '../../lib/api/studio'
+import type { BatchSummary, CreateExperimentRequest, Experiment, ExperimentDetail, Page, SampleSummary, RulePreviewResult } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 
 /**
@@ -187,6 +187,9 @@ export function QualityNewPage() {
   const [selected, setSelected] = useState<number[]>([])
   const [judgeID, setJudgeID] = useState('')
   const [seed, setSeed] = useState('42')
+  const [teacherPromptVersion, setTeacherPromptVersion] = useState('')
+  const [baselineAnswerVersion, setBaselineAnswerVersion] = useState('')
+  const [boundaryReferenceJSON, setBoundaryReferenceJSON] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // GRPO 与 SFT 的量表不同（T24）：GRPO 使用服务端内置量表，
@@ -241,6 +244,28 @@ export function QualityNewPage() {
       setError('实验至少需要一名裁判；请填写裁判连接 ID（独立性由服务端校验）')
       return
     }
+    let targetConfig: CreateExperimentRequest['targetConfig'] | undefined
+    if (isGRPO) {
+      if (boundaryReferenceJSON.trim() !== '') {
+        try {
+          const parsed = JSON.parse(boundaryReferenceJSON) as NonNullable<CreateExperimentRequest['targetConfig']>['boundaryReference']
+          if (!parsed || !Array.isArray(parsed.items)) throw new Error('边界参考集必须包含 items 数组')
+          targetConfig = {
+            teacherPromptVersion: teacherPromptVersion.trim() || undefined,
+            baselineAnswerVersion: baselineAnswerVersion.trim() || undefined,
+            boundaryReference: parsed,
+          }
+        } catch (parseError) {
+          setError(parseError instanceof Error ? parseError.message : '边界参考集 JSON 无效')
+          return
+        }
+      } else {
+        targetConfig = {
+          teacherPromptVersion: teacherPromptVersion.trim() || undefined,
+          baselineAnswerVersion: baselineAnswerVersion.trim() || undefined,
+        }
+      }
+    }
     setBusy(true)
     try {
       const experiment = await studioApi.createExperiment(scope.projectId, {
@@ -254,6 +279,8 @@ export function QualityNewPage() {
           : { dimensions: [{ key: 'accuracy', label: '准确', weight: 1, min: 0, max: 10 }] },
         judgeConnectionIds: [Number(judgeID)],
         missingScorePolicy: 'exclude',
+        batchId: batchID.trim() === '' ? undefined : Number(batchID),
+        targetConfig,
       })
       // 202 后进入报告页：此时状态是排队/运行中，**不显示**最终分数。
       navigate(`/p/${scope.projectId}/quality/${experiment.id}`)
@@ -262,7 +289,7 @@ export function QualityNewPage() {
     } finally {
       setBusy(false)
     }
-  }, [isGRPO, judgeID, navigate, scope.projectId, seed, selected])
+  }, [baselineAnswerVersion, batchID, boundaryReferenceJSON, isGRPO, judgeID, navigate, scope.projectId, seed, selected, teacherPromptVersion])
 
   return (
     <div className="console-page" data-studio-page="quality-new">
@@ -319,6 +346,20 @@ export function QualityNewPage() {
           </Text>
         )}
       </Card>
+
+      {isGRPO ? (
+        <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-grpo-target-config="true">
+          <Text strong className="block mb-2">GRPO 冻结配置（可选参考集）</Text>
+          <Text type="tertiary" size="small" className="block mb-2">
+            教师提示词与基准回答版本会随实验冻结；没有边界参考集时，边界稳定性记为缺分，不会伪造 0 分或满分。
+          </Text>
+          <div className="wizard-fields">
+            <Input aria-label="教师提示词版本" value={teacherPromptVersion} onChange={setTeacherPromptVersion} placeholder="教师提示词版本（可选）" />
+            <Input aria-label="基准回答版本" value={baselineAnswerVersion} onChange={setBaselineAnswerVersion} placeholder="基准回答版本（可选）" />
+            <TextArea aria-label="边界参考集 JSON" value={boundaryReferenceJSON} onChange={setBoundaryReferenceJSON} autosize={{ minRows: 3, maxRows: 8 }} placeholder='{"id":"boundary-v1","source":"manual","sampled":true,"items":[{"level":"中","input":"示例","expected":"accept"}]}' />
+          </div>
+        </Card>
+      ) : null}
 
       <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-scope-picker="true">
         <Text strong className="block mb-2">
