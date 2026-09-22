@@ -89,7 +89,7 @@ func main() {
 		documents:      store.NewDocumentStore(pool),
 		idempotency:    store.NewIdempotencyStore(pool),
 		redis:          redisClient,
-		studio:         studio.New(pool),
+		studio:         studio.NewWithRollout(pool, studioRolloutFromConfig(cfg)),
 	}
 
 	if err := app.reasoning.EnsureSchemaReady(ctx); err != nil {

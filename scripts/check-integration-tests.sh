@@ -47,7 +47,8 @@ TestListDirectionsReadsCurrentChainStandardVersion
 TestInventoryPlansLegacyDatasets
 TestInventoryIsReadOnly
 TestInventoryReportsStaleDatabase
-TestInventorySourceHasNoWriteOrModelCalls"
+TestInventorySourceHasNoWriteOrModelCalls
+TestLoadStudioHealthCountsFactsAndKeepsUnknownCostSeparate"
 
 echo "[integration] go test ./... -v -count=1"
 output_file="$(mktemp)"

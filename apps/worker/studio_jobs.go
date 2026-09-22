@@ -168,6 +168,12 @@ type studioRuntime struct {
 	legacyQueue string
 	lease       time.Duration
 	concurrency int
+	// enabled 是 worker 侧的特性开关（T33）。
+	//
+	// false 时**不再抢占新作业**，但已经在跑的作业正常完成：
+	// ctx 不被取消，也不主动杀进程。中途杀进程会把一个已经花钱的批次
+	// 丢在中途，比多跑完一个批次贵。
+	enabled bool
 }
 
 // routingStudioQueue 保存本进程的 Studio 队列名，供**旧消费者**回投
@@ -206,6 +212,7 @@ func startStudioRuntime(ctx context.Context, pool *pgxpool.Pool, redisClient *re
 		legacyQueue: cfg.QueueName,
 		lease:       model.DefaultLeaseDuration,
 		concurrency: concurrency,
+		enabled:     cfg.StudioEnabled,
 	}
 
 	// 在启动 goroutine 之前赋值：旧消费者读它时已经是稳定值。
@@ -215,8 +222,11 @@ func startStudioRuntime(ctx context.Context, pool *pgxpool.Pool, redisClient *re
 	go runtime.consumeLoop(ctx)
 	go runtime.maintainLoop(ctx)
 
-	log.Printf("studio runtime started queue=%s legacy_queue=%s owner=%s concurrency=%d",
-		runtime.env.Queue, runtime.legacyQueue, runtime.env.Owner, runtime.concurrency)
+	log.Printf("studio runtime started queue=%s legacy_queue=%s owner=%s concurrency=%d enabled=%v",
+		runtime.env.Queue, runtime.legacyQueue, runtime.env.Owner, runtime.concurrency, runtime.enabled)
+	if !runtime.enabled {
+		log.Printf("studio runtime paused: STUDIO_ENABLED=false —— 不再抢占新作业，已在执行的作业会正常完成")
+	}
 	return runtime
 }
 
@@ -355,6 +365,20 @@ func (rt *studioRuntime) consumeLoop(ctx context.Context) {
 	defer wg.Wait()
 
 	for {
+		// 回退开关（T33）：关闭时不能“取出来再丢掉”—— BRPOP 是破坏性读取，
+		// 丢掉等于让它永久消失。因此**在取消息之前**就停下：
+		// 消息留在 Redis 里，重新开启后会被正常消费。
+		// 代价是关闭期间需要等到所有消息被重新投递（maintainLoop 会重投未送达的
+		// outbox），这是有意的：宁可晚一点也不能丢。
+		if !rt.enabled {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
+			continue
+		}
+
 		result, err := rt.env.Redis.BRPop(ctx, 5*time.Second, rt.env.Queue).Result()
 		if err != nil {
 			if errors.Is(err, redis.Nil) || errors.Is(err, context.Canceled) {

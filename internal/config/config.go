@@ -54,6 +54,21 @@ type APIConfig struct {
 	BootstrapStorageAccessKeyID  string
 	BootstrapStorageSecretKey    string
 	BootstrapStorageUsePathStyle bool
+
+	// StudioEnabled 是 Atelier 新能力的**总开关**（Issue #160 T33）。
+	//
+	// 语义：false 时**拒绝新的 Studio 命令**（设计/运行/判断/发布），
+	// 但读取与已发布文件下载仍然可用。回退时用户还能把数据拿走 ——
+	// 一个「关掉后连自己已经发布的东西都下载不了」的开关不会被人敢用。
+	StudioEnabled bool
+	// StudioDisabledProjectIDs 是项目级回退名单（灰度用）。
+	// 用环境变量而不是表：回退必须在**不依赖数据库写权限**的前提下可用，
+	// 而一次部署就能同时改完所有副本。
+	StudioDisabledProjectIDs []int64
+	// StudioDisabledProjectsRaw 保留原始写法以支持「id:原因」形式
+	//（例如 `12:发布积压,13:成本失控`）：只记 ID 的回退名单在一周后
+	// 没人记得为什么被关，而原因会显示在状态接口里。
+	StudioDisabledProjectsRaw string
 }
 
 type WorkerConfig struct {
@@ -87,6 +102,13 @@ type WorkerConfig struct {
 	// 批次内部的并发度由批次自己的 generation_config.concurrency 决定
 	//（T12），这里只控制「同时有几个批次在跑」。
 	StudioConcurrency int
+
+	// StudioEnabled 是 worker 侧的同一开关（T33）。
+	//
+	// false 时 worker **不再抢占新的 Studio 作业**，但正在执行的那个作业
+	// 会正常跑完（ctx 不被取消）。“停止新请求，在途仍会完成”与 T13 的
+	// 暂停语义一致 —— 中途杀进程会把一个已经花钱的批次丢在中途。
+	StudioEnabled bool
 }
 
 func LoadAPIConfig() APIConfig {
@@ -137,6 +159,12 @@ func LoadAPIConfig() APIConfig {
 		BootstrapStorageAccessKeyID:  getenv("S3_ACCESS_KEY", "minioadmin"),
 		BootstrapStorageSecretKey:    getenv("S3_SECRET_KEY", "minioadmin"),
 		BootstrapStorageUsePathStyle: getenvBool("S3_USE_PATH_STYLE", true),
+
+		// Atelier 特性开关（Issue #160 T33）。
+		// 默认**开启**：新能力是当前主线，关掉它属于运维动作。
+		StudioEnabled:             getenvBool("STUDIO_ENABLED", true),
+		StudioDisabledProjectIDs:  parseInt64List(getenv("STUDIO_DISABLED_PROJECT_IDS", "")),
+		StudioDisabledProjectsRaw: getenv("STUDIO_DISABLED_PROJECT_IDS", ""),
 	}
 }
 
@@ -167,7 +195,30 @@ func LoadWorkerConfig() WorkerConfig {
 		// 需要时用 WORKER_STUDIO_QUEUE_NAME 覆盖。
 		StudioQueueName:   getenv("WORKER_STUDIO_QUEUE_NAME", getenv("WORKER_QUEUE_NAME", "dataset-generation")+"-studio"),
 		StudioConcurrency: getenvInt("WORKER_STUDIO_CONCURRENCY", 2),
+		// 默认与 API 侧同值：一个只改一侧的部署会让「API 停止新命令、
+		// worker 继续跑旧队列」变成长期状态（而不是回退状态）。
+		StudioEnabled: getenvBool("STUDIO_ENABLED", true),
 	}
+}
+
+// parseInt64List 解析逗号分隔的整数列表（用于项目级回退名单）。
+//
+// 非法项被**保留为可诊断的信号**而不是静默丢弃：调用方（rollout）会把
+// 解析失败的项目当作「未知」并在状态里报告。这里的契约是「只解析，不判断」。
+func parseInt64List(raw string) []int64 {
+	values := []int64{}
+	for _, part := range strings.Split(raw, ",") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		parsed, err := strconv.ParseInt(trimmed, 10, 64)
+		if err != nil || parsed <= 0 {
+			continue
+		}
+		values = append(values, parsed)
+	}
+	return values
 }
 
 func getenv(key, fallback string) string {

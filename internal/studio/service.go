@@ -45,6 +45,9 @@ type Service struct {
 	Releases         *store.ReleaseStore
 	ReleaseArtifacts *store.ReleaseArtifactStore
 	Idempotency      *store.IdempotencyStore
+	// Rollout 是特性开关与项目级回退名单（T33）。
+	// 零值表示全部启用（见 rollout.go 的说明）。
+	Rollout Rollout
 }
 
 // New 构造服务。
@@ -67,6 +70,17 @@ func New(pool *pgxpool.Pool) *Service {
 	}
 }
 
+// NewWithRollout 构造服务并带上特性开关（T33）。
+//
+// 与 New 分开而不是改 New 的签名：New 在测试与其它构造点里大量使用，
+// 而「不传 rollout」的语义（全部启用）是安全的 —— 改签名只会制造
+// 一堆与特性开关无关的改动。
+func NewWithRollout(pool *pgxpool.Pool, rollout Rollout) *Service {
+	service := New(pool)
+	service.Rollout = rollout
+	return service
+}
+
 // ---------------------------------------------------------------------------
 // 授权
 // ---------------------------------------------------------------------------
@@ -86,6 +100,12 @@ func (s *Service) Authorize(ctx context.Context, projectID, userID int64, action
 	}
 	switch denial {
 	case store.DenialAllowed:
+		// 回退开关的判定放在**授权之后**（T33）：
+		// 先授权可以避免把一个运维状态泄露给非成员（非成员应该只看到 404），
+		// 同时保证“被暂停”这个信息只对有权访问该项目的人可见。
+		if blocked, reason := s.Rollout.BlockedFor(projectID); blocked && s.Rollout.BlocksAction(action) {
+			return store.AuthzDecision{}, NewError(CodeUnavailable, reason)
+		}
 		return decision, nil
 	case store.DenialHidden:
 		return store.AuthzDecision{}, NewError(CodeNotFound, reason)

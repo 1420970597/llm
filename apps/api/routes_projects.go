@@ -214,6 +214,13 @@ func (app *application) createProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 回退开关（T33）：创建项目不是项目级动作，因此只受总开关影响。
+	// 放在解码之前：一个被暂停时提交的请求不该先花时间解析与校验。
+	if blocked, reason := app.studio.Rollout.BlockedFor(0); blocked {
+		app.writeStudioError(w, r, studio.NewError(studio.CodeUnavailable, reason))
+		return
+	}
+
 	var input model.CreateProjectInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		app.writeAPIError(w, r, http.StatusBadRequest, codeValidation,
