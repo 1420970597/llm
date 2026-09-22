@@ -114,6 +114,11 @@
 | 2026-09-21 | T22 | §3 的 B03 交付库的范围 | **只含 `published` 且用户可访问的版本**：候选不是交付物，出现在交付库里会让用户下载到尚未确认的文件。搜索按版本名与用途在**服务端**过滤（前端过滤会让结果数量与真实数量不一致） |
 | 2026-09-21 | T22 | 路由匹配的优先级（由守卫发现的真实缺陷）| `matchRoute` 原先只按「段数相同」匹配，于是 `/p/:projectId/releases/:releaseId` 与 `/p/:projectId/releases/new` 会互相抢：先出现的带参数路由会赢，点「准备发布」会打开某个发布的数据卡（`releaseId` 被当成 `"new"`）。已改为**字面段多者优先**（参数路径让位于固定路径），与路由框架的既定行为一致 |
 | 2026-09-21 | T22 | T22 的交付状态 | **已交付**：`apps/api/routes_studio_releases.go`（创建候选/列表/数据卡/发布/下一版/固定下载/交付库）与 `ReleasePages.tsx`（列表/准备/数据卡/交付库四页）。**未交付**：M4 的端到端「设计→两个 pilot→比较→扩量→实验→判断→发布→改项目→旧下载校验」实测（属 T34 的用户任务验收），以及后续 T23–T34 |
+| 2026-09-21 | T23 | §2.2 要求 GRPO 的 `levels` 至少两档，但 §5 的节点表未规定档位配在哪里 | 档位配在**蓝图生成节点的 `jsonSchema.levels`**（字符串数组）：`jsonSchema` 本来就是「输出字段约束」的自由载体，而档位列表正是 GRPO 的输出结构约束。`BlueprintGenerationNode` 属 T04 冻结 schema，新增 typed 字段需改冻结契约，故不新增。读不到档位时**报错**而不是退化到默认档位 —— 默认档位会让「用户没配」静默变成「系统替他决定了判分标准」 |
+| 2026-09-21 | T23 | GRPO 与 SFT 的代码分支边界 | 共用**同一条 runner 生命周期**（批次/单元/样本版本/恢复/暂停语义一律复用 T12），只在生成器上分叉：`handleStudioBatchGenerate` 按**批次记录里的 target_kind** 选择 `grpoUnitGenerator` 或 `sftUnitGenerator`，未知类型显式失败。类别判断不取「项目当前值」：历史批次应始终按它当时的目标执行 |
+| 2026-09-21 | T23 | 「不得转写 reward_records 或伪造 SFT answer」如何保证 | GRPO payload **只含** `question`/`judgePrompt`/`levels`/`levelRubrics`/`frameworkRef`，**不含** `answer`/`reasoning`/`chainOfThought`/`rewardScore`；并由测试逐字段断言。组装后立刻用 T05 的 `ValidateGRPOSamplePayload` **自检**，使「生成器认为合规、落库被拒」不可能发生（不合规在写入之前失败，而不是花了两次模型调用之后）|
+| 2026-09-21 | T23 | T11 把 `json` 类型字段设为只读展示，导致 GRPO 档位在界面上无法配置 | 将 `jsonSchema` 字段改为**可编辑文本域**（`id`/`idList`/`ratioMap` 仍只读，它们需要真实候选列表）。非法 JSON 以 `{__invalid: text}` 保留原文，提交前由 `stripInvalidJSONMarkers` 清理 —— 既不丢用户输入，也不把中间态写进 payload |
+| 2026-09-21 | T23 | 交付状态 | **已交付**：`apps/worker/studio_grpo.go`（GRPO 生成适配 + payload 组装与自检）、按目标类型选择生成器、蓝图 `jsonSchema` 字段可编辑，及测试。**未交付**：T24 的 GRPO 质量适配器与 T25 的 GRPO 发布 JSONL |
 ---
 
 ## 2. 必须先定清的固定口径

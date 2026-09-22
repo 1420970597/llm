@@ -166,6 +166,9 @@ export function BlueprintPage() {
 
   const save = useCallback(async () => {
     if (!draft || !activeSpec) return
+    // 提交前清理「非法 JSON 中间态」标记：它是编辑器的临时状态，
+    // 不能进入 payload（那会让服务端看到一个不认识的字段）。
+    const cleaned = stripInvalidJSONMarkers(draft)
     if (changeReason.trim() === '') {
       // 变更理由是契约 §2.2 的一部分：没有理由的历史版本无法解释
       // 「为什么当时这么改」，而那是回溯与审计的唯一线索。
@@ -183,7 +186,7 @@ export function BlueprintPage() {
           expectedRevision: current ? undefined : 0,
           logicalId: 'main',
           changeReason: changeReason.trim(),
-          payload: draft,
+          payload: cleaned,
         },
         { headers: { 'Idempotency-Key': newIdempotencyKey() } },
       )
@@ -442,7 +445,14 @@ function NodeFields({
       {spec.fields.map((field) => {
         const value = values[field.name]
         const display = value === undefined || value === null ? '' : String(value)
-        const complex = ['id', 'idList', 'json', 'ratioMap'].includes(field.kind)
+        // `json` 从「只读展示」改为可编辑（T23 的真实缺口）：
+        // GRPO 的档位配置就走生成节点的 jsonSchema 字段，把它设为只读会让
+        // 「GRPO 需要至少两档」这件事在界面上根本无法满足 ——
+        // 而服务端会因缺档拒绝执行，用户却找不到填写的地方。
+        // id/idList/ratioMap 仍只读：它们需要真实候选列表（连接/量表/维度），
+        // 给一个能编辑但无法选值的输入框会制造「看起来能配」的错觉。
+        const complex = ['id', 'idList', 'ratioMap'].includes(field.kind)
+        const isJSONField = field.kind === 'json'
         return (
           <div
             key={field.name}
@@ -455,7 +465,22 @@ function NodeFields({
               {field.label}
               {field.required ? <span className="wizard-field__required"> *</span> : null}
             </label>
-            {complex ? (
+            {isJSONField ? (
+              // JSON 字段用文本域编辑：内容必须是**合法 JSON**，
+              // 非法时保留原值而不是写入坏数据（服务端也会再校验一次）。
+              <textarea
+                id={`blueprint-${spec.key}-${field.name}`}
+                className="blueprint-input blueprint-input--json"
+                rows={4}
+                value={jsonFieldText(value)}
+                disabled={disabled}
+                onChange={(event) => {
+                  const parsed = parseJSONField(event.target.value)
+                  if (parsed.ok) onChange(field.name, parsed.value)
+                  else onChange(field.name, { __invalid: event.target.value })
+                }}
+              />
+            ) : complex ? (
               // 复杂引用字段先只读展示：给一个能编辑但无法选值的输入框
               // 会制造「看起来能配、其实配不了」的错觉。
               <Text type="tertiary" size="small">
@@ -734,4 +759,58 @@ export function StandardPage() {
       )}
     </div>
   )
+}
+
+/**
+ * jsonFieldText 把字段值渲染成可编辑文本。
+ *
+ * 「非法 JSON 中间态」以 `{__invalid: text}` 的形式存在，这里原样回显：
+ * 用户在敲 JSON 的过程中不该丢失已输入的内容。
+ */
+function jsonFieldText(value: unknown): string {
+  if (value === undefined || value === null || value === '') return ''
+  if (typeof value === 'object' && value !== null && '__invalid' in (value as Record<string, unknown>)) {
+    return String((value as Record<string, unknown>).__invalid)
+  }
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+/**
+ * parseJSONField 解析用户输入的 JSON。
+ *
+ * 返回 ok=false 时**不写入**解析结果，而是以 `{__invalid: text}` 保留原文 ——
+ * 这样「输入到一半的 JSON」不会被丢掉，而服务端仍会拒绝把非法 JSON 落库
+ *（本地校验只是辅助，T15 的同一原则）。
+ */
+function parseJSONField(text: string): { ok: boolean; value: unknown } {
+  const trimmed = text.trim()
+  if (trimmed === '') return { ok: true, value: undefined }
+  try {
+    return { ok: true, value: JSON.parse(trimmed) }
+  } catch {
+    return { ok: false, value: undefined }
+  }
+}
+
+/**
+ * stripInvalidJSONMarkers 递归去掉编辑器临时标记 `__invalid`。
+ *
+ * 为什么必须清理：它是「用户输到一半」的中间态，直接提交会让服务端看到一个
+ * 契约里不存在的字段。放在提交路径上只出现一次，避免漏清。
+ */
+function stripInvalidJSONMarkers(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripInvalidJSONMarkers)
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      if (key === '__invalid') continue
+      result[key] = stripInvalidJSONMarkers(item)
+    }
+    return result
+  }
+  return value
 }

@@ -44,11 +44,31 @@ func handleStudioBatchGenerate(ctx context.Context, env *StudioJobEnv, job model
 		return nil, fmt.Errorf("worker 未注入 provider 解析依赖，无法执行批次生成")
 	}
 
+	// **按批次的目标类型选择生成器**（T23）：SFT 与 GRPO 共用同一条
+	// runner 生命周期（批次/单元/样本版本/恢复语义），只在「生成什么」上分叉。
+	// 目标类型取自**批次记录**而不是项目当前值：项目类型在运行后不可切换，
+	// 但把判断建立在「当前值」上是脆弱的（历史批次应始终按它当时的目标执行）。
+	batch, err := env.Batches().GetBatch(ctx, *job.BatchID)
+	if err != nil {
+		return nil, err
+	}
+	var generator studio.UnitGenerator
+	switch batch.TargetKind {
+	case model.TargetKindGRPO:
+		generator = &grpoUnitGenerator{datasets: datasets, documents: env.Documents()}
+	case model.TargetKindSFT:
+		generator = &sftUnitGenerator{datasets: datasets, documents: env.Documents()}
+	default:
+		// 未知目标类型必须显式失败：猜一个会让 GRPO 项目产出 SFT 结构的样本，
+		// 而那种错误只在质量实验按错误量表打分时才暴露。
+		return nil, fmt.Errorf("批次的目标类型 %q 不受支持，无法选择生成器", batch.TargetKind)
+	}
+
 	runner := &studio.BatchRunner{
 		Batches:   env.Batches(),
 		Documents: env.Documents(),
 		Usage:     env.Usage(),
-		Generator: &sftUnitGenerator{datasets: datasets, documents: env.Documents()},
+		Generator: generator,
 	}
 	result, err := runner.RunBatch(ctx, *job.BatchID)
 	if err != nil {
