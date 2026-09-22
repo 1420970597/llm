@@ -71,6 +71,15 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
   const breadcrumbs = useBreadcrumbs()
   const [collapsed, setCollapsed] = useState(false)
 
+  const handleLogout = () => {
+    // 退出账号时清理本机待同步队列（T29）：敏感正文不在本机留存；
+    // 下一个登录的用户不会看到上一个人的草稿或离线决定。
+    const actorId = currentActorID()
+    if (actorId > 0) clearForActor(actorId)
+    onLogout()
+    navigate('/login')
+  }
+
   // 当前高亮项：由元数据派生。子页高亮到自己的 navParent，
   // 因此「扩量规划」不会让侧边栏掉回默认项（issue #61 的形态）。
   const activeKey = useMemo(() => activeNavKey(location.pathname), [location.pathname])
@@ -93,14 +102,27 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
         style={{ width: collapsed ? 48 : 232 }}
       >
         {collapsed ? (
-          <button
-            type="button"
-            className="sidebar-collapse-button"
-            aria-label="展开导航"
-            onClick={() => setCollapsed(false)}
-          >
-            <PanelLeftOpen size={16} />
-          </button>
+          <>
+            <button
+              type="button"
+              className="sidebar-collapse-button"
+              aria-label="展开导航"
+              onClick={() => setCollapsed(false)}
+            >
+              <PanelLeftOpen size={16} />
+            </button>
+            <div className="sidebar-footer sidebar-footer--collapsed">
+              <button
+                type="button"
+                className="sidebar-account-button"
+                aria-label={`退出登录 ${userEmail}`}
+                title={`退出登录 ${userEmail}`}
+                onClick={handleLogout}
+              >
+                <Avatar color="purple" size="small">{userEmail.slice(0, 1).toUpperCase() || 'A'}</Avatar>
+              </button>
+            </div>
+          </>
         ) : (
           <>
             <div className="sidebar-workspace-header">
@@ -144,14 +166,9 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
               <Button
                 size="small"
                 icon={<LogOut size={14} />}
-                onClick={() => {
-                  // 退出账号时清理本机待同步队列（T29）：
-                  // 敏感正文不在本机留存；下一个登录的用户不会看到上一个人的草稿。
-                  const actorId = currentActorID()
-                  if (actorId > 0) clearForActor(actorId)
-                  onLogout()
-                  navigate('/login')
-                }}
+                aria-label="退出登录"
+                title="退出登录"
+                onClick={handleLogout}
               >
                 退出
               </Button>
@@ -163,7 +180,18 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
       <main className="app-layout__content" id="studio-main" tabIndex={-1}>
         <header className="atelier-topbar">
           <div className="atelier-topbar__crumbs"><Breadcrumbs items={breadcrumbs} /></div>
-          <div className="atelier-topbar__actions"><CommandSearch /><Avatar color="purple" size="small">{userEmail.slice(0, 1).toUpperCase() || 'A'}</Avatar></div>
+          <div className="atelier-topbar__actions">
+            <CommandSearch />
+            <button
+              type="button"
+              className="atelier-account-button"
+              aria-label={`退出登录 ${userEmail}`}
+              title={`退出登录 ${userEmail}`}
+              onClick={handleLogout}
+            >
+              <Avatar color="purple" size="small">{userEmail.slice(0, 1).toUpperCase() || 'A'}</Avatar>
+            </button>
+          </div>
         </header>
         {/* 屏幕阅读器播报当前层级：视觉用户从高亮看出所在位置，
             而听觉用户需要等价的信号（T29 的无障碍要求，T09 先打地桩）。 */}
