@@ -10,6 +10,7 @@ import {
   HardDriveDownload,
   LayoutDashboard,
   LogOut,
+  Menu,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -27,6 +28,7 @@ import {
 import { newIdempotencyKey } from '../lib/api/studio'
 import { CommandSearch } from './pages/TodayPages'
 import { clearForActor, currentActorID } from '../lib/pendingQueue'
+import { useProjectName } from './projectName'
 
 /**
  * 全局壳（Issue #160 T09）：4 全局入口 + 辅助入口 + 目录评审（仅非生产）。
@@ -70,6 +72,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
   const navigate = useNavigate()
   const breadcrumbs = useBreadcrumbs()
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   const handleLogout = () => {
     // 退出账号时清理本机待同步队列（T29）：敏感正文不在本机留存；
@@ -99,6 +102,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
       <nav
         className="app-layout__sidebar"
         aria-label="主导航"
+        data-mobile-open={mobileNavOpen ? 'true' : 'false'}
         style={{ width: collapsed ? 48 : 232 }}
       >
         {collapsed ? (
@@ -148,14 +152,14 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
             {/* 第一层：全局四入口。 */}
             <div className="sidebar-nav-section">
               <div className="sidebar-nav-heading">工作区</div>
-              {globalRoutes.map((route) => renderNavItem(route.path, GLOBAL_ICONS[route.key], route.label, route.caption, activeKey === route.key))}
+              {globalRoutes.map((route) => renderNavItem(route.path, GLOBAL_ICONS[route.key], route.label, route.caption, activeKey === route.key, () => setMobileNavOpen(false)))}
             </div>
 
             {/* 第三层：辅助入口。刻意放在下方且样式更轻，不与主流程争位置。 */}
             <div className="sidebar-nav-section">
               <div className="sidebar-nav-heading">辅助</div>
               {auxiliaryRoutes.map((route) =>
-                renderNavItem(route.path, AUXILIARY_ICONS[route.key], route.label, route.caption, activeKey === route.key),
+                renderNavItem(route.path, AUXILIARY_ICONS[route.key], route.label, route.caption, activeKey === route.key, () => setMobileNavOpen(false)),
               )}
             </div>
 
@@ -177,9 +181,29 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
         )}
       </nav>
 
+      {mobileNavOpen ? (
+        <button
+          type="button"
+          className="atelier-mobile-backdrop"
+          aria-label="关闭主导航"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      ) : null}
+
       <main className="app-layout__content" id="studio-main" tabIndex={-1}>
         <header className="atelier-topbar">
-          <div className="atelier-topbar__crumbs"><Breadcrumbs items={breadcrumbs} /></div>
+          <div className="atelier-topbar__leading">
+            <button
+              type="button"
+              className="atelier-mobile-menu"
+              aria-label="打开主导航"
+              aria-expanded={mobileNavOpen}
+              onClick={() => setMobileNavOpen((open) => !open)}
+            >
+              <Menu size={18} aria-hidden />
+            </button>
+            <div className="atelier-topbar__crumbs"><Breadcrumbs items={breadcrumbs} /></div>
+          </div>
           <div className="atelier-topbar__actions">
             <CommandSearch />
             <button
@@ -210,6 +234,7 @@ function renderNavItem(
   label: string,
   caption: string,
   active: boolean,
+  onNavigate?: () => void,
 ) {
   if (!Icon) return null
   return (
@@ -219,6 +244,7 @@ function renderNavItem(
       className={active ? 'sidebar-nav-item sidebar-nav-item--active' : 'sidebar-nav-item'}
       aria-current={active ? 'page' : undefined}
       title={caption}
+      onClick={onNavigate}
     >
       <Icon size={16} />
       <span className="sidebar-nav-item__label">{label}</span>
@@ -229,12 +255,14 @@ function renderNavItem(
 /** 供测试引用：当前路由下的面包屑。 */
 export function useBreadcrumbs(): ReturnType<typeof breadcrumbsFor> {
   const location = useLocation()
+  const matched = location.pathname.match(/^\/p\/([^/]+)/)
+  const projectId = matched ? Number.parseInt(matched[1], 10) : 0
+  const projectName = useProjectName(Number.isFinite(projectId) ? projectId : 0)
   return useMemo(() => {
     const params: Record<string, string> = {}
-    const matched = location.pathname.match(/^\/p\/([^/]+)/)
     if (matched) params.projectId = matched[1]
-    return breadcrumbsFor(location.pathname, params)
-  }, [location.pathname])
+    return breadcrumbsFor(location.pathname, params, projectName ?? '项目')
+  }, [location.pathname, projectName, matched?.[1]])
 }
 
 /** 供项目壳使用：生成一个在本次导航内保持稳定的幂等键。 */

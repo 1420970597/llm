@@ -47,7 +47,7 @@ function formatTodoDate(value: string): string {
 
 export function TodayPage() {
   const navigate = useNavigate()
-  const { Title, Text } = Typography
+  const { Text } = Typography
   const [todos, setTodos] = useState<TodoItem[]>([])
   const [notes, setNotes] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -116,30 +116,21 @@ export function TodayPage() {
 
   return (
     <div className="console-page atelier-today-page" data-studio-page="today">
-      <div className="console-page__header">
-        <div>
-          <Title heading={4} className="!mb-1">
-            今日工作
-          </Title>
-          <Text type="tertiary">需要你做决定的事，每条都能直接跳到具体对象。</Text>
-        </div>
-        <Button size="small" icon={<RefreshCw size={14} />} onClick={() => void load()} disabled={loading}>
-          刷新
-        </Button>
-      </div>
-
       <section className="atelier-today-hero">
         <div>
           <div className="eyebrow">TODAY / YOUR WORKSPACE</div>
-          <Text type="tertiary">数据研发组 · 今日工作</Text>
+          <Text type="tertiary">你的工作区 · 今日工作</Text>
           <h1>把下一份训练数据，<br />做得更有把握。</h1>
           <Text type="tertiary" className="atelier-hero-copy">先解决值得你关注的决定，再继续生产。</Text>
           <div className="atelier-action-row">
             <Button theme="solid" type="primary" onClick={() => navigate(studioPath('new'))}>＋ 开始一个数据项目</Button>
             <Button onClick={() => navigate(studioPath('recipes'))}>浏览生产方案</Button>
+            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void load()} disabled={loading}>刷新</Button>
           </div>
         </div>
-        <div className="atelier-hero-mark" aria-label="目标、证据、交付">目标 → 证据 → 交付</div>
+        <div className="atelier-hero-mark" aria-label="目标、证据、交付">
+          <span className="atelier-hero-mark__label">目标 → 证据 → 交付</span>
+        </div>
       </section>
 
       {error ? (
@@ -169,24 +160,33 @@ export function TodayPage() {
             </div>
           )}
         </section>
-        <aside className="atelier-calendar-panel">
-          <div className="eyebrow">THIS WEEK</div>
-          <h2>交付日历</h2>
-          {releaseTodo ? (
-            <>
-              <strong className="atelier-calendar-date">候选更新 · {formatTodoDate(releaseTodo.updatedAt)}</strong>
-              <Text type="tertiary">项目 #{releaseTodo.projectId}</Text>
-              <Text type="tertiary" size="small">{releaseTodo.summary}</Text>
-              {releaseHref ? <Button theme="borderless" onClick={() => navigate(releaseHref)}>查看发布候选 →</Button> : null}
-            </>
-          ) : (
-            <>
-              <strong className="atelier-calendar-date">暂无排期</strong>
-              <Text type="tertiary">还没有服务端返回的交付候选。</Text>
-              <Button theme="borderless" onClick={() => navigate(studioPath('projects'))}>查看项目 →</Button>
-            </>
-          )}
-        </aside>
+        <div className="atelier-today-side">
+          <aside className="atelier-calendar-panel">
+            <div className="eyebrow">THIS WEEK</div>
+            <h2>交付日历</h2>
+            {releaseTodo ? (
+              <>
+                <strong className="atelier-calendar-date">候选更新 · {formatTodoDate(releaseTodo.updatedAt)}</strong>
+                <Text type="tertiary">项目 #{releaseTodo.projectId}</Text>
+                <Text type="tertiary" size="small">{releaseTodo.summary}</Text>
+                {releaseHref ? <Button theme="borderless" onClick={() => navigate(releaseHref)}>查看发布候选 →</Button> : null}
+              </>
+            ) : (
+              <>
+                <strong className="atelier-calendar-date">暂无排期</strong>
+                <Text type="tertiary">还没有服务端返回的交付候选。</Text>
+                <Button theme="borderless" onClick={() => navigate(studioPath('projects'))}>查看项目 →</Button>
+              </>
+            )}
+          </aside>
+          <aside className="atelier-workstyle-panel">
+            <div className="eyebrow">YOUR WAY OF WORKING</div>
+            <h2>你的工作方式</h2>
+            <p>设计方案 → 小批试制 → 扩量 → 审阅 → 发布。</p>
+            <Text type="tertiary" size="small">每次运行独立记录，每次发布固定内容。你可以随时回到修改前一版。</Text>
+            <Button theme="borderless" onClick={() => navigate(studioPath('help'))}>了解 Atelier 旅程 →</Button>
+          </aside>
+        </div>
       </div>
 
       <section className="atelier-continue-panel">

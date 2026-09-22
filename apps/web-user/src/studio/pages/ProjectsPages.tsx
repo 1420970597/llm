@@ -7,6 +7,7 @@ import { studioApi } from '../../lib/api/studio'
 import type { ProjectOverviewData } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
+import { useProjectName } from '../projectName'
 
 /**
  * 项目列表页（Issue #160 T09 的入口页 + T10 的最小可用形态）。
@@ -220,6 +221,7 @@ export function ProjectOverviewPage() {
   const scope = useProjectScope()
   const navigate = useNavigate()
   const { Text } = Typography
+  const projectName = useProjectName(scope.projectId)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [overview, setOverview] = useState<ProjectOverviewData | null>(null)
@@ -278,7 +280,7 @@ export function ProjectOverviewPage() {
       <header className="atelier-page-intro">
         <div>
           <div className="eyebrow">PROJECT / {overview.targetKind === 'grpo' ? 'GRPO' : 'SFT'}</div>
-          <h1>数据项目 · {scope.projectId}</h1>
+          <h1>{projectName ?? '数据项目'}</h1>
           <Text type="tertiary">目标：{overview.goal || '尚未填写交付目标'}</Text>
         </div>
         <Button theme="solid" type="primary" onClick={() => navigate(overview.nextAction.href)}>
