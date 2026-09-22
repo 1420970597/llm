@@ -45,22 +45,50 @@ docker run -d --rm --name "$CONTAINER" \
   -e "POSTGRES_DB=$DB_NAME" -e "POSTGRES_USER=$DB_USER" -e "POSTGRES_PASSWORD=$DB_PASS" \
   -p "127.0.0.1:$PORT:5432" "$IMAGE" >/dev/null
 
+# 就绪判定必须**确定**，不能只看 pg_isready。
+#
+# 实测（CI 上必现、本地不一定复现）：postgres 官方镜像在初始化阶段会先起一个
+# **临时服务器**（只监听 unix socket）跑 initdb 脚本，然后把它关掉、再起真正
+# 对外服务的那个。`pg_isready` 在临时服务器阶段就会返回「接受连接」，于是
+# 紧接着的 psql 会撞上 `FATAL: the database system is shutting down` ——
+# 一条与迁移内容毫无关系的失败，只在启动时序落到某个窗口时出现。
+#
+# 因此改用两条**与真实可用性等价**的判据，且都要求「确认后仍成立」：
+#   1. 日志里出现两次 "database system is ready to accept connections"
+#      （第一次是临时服务器，第二次才是真正对外服务的实例）；
+#   2. 用 TCP 真实执行 `SELECT 1` 成功，隔 1 秒再成功一次
+#      （临时实例不监听 TCP，且它正在关闭时会拒绝第二次）。
 ready=0
 for _ in $(seq 1 60); do
-  if docker exec "$CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null 2>&1; then
-    ready=1
-    break
+  ready_lines=$(docker logs "$CONTAINER" 2>&1 | grep -c 'database system is ready to accept connections' || true)
+  if [ "$ready_lines" -ge 2 ] \
+     && docker exec "$CONTAINER" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" -tAc 'SELECT 1' >/dev/null 2>&1; then
+    sleep 1
+    if docker exec "$CONTAINER" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" -tAc 'SELECT 1' >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
   fi
   sleep 1
 done
 if [ "$ready" != "1" ]; then
   echo "[go-test-postgres] Postgres 未在 60 秒内就绪" >&2
+  docker logs --tail 50 "$CONTAINER" >&2 || true
   exit 1
 fi
 
 echo "[go-test-postgres] 应用迁移"
 for file in sql/migrations/*.sql; do
-  docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -q -U "$DB_USER" -d "$DB_NAME" <"$file"
+  # 用 TCP（-h 127.0.0.1）而不是 unix socket：只有真正对外服务的实例才监听 TCP，
+  # 这本身就是避开「临时服务器」的第二道保证。
+  #
+  # 失败时打印**具体是哪个迁移文件**：只报 psql 的 SQLSTATE 无法定位，
+  # 而 CI 日志里翻找是哪一份迁移挂了很费时间。
+  if ! docker exec -i "$CONTAINER" psql -h 127.0.0.1 -v ON_ERROR_STOP=1 -q \
+    -U "$DB_USER" -d "$DB_NAME" <"$file"; then
+    echo "[go-test-postgres] 迁移失败：$file" >&2
+    exit 1
+  fi
 done
 echo "[go-test-postgres] 迁移完成：$(find sql/migrations -name '*.sql' | wc -l) 个文件"
 
