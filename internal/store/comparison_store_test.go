@@ -335,16 +335,16 @@ func TestComparisonRejectsDifferentInputFingerprint(t *testing.T) {
 		ProjectID: fixture.projectID, SampleKey: "cold-chain/temperature#1",
 		TargetKind: model.TargetKindSFT, Title: "cold-chain/temperature#1",
 		BatchID: &fixture.rightBatch,
-		Payload:  map[string]any{"question": "changed-input", "reasoning": "r", "answer": "a"},
+		Payload: map[string]any{"question": "changed-input", "reasoning": "r", "answer": "a"},
 	}); err != nil {
 		t.Fatalf("AppendSampleVersion: %v", err)
 	}
 
 	if _, err := fixture.comparisons.CreateComparisonBaseline(ctx, CreateComparisonBaselineInput{
 		ProjectID: fixture.projectID, InputRef: "same-input-via-client",
-		Rubric: comparisonRubric(),
-		Judges: []model.JudgeSpec{{ConnectionID: 99999, EndpointFingerprint: "judge.example.com/v1"}},
-		Metric: model.ComparisonMetricPaired,
+		Rubric:      comparisonRubric(),
+		Judges:      []model.JudgeSpec{{ConnectionID: 99999, EndpointFingerprint: "judge.example.com/v1"}},
+		Metric:      model.ComparisonMetricPaired,
 		LeftBatchID: fixture.leftBatch, RightBatchID: fixture.rightBatch,
 		CreatedBy: &fixture.userID,
 	}); err == nil {
