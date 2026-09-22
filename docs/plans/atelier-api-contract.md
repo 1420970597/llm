@@ -281,7 +281,8 @@ POST P/release-candidates
 ```jsonc
 {
   "releaseName": "v1.2",                       // 项目内唯一
-  "sampleVersionIds": ["sv_1", "sv_2"],        // 具体范围，不是可变的 SQL 筛选条件
+  "sampleVersionIds": ["sv_1", "sv_2"],        // 手工小范围；与 selectionSnapshotId 二选一
+  "selectionSnapshotId": 42,                    // 审阅页服务端冻结的发布范围；服务端重新鉴权解析
   "mappingVersionId": "map_1",
   "format": "jsonl",
   "intendedUse": "SFT 训练",
@@ -289,6 +290,13 @@ POST P/release-candidates
   "provenance": { "license": "internal", "retentionDays": 365 }
 }
 ```
+
+- `sampleVersionIds` 与 `selectionSnapshotId` 互斥；从样本/审阅工作区进入发布准备时，
+  URL 只携带 `/releases/new?selection=42`，候选命令应原样提交 `selectionSnapshotId`。
+- 服务端在创建候选事务内检查快照属于当前项目、未过期且 `purpose=release`，再读取明细；
+  客户端不能用另一个版本列表覆盖快照范围。快照 ID 会写入发布 provenance，供数据卡追溯。
+- `purpose=experiment` 或 `purpose=export` 的快照不得创建发布候选；明细不完整也必须拒绝，
+  不得静默缩小发布范围。
 
 - 同一事务内分配 `candidateId` + `releaseId` 并预留 `releaseName`。
 - 返回 `candidateId`、**稳定 `releaseId`**、`revision`。

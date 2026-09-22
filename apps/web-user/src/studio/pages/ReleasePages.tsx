@@ -243,6 +243,7 @@ export function ReleaseNewPage() {
     if (selectionSnapshotID <= 0) {
       setSelectionSnapshotState('none')
       setSelectionSnapshotItems(null)
+      setSnapshotNotice(null)
       return
     }
     setSelectionSnapshotState('loading')
@@ -262,13 +263,14 @@ export function ReleaseNewPage() {
           setSnapshotNotice('这份选择范围不是发布用途，不能用于创建发布候选；请重新冻结发布范围')
           return
         }
-        if (resolved.count !== resolved.items.length || resolved.snapshot.itemCount !== resolved.count) {
+        const items = resolved.items ?? []
+        if (resolved.count !== items.length || resolved.snapshot.itemCount !== resolved.count) {
           setSelectionSnapshotState('invalid')
           setSnapshotNotice('选择范围明细不完整，已停止提交；请重新冻结发布范围')
           return
         }
         // 快照存的是**内容版本行 ID**；恢复时直接作为候选范围，不能只显示数量。
-        setSelectionSnapshotItems(resolved.items ?? [])
+        setSelectionSnapshotItems(items)
         setSelectionSnapshotState('ready')
         setSnapshotNotice(`已从服务端选择范围恢复 ${resolved.count} 个内容版本（快照 ${selectionSnapshotID}）。`)
       } catch (snapshotError) {
@@ -405,7 +407,7 @@ export function ReleaseNewPage() {
       <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-range-picker="true">
         <Text strong className="block mb-2">发布范围（已接纳的内容版本）</Text>
         <Text type="tertiary" size="small" className="block mb-2">
-          已选 {(selectionSnapshotItems ?? selected).length} 条
+          已选 {selectionSnapshotID > 0 ? selectionSnapshotItems?.length ?? 0 : selected.length} 条
           {selectionSnapshotID > 0 ? '（来自服务端冻结快照，范围已锁定）' : '（当前页）'}。候选保存的是**具体内容版本**，不是筛选条件。
         </Text>
         {samples.length === 0 ? (
