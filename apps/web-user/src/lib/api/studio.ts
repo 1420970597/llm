@@ -505,6 +505,126 @@ export type CreateSelectionSnapshotRequest = {
 }
 
 // ---------------------------------------------------------------------------
+// 质量实验（契约 §2.5、§3、§3.1）
+// ---------------------------------------------------------------------------
+
+export type ExperimentItem = {
+  id: number
+  experimentId: number
+  projectId: number
+  sampleId: number
+  sampleVersionId: number
+  contentHash: string
+  generatorSource: string
+  generatorFingerprint: string
+  status: string
+  attempts: number
+  errorClass: string
+  errorMessage: string
+}
+
+export type Experiment = {
+  id: number
+  projectId: number
+  batchId?: number
+  targetKind: string
+  status: string
+  purpose: string
+  samplingSeed: number
+  /** 冻结的**分母**：实验创建时的样本版本数，此后不随筛选/隔离变化。 */
+  inspectedCount: number
+  scoredCount: number
+  missingCount: number
+  errorCount: number
+  missingScorePolicy: string
+  independenceCoverage?: Record<string, number[]>
+  createdAt: string
+  updatedAt: string
+}
+
+export type ExperimentDimensionStat = {
+  dimension: string
+  weight: number
+  /** 归一化后（0–1）均值，只对已评分的格取平均（缺分不补 0）。 */
+  mean: number
+  scoredCount: number
+  missingCount: number
+  covered: number
+}
+
+/** 分列统计（§3.1）：分母固定，零分母显示「无结论」而不是 100%。 */
+export type ExperimentStats = {
+  inspected: number
+  scored: number
+  missing: number
+  error: number
+  notApplicable: number
+  pending: number
+  coverage: number
+  coverageDisplay: string
+  acceptanceRate: number | null
+  acceptanceRateDisplay: string
+}
+
+export type QualityReport = {
+  experimentId: number
+  status: string
+  targetKind: string
+  stats: ExperimentStats
+  dimensions: ExperimentDimensionStat[]
+  judgeNotes: string[]
+  independenceCoverage?: Record<string, number[]>
+}
+
+export type ExperimentDetail = {
+  experiment: Experiment
+  report: QualityReport
+  pendingItems: ExperimentItem[]
+}
+
+export type CreateExperimentRequest = {
+  sampleVersionIds: number[]
+  samplingSeed?: number
+  rubric: { dimensions: Array<{ key: string; label: string; weight: number; min: number; max: number }> }
+  judgeConnectionIds: number[]
+  missingScorePolicy?: 'exclude' | 'fail_experiment'
+  batchId?: number
+}
+
+/** 规则（质量策略版本里的一项）。取值集合由 T04 冻结。 */
+export type QualityRule = {
+  id: string
+  name: string
+  matchType: string
+  expression: string
+  field: string
+  severity: string
+  suggestedAction: string
+  keywords?: string[]
+}
+
+export type RulePreviewHit = {
+  ruleId: string
+  ruleName: string
+  field: string
+  severity: string
+  suggestedAction: string
+  matchStart: number
+  matchEnd: number
+  snippet: string
+}
+
+export type RulePreviewResult = {
+  policyVersionId: number
+  scannedCount: number
+  hits: RulePreviewHit[]
+  /** 恒为 false：预览是纯读（契约 §2.6）。 */
+  sideEffects: boolean
+  /** 命中达上限被截断时必须显式告知。 */
+  truncated: boolean
+}
+
+// ---------------------------------------------------------------------------
 // 同基准比较（契约 §3 的 P06）
 // ---------------------------------------------------------------------------
 
@@ -795,6 +915,32 @@ export const studioApi = {
     client
       .post(`${projectPath(projectId)}/selection-snapshots`, payload)
       .then((response) => response.data as SelectionSnapshot),
+
+  /** `POST P/experiments`：冻结实验（202；执行是异步的）。 */
+  createExperiment: (projectId: number, payload: CreateExperimentRequest) =>
+    client
+      .post(`${projectPath(projectId)}/experiments`, payload)
+      .then((response) => response.data as Experiment),
+
+  listExperiments: (projectId: number) =>
+    client
+      .get<Page<Experiment>>(`${projectPath(projectId)}/experiments`)
+      .then((response) => response.data),
+
+  /** `GET P/experiments/{id}`：实验 + 报告 + 待判断项。 */
+  getExperiment: (projectId: number, experimentId: number) =>
+    client
+      .get(`${projectPath(projectId)}/experiments/${experimentId}`)
+      .then((response) => response.data as ExperimentDetail),
+
+  /** `POST P/rule-previews`：纯预览（不写处置、不入收费模型队列）。 */
+  previewRules: (
+    projectId: number,
+    payload: { qualityPolicyVersionId: number; sampleVersionIds: number[]; maxHits?: number },
+  ) =>
+    client
+      .post(`${projectPath(projectId)}/rule-previews`, payload)
+      .then((response) => response.data as RulePreviewResult),
 
   /** `POST P/comparison-baselines`：冻结比较前提。 */
   createComparisonBaseline: (projectId: number, payload: CreateComparisonBaselineRequest) =>

@@ -39,6 +39,7 @@ type Service struct {
 	Jobs        *store.JobStore
 	Usage       *store.UsageStore
 	Reviews     *store.ReviewStore
+	Experiments *store.ExperimentStore
 	Selections  *store.SelectionStore
 	Comparisons *store.ComparisonStore
 	Idempotency *store.IdempotencyStore
@@ -55,6 +56,7 @@ func New(pool *pgxpool.Pool) *Service {
 		Jobs:        store.NewJobStore(pool),
 		Usage:       store.NewUsageStore(pool),
 		Reviews:     store.NewReviewStore(pool),
+		Experiments: store.NewExperimentStore(pool),
 		Selections:  store.NewSelectionStore(pool),
 		Comparisons: store.NewComparisonStore(pool),
 		Idempotency: store.NewIdempotencyStore(pool),

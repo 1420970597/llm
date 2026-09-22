@@ -176,10 +176,10 @@ record(
 )
 record(
   '每个路由都有明确的实现状态',
-  // 31 条 = 3 向导步骤 + 4 全局 + 6 项目标签 + 13 项目子页 + 4 辅助 + 1 目录评审。
+  // 32 条 = 3 向导步骤 + 4 全局 + 6 项目标签 + 14 项目子页 + 4 辅助 + 1 目录评审。
   // 用精确数字而不是「>= 某个值」：漏掉一整条路由（例如忘了注册某个工作区）
   // 正是这个守卫要发现的，而 >= 会让它仍然通过。
-  routeBlocks.length === 31 && routeBlocks.every((block) => block.status === 'planned' || block.status === 'available'),
+  routeBlocks.length === 32 && routeBlocks.every((block) => block.status === 'planned' || block.status === 'available'),
   `共 ${routeBlocks.length} 条路由；状态缺失：${routeBlocks.filter((block) => !block.status).map((block) => block.key).join(', ') || '无'}`,
 )
 
