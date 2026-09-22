@@ -99,3 +99,30 @@ func (s *BatchStore) CountSampleVersionsByProject(ctx context.Context, projectID
 	err := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM sample_versions WHERE project_id = $1`, projectID).Scan(&count)
 	return count, err
 }
+
+// GetSampleVersionByID 按**样本版本行 ID** 读取内容（Issue #160 T14 的执行侧需要）。
+//
+// 为什么需要它：`experiment_items` 冻结的是 `sample_version_id`（行 ID），
+// 而原有的 `GetSampleVersion` 按 (样本, 版本号) 读取。实验执行必须按**冻结的
+// 那个 ID** 取内容 —— 按版本号取会在样本当前指针已推进时读到另一份内容，
+// 从而让「入队后改样本当前指针不改变实验」失效。
+//
+// `generator_config` 用 COALESCE：它是可空的（人工导入/迁移来的版本没有它），
+// 而扫描 NULL 到 json.RawMessage 会直接报错 —— 那会让调用方把每一项都标成
+// error，而真实原因只是「这一版没有生成配置」。
+func (s *BatchStore) GetSampleVersionByID(ctx context.Context, projectID, versionID int64) (model.SampleVersion, error) {
+	var item model.SampleVersion
+	err := s.db.QueryRow(ctx, `
+    SELECT id, sample_id, project_id, version, target_kind, schema_version, payload, content_hash,
+           batch_id, batch_item_id, attempt, COALESCE(generator_config, '{}'::jsonb),
+           standard_version_id, standard_content_hash, blueprint_version_id, blueprint_content_hash,
+           created_by, created_at
+    FROM sample_versions WHERE id = $1 AND project_id = $2`, versionID, projectID,
+	).Scan(&item.ID, &item.SampleID, &item.ProjectID, &item.Version, &item.TargetKind,
+		&item.SchemaVersion, &item.Payload, &item.ContentHash,
+		&item.BatchID, &item.BatchItemID, &item.Attempt, &item.GeneratorConfig,
+		&item.StandardVersionID, &item.StandardContentHash,
+		&item.BlueprintVersionID, &item.BlueprintContentHash,
+		&item.CreatedBy, &item.CreatedAt)
+	return item, err
+}
