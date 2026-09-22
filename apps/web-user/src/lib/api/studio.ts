@@ -365,6 +365,11 @@ export type SampleSummary = {
   originBatchId?: number
   createdAt: string
   updatedAt: string
+  /** 有效处置（审阅投影）。从未被判断过的内容为 `pending`。 */
+  reviewStatus: 'pending' | 'accepted' | 'quarantined' | 'conflict' | string
+  /** 聚合判断序号：显示「判断改过几次」，也是发布冻结时的竞争检测依据。 */
+  aggregateReviewRevision: number
+  reviewConflict: boolean
 }
 
 /** 版本来源：单独一页要能回答「谁生成的、用哪一版标准与蓝图」（§4.1）。 */
@@ -395,6 +400,108 @@ export type SampleVersionView = {
 export type SampleDetail = {
   sample: SampleSummary
   version: SampleVersionView
+}
+
+// ---------------------------------------------------------------------------
+// 人工判断（契约 §2.7）
+// ---------------------------------------------------------------------------
+
+/**
+ * 一条判断。
+ *
+ * `supersedes` 与 `resolutionOf` 是**可追溯性**的载体：前者说出「我更正了谁」，
+ * 后者说出「我裁定的是哪个冲突」。列表返回**全部**判断（含被取代的），
+ * 因此界面能显示「原来判过什么、后来谁改了」。
+ */
+export type ReviewDecision = {
+  id: number
+  projectId: number
+  sampleId: number
+  sampleVersionId: number
+  contentHash: string
+  evidenceRevision: number
+  reviewerId: number
+  reviewerRevision: number
+  action: 'accepted' | 'quarantined' | string
+  reason: string
+  supersedes?: number
+  resolutionOf?: number
+  createdAt: string
+}
+
+/** 有效处置的投影（可从判断历史重建）。 */
+export type ReviewProjection = {
+  sampleVersionId: number
+  projectId: number
+  contentHash: string
+  evidenceRevision: number
+  aggregateReviewRevision: number
+  effectiveAction: 'pending' | 'accepted' | 'quarantined' | 'conflict' | string
+  conflict: boolean
+  decisionCount: number
+  pendingReason: string
+  updatedAt: string
+}
+
+export type ReviewAssignment = {
+  id: number
+  projectId: number
+  sampleId: number
+  sampleVersionId: number
+  riskKey: string
+  assigneeId?: number
+  assignedBy?: number
+  status: string
+  note: string
+  createdAt: string
+  resolvedAt?: string
+}
+
+/** 提交判断的命令体。**必须**带两套序号（见 store 的说明）。 */
+export type SubmitDecisionRequest = {
+  /** 提交者确认的必需证据版本；与库中不一致会 409。 */
+  evidenceRevision: number
+  /** 该审阅者的个人并发序号；带旧值会 409 并保留填写内容。 */
+  reviewerRevision: number
+  action: 'accepted' | 'quarantined'
+  reason: string
+  supersedes?: number
+}
+
+export type DecisionResult = {
+  decision: ReviewDecision
+  projection: ReviewProjection
+  /** 保存后立刻可知「这一条还差什么」的阻塞项（T20 复用同一份判定）。 */
+  blockers: ApiBlocker[]
+}
+
+// ---------------------------------------------------------------------------
+// 大范围选择快照（契约 §3.2）
+// ---------------------------------------------------------------------------
+
+/**
+ * 选择快照。
+ *
+ * URL 里只出现快照 ID，ID 列表留在服务端 —— 数万 ID 的 URL 会超出长度上限
+ * （表现为「点了发布什么都没发生」），而且它是**客户端可改的**。
+ */
+export type SelectionSnapshot = {
+  id: number
+  projectId: number
+  purpose: string
+  filter: unknown
+  itemCount: number
+  createdBy?: number
+  createdAt: string
+  expiresAt?: string
+}
+
+export type CreateSelectionSnapshotRequest = {
+  purpose?: 'release' | 'experiment' | 'export'
+  /** 少量显式选择走这条路。 */
+  sampleVersionIds?: number[]
+  /** 「按筛选条件全选」：由服务端解析成具体 ID 并冻结。 */
+  fromFilter?: { reviewStatus?: string; batchId?: number; search?: string }
 }
 
 // ---------------------------------------------------------------------------
@@ -530,5 +637,72 @@ export const studioApi = {
   getSampleVersion: (projectId: number, sampleId: string, version: number) =>
     client
       .get<SampleVersionView>(`${projectPath(projectId)}/samples/${sampleId}/versions/${version}`)
+      .then((response) => response.data),
+
+  /** `POST P/samples/{sampleId}/versions/{version}/decisions`（契约 §2.7）。 */
+  submitDecision: (projectId: number, sampleId: string, version: number, payload: SubmitDecisionRequest) =>
+    client
+      .post<DecisionResult>(
+        `${projectPath(projectId)}/samples/${sampleId}/versions/${version}/decisions`,
+        payload,
+      )
+      .then((response) => response.data),
+
+  /** `GET .../decisions`：返回**全部**判断（含被取代的）与当前投影。 */
+  listDecisions: (projectId: number, sampleId: string, version: number) =>
+    client
+      .get<{ items: ReviewDecision[]; projection: ReviewProjection; sortKey: string }>(
+        `${projectPath(projectId)}/samples/${sampleId}/versions/${version}/decisions`,
+      )
+      .then((response) => response.data),
+
+  /** `POST .../resolve-conflict`：仅项目负责人可用。 */
+  resolveConflict: (
+    projectId: number,
+    sampleId: string,
+    version: number,
+    payload: { action: 'accepted' | 'quarantined'; reason: string; supersedes?: number },
+  ) =>
+    client
+      .post(
+        `${projectPath(projectId)}/samples/${sampleId}/versions/${version}/resolve-conflict`,
+        payload,
+      )
+      .then((response) => response.data),
+
+  /** `POST .../assignments`：按风险聚合，重复分派更新同一条。 */
+  assignReview: (
+    projectId: number,
+    sampleId: string,
+    version: number,
+    payload: { riskKey?: string; assigneeId?: number; note?: string },
+  ) =>
+    client
+      .post(
+        `${projectPath(projectId)}/samples/${sampleId}/versions/${version}/assignments`,
+        payload,
+      )
+      .then((response) => response.data as { assignment: ReviewAssignment }),
+
+  /** `GET P/review-assignments`：`mine=1` 只看分派给我的。 */
+  listReviewAssignments: (projectId: number, mine = false) =>
+    client
+      .get<Page<ReviewAssignment>>(
+        `${projectPath(projectId)}/review-assignments${mine ? '?mine=1' : ''}`,
+      )
+      .then((response) => response.data),
+
+  /** `POST P/selection-snapshots`：冻结范围（URL 只带快照 ID）。 */
+  createSelectionSnapshot: (projectId: number, payload: CreateSelectionSnapshotRequest) =>
+    client
+      .post(`${projectPath(projectId)}/selection-snapshots`, payload)
+      .then((response) => response.data as SelectionSnapshot),
+
+  /** `GET P/selection-snapshots/{id}`：**重新鉴权**后解析范围。 */
+  getSelectionSnapshot: (projectId: number, snapshotId: number) =>
+    client
+      .get<{ snapshot: SelectionSnapshot; items: number[]; count: number }>(
+        `${projectPath(projectId)}/selection-snapshots/${snapshotId}`,
+      )
       .then((response) => response.data),
 }

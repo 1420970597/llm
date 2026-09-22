@@ -14,6 +14,20 @@ import (
 // 那是并发与事务密集的部分；读模型的分页条件会随 T17 的筛选需求持续增加，
 // 混在一起会让「改动读模型」看起来像「改动写入语义」，从而抬高审查成本。
 
+// SampleWithReview 是样本列表项 + 它的审阅投影（T17）。
+//
+// 审阅状态随列表一起返回而不是让前端逐条查：列表页要显示「哪些待审」，
+// 逐条查会变成 N+1 次请求，而队列页正是「一次看一屏」的场景。
+type SampleWithReview struct {
+	model.Sample
+	// ReviewStatus 是**当前采用版本**的有效处置（无投影时视为 pending）。
+	ReviewStatus string `json:"reviewStatus"`
+	// AggregateReviewRevision 供前端显示「这一条判断改过几次」，
+	// 也是发布候选冻结时做竞争检测的依据。
+	AggregateReviewRevision int64 `json:"aggregateReviewRevision"`
+	ReviewConflict          bool  `json:"reviewConflict"`
+}
+
 // SampleListQuery 是样本列表条件（契约 §3 的 `GET P/samples`）。
 //
 // 关于尚未支持的筛选项：契约列出了 `status` 与 `risk`，但两者的判据来自
@@ -28,16 +42,24 @@ type SampleListQuery struct {
 	Search string
 	// TargetKind 过滤 sft/grpo（两类项目的样本结构不同，混列没有意义）。
 	TargetKind string
-	Cursor     time.Time
-	CursorID   int64
-	Limit      int
+	// ReviewStatus 按**有效处置**筛选（T17 的审阅队列）。
+	//
+	// 取值是 review_projections.effective_action（pending/accepted/quarantined/
+	// conflict）—— 注意这里是**投影**而不是判断历史：队列要的是「现在该不该
+	// 看这一条」，而不是「历史上有人判过什么」。
+	ReviewStatus string
+	// UnreviewedOnly 只看尚无有效接纳的项（待审阅队列的默认口径）。
+	UnreviewedOnly bool
+	Cursor         time.Time
+	CursorID       int64
+	Limit          int
 }
 
 // ListSamples 按「同项目内最近」列出样本；keyset 游标（契约 §1.5）。
 //
 // 排序键是 (created_at, id)：created_at 单独不唯一（同一批次的样本往往
 // 在同一毫秒内创建），而游标比较必须全序，否则翻页会重复或漏行。
-func (s *BatchStore) ListSamples(ctx context.Context, query SampleListQuery) ([]model.Sample, error) {
+func (s *BatchStore) ListSamples(ctx context.Context, query SampleListQuery) ([]SampleWithReview, error) {
 	limit := query.Limit
 	if limit <= 0 {
 		limit = 20
@@ -51,33 +73,52 @@ func (s *BatchStore) ListSamples(ctx context.Context, query SampleListQuery) ([]
 		cursorTime = &truncated
 	}
 
+	// 与 review_projections 左连接：审阅状态是**投影**，因此没有投影行
+	// （从未被判断过）的内容其状态视为 pending —— 那正是「待审阅」。
+	//
+	// 用 LEFT JOIN 而不是 INNER JOIN：从未判断过的内容必须出现在待审阅队列里，
+	// 而 INNER JOIN 会把它们全部排除，得到一个永远空着的队列。
 	rows, err := s.db.Query(ctx, `
-    SELECT id, project_id, sample_key, target_kind, title, origin_batch_id,
-           latest_version, created_at, updated_at
-    FROM samples
-    WHERE project_id = $1
-      AND ($2::bigint = 0 OR origin_batch_id = $2::bigint)
-      AND ($3 = '' OR target_kind = $3)
-      AND ($4 = '' OR title ILIKE '%' || $4 || '%' OR sample_key ILIKE '%' || $4 || '%')
-      AND ($5::timestamptz IS NULL OR (created_at, id) < ($5::timestamptz, $6::bigint))
-    ORDER BY created_at DESC, id DESC
-    LIMIT $7`,
+    SELECT s.id, s.project_id, s.sample_key, s.target_kind, s.title, s.origin_batch_id,
+           s.latest_version, s.created_at, s.updated_at,
+           COALESCE(rp.effective_action, 'pending') AS review_status,
+           COALESCE(rp.aggregate_review_revision, 0) AS aggregate_review_revision,
+           COALESCE(rp.conflict, FALSE) AS review_conflict
+    FROM samples s
+    LEFT JOIN LATERAL (
+      SELECT p.effective_action, p.aggregate_review_revision, p.conflict
+      FROM review_projections p
+      JOIN sample_versions sv ON sv.id = p.sample_version_id
+      WHERE sv.sample_id = s.id AND sv.version = s.latest_version
+      LIMIT 1
+    ) rp ON TRUE
+    WHERE s.project_id = $1
+      AND ($2::bigint = 0 OR s.origin_batch_id = $2::bigint)
+      AND ($3 = '' OR s.target_kind = $3)
+      AND ($4 = '' OR s.title ILIKE '%' || $4 || '%' OR s.sample_key ILIKE '%' || $4 || '%')
+      AND ($7 = '' OR COALESCE(rp.effective_action, 'pending') = $7)
+      AND ($8 = FALSE OR COALESCE(rp.effective_action, 'pending') <> 'accepted')
+      AND ($5::timestamptz IS NULL OR (s.created_at, s.id) < ($5::timestamptz, $6::bigint))
+    ORDER BY s.created_at DESC, s.id DESC
+    LIMIT $9`,
 		query.ProjectID, query.BatchID, strings.TrimSpace(query.TargetKind),
-		strings.TrimSpace(query.Search), cursorTime, query.CursorID, limit)
+		strings.TrimSpace(query.Search), cursorTime, query.CursorID,
+		strings.TrimSpace(query.ReviewStatus), query.UnreviewedOnly, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	items := []model.Sample{}
+	items := []SampleWithReview{}
 	for rows.Next() {
-		var sample model.Sample
-		if err := rows.Scan(&sample.ID, &sample.ProjectID, &sample.SampleKey, &sample.TargetKind,
-			&sample.Title, &sample.OriginBatchID, &sample.LatestVersion,
-			&sample.CreatedAt, &sample.UpdatedAt); err != nil {
+		var item SampleWithReview
+		if err := rows.Scan(&item.ID, &item.ProjectID, &item.SampleKey, &item.TargetKind,
+			&item.Title, &item.OriginBatchID, &item.LatestVersion,
+			&item.CreatedAt, &item.UpdatedAt,
+			&item.ReviewStatus, &item.AggregateReviewRevision, &item.ReviewConflict); err != nil {
 			return nil, err
 		}
-		items = append(items, sample)
+		items = append(items, item)
 	}
 	return items, rows.Err()
 }

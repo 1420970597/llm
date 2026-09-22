@@ -38,6 +38,8 @@ type Service struct {
 	Batches     *store.BatchStore
 	Jobs        *store.JobStore
 	Usage       *store.UsageStore
+	Reviews     *store.ReviewStore
+	Selections  *store.SelectionStore
 	Idempotency *store.IdempotencyStore
 }
 
@@ -51,6 +53,8 @@ func New(pool *pgxpool.Pool) *Service {
 		Batches:     store.NewBatchStore(pool),
 		Jobs:        store.NewJobStore(pool),
 		Usage:       store.NewUsageStore(pool),
+		Reviews:     store.NewReviewStore(pool),
+		Selections:  store.NewSelectionStore(pool),
 		Idempotency: store.NewIdempotencyStore(pool),
 	}
 }

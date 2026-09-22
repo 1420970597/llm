@@ -111,9 +111,18 @@ type sampleSummary struct {
 	OriginBatchID *int64 `json:"originBatchId,omitempty"`
 	CreatedAt     string `json:"createdAt"`
 	UpdatedAt     string `json:"updatedAt"`
+	// 审阅投影随列表一起返回（T17）：队列页要显示「哪些待审」，
+	// 逐条查会变成 N+1 次请求，而队列正是「一次看一屏」的场景。
+	ReviewStatus            string `json:"reviewStatus"`
+	AggregateReviewRevision int64  `json:"aggregateReviewRevision"`
+	ReviewConflict          bool   `json:"reviewConflict"`
 }
 
-// toSampleSummary 转换样本列表项。
+// toSampleSummary 转换样本（不含审阅投影）。
+//
+// 审阅状态由调用方通过 applyReviewProjection 补齐，而不是在这里填一个默认值：
+// 单样本详情页若把「未加载」显示成「待判断」，用户会以为这一条还没人看过 ——
+// 而事实可能是已被接纳。默认值在这里是有害的，因此刻意不设。
 func toSampleSummary(sample model.Sample) sampleSummary {
 	return sampleSummary{
 		SampleID:      sample.ID,
@@ -126,6 +135,22 @@ func toSampleSummary(sample model.Sample) sampleSummary {
 		CreatedAt:     studio.FormatTime(sample.CreatedAt),
 		UpdatedAt:     studio.FormatTime(sample.UpdatedAt),
 	}
+}
+
+// toSampleSummaryWithReview 转换列表项（列表已在同一次查询里带出投影）。
+func toSampleSummaryWithReview(item store.SampleWithReview) sampleSummary {
+	summary := toSampleSummary(item.Sample)
+	summary.ReviewStatus = item.ReviewStatus
+	summary.AggregateReviewRevision = item.AggregateReviewRevision
+	summary.ReviewConflict = item.ReviewConflict
+	return summary
+}
+
+// applyReviewProjection 把审阅投影写进摘要。
+func applyReviewProjection(summary *sampleSummary, projection model.ReviewProjection) {
+	summary.ReviewStatus = projection.EffectiveAction
+	summary.AggregateReviewRevision = projection.AggregateReviewRevision
+	summary.ReviewConflict = projection.Conflict
 }
 
 // listSamples 列出项目的样本。
@@ -154,13 +179,29 @@ func (app *application) listSamples(w http.ResponseWriter, r *http.Request) {
 		app.writeStudioError(w, r, err)
 		return
 	}
-	if query.Status != "" || query.Risk != "" {
+	// 审阅状态筛选（T17 接入；T08 曾在此显式拒绝并点名负责的任务）。
+	// 取值是**投影**的有效处置，因此「待审阅」包含从未被判断过的内容
+	//（它们没有投影行，按 pending 处理）。
+	// 显式指定任何一个审阅状态（含 accepted）时不再套用「只看未审阅」，
+	// 否则「筛选已接纳」会永远得到空列表 —— 而那会让人以为判断丢了。
+	reviewedExplicitly := query.Status != ""
+	reviewStatus := query.Status
+	switch reviewStatus {
+	case "", model.EffectivePending, model.EffectiveAccepted, model.EffectiveQuarantined, model.EffectiveConflict:
+	default:
 		app.writeStudioError(w, r, studio.NewValidationError(
-			"按审阅状态与风险的筛选尚未接入（T16/T17 提供），请先按批次或关键词筛选",
-			[]model.FieldError{{
-				Field:   "status",
-				Message: "该筛选尚未接入：审阅状态与风险判据来自人工判断与证据（T16/T17）",
-			}}))
+			"审阅状态筛选只能是 pending、accepted、quarantined 或 conflict",
+			[]model.FieldError{{Field: "status",
+				Message: "只能按有效处置筛选（pending/accepted/quarantined/conflict）"}}))
+		return
+	}
+	if query.Risk != "" {
+		// 风险筛选需要规则命中证据的聚合，属于 T15 的证据面；
+		// 这里仍显式拒绝而不是忽略 —— 静默忽略会让用户以为看到的是筛过的结果。
+		app.writeStudioError(w, r, studio.NewValidationError(
+			"按风险筛选尚未接入（依赖规则命中证据的聚合），请先按审阅状态或关键词筛选",
+			[]model.FieldError{{Field: "risk",
+				Message: "风险筛选尚未接入：它需要按规则命中证据聚合"}}))
 		return
 	}
 
@@ -185,9 +226,13 @@ func (app *application) listSamples(w http.ResponseWriter, r *http.Request) {
 		ProjectID: projectID,
 		BatchID:   batchID,
 		Search:    query.Search,
-		Cursor:    query.Cursor.Time,
-		CursorID:  query.Cursor.ID,
-		Limit:     query.Limit + 1,
+		// 默认只看待审阅（`/review` 的默认队列口径）：已接纳的内容不该
+		// 占据审阅者的第一屏，那会让真正的待办被淹没。
+		UnreviewedOnly: !reviewedExplicitly,
+		ReviewStatus:   reviewStatus,
+		Cursor:         query.Cursor.Time,
+		CursorID:       query.Cursor.ID,
+		Limit:          query.Limit + 1,
 	})
 	if err != nil {
 		app.writeStudioError(w, r, err)
@@ -196,7 +241,7 @@ func (app *application) listSamples(w http.ResponseWriter, r *http.Request) {
 
 	summaries := make([]sampleSummary, 0, len(samples))
 	for _, sample := range samples {
-		summaries = append(summaries, toSampleSummary(sample))
+		summaries = append(summaries, toSampleSummaryWithReview(sample))
 	}
 	app.writeJSON(w, http.StatusOK, studio.NewPage(summaries, query.Limit, "createdAt:desc",
 		func(summary sampleSummary) studio.Cursor {
@@ -292,10 +337,21 @@ func (app *application) getSample(w http.ResponseWriter, r *http.Request) {
 		},
 		nil,
 	)
+	// 审阅投影必须**真实加载**再补进摘要（T17）：不加载就填默认值会把
+	// 「已被接纳」显示成「待判断」，而用户会据此重复审一遍已经看过的东西。
+	summary := toSampleSummary(sample)
+	if projection, err := app.studio.Reviews.GetProjection(r.Context(), projectID, version.ID); err == nil {
+		applyReviewProjection(&summary, projection)
+	} else {
+		// 取不到投影不阻塞详情页（内容本身仍可读），但必须留日志：
+		// 静默显示「待判断」会让审阅者重复劳动。
+		app.logInternal(r, "load review projection failed", err)
+	}
+
 	envelope.Data = struct {
 		Sample  sampleSummary     `json:"sample"`
 		Version sampleVersionView `json:"version"`
-	}{Sample: toSampleSummary(sample), Version: toSampleVersionView(version)}
+	}{Sample: summary, Version: toSampleVersionView(version)}
 	app.writeStudioEnvelope(w, http.StatusOK, envelope)
 }
 
