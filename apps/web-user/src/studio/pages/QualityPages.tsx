@@ -47,6 +47,23 @@ function statusColor(status: string): 'amber' | 'green' | 'red' | 'grey' {
   }
 }
 
+/**
+ * GRPO 内置量表的维度标签（T24）。
+ *
+ * 与后端 `model.GRPOQualityDimensions` 的 key 一一对应。未列出的 key 回退到
+ * 原 key 而不是隐藏：隐藏会让「服务端加了维度而界面没跟上」表现为一行
+ * 看不见的缺失，而报告的行数因此与分母统计对不上。
+ */
+const GRPO_DIMENSION_LABELS: Record<string, string> = {
+  level_coverage: '档位覆盖（确定性：判据与裁判提示词是否覆盖每一档）',
+  boundary_stability: '边界稳定性（按冻结参考集逐条判定）',
+  explanation_consistency: '评分解释一致性',
+}
+
+function dimensionLabel(key: string): string {
+  return GRPO_DIMENSION_LABELS[key] ?? key
+}
+
 // ---------------------------------------------------------------------------
 // 实验列表（Q01）
 // ---------------------------------------------------------------------------
@@ -172,6 +189,27 @@ export function QualityNewPage() {
   const [seed, setSeed] = useState('42')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // GRPO 与 SFT 的量表不同（T24）：GRPO 使用服务端内置量表，
+  // 因此界面必须知道项目目标类型，而不是一律提交 SFT 的 accuracy 维度。
+  const [targetKind, setTargetKind] = useState('sft')
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const response = await client.get<{ targetKind?: string }>(`${projectPath(scope.projectId)}/overview`)
+        if (!cancelled) setTargetKind(response.data?.targetKind ?? 'sft')
+      } catch {
+        // 概览读取失败时回退到 SFT：SFT 路径要求**显式量表**，
+        // 因此失败方向是「多填一个量表」而不是「用错量表」——
+        // 后者会产出一份语义错误的质量结论，比多一次表单校验贵得多。
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [scope.projectId])
+  const isGRPO = targetKind === 'grpo'
 
   useEffect(() => {
     let cancelled = false
@@ -209,9 +247,11 @@ export function QualityNewPage() {
         // 提交的是**样本版本**（内容版本），不是样本：同一题的两版内容是两件事。
         sampleVersionIds: selected,
         samplingSeed: Number(seed) || 0,
-        rubric: {
-          dimensions: [{ key: 'accuracy', label: '准确', weight: 1, min: 0, max: 10 }],
-        },
+        // GRPO 省略量表 → 服务端用内置 GRPO 量表（档位覆盖 / 边界稳定性 /
+        // 评分解释一致性）。SFT 必须显式给出。
+        rubric: isGRPO
+          ? undefined
+          : { dimensions: [{ key: 'accuracy', label: '准确', weight: 1, min: 0, max: 10 }] },
         judgeConnectionIds: [Number(judgeID)],
         missingScorePolicy: 'exclude',
       })
@@ -222,7 +262,7 @@ export function QualityNewPage() {
     } finally {
       setBusy(false)
     }
-  }, [judgeID, navigate, scope.projectId, seed, selected])
+  }, [isGRPO, judgeID, navigate, scope.projectId, seed, selected])
 
   return (
     <div className="console-page" data-studio-page="quality-new">
@@ -252,6 +292,32 @@ export function QualityNewPage() {
           }))}
           onChange={(value) => setBatchID(String(value))}
         />
+      </Card>
+
+      <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-rubric-preview="true">
+        <Text strong className="block mb-2">
+          量表（创建后冻结）
+        </Text>
+        {isGRPO ? (
+          <>
+            <Text type="tertiary" size="small" className="block mb-1">
+              本项目是 GRPO：使用内置 GRPO 量表（服务端定义，不由界面拼装）。
+            </Text>
+            {Object.entries(GRPO_DIMENSION_LABELS).map(([key, label]) => (
+              <Text key={key} type="tertiary" size="small" className="block" data-grpo-dimension={key}>
+                · {label}
+              </Text>
+            ))}
+            <Text type="tertiary" size="small" className="block mt-1">
+              边界稳定性需要**冻结的边界参考集**；没有参考集时该维度记缺分（缺证据），
+              不会用 0 分凑一个结论。
+            </Text>
+          </>
+        ) : (
+          <Text type="tertiary" size="small">
+            维度：accuracy（准确，权重 1，范围 0–10）。改量表需要新建实验。
+          </Text>
+        )}
       </Card>
 
       <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-scope-picker="true">
@@ -444,7 +510,7 @@ export function QualityReportPage() {
               </div>
               {report.dimensions.map((dimension) => (
                 <div key={dimension.dimension} className="comparison-row" data-dimension={dimension.dimension}>
-                  <span>{dimension.dimension}</span>
+                  <span>{dimensionLabel(dimension.dimension)}</span>
                   <span>{dimension.mean.toFixed(3)}</span>
                   <span>{dimension.scoredCount}</span>
                   <span>{dimension.missingCount}</span>

@@ -56,25 +56,42 @@ type CreateExperimentInput struct {
 	Judges []model.JudgeSpec
 	Rubric model.RubricSpec
 
+	// TargetConfig 是 GRPO 专属的冻结配置（T24）。SFT 实验留空。
+	// 调用方必须已用 model.GRPOTargetConfig.Prepare 算好 hash：
+	// hash 由服务端复算，客户端传入的 hash 不被信任。
+	TargetConfig json.RawMessage
+
 	MissingScorePolicy string
 	CreatedBy          *int64
 }
 
-// CreateExperiment 冻结一个实验。
+// CreateExperiment 冻结一个实验（不带执行作业）。
 //
-// 顺序刻意是「校验 → 推导生成来源 → 独立性检查 → 写入」：
+// 保留这个签名是为了测试与「只冻结不执行」的场景；执行路径用
+// CreateExperimentWithJob，使业务写入与作业派发在同一个事务里
+// （T06 的硬要求：API 落库后、派发前崩溃不能留下永远不会被处理的实验）。
+func (s *ExperimentStore) CreateExperiment(ctx context.Context, input CreateExperimentInput) (model.Experiment, error) {
+	experiment, _, err := s.CreateExperimentWithJob(ctx, input, nil)
+	return experiment, err
+}
+
+// CreateExperimentWithJob 在**同一事务**内冻结实验并创建执行作业。
+//
+// 顺序刻意是「校验 → 推导生成来源 → 独立性检查 → 写入 → 入队」：
 // 生成来源**由样本推导**（不接受客户端传入），因为请求体里带一个
 // generatorConnectionId 就能让「生成者 == 裁判」看起来成立，从而绕过
 // 独立性检查（T14 验收项明确禁止）。
-func (s *ExperimentStore) CreateExperiment(ctx context.Context, input CreateExperimentInput) (model.Experiment, error) {
+func (s *ExperimentStore) CreateExperimentWithJob(ctx context.Context, input CreateExperimentInput, job *EnqueueJobInput) (model.Experiment, *model.Job, error) {
 	if len(input.SampleVersionIDs) == 0 {
-		return model.Experiment{}, &apiStoreError{Message: "实验范围不能为空，请先选择要评估的样本版本"}
+		return model.Experiment{}, nil, &apiStoreError{Message: "实验范围不能为空，请先选择要评估的样本版本"}
 	}
 	if len(input.Judges) == 0 {
-		return model.Experiment{}, &apiStoreError{Message: "实验至少需要一名裁判"}
+		return model.Experiment{}, nil, &apiStoreError{Message: "实验至少需要一名裁判"}
 	}
-	if err := input.Rubric.Validate(); err != nil {
-		return model.Experiment{}, err
+	// 量表必须与目标类型匹配（T24「按 target_kind 校验」）：
+	// 用错量表的实验「看起来正常、其实语义错误」，比直接拒绝更危险。
+	if err := model.ValidateRubricForTarget(input.TargetKind, input.Rubric); err != nil {
+		return model.Experiment{}, nil, err
 	}
 	if input.MissingScorePolicy == "" {
 		input.MissingScorePolicy = model.MissingScoreExclude
@@ -82,51 +99,56 @@ func (s *ExperimentStore) CreateExperiment(ctx context.Context, input CreateExpe
 	if input.Purpose == "" {
 		input.Purpose = model.ExperimentPurposeQuality
 	}
-	if runnable, reason := model.ExperimentRunnable(input.TargetKind, "T14"); !runnable {
-		return model.Experiment{}, &apiStoreError{Message: reason}
+	if runnable, reason := model.ExperimentRunnable(input.TargetKind, "T24"); !runnable {
+		return model.Experiment{}, nil, &apiStoreError{Message: reason}
+	}
+
+	targetConfig, err := normalizeTargetConfig(input.TargetKind, input.TargetConfig)
+	if err != nil {
+		return model.Experiment{}, nil, err
 	}
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
-		return model.Experiment{}, err
+		return model.Experiment{}, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	items, sources, err := deriveExperimentItemsTx(ctx, tx, input.ProjectID, input.SampleVersionIDs)
 	if err != nil {
-		return model.Experiment{}, err
+		return model.Experiment{}, nil, err
 	}
 
 	// 独立性检查在**写入之前**：拒绝时不该留下一个半成品实验。
 	independent, coverage := model.CheckJudgeIndependence(input.Judges, sources)
 	if !independent {
-		return model.Experiment{}, &apiStoreError{Message: "没有独立裁判：全部裁判都与生成来源同源（同一接入点），无法自评"}
+		return model.Experiment{}, nil, &apiStoreError{Message: "没有独立裁判：全部裁判都与生成来源同源（同一接入点），无法自评"}
 	}
 
 	judgesJSON, err := json.Marshal(input.Judges)
 	if err != nil {
-		return model.Experiment{}, err
+		return model.Experiment{}, nil, err
 	}
 	rubricJSON, err := json.Marshal(input.Rubric)
 	if err != nil {
-		return model.Experiment{}, err
+		return model.Experiment{}, nil, err
 	}
 	sourcesJSON, err := json.Marshal(sources)
 	if err != nil {
-		return model.Experiment{}, err
+		return model.Experiment{}, nil, err
 	}
 
 	var experimentID int64
 	if err := tx.QueryRow(ctx, `
     INSERT INTO experiments
       (project_id, batch_id, target_kind, status, purpose, sampling_seed,
-       judges, rubric, generator_sources, missing_score_policy, created_by)
-    VALUES ($1, $2, $3, 'queued', $4, $5, $6, $7, $8, $9, $10)
+       judges, rubric, generator_sources, target_config, missing_score_policy, created_by)
+    VALUES ($1, $2, $3, 'queued', $4, $5, $6, $7, $8, $9, $10, $11)
     RETURNING id`,
 		input.ProjectID, input.BatchID, input.TargetKind, input.Purpose, input.SamplingSeed,
-		judgesJSON, rubricJSON, sourcesJSON, input.MissingScorePolicy, input.CreatedBy,
+		judgesJSON, rubricJSON, sourcesJSON, targetConfig, input.MissingScorePolicy, input.CreatedBy,
 	).Scan(&experimentID); err != nil {
-		return model.Experiment{}, err
+		return model.Experiment{}, nil, err
 	}
 
 	for _, item := range items {
@@ -137,7 +159,7 @@ func (s *ExperimentStore) CreateExperiment(ctx context.Context, input CreateExpe
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')`,
 			experimentID, input.ProjectID, item.SampleID, item.SampleVersionID, item.ContentHash,
 			item.GeneratorSource, item.GeneratorFingerprint); err != nil {
-			return model.Experiment{}, err
+			return model.Experiment{}, nil, err
 		}
 	}
 
@@ -145,7 +167,7 @@ func (s *ExperimentStore) CreateExperiment(ctx context.Context, input CreateExpe
 	if _, err := tx.Exec(ctx, `
     UPDATE experiments SET inspected_count = $2, updated_at = NOW() WHERE id = $1`,
 		experimentID, len(items)); err != nil {
-		return model.Experiment{}, err
+		return model.Experiment{}, nil, err
 	}
 
 	if err := writeStudioAuditTx(ctx, tx, StudioAudit{
@@ -156,20 +178,93 @@ func (s *ExperimentStore) CreateExperiment(ctx context.Context, input CreateExpe
 		ProjectID:  input.ProjectID,
 		Reason:     fmt.Sprintf("purpose=%s inspected=%d judges=%d", input.Purpose, len(items), len(input.Judges)),
 	}); err != nil {
-		return model.Experiment{}, err
+		return model.Experiment{}, nil, err
+	}
+
+	var createdJob *model.Job
+	if job != nil {
+		// 作业作用域由服务端填，不接受调用方传入：一次笔误就能让作业
+		// 指向别的项目（而实验执行会按项目读样本内容）。
+		job.ProjectID = &input.ProjectID
+		if job.BatchID == nil {
+			job.BatchID = input.BatchID
+		}
+		if job.CreatedBy == nil {
+			job.CreatedBy = input.CreatedBy
+		}
+		// 作业载荷里的 experimentId 由**store**填：调用方在创建之前不知道 ID，
+		// 而 handler 只能从这个载荷拿到「要跑哪个实验」（jobs 表没有
+		// experiment_id 列，BatchID 只用于批次级作业）。
+		if job.Payload == nil {
+			job.Payload = map[string]any{"experimentId": experimentID}
+		}
+		enqueued, _, err := EnqueueJobTx(ctx, tx, *job)
+		if err != nil {
+			return model.Experiment{}, nil, err
+		}
+		createdJob = &enqueued
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return model.Experiment{}, err
+		return model.Experiment{}, nil, err
 	}
 
 	experiment, err := s.GetExperiment(ctx, experimentID)
 	if err != nil {
-		return model.Experiment{}, err
+		return model.Experiment{}, nil, err
 	}
 	// 覆盖情况随返回值一起给出，界面据此显示「哪个来源只有 1 名独立裁判」。
 	experiment.IndependenceCoverage = coverage
-	return experiment, nil
+	return experiment, createdJob, nil
+}
+
+// normalizeTargetConfig 校验并规范化实验的 target_config（T24）。
+//
+// GRPO 的边界参考集 hash 由**服务端复算**：客户端可以传参考集内容，
+// 但不能用它来声明一个自己编的 hash —— 那是「冻结来源」被绕过的形态。
+// SFT 保留原样（当前不使用），但仍然要求是合法 JSON，
+// 否则一个坏值会在读取时才炸，而不是在写入时被拒绝。
+func normalizeTargetConfig(targetKind string, raw json.RawMessage) (json.RawMessage, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		raw = json.RawMessage(`{}`)
+	}
+	if !json.Valid(raw) {
+		return nil, model.FieldErrors{{Field: "targetConfig", Message: "实验配置不是合法 JSON"}}
+	}
+	if targetKind != model.TargetKindGRPO {
+		return raw, nil
+	}
+	config, err := model.ParseGRPOTargetConfig(raw)
+	if err != nil {
+		return nil, model.FieldErrors{{Field: "targetConfig", Message: err.Error()}}
+	}
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+	if !config.HasBoundaryReference() {
+		// 没有参考集不是错误：boundary_stability 会记缺分（缺证据），
+		// 而不是拿一个没有依据的分数。hash 清空以免留下一个不指向任何内容的标识。
+		config.BoundaryReferenceHash = ""
+		encoded, err := json.Marshal(config)
+		if err != nil {
+			return nil, err
+		}
+		return encoded, nil
+	}
+	expected, err := config.BoundaryReference.Hash()
+	if err != nil {
+		return nil, err
+	}
+	if config.BoundaryReferenceHash != "" && config.BoundaryReferenceHash != expected {
+		return nil, model.FieldErrors{{Field: "targetConfig.boundaryReferenceHash",
+			Message: "边界参考集内容与其 hash 不一致，请重新提交"}}
+	}
+	config.BoundaryReferenceHash = expected
+	encoded, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
 }
 
 // derivedItem 是「从样本版本推导出的待评项」。
@@ -258,16 +353,16 @@ func deriveExperimentItemsTx(ctx context.Context, tx pgx.Tx, projectID int64, ve
 // GetExperiment 读取实验（含快照）。
 func (s *ExperimentStore) GetExperiment(ctx context.Context, experimentID int64) (model.Experiment, error) {
 	var experiment model.Experiment
-	var judgesJSON, rubricJSON, sourcesJSON []byte
+	var judgesJSON, rubricJSON, sourcesJSON, targetConfigJSON []byte
 	err := s.db.QueryRow(ctx, `
     SELECT id, project_id, batch_id, target_kind, status, purpose, sampling_seed,
-           judges, rubric, generator_sources, missing_score_policy,
+           judges, rubric, generator_sources, target_config, missing_score_policy,
            inspected_count, scored_count, missing_count, error_count,
            created_by, started_at, finished_at, created_at, updated_at
     FROM experiments WHERE id = $1`, experimentID,
 	).Scan(&experiment.ID, &experiment.ProjectID, &experiment.BatchID, &experiment.TargetKind,
 		&experiment.Status, &experiment.Purpose, &experiment.SamplingSeed,
-		&judgesJSON, &rubricJSON, &sourcesJSON, &experiment.MissingScorePolicy,
+		&judgesJSON, &rubricJSON, &sourcesJSON, &targetConfigJSON, &experiment.MissingScorePolicy,
 		&experiment.InspectedCount, &experiment.ScoredCount, &experiment.MissingCount,
 		&experiment.ErrorCount, &experiment.CreatedBy, &experiment.StartedAt,
 		&experiment.FinishedAt, &experiment.CreatedAt, &experiment.UpdatedAt)
@@ -286,6 +381,10 @@ func (s *ExperimentStore) GetExperiment(ctx context.Context, experimentID int64)
 	if err := json.Unmarshal(sourcesJSON, &experiment.GeneratorSources); err != nil {
 		return model.Experiment{}, err
 	}
+	// target_config 只在 GRPO 实验里有内容；SFT 读出 '{}'。
+	// 把它原样挂到 Experiment 上（不在这里解析成 typed）：读取路径上的实验
+	// 可能只是被列出来，而解析失败不该让「列出实验」整个失败。
+	experiment.TargetConfig = json.RawMessage(targetConfigJSON)
 	return experiment, nil
 }
 

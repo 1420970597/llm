@@ -406,7 +406,9 @@ func TestCreateExperimentRejectsSelfJudgingAndGRPO(t *testing.T) {
 		t.Fatalf("只有别名连接时必须拒绝（否则是自评），实际 %v", err)
 	}
 
-	// GRPO 在 T24 之前不可运行。
+	// GRPO 现在可运行（T24），但**量表必须匹配目标类型**：
+	// 用 SFT 量表评 GRPO 样本会产出「看起来正常、其实语义错误」的结论，
+	// 而用 GRPO 量表评 SFT 样本会让确定性维度永远缺分。
 	_, err = fixture.experiments.CreateExperiment(ctx, CreateExperimentInput{
 		ProjectID: fixture.projectID, TargetKind: model.TargetKindGRPO,
 		SampleVersionIDs: fixture.sampleVersionIDs(t),
@@ -414,8 +416,26 @@ func TestCreateExperimentRejectsSelfJudgingAndGRPO(t *testing.T) {
 			EndpointFingerprint: "judge.example.com/v1"}},
 		Rubric: validRubric(),
 	})
-	if err == nil || !strings.Contains(err.Error(), "T24") {
-		t.Fatalf("GRPO 必须被拒绝且原因点名 T24，实际 %v", err)
+	if err == nil || !strings.Contains(err.Error(), "GRPO") {
+		t.Fatalf("错配的量表必须被拒绝并点明 GRPO，实际 %v", err)
+	}
+
+	// 用内置 GRPO 量表则应当接受（T24 的可用路径）。
+	grpoExperiment, err := fixture.experiments.CreateExperiment(ctx, CreateExperimentInput{
+		ProjectID: fixture.projectID, TargetKind: model.TargetKindGRPO,
+		SampleVersionIDs: fixture.sampleVersionIDs(t),
+		Judges: []model.JudgeSpec{{ConnectionID: fixture.judgeConn(t),
+			EndpointFingerprint: "judge.example.com/v1"}},
+		Rubric: model.BuiltinGRPORubric(),
+	})
+	if err != nil {
+		t.Fatalf("GRPO 内置量表应当被接受：%v", err)
+	}
+	if grpoExperiment.TargetKind != model.TargetKindGRPO {
+		t.Fatalf("目标类型应为 grpo，实际 %s", grpoExperiment.TargetKind)
+	}
+	if len(grpoExperiment.Rubric.Dimensions) != 3 {
+		t.Fatalf("GRPO 实验应冻结三个内置维度，实际 %d", len(grpoExperiment.Rubric.Dimensions))
 	}
 
 	// 空范围必须拒绝（否则分母为 0 却声称有结论）。

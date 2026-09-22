@@ -37,6 +37,9 @@ type experimentRequest struct {
 	JudgeConnectionIDs []int64          `json:"judgeConnectionIds"`
 	MissingScorePolicy string           `json:"missingScorePolicy"`
 	BatchID            *int64           `json:"batchId"`
+	// TargetConfig 是 GRPO 专属配置（T24）：教师提示词版本、基准回答版本
+	// 与边界参考集。参考集的 hash 由服务端复算（不接受客户端声明）。
+	TargetConfig json.RawMessage `json:"targetConfig"`
 }
 
 // createExperiment 冻结一个实验（契约 §2.5）。
@@ -62,18 +65,17 @@ func (app *application) createExperiment(w http.ResponseWriter, r *http.Request)
 		app.writeStudioError(w, r, err)
 		return
 	}
-	if decision.Project.TargetKind == model.TargetKindGRPO {
-		app.writeStudioError(w, r, studio.NewValidationError(
-			"GRPO 质量适配器由 T24 交付，在此之前 GRPO 项目不能创建质量实验",
-			[]model.FieldError{{Field: "targetKind",
-				Message: "GRPO 质量实验尚未接入（T24）"}}))
-		return
-	}
-
 	var request experimentRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		app.writeStudioError(w, r, studio.NewValidationError("请求格式有误，请检查填写的内容后重试", nil))
 		return
+	}
+
+	// GRPO 未提供量表时用**内置 GRPO 量表**（档位覆盖 / 边界稳定性 /
+	// 评分解释一致性）。SFT 必须显式给出维度：不同数据集的「好」标准不同，
+	// 替用户选一个默认量表会让报告看起来有结论，而那个结论回答的不是他的问题。
+	if decision.Project.TargetKind == model.TargetKindGRPO && len(request.Rubric.Dimensions) == 0 {
+		request.Rubric = model.BuiltinGRPORubric()
 	}
 
 	// 裁判身份：前端只传**连接 ID**，而来源指纹由服务端从连接当前配置读取。
@@ -85,26 +87,76 @@ func (app *application) createExperiment(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	experiment, err := app.studio.Experiments.CreateExperiment(r.Context(), store.CreateExperimentInput{
+	// 幂等：重复点击不能创建两个实验（两个实验 = 两份冻结范围与两次模型费用）。
+	digest := studio.Digest(request)
+	scope := studio.CommandScope("experiment.create", projectID)
+	guard, err := app.studio.GuardIdempotency(r.Context(), scope, user.ID, r.Header.Get("Idempotency-Key"), digest)
+	if err != nil {
+		app.writeStudioError(w, r, err)
+		return
+	}
+	switch guard.Outcome {
+	case studio.IdempotencyConflict:
+		app.writeStudioError(w, r, studio.NewError(studio.CodeIdempotency,
+			"该请求标识已用于另一次不同的实验创建请求，请勿复用同一个 Idempotency-Key"))
+		return
+	case studio.IdempotencyReplay:
+		experiment, err := app.studio.Experiments.GetExperiment(r.Context(), guard.ResourceID)
+		if err != nil {
+			app.writeStudioError(w, r, err)
+			return
+		}
+		app.writeExperimentEnvelope(w, r, http.StatusAccepted, projectID, experiment, decision.Role)
+		return
+	}
+
+	jobKey, err := model.JobIdempotencyKey(user.ID, projectID, "experiment.create", digest)
+	if err != nil {
+		app.writeStudioError(w, r, studio.NewValidationError("请求缺少必要的幂等信息", nil))
+		return
+	}
+	// 实验与作业在**同一事务**里创建（T06/T24）：分两次写会留下
+	// 「实验已冻结但永远不会被执行」的状态，而界面显示的是「已排队」。
+	job := &store.EnqueueJobInput{
+		Kind:           model.JobKindExperimentRun,
+		IdempotencyKey: jobKey,
+		CreatedBy:      &user.ID,
+	}
+	experiment, _, err := app.studio.Experiments.CreateExperimentWithJob(r.Context(), store.CreateExperimentInput{
 		ProjectID: projectID, BatchID: request.BatchID, TargetKind: decision.Project.TargetKind,
 		Purpose:      model.ExperimentPurposeQuality,
 		SamplingSeed: request.SamplingSeed, SampleVersionIDs: request.SampleVersionIDs,
-		Judges: judges, Rubric: request.Rubric,
+		Judges: judges, Rubric: request.Rubric, TargetConfig: request.TargetConfig,
 		MissingScorePolicy: request.MissingScorePolicy, CreatedBy: &user.ID,
-	})
+	}, job)
 	if err != nil {
 		app.writeStudioError(w, r, err)
 		return
 	}
 
+	if err := app.studio.RecordIdempotency(r.Context(), scope, user.ID,
+		r.Header.Get("Idempotency-Key"), digest, experiment.ID, http.StatusAccepted); err != nil {
+		// 记录失败不改变「实验已创建」这一事实，但必须留日志：
+		// 否则用户重试时会创建第二个实验，而那是会真实花钱的操作。
+		app.logInternal(r, "idempotency save failed for experiment.create", err)
+	}
+
+	app.writeExperimentEnvelope(w, r, http.StatusAccepted, projectID, experiment, decision.Role)
+}
+
+// writeExperimentEnvelope 写实验的信封（创建与幂等回放共用）。
+//
+// 202：实验已冻结但执行是异步的（T19 验收项「创建后排队页不提前显示最终分数」）。
+// 回放路径也用它，保证「同一请求的两次响应」在结构上完全一致 ——
+// 否则客户端重试后拿到的字段少了，而它无法区分那是「没有内容」还是「实现差异」。
+func (app *application) writeExperimentEnvelope(w http.ResponseWriter, _ *http.Request, status int, projectID int64, experiment model.Experiment, role string) {
 	envelope := studio.NewEnvelope(
 		strconv.FormatInt(experiment.ID, 10), experiment.Status, 0, experiment.CreatedAt,
-		model.ExperimentCapabilities(decision.Role, experiment.Status),
+		model.ExperimentCapabilities(role, experiment.Status),
 		experimentLinks(projectID, experiment.ID), nil,
 	)
 	envelope.Data = experiment
-	// 202：实验已冻结但执行是异步的（T19 验收项「创建后排队页不提前显示最终分数」）。
-	app.writeStudioEnvelope(w, http.StatusAccepted, envelope)
+	app.writeStudioEnvelope(w, status, envelope)
 }
 
 // resolveJudgeSpecs 把连接 ID 解析成裁判快照（指纹由服务端读取）。

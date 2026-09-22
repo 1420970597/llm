@@ -302,11 +302,12 @@ func TestRunExperimentResumeDoesNotRegradeScoredItems(t *testing.T) {
 	}
 }
 
-// TestRunExperimentRejectsGRPO 覆盖「GRPO 在 T24 前不可运行」。
+// TestRunExperimentRequiresLocalJudgeForGRPO 覆盖 T24 的执行侧接线检查。
 //
-// 直接改目标类型（模拟绕过创建校验的路径）：runner 必须**再次**拒绝，
-// 而不是信任创建时的校验。
-func TestRunExperimentRejectsGRPO(t *testing.T) {
+// GRPO 不再被拒绝，但 runner 必须注入确定性判据实现（档位覆盖）。
+// 缺失时**显式失败**：静默跳过会让该维度永远缺分，
+// 而报告看起来只是「覆盖不足」—— 一个看起来正常的错误。
+func TestRunExperimentRequiresLocalJudgeForGRPO(t *testing.T) {
 	fixture := newEvalFixture(t, nil)
 	ctx := context.Background()
 	if _, err := fixture.pool.Exec(ctx, `
@@ -314,8 +315,8 @@ func TestRunExperimentRejectsGRPO(t *testing.T) {
 		t.Fatalf("switch target kind: %v", err)
 	}
 	_, err := fixture.runner.RunExperiment(ctx, fixture.experiment.ID)
-	if err == nil || !strings.Contains(err.Error(), "T24") {
-		t.Fatalf("runner 必须再次拒绝 GRPO 且原因点名 T24，实际 %v", err)
+	if err == nil || !strings.Contains(err.Error(), "确定性判据") {
+		t.Fatalf("GRPO 实验缺少 LocalJudge 时必须显式失败，实际 %v", err)
 	}
 }
 

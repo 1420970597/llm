@@ -53,6 +53,27 @@ type JudgeRequest struct {
 	Rubric        model.RubricSpec
 	Judge         model.JudgeSpec
 	IsIndependent bool
+
+	// JudgedDimensions 是**该裁判需要回答**的维度键（T24）。
+	//
+	// 为什么需要它：GRPO 量表里的 `level_coverage` 是确定性维度
+	//（由 LocalJudge 直接计算），模型裁判只负责其余维度。若不给这份清单，
+	// 裁判会顺手给确定性维度也打一个分，而那个分会与确定性判定冲突 ——
+	// 报告里同一个维度出现两个来源的分，用户无法判断该信哪个。
+	JudgedDimensions []string
+
+	// TargetConfig 是该实验冻结的目标类型专属配置（T24 的 GRPO
+	// 边界参考集与教师/基准版本）。SFT 为空。
+	TargetConfig json.RawMessage
+}
+
+// LocalJudge 计算**不需要模型**的确定性判据（T24 的档位覆盖）。
+//
+// 与 ExperimentJudge 分开的理由：确定性判据的结果与裁判无关，
+// 只应记一行（judge_connection_id = 0），不能按裁判数复制 ——
+// 复制 N 份会让报告显示「N 名裁判完全一致」，而那个一致是假的。
+type LocalJudge interface {
+	LocalVerdicts(ctx context.Context, request JudgeRequest) ([]JudgeVerdict, error)
 }
 
 // ExperimentJudge 是裁判调用接口。
@@ -71,6 +92,10 @@ type ExperimentRunner struct {
 	// 不可变，因此不需要在实验表里再存一份正文（那会带来两份内容不一致的风险）。
 	Batches *store.BatchStore
 	Judge   ExperimentJudge
+	// Local 计算确定性维度（T24 的档位覆盖）。为 nil 且量表含确定性维度时
+	// **显式失败**，不静默跳过：跳过会让那些维度永远缺分，而报告看起来
+	// 只是「覆盖不足」—— 一个看起来正常的错误。
+	Local LocalJudge
 }
 
 // ExperimentRunResult 是一次执行的摘要（写回 jobs.payload）。
@@ -100,6 +125,13 @@ func (runner *ExperimentRunner) RunExperiment(ctx context.Context, experimentID 
 	}
 	if runnable, reason := model.ExperimentRunnable(experiment.TargetKind, "T14"); !runnable {
 		return ExperimentRunResult{}, NewError(CodeValidation, reason)
+	}
+	// 确定性维度（T24）需要 LocalJudge，而它属于**接线**而不是逐项事实：
+	// 缺失时每个项都会同样失败。在这里提前拒绝，避免白跑一遍模型裁判
+	//（每个项都先花掉裁判调用的钱）并在项上留下一批误导性的 error。
+	if len(model.LocalDimensionKeys(experiment.TargetKind)) > 0 && runner.Local == nil {
+		return ExperimentRunResult{}, NewError(CodeUnavailable,
+			"runner 未注入确定性判据实现，无法执行该目标类型的实验")
 	}
 
 	items, err := runner.Experiments.ListPendingExperimentItems(ctx, experiment.ID, 500)
@@ -146,6 +178,78 @@ func (runner *ExperimentRunner) runItem(ctx context.Context, experiment model.Ex
 	judgeFailed := false
 	anyMissing := false
 
+	// 确定性维度（T24）：与裁判无关，只记一行（judge_connection_id = 0）。
+	// 先算它们再算裁判，使「档位覆盖为 0」这种结构性失败在报告里立刻可见，
+	// 而不是被一个「平均分看起来还行」的模型分掩盖。
+	judgeDimensions := judgeFacingDimensions(experiment.Rubric, model.LocalDimensionKeys(experiment.TargetKind))
+	if len(judgeDimensions) != len(experiment.Rubric.Dimensions) {
+		if runner.Local == nil {
+			// 量表含确定性维度但没有实现：显式失败，不静默跳过。
+			// 跳过会让这些维度永远缺分，而报告看起来只是「覆盖不足」——
+			// 一个看起来正常的错误。重试也不会变好，这是接线/部署错误。
+			if _, markErr := runner.Experiments.MarkExperimentItemStatus(ctx, item.ID,
+				model.ExperimentItemError, model.ErrorClassConfig,
+				"该量表含确定性维度，但 runner 未注入 LocalJudge"); markErr != nil {
+				return markErr
+			}
+			return NewError(CodeUnavailable, "runner 未注入确定性判据实现，无法执行该目标类型的实验")
+		}
+		localVerdicts, localErr := runner.Local.LocalVerdicts(ctx, JudgeRequest{
+			ExperimentID: experiment.ID, ItemID: item.ID, TargetKind: experiment.TargetKind,
+			SampleID: item.SampleID, SampleVersionID: item.SampleVersionID,
+			Payload: payload, GeneratorFingerprint: item.GeneratorFingerprint,
+			Rubric: experiment.Rubric, TargetConfig: experiment.TargetConfig,
+		})
+		if localErr != nil {
+			if _, markErr := runner.Experiments.MarkExperimentItemStatus(ctx, item.ID,
+				model.ExperimentItemError, classifyUnitError(localErr),
+				truncate(localErr.Error(), 500)); markErr != nil {
+				return markErr
+			}
+			return localErr
+		}
+		byLocalKey := map[string]JudgeVerdict{}
+		for _, verdict := range localVerdicts {
+			byLocalKey[verdict.Dimension] = verdict
+		}
+		for _, dimension := range experiment.Rubric.Dimensions {
+			if !model.IsLocalDimension(experiment.TargetKind, dimension.Key) {
+				continue
+			}
+			verdict, found := byLocalKey[dimension.Key]
+			state := model.ScoreStateMissing
+			var raw *float64
+			rationale := "确定性判据没有给出结果"
+			if found {
+				rationale = truncate(verdict.Rationale, 2000)
+				raw = verdict.RawScore
+				switch {
+				case verdict.State != "":
+					state = verdict.State
+				case verdict.RawScore != nil:
+					state = model.ScoreStateScored
+				}
+			}
+			if state == model.ScoreStateScored {
+				scoredDimensions++
+			} else {
+				anyMissing = true
+			}
+			// judge_connection_id = 0：这不是任何一条模型连接给出的分，
+			// 而是确定性判据。用 0 而不是借用某条连接，避免报告的
+			// 「裁判分歧」把确定性维度算进裁判统计。
+			if _, recordErr := runner.Experiments.RecordScore(ctx, store.RecordScoreInput{
+				ExperimentID: experiment.ID, ExperimentItemID: item.ID,
+				JudgeConnectionID: 0, JudgeIndex: 0,
+				IsIndependent: true, Dimension: dimension.Key,
+				RawScore: raw, ScoreState: state, Rationale: rationale,
+			}); recordErr != nil {
+				return recordErr
+			}
+		}
+	}
+
+	judgedKeys := dimensionKeys(judgeDimensions)
 	for index, judge := range experiment.Judges {
 		isIndependent := judgeIsIndependentForItem(judge, item)
 		verdicts, judgeErr := runner.Judge.JudgeItem(ctx, JudgeRequest{
@@ -153,12 +257,13 @@ func (runner *ExperimentRunner) runItem(ctx context.Context, experiment model.Ex
 			SampleID: item.SampleID, SampleVersionID: item.SampleVersionID,
 			Payload: payload, GeneratorFingerprint: item.GeneratorFingerprint,
 			Rubric: experiment.Rubric, Judge: judge, IsIndependent: isIndependent,
+			JudgedDimensions: judgedKeys, TargetConfig: experiment.TargetConfig,
 		})
 		if judgeErr != nil {
 			// 裁判整体失败：为该裁判的每个维度写一行 error（不是缺分行）。
 			// 区分「裁判出错」（要重试）与「裁判给了缺分」（该维度无法评价）。
 			judgeFailed = true
-			for _, dimension := range experiment.Rubric.Dimensions {
+			for _, dimension := range judgeDimensions {
 				if _, recordErr := runner.Experiments.RecordScore(ctx, store.RecordScoreInput{
 					ExperimentID: experiment.ID, ExperimentItemID: item.ID,
 					JudgeConnectionID: judge.ConnectionID, JudgeIndex: index,
@@ -176,7 +281,7 @@ func (runner *ExperimentRunner) runItem(ctx context.Context, experiment model.Ex
 		for _, verdict := range verdicts {
 			byDimension[verdict.Dimension] = verdict
 		}
-		for _, dimension := range experiment.Rubric.Dimensions {
+		for _, dimension := range judgeDimensions {
 			verdict, found := byDimension[dimension.Key]
 			if !found {
 				// 裁判没给这个维度：缺分（不是 0）。
@@ -234,6 +339,37 @@ func (runner *ExperimentRunner) runItem(ctx context.Context, experiment model.Ex
 		return err
 	}
 	return nil
+}
+
+// judgeFacingDimensions 返回需要**模型裁判**回答的量表维度（T24）。
+//
+// 确定性维度（如 GRPO 的 level_coverage）由 LocalJudge 计算并单独记录，
+// 模型裁判只负责其余维度。不做这个切分会让同一维度出现两个来源的分，
+// 而报告无法判断该信哪个。
+func judgeFacingDimensions(rubric model.RubricSpec, localKeys []string) []model.RubricDimension {
+	if len(localKeys) == 0 {
+		return rubric.Dimensions
+	}
+	local := make(map[string]bool, len(localKeys))
+	for _, key := range localKeys {
+		local[key] = true
+	}
+	filtered := make([]model.RubricDimension, 0, len(rubric.Dimensions))
+	for _, dimension := range rubric.Dimensions {
+		if !local[dimension.Key] {
+			filtered = append(filtered, dimension)
+		}
+	}
+	return filtered
+}
+
+// dimensionKeys 提取维度键，供 JudgeRequest.JudgedDimensions 使用。
+func dimensionKeys(dimensions []model.RubricDimension) []string {
+	keys := make([]string, 0, len(dimensions))
+	for _, dimension := range dimensions {
+		keys = append(keys, dimension.Key)
+	}
+	return keys
 }
 
 // judgeIsIndependentForItem 判断某裁判对该项是否独立。

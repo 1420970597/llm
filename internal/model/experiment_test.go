@@ -168,21 +168,52 @@ func TestRubricSpecValidate(t *testing.T) {
 	}
 }
 
-// TestExperimentRunnableBlocksGRPOUntilT24 覆盖验收项
-// 「GRPO 在 T24 接入前明确不可运行」。
+// TestExperimentRunnableEnablesGRPOAfterT24 覆盖 T24 的验收项：
+// GRPO 质量适配器接入后，GRPO 实验可以运行（而不再被拒绝）。
 //
-// 让 GRPO 用 SFT 的量表跑起来会产出「看起来正常、其实语义错误」的结论，
-// 那比直接拒绝危险得多。
-func TestExperimentRunnableBlocksGRPOUntilT24(t *testing.T) {
-	ok, reason := ExperimentRunnable(TargetKindGRPO, "T14")
-	if ok {
-		t.Fatal("GRPO 实验在 T24 之前必须不可运行")
+// 同时保留拒绝路径的测式：未知目标类型必须被拒绝，
+// 否则一个拼错的目标类型会走到「没有任何适配器」的执行路径上。
+func TestExperimentRunnableEnablesGRPOAfterT24(t *testing.T) {
+	if ok, reason := ExperimentRunnable(TargetKindGRPO, "T24"); !ok {
+		t.Fatalf("T24 交付后 GRPO 实验应当可运行，实际被拒：%s", reason)
 	}
-	if !strings.Contains(reason, "T24") {
-		t.Fatalf("拒绝原因必须点名负责的任务，实际 %q", reason)
-	}
-	if ok, _ := ExperimentRunnable(TargetKindSFT, "T14"); !ok {
+	if ok, _ := ExperimentRunnable(TargetKindSFT, "T24"); !ok {
 		t.Fatal("SFT 实验应当可以运行")
+	}
+	if ok, reason := ExperimentRunnable("unknown", "T24"); ok || !strings.Contains(reason, "目标类型") {
+		t.Fatalf("未知目标类型必须被拒绝并说明原因，实际 ok=%v reason=%q", ok, reason)
+	}
+}
+
+// TestValidateRubricForTargetRejectsMismatch 覆盖 T24「按 target_kind 校验」。
+//
+// 用错量表的实验「看起来正常、其实语义错误」：SFT 量表评 GRPO 样本会
+// 对着不存在的 reasoning/answer 打分，而 GRPO 量表里的 level_coverage
+// 在 SFT 上永远不会被计算。两条路径都必须被拒绝。
+func TestValidateRubricForTargetRejectsMismatch(t *testing.T) {
+	if err := ValidateRubricForTarget(TargetKindGRPO, BuiltinGRPORubric()); err != nil {
+		t.Fatalf("GRPO 内置量表应当合法：%v", err)
+	}
+	sftRubric := RubricSpec{Dimensions: []RubricDimension{
+		{Key: "accuracy", Weight: 1, Min: 1, Max: 5},
+	}}
+	if err := ValidateRubricForTarget(TargetKindSFT, sftRubric); err != nil {
+		t.Fatalf("普通 SFT 量表应当合法：%v", err)
+	}
+	if err := ValidateRubricForTarget(TargetKindGRPO, sftRubric); err == nil {
+		t.Fatal("SFT 量表不能用于 GRPO 实验")
+	}
+	if err := ValidateRubricForTarget(TargetKindSFT, BuiltinGRPORubric()); err == nil {
+		t.Fatal("GRPO 量表不能用于 SFT 实验")
+	}
+	// 缺一个维度同样是错配：多出来的/缺少的维度会进入分母却拿不到分。
+	partial := BuiltinGRPORubric()
+	partial.Dimensions = partial.Dimensions[:2]
+	// 权重和不再为 1，先归一化以隔离「缺维度」这一个缺陷。
+	partial.Dimensions[0].Weight = 0.5
+	partial.Dimensions[1].Weight = 0.5
+	if err := ValidateRubricForTarget(TargetKindGRPO, partial); err == nil {
+		t.Fatal("缺少内置维度的 GRPO 量表必须被拒绝")
 	}
 }
 

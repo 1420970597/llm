@@ -119,6 +119,11 @@
 | 2026-09-21 | T23 | 「不得转写 reward_records 或伪造 SFT answer」如何保证 | GRPO payload **只含** `question`/`judgePrompt`/`levels`/`levelRubrics`/`frameworkRef`，**不含** `answer`/`reasoning`/`chainOfThought`/`rewardScore`；并由测试逐字段断言。组装后立刻用 T05 的 `ValidateGRPOSamplePayload` **自检**，使「生成器认为合规、落库被拒」不可能发生（不合规在写入之前失败，而不是花了两次模型调用之后）|
 | 2026-09-21 | T23 | T11 把 `json` 类型字段设为只读展示，导致 GRPO 档位在界面上无法配置 | 将 `jsonSchema` 字段改为**可编辑文本域**（`id`/`idList`/`ratioMap` 仍只读，它们需要真实候选列表）。非法 JSON 以 `{__invalid: text}` 保留原文，提交前由 `stripInvalidJSONMarkers` 清理 —— 既不丢用户输入，也不把中间态写进 payload |
 | 2026-09-21 | T23 | 交付状态 | **已交付**：`apps/worker/studio_grpo.go`（GRPO 生成适配 + payload 组装与自检）、按目标类型选择生成器、蓝图 `jsonSchema` 字段可编辑，及测试。**未交付**：T24 的 GRPO 质量适配器与 T25 的 GRPO 发布 JSONL |
+| 2026-09-22 | T24 | §6.3 把落点写作 `internal/eval/grpo_adapter.go` 与 `apps/worker/job_studio_eval.go`，但未规定 GRPO 量表与 SFT 量表如何在**执行侧**分离 | 明确按**维度所有权**分离：`model.LocalDimensionKeys(targetKind)` 声明确定性维度（GRPO 只有 `level_coverage`，由 `LocalJudge` 本地计算），`ExperimentRunner` 据此把量表拆成「确定性维度」与「裁判维度」两组。确定性维度只记**一行**（`judge_connection_id = 0`），模型裁判只回答其余维度（`JudgeRequest.JudgedDimensions`）。理由：把确定性维度也交给模型会得到两个来源的分，而报告无法判断该信哪个；反过来静默跳过会让它永远缺分，报告看起来只是「覆盖不足」——两种错法在界面上都不报错。runner 在量表含确定性维度但未注入 `LocalJudge` 时**显式失败**（`RunExperiment` 提前拒绝，不等逐项失败）|
+| 2026-09-22 | T24 | T24 要求「缺参考样例显示缺证据，不生成假统计」，但未规定边界参考集存在哪里 | 冻结在 `experiments.target_config`（迁移 **0038**）的 typed `GRPOTargetConfig`：教师提示词版本、基准回答版本、边界参考集本体及其**内容 hash**。hash 由服务端复算并与客户端声明比对（声明一个 hash 却传另一份参考集会让「冻结来源」落空）。没有参考集不是错误：`boundary_stability` 记 `missing` 并写明原因，且**不调用模型**（不花那笔钱）；「判据覆盖不足」是真实分数（1–5 分的下界 1），只有「没有依据可判」才记缺分 |
+| 2026-09-22 | T24 | §2.2 的 `levels` 至少两档已由 T23 的 payload 校验保证，但未规定「档位覆盖」的质量维度判什么 | 冻结为**结构性 + 文本级**的可计算判据（不调模型）：每一档是否在 `level_rubrics` 里有判据文本与至少一个边界例，且档位名是否出现在 `judge_prompt` 里。最后一条是必需的：判据写了而提示词没提，模型实际上不会去区分那个档位。文本级检查可能漏判同义表达，但漏判方向是「显示覆盖不足」而不是「显示覆盖充足」，可以接受。分数 = 通过档位数 / 总档位数（0–1）|
+| 2026-09-22 | T24 | 契约把实验执行归给 T14，但 T14 只交付了 runner **类**：`JobKindExperimentRun` 已定义却没有任何 handler，`POST P/experiments` 也不入队 —— 实验会永远停在 `queued`，而界面显示的是「排队中」 | T24 补齐这一环：新增 `apps/worker/job_studio_eval.go`（注册 `studio.experiment.run`、真实裁判 `studioConnectionJudge`、确定性判据 `grpoLocalJudge`），并把 `CreateExperiment` 扩成 `CreateExperimentWithJob`，使实验与作业在**同一事务**内创建（T06 的硬要求）。同时给 API 加命令幂等（`experiment.create`）与 202 回放的同一信封。作业载荷只带 `experimentId`（由 store 在同事务内回填）：判据/量表/裁判/范围全部从冻结快照读，重投不会用一份过期载荷执行 |
+| 2026-09-22 | T24 | 交付状态 | **已交付**：迁移 0038、`internal/model/grpo_quality.go`（GRPO 量表、typed payload、确定性档位覆盖、边界参考集与 hash、target_config）、`internal/eval/grpo_adapter.go`（GRPO 裁判提示词与逐条比对）、`internal/studio/experiment_runner.go` 的维度所有权分离、`apps/worker/job_studio_eval.go`（实验作业执行 + 真实裁判）、`apps/api/routes_studio_quality.go`（按 `target_kind` 校验、命令幂等、同事务入队）、`QualityPages.tsx` 的 GRPO 量表显示与维度中文标签，及模型/eval/studio/store 与前端测试。**新增工具**：`scripts/go-test-postgres.sh`（临时 Postgres + 全量迁移 + 容器内 `go test`），因为「`go test` 成功但集成测试全部 Skip」不满足 T32。**未交付**：GRPO 发布 JSONL（T25）、GRPO 项目在**真实 provider** 下的端到端实测（属 T34）|
 ---
 
 ## 2. 必须先定清的固定口径
@@ -483,6 +488,7 @@ Decision:     追加式。更正通过 supersedes；有效处置是审计日志�
 | 0032 | `sql/migrations/0032_studio_recipes.sql` | T26 |
 | 0033 | `sql/migrations/0033_studio_activity_comments.sql` | T27 |
 | 0034 | `sql/migrations/0034_studio_legacy_imports.sql` | T30 |
+| 0038 | `sql/migrations/0038_studio_grpo_quality.sql` | T24 |
 
 ---
 

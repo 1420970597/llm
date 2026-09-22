@@ -675,10 +675,30 @@ export type ExperimentDetail = {
 export type CreateExperimentRequest = {
   sampleVersionIds: number[]
   samplingSeed?: number
-  rubric: { dimensions: Array<{ key: string; label: string; weight: number; min: number; max: number }> }
+  /**
+   * 量表。SFT 必须显式给出：不同数据集的「好」标准不同。
+   * GRPO 省略时服务端使用**内置 GRPO 量表**（档位覆盖 / 边界稳定性 /
+   * 评分解释一致性）—— 用 SFT 量表评 GRPO 样本会产出「看起来正常、
+   * 其实语义错误」的结论（T24）。
+   */
+  rubric?: { dimensions: Array<{ key: string; label: string; weight: number; min: number; max: number }> }
   judgeConnectionIds: number[]
   missingScorePolicy?: 'exclude' | 'fail_experiment'
   batchId?: number
+  /**
+   * GRPO 专属冻结配置（T24）：教师提示词版本、基准回答版本与边界参考集。
+   * 参考集 hash 由服务端复算，客户端传入的 hash 不被信任。
+   */
+  targetConfig?: {
+    teacherPromptVersion?: string
+    baselineAnswerVersion?: string
+    boundaryReference?: {
+      id?: string
+      source?: string
+      sampled?: boolean
+      items: Array<{ level: string; input: string; expected: 'accept' | 'reject'; note?: string }>
+    }
+  }
 }
 
 /** 规则（质量策略版本里的一项）。取值集合由 T04 冻结。 */

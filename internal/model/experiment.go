@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -161,6 +162,10 @@ type Experiment struct {
 	Judges           []JudgeSpec       `json:"judges"`
 	Rubric           RubricSpec        `json:"rubric"`
 	GeneratorSources []GeneratorSource `json:"generatorSources"`
+	// TargetConfig 是 GRPO 专属的冻结配置（T24）：教师提示词版本、基准回答
+	// 版本与边界参考集。SFT 实验为零值。存 raw JSON 而不是 typed 字段，
+	// 是为了让 T24 的 schema 演进不需要再改 experiment.go 与所有扫描点。
+	TargetConfig json.RawMessage `json:"targetConfig,omitempty"`
 
 	MissingScorePolicy string `json:"missingScorePolicy"`
 
@@ -387,12 +392,74 @@ func ExperimentCapabilities(role, status string) Capabilities {
 
 // ExperimentRunnable 判断某个目标类型在当前阶段能否运行实验。
 //
-// GRPO 在 T24 接入前必须**明确不可运行**（T14 验收项原文）：
-// 让一个 GRPO 实验跑起来但用 SFT 的量表与打分逻辑，会产出
-// 「看起来正常、其实语义错误」的质量结论 —— 那比直接拒绝更危险。
+// T24 交付后 GRPO 已可用（`internal/eval/grpo_adapter.go` + 专属量表），
+// 因此两个目标类型都返回可运行。保留 phase 参数与函数形态：
+// 将来若有新的「未接入目标类型」，拒绝点必须集中在这里，
+// 而不是散在各调用方（散开会让某一处忘记拒绝，从而用一个错误的量表跑完一批）。
 func ExperimentRunnable(targetKind, phase string) (bool, string) {
-	if targetKind == TargetKindGRPO {
-		return false, "GRPO 质量适配器由 T24 交付，在此之前 GRPO 项目不能创建质量实验"
+	_ = phase
+	switch targetKind {
+	case TargetKindSFT, TargetKindGRPO:
+		return true, ""
+	default:
+		return false, "项目的目标类型不受支持，无法运行质量实验"
 	}
-	return true, ""
+}
+
+// ValidateRubricForTarget 校验量表是否与目标类型匹配（T24「按 target_kind 校验」）。
+//
+// 为什么必须校验而不是「自由选维度」：
+//   - 用 SFT 量表评 GRPO 样本时，模型会对着不存在的 reasoning/answer 打分，
+//     产出「看起来正常、其实语义错误」的结论；
+//   - 用 GRPO 量表评 SFT 样本时同样错位，而且 level_coverage 是确定性维度，
+//     在 SFT 上永远不会被计算，报告会多出一个永远缺分的维度。
+//
+// 判据是**集合相等**（不是「包含」）：多出来的维度同样是错配，
+// 因为它会进入分母却拿不到分，把覆盖做低而用户看不出原因。
+func ValidateRubricForTarget(targetKind string, rubric RubricSpec) error {
+	if err := rubric.Validate(); err != nil {
+		return err
+	}
+	want := map[string]bool{}
+	switch targetKind {
+	case TargetKindGRPO:
+		for _, dimension := range GRPOQualityDimensions() {
+			want[dimension.Key] = true
+		}
+	case TargetKindSFT:
+		for _, dimension := range rubric.Dimensions {
+			if IsLocalDimension(TargetKindGRPO, dimension.Key) {
+				return FieldErrors{{Field: "rubric.dimensions",
+					Message: fmt.Sprintf("维度 %q 是 GRPO 专属维度，不能用于 SFT 实验", dimension.Key)}}
+			}
+		}
+		return nil
+	default:
+		return FieldErrors{{Field: "targetKind", Message: "目标类型不受支持"}}
+	}
+
+	var errs FieldErrors
+	for _, dimension := range rubric.Dimensions {
+		if !want[dimension.Key] {
+			errs = append(errs, FieldError{Field: "rubric.dimensions",
+				Message: fmt.Sprintf("维度 %q 不属于 GRPO 内置量表（GRPO 实验必须使用档位覆盖 / 边界稳定性 / 评分解释一致性）", dimension.Key)})
+		}
+	}
+	for key := range want {
+		found := false
+		for _, dimension := range rubric.Dimensions {
+			if dimension.Key == key {
+				found = true
+				break
+			}
+		}
+		if !found {
+			errs = append(errs, FieldError{Field: "rubric.dimensions",
+				Message: fmt.Sprintf("GRPO 量表缺少维度 %q", key)})
+		}
+	}
+	if len(errs) > 0 {
+		return errs
+	}
+	return nil
 }
