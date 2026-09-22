@@ -69,6 +69,13 @@ type APIConfig struct {
 	//（例如 `12:发布积压,13:成本失控`）：只记 ID 的回退名单在一周后
 	// 没人记得为什么被关，而原因会显示在状态接口里。
 	StudioDisabledProjectsRaw string
+
+	// LegacyWritesFrozen 冻结旧 dataset 中心的写入口（Issue #160 T31）。
+	//
+	// 为什么是启动期配置而不是表：冻结必须**先于**迁移生效（T31：「每个 dataset
+	// 迁移前冻结旧写入口并等在途完成」），而靠表意味着要写一次数据库才能冻结 ——
+	// 那次写入本身就发生在未冻结的窗口里。
+	LegacyWritesFrozen bool
 }
 
 type WorkerConfig struct {
@@ -165,6 +172,7 @@ func LoadAPIConfig() APIConfig {
 		StudioEnabled:             getenvBool("STUDIO_ENABLED", true),
 		StudioDisabledProjectIDs:  parseInt64List(getenv("STUDIO_DISABLED_PROJECT_IDS", "")),
 		StudioDisabledProjectsRaw: getenv("STUDIO_DISABLED_PROJECT_IDS", ""),
+		LegacyWritesFrozen:        getenvBool("LEGACY_WRITES_FROZEN", false),
 	}
 }
 

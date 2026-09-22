@@ -217,6 +217,14 @@ type CreateProjectInput struct {
 
 	// SourceRecipeVersionID 由 T26 消费；此处只校验 ID 形态，不解析方案内容。
 	SourceRecipeVersionID *int64 `json:"sourceRecipeVersionId"`
+
+	// LegacyDatasetID 指向旧 data 来源（T30/T31 的 legacy-origin 项目）。
+	//
+	// 为什么必须能在这里设：旧路由兼容（`/console/tasks/:id` 经映射跳转）
+	// 靠 `projects.legacy_dataset_id` 反查。若导入路径只能先建项目再单独
+	// UPDATE 这一列，就会留下一个「项目已建但还没有映射」的窗口，
+	// 而那时旧路由会告诉用户「历史资产尚未迁移」——一个不存在的事实。
+	LegacyDatasetID *int64 `json:"legacyDatasetId,omitempty"`
 }
 
 // Normalize 填默认值。默认值只处理「未提供」，不掩盖「提供了非法值」：

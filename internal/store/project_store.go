@@ -216,7 +216,9 @@ func (s *ProjectStore) CreateProject(ctx context.Context, workspaceID, actorID i
 // createProjectTx 是项目行的插入，抽出来以便 T26 的「按方案复制项目」在同一事务里复用。
 func createProjectTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID int64, input model.CreateProjectInput) (model.Project, error) {
 	var project model.Project
-	var legacyDatasetID *int64
+	// 旧数据导入（T31）需要把来源 dataset 写进同一行：见 CreateProjectInput
+	// 里 LegacyDatasetID 的说明。手工创建项目时它为空。
+	legacyDatasetID := input.LegacyDatasetID
 	domains, directionsPerDomain, questionsPerDirection := input.CoverageValues()
 	// 项目内唯一名冲突会返回 23505；上层把它翻译成 409（不是 500）。
 	err := tx.QueryRow(ctx, `

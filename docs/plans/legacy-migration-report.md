@@ -115,10 +115,43 @@ notes[]    本工具**无法验证**什么、以及为什么
    因此只能标记未验证。
 4. **`datasets.created_by` 指向已删除用户**时无法自动归属，一律进待归属区。
 
-## 6. 下一步（T31）
+## 6. T31 已交付的导入路径（本文件的上层消费方）
 
-- 迁移 `sql/migrations/0034_studio_legacy_imports.sql` 的 `legacy_imports` 唯一来源键/游标/内容 hash；
-- 按 dataset 小批导入，支持暂停、续跑、重复执行零重复；
-- 每个 dataset 迁移前冻结旧写入口并记录一致性水位；
-- 旧路由兼容（`/console/tasks/:id` 映射跳转）；
-- 迁移前后数量/状态/内容 hash/引用/文件下载对账，失败报告精确到对象。
+T31 已交付（见 `internal/legacy/import.go` 与 `apps/api/routes_legacy.go`）：
+
+- 迁移 `sql/migrations/0034_studio_legacy_imports.sql`：唯一来源键 + 游标 +
+  分列计数 + 前后对账快照；
+- 幂等三层：台账唯一键（`completed` 回放）→ 内容 hash 去重 → 确定性
+  `sample_key = legacy-<datasetId>-<questionId>`；
+- 写入路径只有只追加的 `AppendSampleVersion`，因此**结构上**不可能覆盖
+  迁移后产生的新版本；
+- 无归属 dataset 直接拒绝（T30 的 blocker 在导入路径上生效），同名项目
+  拒绝并支持 `-target-project` 显式指定（conflict 可操作，不是死胡同）；
+- 快照批次标为 completed 且**没有** batch_items（不假装有生成过程）；
+- 旧写入口冻结（`LEGACY_WRITES_FROZEN=true`）在中间件层生效，
+  映射查询 `GET /api/v1/legacy/datasets/{id}/project` 未映射时返回
+  `not_mapped` 而不是 404（前端据此渲染只读历史）。
+
+命令行：
+
+```bash
+# 计划（默认 dry-run，不写任何数据）
+go run ./cmd/studio-migrate -import-dataset 12 -actor 1 -workspace 1
+
+# 真跑
+go run ./cmd/studio-migrate -import-dataset 12 -actor 1 -workspace 1 -apply
+
+# 续跑（默认从台账游标继续）
+go run ./cmd/studio-migrate -import-dataset 12 -actor 1 -workspace 1 -apply -resume
+```
+
+### T31 已知缺口
+
+1. **按项处理，不是批量**：每条最多 2 次数据库往返，10 万条会明显慢。
+   本轮的验收项是「幂等 + 可续跑 + 可对账」，吞吐留待后续。
+2. **未导入非 SFT 来源**：`reasoning_records`/`reward_records`/`grpo_prompts`
+   仍按第 3 节的策略保留在旧库（不合并、不当教师材料），本轮不写入新库。
+3. **文件下载对账未实现**：对账做的是数量与内容 hash；旧工件的字节校验
+   仍属第 5 节的已知未知项。
+4. **旧入口冻结需要手工开启**：`LEGACY_WRITES_FROZEN=true` 是启动期配置，
+   迁移流程要求先冻结再导入（runbook 第 3 节的顺序）。

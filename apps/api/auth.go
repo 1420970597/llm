@@ -101,6 +101,17 @@ func (app *application) middleware(next http.Handler) http.Handler {
 			}
 		}
 
+		// 旧写入口冻结（T31）：在**认证之后、路由之前**拒绝。
+		//
+		// 放在这里而不是逐个 handler：旧端点数以十计，逐个加检查必然漏一个，
+		// 而漏掉的那个会在迁移期间继续写旧库（新旧两套数据同时被写）。
+		// 放在认证之后：未登录用户应该得到 401（与其它端点一致），
+		// 而不是先知道「系统正在迁移」这一运维状态。
+		if app.cfg.LegacyWritesFrozen && isLegacyWriteRequest(r.Method, r.URL.Path) {
+			app.writeError(w, http.StatusConflict, legacyWritesFrozenError())
+			return
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }

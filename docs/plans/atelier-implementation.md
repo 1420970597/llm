@@ -140,6 +140,12 @@
 | 2026-09-22 | T33 | 契约要求观测「排队年龄/租约回收/未派发 outbox/未知成本/预算预留/评估缺分/发布失败」，未规定形态 | 做成**一个读模型**（`studio.LoadStudioHealth` + `GET /api/v1/studio/health`，管理员专属），而不是散落的指标查询：这些数字只有互相印证时才有诊断价值（「发布失败 3 + uncertain 很高 + 队列年龄 0」指向烧钱不产出；「发布失败 3 + 队列 40 分钟 + 租约回收 12 次」指向 worker 反复崩溃）。所有计数来自**既有表**，不新增埋点写入路径（埋点写失败会污染业务事务）。`notes[]` 把「怎么读」写进响应而不是只写文档：值班的人看的是接口。队列年龄与 outbox 年龄分开（两个循环是否停滞的不同证据）|
 | 2026-09-22 | T33 | 契约要求「API/Worker job schema 兼容版本在部署前检查」 | 新增 `scripts/check-schema-compat.sh`：**库里有代码不认识的迁移 → 失败**（库比代码新，二进制会按旧 schema 假设写数据）；**仓库里有库未应用的迁移 → 只警告**（加性迁移由 `migrate.Run` 在启动时应用，警告是为了让运维知道这次部署会顺带执行 N 个迁移）。作业种类兼容性无法由 schema 检查得出，因此把顺序写进 runbook：迁移 → worker → API 写入口（顺序反了会造成「已排队但没人能执行」）|
 | 2026-09-22 | T33 | 交付状态 | **已交付**：`internal/studio/rollout.go`（开关判据 + 状态模型 + 配置解析）、`internal/studio/observability.go`（运维快照 + `LogContext` 关联字段）、`apps/api/routes_studio_rollout.go`（`GET /api/v1/studio/rollout`、`GET /api/v1/studio/health`，管理员专属）、`Service.Authorize` 与项目创建处的写入拦截、worker 侧「在 BRPOP 之前停下」的暂停语义、`scripts/check-schema-compat.sh`、`docs/plans/studio-rollout-runbook.md`（开关/观测/部署顺序/灰度/回退/演练清单/已知缺口），及单元/真实 DB/HTTP 三层测试。**未交付**：真实环境的灰度与演练（runbook 第 6 节逐项尚未执行，因此 T33 对应的验收项不得勾选）、SLO 阈值标定（已明确写出「未标定」，不编数字）|
+| 2026-09-22 | T31 | 契约要求「幂等导入、支持暂停/续跑/重复执行」，未规定幂等由几层保证 | 冻结为**三层**（任何一层单独都不够）：① 台账唯一键 `legacy_imports(source_kind, source_key)`，`completed` 时直接回放；② **内容 hash 去重**（台账因中途失败未标完成时，按 `sample_key + content_hash` 判断已导入，避免把同一份历史内容追加成 version+1）；③ **确定性 sample_key**（`legacy-<datasetId>-<questionId>`，键不稳定时第二层无从命中）。「不覆盖已迁移后产生的新版本」由**写入路径只有只追加的 `AppendSampleVersion`** 保证 —— 结构上不可能，而不是靠约定 |
+| 2026-09-22 | T31 | T30 的 `needs_owner`（blocker）与 `conflict`（warning）在导入路径上如何落地 | `needs_owner`：直接拒绝并给出原因（导入本身就是一次授权，默认不给任意用户读权）。`conflict`：**拒绝自动改名**，但支持 `-target-project` 显式指定目标项目 —— 自动改名会让「旧数据 → 项目」的对应关系只有系统知道，而运维在界面上无法判断哪个是哪一个；没有显式路径的 conflict 就是死胡同 |
+| 2026-09-22 | T31 | 快照批次的状态如何表达「没有生成过程」 | 批次创建后立即标为 `completed`（`completed_units = planned_units`），且**没有任何 batch_items**；`generation_config` 为空、`legacy_imports` 记录来源。理由：停在 `queued` 会显示成「排队中」，用户会等一个永远不会发生的生成；而写 batch_items 则是在假装有过生成过程。SQL 上限制「只对没有 batch_items 的批次生效」，因此它不会掩盖真实进度 |
+| 2026-09-22 | T31 | 「旧路由兼容」在 API 层怎么表达 | 新增 `GET /api/v1/legacy/datasets/{id}/project`：按 `projects.legacy_dataset_id` 反查；**未映射时返回 200 + `not_mapped` 而不是 404** —— T31 要求「无法确定对象的阶段入口保留只读历史列表，不跳错项目」，而 404 会让前端把它当成错误页，丢掉「这是历史资产」的语义。旧写入口冻结（`LEGACY_WRITES_FROZEN=true`）放在**中间件层**：旧端点数以十计，逐个加检查必然漏一个，而漏掉的那个会在迁移期间继续写旧库。判定放在认证之后（未登录先得 401，不泄露运维状态） |
+| 2026-09-22 | T31 | 契约把导入落点写作 `legacy_imports`（迁移 0034），未规定逻辑放哪 | 逻辑落在 `internal/legacy/import.go`（可测、与 T30 的盘点同包），store 落在 `internal/store/legacy_import_store.go`，CLI 扩展 `cmd/studio-migrate -import-dataset ... -apply`。默认 dry-run：一次误执行的导入会在新库里留下一批看起来正常的样本，而它们与真实运行出来的内容无法区分 |
+| 2026-09-22 | T31 | 交付状态 | **已交付**：迁移 0034（唯一来源键 + 游标 + 分列计数 + 前后对账快照 + `projects.legacy_dataset_id` 索引）、`internal/legacy/import.go`（幂等导入 + 对账 + 失败明细）、`internal/store/legacy_import_store.go`（台账/映射/内容 hash/批次完成）、`apps/api/routes_legacy.go`（映射端点 + 冻结判定）、`apps/api/auth.go` 中间件冻结、`cmd/studio-migrate` 的导入子命令、`CreateProjectInput.LegacyDatasetID` 接线，及 9 个真实 DB 测试 + HTTP 层测试。**未交付**：按项处理而非批量（10 万条会慢，已记录）、非 SFT 来源（reasoning/reward/grpo_prompts）仍留在旧库、文件下载字节对账（属 T30 的已知未知项）|
 ---
 
 ## 2. 必须先定清的固定口径
@@ -307,7 +313,7 @@
 
 ### 4.2 关键状态转换
 
-```
+```text
 Project:      draft ──save blueprint──> designed ──start pilot──> pilot_running
               ──pilot ready──> pilot_ready ──adopt──> scaling
               ──scale done──> review ──thresholds met──> candidate ──freeze──> published
@@ -503,7 +509,7 @@ Decision:     追加式。更正通过 supersedes；有效处置是审计日志�
 | 0031 | `sql/migrations/0031_studio_releases.sql` | T20 |
 | 0032 | `sql/migrations/0032_studio_recipes.sql` | T26 |
 | 0033 | `sql/migrations/0033_studio_activity_comments.sql` | T27 |
-| 0034 | `sql/migrations/0034_studio_legacy_imports.sql` | T30 |
+| 0034 | `sql/migrations/0034_studio_legacy_imports.sql` | T31（T30 的盘点工具不建表）|
 | 0038 | `sql/migrations/0038_studio_grpo_quality.sql` | T24 |
 
 ---
