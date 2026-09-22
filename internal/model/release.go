@@ -316,7 +316,7 @@ func ValidateReleaseName(name string) error {
 type ReleaseCapabilitiesView struct {
 	// CanEdit is retained for compatibility with the existing model-level
 	// capability contract; published releases always return false.
-	CanEdit       bool `json:"canEdit"`
+	CanEdit       bool `json:"-"`
 	CanPublish    bool `json:"canPublish"`
 	CanDownload   bool `json:"canDownload"`
 	CanCreateNext bool `json:"canCreateNext"`
