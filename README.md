@@ -1,6 +1,30 @@
-# LLM Data Factory
+# LLM Data Factory · Atelier 数据项目工作室
 
-一个面向企业级使用场景的 LLM 长链思考训练数据工厂。
+一个面向企业级使用场景的 LLM 数据项目工作室：从目标、版本化设计、独立试制、质量判断到固定发布，形成可复核、可恢复、可交付的完整旅程。
+
+本仓库当前产品主线是 **Atelier 数据项目工作室**，严格按 [Issue #160](https://github.com/1420970597/llm/issues/160) 与 [Discussion #159](https://github.com/1420970597/llm/discussions/159) 实现。旧版控制台仍保留兼容入口，但不再作为新产品的信息架构标准。
+
+## 实际运行画面
+
+以下图片均来自 Docker Compose 启动后的真实浏览器页面，不是设计稿或占位图。
+
+### 登录入口
+
+![Atelier 登录页桌面端](docs/screenshots/login-desktop.png)
+
+![Atelier 登录页移动端](docs/screenshots/login-mobile.png)
+
+### 我的任务
+
+![我的任务桌面端](docs/screenshots/tasks-desktop.png)
+
+![我的任务移动端](docs/screenshots/tasks-mobile.png)
+
+### 新建任务与规模估算
+
+![新建任务桌面端](docs/screenshots/new-task-desktop.png)
+
+![新建任务估算结果](docs/screenshots/new-task-estimate.png)
 
 系统支持：
 - 用户输入目标数据集规模与关键词
@@ -12,6 +36,29 @@
 ---
 
 ## 1. 当前完成度
+
+### Atelier 信息架构
+
+全局导航围绕用户目标组织：
+
+| 入口 | 用途 |
+| --- | --- |
+| 今日工作 | 汇总待判断、可比较试制、失败恢复和发布阻塞，并直达具体对象 |
+| 数据项目 | 浏览、搜索和创建项目 |
+| 方案库 | 保存已验证的方法组合，并从已发布版本复制新项目 |
+| 交付库 | 按固定 release 查看和下载不可变交付文件 |
+
+每个项目提供六个工作区：**概览、设计、生产、数据、质量、发布**。项目、批次、样本、实验和发布都使用真实 ID 写入 URL，因此刷新、分享和返回都能恢复上下文。
+
+核心旅程：
+
+```text
+创建项目 -> 保存蓝图/覆盖/标准版本 -> 独立试制
+  -> 同基准比较 -> 采用并规划扩量 -> 冻结质量实验
+  -> 人工判断 -> 创建候选 -> 处理阻塞 -> 固定 release 下载
+```
+
+关键语义：试制与扩量是不同批次；样本内容只追加版本；质量实验创建时冻结范围、seed、量表和裁判；发布下载只定位具体 `releaseId`，不使用 `latest` 回退；前端能力位只辅助 UI，服务端授权始终是最终边界。
 
 项目当前已经完成以下能力：
 
@@ -146,7 +193,18 @@ docker compose up -d --build
 
 ### 4.2 访问地址
 
-- 统一控制台：`http://<你的服务器IP>:3210`
+- 统一控制台：<http://localhost:3210>
+
+Compose 服务：
+
+| 服务 | 作用 | 对宿主机暴露 |
+| --- | --- | --- |
+| `web-user` | nginx + React 控制台 | `3210` |
+| `api` | Go HTTP API | 不暴露 |
+| `worker` | 异步作业执行 | 不暴露 |
+| `postgres` | 元数据与权威状态 | 不暴露 |
+| `redis` | 持久化任务队列 | 不暴露 |
+| `minio` | S3 兼容对象存储 | 不暴露 |
 
 当前 `docker-compose.yml` 已移除冗余对外端口映射：
 - 不再暴露重复的 `3211` 前端入口
@@ -161,6 +219,18 @@ docker compose up -d --build
 - 普通用户：`user@company.com` / `user123456`
 
 管理员拥有全部用户功能，并可直接进入系统治理页面。
+
+停止本地栈：
+
+```bash
+docker compose down
+```
+
+保留数据库和对象存储卷；如需清理本地数据，必须明确执行：
+
+```bash
+docker compose down -v
+```
 
 ---
 
@@ -263,6 +333,21 @@ curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
 ---
 
 ## 8. 已验证功能
+
+### 8.0 本次 Compose + 真实浏览器验收
+
+- 使用 `docker compose up -d --build` 实际构建并启动 API、Worker、Web、PostgreSQL、Redis、MinIO。
+- 真实浏览器访问登录页、任务列表、新建任务和规模估算页面。
+- 已保存 1440×1000 桌面端与 390×844 移动端截图，并在本文开头展示。
+- 真实页面观察到管理员登录、任务列表、创建表单、估算结果和响应式窄屏布局。
+
+### 8.1 当前验收边界
+
+已验证不等于全部生产验收完成。以下项目仍按 Issue #160 如实保留：
+
+- 真实 provider 下的完整 SFT/GRPO 业务旅程。
+- 真实 Chromium 断网切换、键盘走查和 10 万样本性能基准。
+- 生产灰度/回退演练、对象存储故障注入和 5–8 名真实用户任务验收。
 
 ### 8.1 文档索引
 

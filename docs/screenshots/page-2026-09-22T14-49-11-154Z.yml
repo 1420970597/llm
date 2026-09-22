@@ -1,0 +1,43 @@
+- generic [ref=e4]:
+  - generic [ref=e6]:
+    - generic [ref=e7]: 企业数据工厂
+    - heading "先创建任务，再持续推进交付。" [level=1] [ref=e8]
+    - generic [ref=e9]: 控制台按「工作台 → 新建任务 → 我的任务 → 数据资产」组织。 登录后先创建任务，再继续推进和交付。
+    - generic [ref=e10]:
+      - generic [ref=e12] [cursor=pointer]:
+        - heading "新建任务前置" [level=5] [ref=e16]
+        - generic [ref=e17]: 主入口更醒目
+      - generic [ref=e19] [cursor=pointer]:
+        - heading "任务推进清晰" [level=5] [ref=e25]
+        - generic [ref=e26]: 已有任务从「我的任务」继续
+      - generic [ref=e28] [cursor=pointer]:
+        - heading "结果集中看" [level=5] [ref=e33]
+        - generic [ref=e34]: 交付与复核集中
+      - generic [ref=e36] [cursor=pointer]:
+        - heading "状态持续可见" [level=5] [ref=e41]
+        - generic [ref=e42]: 登录后可接续进度
+  - generic [ref=e44]:
+    - generic [ref=e52]:
+      - heading "登录你的账号" [level=4] [ref=e53]
+      - text: 先进入工作台，再从新建任务或我的任务开始
+    - generic [ref=e54]:
+      - generic [ref=e55]:
+        - generic [ref=e56]: 邮箱
+        - textbox "请输入邮箱" [ref=e58]
+      - generic [ref=e59]:
+        - generic [ref=e60]: 密码
+        - generic [ref=e61]:
+          - textbox "请输入密码" [ref=e62]
+          - button "Show password" [ref=e63] [cursor=pointer]:
+            - img "eye_closed_solid" [ref=e64]
+      - button "进入我的任务" [ref=e68] [cursor=pointer]
+    - generic [ref=e70]:
+      - generic [ref=e71]:
+        - generic [ref=e72]: 登录后第一步
+        - strong [ref=e74]: 先点击「新建任务」
+      - generic [ref=e75]:
+        - generic [ref=e76]: 已有任务
+        - strong [ref=e78]: 从「我的任务」继续
+      - generic [ref=e79]:
+        - generic [ref=e80]: 交付完成后
+        - strong [ref=e82]: 去「数据资产」查看和下载
