@@ -1083,9 +1083,9 @@ export const studioApi = {
     client.get<Page<DeliveryItem>>(`/v1/deliveries${queryString(params)}`).then((response) => response.data),
 
   /** `POST P/experiments`：冻结实验（202；执行是异步的）。 */
-  createExperiment: (projectId: number, payload: CreateExperimentRequest) =>
+  createExperiment: (projectId: number, payload: CreateExperimentRequest, options?: CommandOptions) =>
     client
-      .post(`${projectPath(projectId)}/experiments`, payload)
+      .post(`${projectPath(projectId)}/experiments`, payload, { headers: commandHeaders(options) })
       .then((response) => unwrapStudioData<Experiment>(response)),
 
   listExperiments: (projectId: number) =>

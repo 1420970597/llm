@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Card, Empty, Input, InputNumber, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 // AlertTriangle 来自 lucide-react（图标库），不是 semi-ui 的组件。
 import { AlertTriangle } from 'lucide-react'
 import { client } from '../../lib/api'
-import { projectPath, studioApi } from '../../lib/api/studio'
+import { newIdempotencyKey, projectPath, studioApi } from '../../lib/api/studio'
 import type { BatchSummary, CreateExperimentRequest, Experiment, ExperimentDetail, Page, SampleSummary, RulePreviewResult } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 
@@ -192,6 +192,9 @@ export function QualityNewPage() {
   const [boundaryReferenceJSON, setBoundaryReferenceJSON] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // 实验创建会冻结范围并入队，网络超时后的重试必须回放同一命令，
+  // 不能因为重新点击而产生第二份实验/第二次裁判费用。
+  const idempotencyKeyRef = useRef(newIdempotencyKey())
   // GRPO 与 SFT 的量表不同（T24）：GRPO 使用服务端内置量表，
   // 因此界面必须知道项目目标类型，而不是一律提交 SFT 的 accuracy 维度。
   const [targetKind, setTargetKind] = useState('sft')
@@ -281,7 +284,7 @@ export function QualityNewPage() {
         missingScorePolicy: 'exclude',
         batchId: batchID.trim() === '' ? undefined : Number(batchID),
         targetConfig,
-      })
+      }, { idempotencyKey: idempotencyKeyRef.current })
       // 202 后进入报告页：此时状态是排队/运行中，**不显示**最终分数。
       navigate(`/p/${scope.projectId}/quality/${experiment.id}`)
     } catch (submitError) {
