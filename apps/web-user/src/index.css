@@ -5,11 +5,11 @@
 @tailwind utilities;
 
 :root {
-  --sidebar-width: 260px;
-  --sidebar-width-collapsed: 48px;
+  --sidebar-width: 82px;
+  --sidebar-width-collapsed: 82px;
   --sidebar-current-width: var(--sidebar-width);
   --aside-width: 0px;
-  --header-height: 48px;
+  --header-height: 70px;
   --banner-height: 0px;
 }
 
@@ -24,24 +24,13 @@ body,
 }
 
 body {
-  font-family: Inter, 'Helvetica Neue', Arial, 'Microsoft YaHei', sans-serif;
-  color: var(--semi-color-text-0);
-  background:
-    radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 24%),
-    radial-gradient(circle at top right, rgba(14, 165, 233, 0.14), transparent 24%),
-    var(--semi-color-bg-0);
+  font-family: Inter, 'Noto Sans CJK SC', 'Microsoft YaHei', system-ui, sans-serif;
+  color: #262631;
+  background: #faf9f6;
 }
 
 body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
-  background-size: 24px 24px;
-  mask-image: radial-gradient(circle at center, black, transparent 82%);
+  display: none;
 }
 
 button,

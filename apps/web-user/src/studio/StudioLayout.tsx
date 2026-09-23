@@ -10,6 +10,7 @@ import {
   HardDriveDownload,
   LayoutDashboard,
   LogOut,
+  Menu,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -27,6 +28,7 @@ import {
 import { newIdempotencyKey } from '../lib/api/studio'
 import { CommandSearch } from './pages/TodayPages'
 import { clearForActor, currentActorID } from '../lib/pendingQueue'
+import { useProjectName } from './projectName'
 
 /**
  * 全局壳（Issue #160 T09）：4 全局入口 + 辅助入口 + 目录评审（仅非生产）。
@@ -68,7 +70,18 @@ export type StudioLayoutProps = {
 export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps) {
   const location = useLocation()
   const navigate = useNavigate()
+  const breadcrumbs = useBreadcrumbs()
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
+  const handleLogout = () => {
+    // 退出账号时清理本机待同步队列（T29）：敏感正文不在本机留存；
+    // 下一个登录的用户不会看到上一个人的草稿或离线决定。
+    const actorId = currentActorID()
+    if (actorId > 0) clearForActor(actorId)
+    onLogout()
+    navigate('/login')
+  }
 
   // 当前高亮项：由元数据派生。子页高亮到自己的 navParent，
   // 因此「扩量规划」不会让侧边栏掉回默认项（issue #61 的形态）。
@@ -85,30 +98,41 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
   }, [activeKey])
 
   return (
-    <div className="app-layout">
+    <div className="app-layout atelier-shell">
       <nav
         className="app-layout__sidebar"
         aria-label="主导航"
+        data-mobile-open={mobileNavOpen ? 'true' : 'false'}
         style={{ width: collapsed ? 48 : 232 }}
       >
         {collapsed ? (
-          <button
-            type="button"
-            className="sidebar-collapse-button"
-            aria-label="展开导航"
-            onClick={() => setCollapsed(false)}
-          >
-            <PanelLeftOpen size={16} />
-          </button>
+          <>
+            <button
+              type="button"
+              className="sidebar-collapse-button"
+              aria-label="展开导航"
+              onClick={() => setCollapsed(false)}
+            >
+              <PanelLeftOpen size={16} />
+            </button>
+            <div className="sidebar-footer sidebar-footer--collapsed">
+              <button
+                type="button"
+                className="sidebar-account-button"
+                aria-label={`退出登录 ${userEmail}`}
+                title={`退出登录 ${userEmail}`}
+                onClick={handleLogout}
+              >
+                <Avatar color="purple" size="small">{userEmail.slice(0, 1).toUpperCase() || 'A'}</Avatar>
+              </button>
+            </div>
+          </>
         ) : (
           <>
             <div className="sidebar-workspace-header">
-              <Avatar color="blue" size="small">
-                L
-              </Avatar>
               <div className="sidebar-workspace-info">
-                <div className="sidebar-workspace-name">Atelier · 数据项目工作室</div>
-                <div className="sidebar-workspace-plan">{isAdmin ? '管理员' : '普通用户'}</div>
+                <div className="sidebar-workspace-name">Atelier</div>
+                <div className="sidebar-workspace-plan">数据项目工作室 · {isAdmin ? '管理员' : '普通用户'}</div>
               </div>
               <button
                 type="button"
@@ -121,21 +145,21 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
             </div>
 
             {/* 命令搜索（T27）：Esc 关闭、回车打开第一条、关闭后焦点回到触发点。 */}
-            <div className="sidebar-nav-section" data-command-search-slot="true">
+            <div className="sidebar-nav-section atelier-command-search-slot" data-command-search-slot="true">
               <CommandSearch />
             </div>
 
             {/* 第一层：全局四入口。 */}
             <div className="sidebar-nav-section">
               <div className="sidebar-nav-heading">工作区</div>
-              {globalRoutes.map((route) => renderNavItem(route.path, GLOBAL_ICONS[route.key], route.label, route.caption, activeKey === route.key))}
+              {globalRoutes.map((route) => renderNavItem(route.path, GLOBAL_ICONS[route.key], route.label, route.caption, activeKey === route.key, () => setMobileNavOpen(false)))}
             </div>
 
             {/* 第三层：辅助入口。刻意放在下方且样式更轻，不与主流程争位置。 */}
             <div className="sidebar-nav-section">
               <div className="sidebar-nav-heading">辅助</div>
               {auxiliaryRoutes.map((route) =>
-                renderNavItem(route.path, AUXILIARY_ICONS[route.key], route.label, route.caption, activeKey === route.key),
+                renderNavItem(route.path, AUXILIARY_ICONS[route.key], route.label, route.caption, activeKey === route.key, () => setMobileNavOpen(false)),
               )}
             </div>
 
@@ -146,14 +170,9 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
               <Button
                 size="small"
                 icon={<LogOut size={14} />}
-                onClick={() => {
-                  // 退出账号时清理本机待同步队列（T29）：
-                  // 敏感正文不在本机留存；下一个登录的用户不会看到上一个人的草稿。
-                  const actorId = currentActorID()
-                  if (actorId > 0) clearForActor(actorId)
-                  onLogout()
-                  navigate('/login')
-                }}
+                aria-label="退出登录"
+                title="退出登录"
+                onClick={handleLogout}
               >
                 退出
               </Button>
@@ -162,7 +181,42 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
         )}
       </nav>
 
+      {mobileNavOpen ? (
+        <button
+          type="button"
+          className="atelier-mobile-backdrop"
+          aria-label="关闭主导航"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      ) : null}
+
       <main className="app-layout__content" id="studio-main" tabIndex={-1}>
+        <header className="atelier-topbar">
+          <div className="atelier-topbar__leading">
+            <button
+              type="button"
+              className="atelier-mobile-menu"
+              aria-label="打开主导航"
+              aria-expanded={mobileNavOpen}
+              onClick={() => setMobileNavOpen((open) => !open)}
+            >
+              <Menu size={18} aria-hidden />
+            </button>
+            <div className="atelier-topbar__crumbs"><Breadcrumbs items={breadcrumbs} /></div>
+          </div>
+          <div className="atelier-topbar__actions">
+            <CommandSearch />
+            <button
+              type="button"
+              className="atelier-account-button"
+              aria-label={`退出登录 ${userEmail}`}
+              title={`退出登录 ${userEmail}`}
+              onClick={handleLogout}
+            >
+              <Avatar color="purple" size="small">{userEmail.slice(0, 1).toUpperCase() || 'A'}</Avatar>
+            </button>
+          </div>
+        </header>
         {/* 屏幕阅读器播报当前层级：视觉用户从高亮看出所在位置，
             而听觉用户需要等价的信号（T29 的无障碍要求，T09 先打地桩）。 */}
         <span className="sr-only" role="status" aria-live="polite">
@@ -180,6 +234,7 @@ function renderNavItem(
   label: string,
   caption: string,
   active: boolean,
+  onNavigate?: () => void,
 ) {
   if (!Icon) return null
   return (
@@ -189,6 +244,7 @@ function renderNavItem(
       className={active ? 'sidebar-nav-item sidebar-nav-item--active' : 'sidebar-nav-item'}
       aria-current={active ? 'page' : undefined}
       title={caption}
+      onClick={onNavigate}
     >
       <Icon size={16} />
       <span className="sidebar-nav-item__label">{label}</span>
@@ -199,12 +255,14 @@ function renderNavItem(
 /** 供测试引用：当前路由下的面包屑。 */
 export function useBreadcrumbs(): ReturnType<typeof breadcrumbsFor> {
   const location = useLocation()
+  const matched = location.pathname.match(/^\/p\/([^/]+)/)
+  const projectId = matched ? Number.parseInt(matched[1], 10) : 0
+  const projectName = useProjectName(Number.isFinite(projectId) ? projectId : 0)
   return useMemo(() => {
     const params: Record<string, string> = {}
-    const matched = location.pathname.match(/^\/p\/([^/]+)/)
     if (matched) params.projectId = matched[1]
-    return breadcrumbsFor(location.pathname, params)
-  }, [location.pathname])
+    return breadcrumbsFor(location.pathname, params, projectName ?? '项目')
+  }, [location.pathname, projectName, matched?.[1]])
 }
 
 /** 供项目壳使用：生成一个在本次导航内保持稳定的幂等键。 */

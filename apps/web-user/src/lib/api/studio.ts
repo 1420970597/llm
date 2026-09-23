@@ -73,6 +73,18 @@ export type ProjectCapabilities = {
   canManageMembers: boolean
 }
 
+/**
+ * 项目壳需要的最小身份信息。
+ *
+ * 项目详情接口返回完整的项目资源；导航层只读取 `id` 与 `name`，因此
+ * 不把预算、目标量等易变字段复制到壳层状态。其余字段仍可由具体页面
+ * 按自己的读模型获取，避免出现「标题请求成功但页面使用了过期项目快照」。
+ */
+export type ProjectIdentity = {
+  id: number
+  name: string
+}
+
 export type BatchCapabilities = {
   canPause: boolean
   canResume: boolean
@@ -940,6 +952,12 @@ export function projectPath(projectId: number): string {
 // ---------------------------------------------------------------------------
 
 export const studioApi = {
+  /** `GET P`：项目壳与面包屑使用服务端项目名称。 */
+  getProject: (projectId: number) =>
+    client
+      .get<TypedEnvelope<ProjectIdentity, ProjectCapabilities>>(projectPath(projectId))
+      .then((response) => response.data),
+
   /** `GET P/overview`（契约 §3）。 */
   overview: (projectId: number) =>
     client.get<Envelope>(`${projectPath(projectId)}/overview`).then((response) => unwrapStudioData<ProjectOverviewData>(response)),

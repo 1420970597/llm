@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type { ReactNode } from 'react'
-import { Button, Card, Empty, Input, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
+import { Button, Card, Empty, Input, Modal, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, Download, RefreshCw } from 'lucide-react'
 import { client } from '../../lib/api'
 import { projectPath, studioApi } from '../../lib/api/studio'
@@ -55,6 +55,17 @@ const RELEASE_STATUS_LABEL: Record<string, string> = {
   published: '已发布',
   build_failed: '构建失败（可幂等续推）',
 }
+
+/**
+ * 发布格式是候选配置的一部分，而不是构建失败后才发现的实现细节。
+ * SFT 只展示本轮产品承诺的三种编码；GRPO 由服务端 schema 约束为 JSONL。
+ */
+const SFT_FORMAT_OPTIONS = [
+  { value: 'jsonl', label: 'JSONL' },
+  { value: 'alpaca', label: 'Alpaca JSON' },
+  { value: 'csv', label: 'CSV' },
+]
+const GRPO_FORMAT_OPTIONS = [{ value: 'jsonl', label: 'JSONL（GRPO）' }]
 
 function statusColor(status: string): 'green' | 'red' | 'amber' | 'grey' {
   switch (status) {
@@ -194,11 +205,14 @@ export function ReleaseNewPage() {
 
   const [samples, setSamples] = useState<SampleSummary[]>([])
   const [batches, setBatches] = useState<BatchSummary[]>([])
+  const [samplesNextCursor, setSamplesNextCursor] = useState('')
+  const [samplesLoading, setSamplesLoading] = useState(false)
   const [selected, setSelected] = useState<number[]>([])
   const [selectionSnapshotItems, setSelectionSnapshotItems] = useState<number[] | null>(null)
   const [selectionSnapshotState, setSelectionSnapshotState] = useState<'none' | 'loading' | 'ready' | 'invalid'>('none')
   const [releaseName, setReleaseName] = useState('v1.0')
   const [mappingVersionId, setMappingVersionId] = useState('')
+  const [format, setFormat] = useState('jsonl')
   const [intendedUse, setIntendedUse] = useState('')
   const [limitations, setLimitations] = useState('')
   const [snapshotNotice, setSnapshotNotice] = useState<string | null>(null)
@@ -210,23 +224,40 @@ export function ReleaseNewPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  /**
+   * 已接纳范围也必须走游标分页。此前只取前 100 条并在 UI 截断到 50 条，
+   * 会让用户误以为「可发布范围」只有首屏内容，且无法完成大项目的精确选择。
+   */
+  const loadAcceptedSamples = useCallback(async (cursor = '', append = false) => {
+    setSamplesLoading(true)
+    try {
+      const params = new URLSearchParams({ status: 'accepted', limit: '100' })
+      if (cursor !== '') params.set('cursor', cursor)
+      const response = await client.get<Page<SampleSummary>>(
+        `${projectPath(scope.projectId)}/samples?${params.toString()}`,
+      )
+      setSamples((previous) => (append ? [...previous, ...(response.data.items ?? [])] : (response.data.items ?? [])))
+      setSamplesNextCursor(response.data.nextCursor ?? '')
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : '加载可选范围失败')
+    } finally {
+      setSamplesLoading(false)
+    }
+  }, [scope.projectId])
+
   useEffect(() => {
     let cancelled = false
     void (async () => {
       try {
-        const [sampleResponse, batchResponse] = await Promise.all([
-          client.get<Page<SampleSummary>>(`${projectPath(scope.projectId)}/samples?status=accepted&limit=100`),
-          client.get<Page<BatchSummary>>(`${projectPath(scope.projectId)}/batches?limit=50`),
-        ])
-        if (cancelled) return
-        setSamples(sampleResponse.data.items ?? [])
-        setBatches(batchResponse.data.items ?? [])
+        const batchResponse = await client.get<Page<BatchSummary>>(`${projectPath(scope.projectId)}/batches?limit=50`)
+        if (!cancelled) setBatches(batchResponse.data.items ?? [])
+        if (!cancelled) await loadAcceptedSamples()
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : '加载可选范围失败')
       }
     })()
     return () => { cancelled = true }
-  }, [scope.projectId])
+  }, [loadAcceptedSamples, scope.projectId])
 
   useEffect(() => {
     let cancelled = false
@@ -234,8 +265,15 @@ export function ReleaseNewPage() {
       try {
         const response = await studioApi.overviewEnvelope(scope.projectId)
         if (!cancelled) {
-          setTargetKind(response.data.targetKind ?? 'sft')
+          const nextTargetKind = response.data.targetKind ?? 'sft'
+          setTargetKind(nextTargetKind)
           setProjectCapabilities(response.capabilities)
+          setMappingVersionId((previous) => previous || (
+            response.data.versions.mapping && response.data.versions.mapping.versionId > 0
+              ? String(response.data.versions.mapping.versionId)
+              : ''
+          ))
+          if (nextTargetKind === 'grpo') setFormat('jsonl')
         }
       } catch {
         // 读取失败时回退 SFT：该值只影响提示文案，不参与服务端校验，
@@ -325,6 +363,14 @@ export function ReleaseNewPage() {
       setError('必须填写用途：数据卡要能说清这份数据用来做什么')
       return
     }
+    if (targetKind === 'grpo' && format !== 'jsonl') {
+      setError('GRPO 只能发布 JSONL；请切换格式后再提交')
+      return
+    }
+    if (format.trim() === '') {
+      setError('请选择发布格式')
+      return
+    }
     setBusy(true)
     try {
       const result = await studioApi.createReleaseCandidate(scope.projectId, {
@@ -339,7 +385,7 @@ export function ReleaseNewPage() {
               sampleVersionIds: selectedVersionIDs,
             }),
         mappingVersionId: Number(mappingVersionId) || 0,
-        format: 'jsonl',
+        format,
         intendedUse: intendedUse.trim(),
         limitations: limitations
           .split('\n')
@@ -356,6 +402,7 @@ export function ReleaseNewPage() {
     }
   }, [
     hasInvalidSelectionParam,
+    format,
     intendedUse,
     limitations,
     mappingVersionId,
@@ -366,6 +413,7 @@ export function ReleaseNewPage() {
     selectionSnapshotID,
     selectionSnapshotItems,
     selectionSnapshotState,
+    targetKind,
     projectCapabilities?.canPublish,
   ])
 
@@ -401,11 +449,29 @@ export function ReleaseNewPage() {
             <label className="wizard-field__label" htmlFor="mapping-version">映射版本 ID</label>
             <Input id="mapping-version" value={mappingVersionId} onChange={(value) => setMappingVersionId(value)}
               placeholder="例如 12" />
+            <Text type="tertiary" size="small" className="block mt-1">
+              默认带入项目当前映射版本；如需其他版本，请从设计区复制其版本 ID。
+            </Text>
+          </div>
+          <div className="wizard-field">
+            <label className="wizard-field__label" htmlFor="release-format">交付格式</label>
+            <Select
+              id="release-format"
+              value={format}
+              optionList={targetKind === 'grpo' ? GRPO_FORMAT_OPTIONS : SFT_FORMAT_OPTIONS}
+              onChange={(value) => setFormat(String(value))}
+              aria-label="选择交付格式"
+              style={{ width: '100%' }}
+            />
+            <Text type="tertiary" size="small" className="block mt-1">
+              {targetKind === 'grpo'
+                ? 'GRPO 只允许 JSONL，服务端会逐行校验教师评判字段。'
+                : 'SFT 可选择 JSONL、Alpaca JSON 或 CSV；格式会写入不可变发布清单。'}
+            </Text>
             {targetKind === 'grpo' ? (
               <Text type="tertiary" size="small" className="block mt-1" data-grpo-release-hint="true">
-                GRPO 只能发布 JSONL，且映射必须包含 question / judge_prompt / levels / level_rubrics；
-                levels 与 level_rubrics 必须配为**单个占位符**（保留数组与对象结构）。
-                服务端会在发布前逐行解码校验，结构不对时中止发布而不会产出错误文件。
+                映射必须包含 question / judge_prompt / levels / level_rubrics；
+                levels 与 level_rubrics 必须保留数组与对象结构，不能压成逗号字符串。
               </Text>
             ) : null}
           </div>
@@ -433,7 +499,7 @@ export function ReleaseNewPage() {
         ) : (
           <div className="sample-table">
             <div className="sample-row sample-row--head"><span /><span>内容版本</span><span>批次</span></div>
-            {samples.slice(0, 50).map((sample) => (
+            {samples.map((sample) => (
               <div key={sample.sampleId} className="sample-row">
                 <input type="checkbox" aria-label={`选择 ${sample.title || sample.sampleKey}`}
                   checked={sample.latestVersionId > 0 && selected.includes(sample.latestVersionId)}
@@ -453,6 +519,17 @@ export function ReleaseNewPage() {
             ))}
           </div>
         )}
+        {samplesNextCursor !== '' ? (
+          <div className="mt-3 flex justify-center">
+            <Button
+              size="small"
+              loading={samplesLoading}
+              onClick={() => void loadAcceptedSamples(samplesNextCursor, true)}
+            >
+              加载更多已接纳内容
+            </Button>
+          </div>
+        ) : null}
         {batches.length === 0 ? null : (
           <Text type="tertiary" size="small" className="block mt-2">
             提示：同一批次的输出通常一起发布；跨批次混合会扩大数据卡的覆盖范围。
@@ -545,6 +622,25 @@ export function ReleaseCardPage() {
     }
   }, [load, releaseID, scope.projectId])
 
+  const confirmPublish = useCallback(() => {
+    Modal.confirm({
+      title: `冻结并发布「${card?.release.releaseName ?? `#${releaseID}`}」？`,
+      content: (
+        <div className="console-stack">
+          <Text className="block">
+            发布会冻结当前候选的内容版本、映射、质量证据与限制，并开始构建不可变交付文件。
+          </Text>
+          <Text type="tertiary" className="block">
+            冻结后不能直接修改范围；需要调整时请创建下一版候选。构建失败会保留同一个发布 ID，可安全重试。
+          </Text>
+        </div>
+      ),
+      okText: '确认冻结并发布',
+      cancelText: '返回检查',
+      onOk: publish,
+    })
+  }, [card?.release.releaseName, publish, releaseID])
+
   const createNext = useCallback(async () => {
     setBusy(true)
     setActionError(null)
@@ -589,7 +685,7 @@ export function ReleaseCardPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Tag color={statusColor(release.status)}>{RELEASE_STATUS_LABEL[release.status] ?? release.status}</Tag>
           {!published && capabilities.canPublish ? (
-            <Button theme="solid" type="primary" loading={busy} onClick={() => void publish()}>
+            <Button theme="solid" type="primary" loading={busy} onClick={confirmPublish}>
               冻结并发布
             </Button>
           ) : published && capabilities.canCreateNext ? (

@@ -4,7 +4,7 @@ import { Button, Card, Empty, Input, Spin, Tag, Typography } from '@douyinfe/sem
 import { Bell, RefreshCw, Search } from 'lucide-react'
 import { activityApi } from '../../lib/api/studio'
 import type { ActivityItem, SearchHit, TodoItem } from '../../lib/api/studio'
-import { allStudioRoutes } from '../routes'
+import { allStudioRoutes, fillRoutePathByKey } from '../routes'
 
 /**
  * 今日工作与动态（Issue #160 T27）。
@@ -31,18 +31,57 @@ function todoHref(todo: TodoItem): string | undefined {
   return todo.links?.page
 }
 
+function studioPath(key: string): string {
+  return fillRoutePathByKey(key, {})
+}
+
+function formatTodoDate(value: string): string {
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) return '时间未记录'
+  return new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric' }).format(new Date(timestamp))
+}
+
 // ---------------------------------------------------------------------------
 // 今日工作（W01）
 // ---------------------------------------------------------------------------
 
 export function TodayPage() {
   const navigate = useNavigate()
-  const { Title, Text } = Typography
+  const { Text } = Typography
   const [todos, setTodos] = useState<TodoItem[]>([])
   const [notes, setNotes] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  // 项目名称不在 /v1/today 契约中，因此只展示服务端返回的项目 ID 和待办事实，
+  // 不用示例项目名或猜测项目详情链接。
+  const projectTodos = useMemo(() => {
+    const grouped = new Map<number, TodoItem[]>()
+    for (const todo of todos) {
+      if (todo.projectId <= 0) continue
+      const current = grouped.get(todo.projectId) ?? []
+      current.push(todo)
+      grouped.set(todo.projectId, current)
+    }
+    return Array.from(grouped.entries())
+      .map(([projectId, items]) => {
+        const latest = items.reduce((candidate, item) => {
+          if (!candidate) return item
+          return Date.parse(item.updatedAt) > Date.parse(candidate.updatedAt) ? item : candidate
+        }, items[0])
+        const href = items.map(todoHref).find((value): value is string => Boolean(value))
+        return { projectId, items, latest, href }
+      })
+      .sort((left, right) => Date.parse(right.latest.updatedAt) - Date.parse(left.latest.updatedAt))
+      .slice(0, 4)
+  }, [todos])
+
+  const releaseTodo = useMemo(
+    () => todos.find((todo) => todo.kind === 'release_blocked'),
+    [todos],
+  )
+  const releaseHref = releaseTodo ? todoHref(releaseTodo) : undefined
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -76,18 +115,23 @@ export function TodayPage() {
   }, [load])
 
   return (
-    <div className="console-page" data-studio-page="today">
-      <div className="console-page__header">
+    <div className="console-page atelier-today-page" data-studio-page="today">
+      <section className="atelier-today-hero">
         <div>
-          <Title heading={4} className="!mb-1">
-            今日工作
-          </Title>
-          <Text type="tertiary">需要你做决定的事，每条都能直接跳到具体对象。</Text>
+          <div className="eyebrow">TODAY / YOUR WORKSPACE</div>
+          <Text type="tertiary">你的工作区 · 今日工作</Text>
+          <h1>把下一份训练数据，<br />做得更有把握。</h1>
+          <Text type="tertiary" className="atelier-hero-copy">先解决值得你关注的决定，再继续生产。</Text>
+          <div className="atelier-action-row">
+            <Button theme="solid" type="primary" onClick={() => navigate(studioPath('new'))}>＋ 开始一个数据项目</Button>
+            <Button onClick={() => navigate(studioPath('recipes'))}>浏览生产方案</Button>
+            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void load()} disabled={loading}>刷新</Button>
+          </div>
         </div>
-        <Button size="small" icon={<RefreshCw size={14} />} onClick={() => void load()} disabled={loading}>
-          刷新
-        </Button>
-      </div>
+        <div className="atelier-hero-mark" aria-label="目标、证据、交付">
+          <span className="atelier-hero-mark__label">目标 → 证据 → 交付</span>
+        </div>
+      </section>
 
       {error ? (
         <Card className="console-card mb-3" bodyStyle={{ padding: 14 }} data-today-error="true">
@@ -95,72 +139,77 @@ export function TodayPage() {
         </Card>
       ) : null}
 
-      {loading ? (
-        <div className="flex justify-center py-10">
-          <Spin tip="正在汇总待办" />
-        </div>
-      ) : todos.length === 0 ? (
-        <Card className="console-card" bodyStyle={{ padding: 24 }} data-today-empty="true">
-          <Empty description="当前没有需要你处理的待办。" />
-        </Card>
-      ) : (
-        <>
-          <div className="comparison-table" data-today-todos="true">
-            <div className="comparison-row comparison-row--head">
-              <span>类型</span>
-              <span>事项</span>
-              <span>数量</span>
-              <span>操作</span>
+      <div className="atelier-today-grid">
+        <section className="atelier-decision-panel">
+          <div className="atelier-section-heading"><div><div className="eyebrow">DECISIONS</div><h2>需要你的决定</h2></div></div>
+          {loading ? (
+            <div className="atelier-inline-state"><Spin tip="正在汇总待办" /></div>
+          ) : todos.length === 0 ? (
+            <div className="atelier-inline-state" data-today-empty="true"><Empty description="当前没有需要你处理的待办。" /></div>
+          ) : (
+            <div className="atelier-todo-list" data-today-todos="true">
+              {todos.map((todo) => {
+                const href = todoHref(todo)
+                return (
+                  <div key={`${todo.kind}-${todo.projectId}`} className="atelier-todo-row" data-todo-kind={todo.kind}>
+                    <div><Tag size="small" color={todo.kind === 'unread_activity' ? 'grey' : 'amber'}>{TODO_TITLES[todo.kind] ?? todo.kind}</Tag><strong>{todo.summary}</strong><Text type="tertiary" size="small">{todo.count} 项待处理</Text></div>
+                    {href ? <Button size="small" onClick={() => navigate(href)}>去处理 →</Button> : null}
+                  </div>
+                )
+              })}
             </div>
-            {todos.map((todo) => {
-              const href = todoHref(todo)
-              return (
-                <div key={`${todo.kind}-${todo.projectId}`} className="comparison-row" data-todo-kind={todo.kind}>
-                  <span>
-                    <Tag size="small" color={todo.kind === 'unread_activity' ? 'grey' : 'amber'}>
-                      {TODO_TITLES[todo.kind] ?? todo.kind}
-                    </Tag>
-                  </span>
-                  <span>{todo.summary}</span>
-                  <span>{todo.count}</span>
-                  <span>
-                    {href ? (
-                      <Button
-                        size="small"
-                        theme="borderless"
-                        onClick={() => navigate(href)}
-                        data-todo-open={todo.kind}
-                      >
-                        去处理
-                      </Button>
-                    ) : (
-                      <Text type="tertiary" size="small">
-                        —
-                      </Text>
-                    )}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-          <div className="mt-3 flex items-center gap-3">
-            <Button
-              size="small"
-              icon={<Bell size={14} />}
-              disabled={busy}
-              onClick={() => void markRead()}
-              data-today-mark-read="true"
-            >
-              全部已读
-            </Button>
-            {notes.map((note) => (
-              <Text key={note} type="tertiary" size="small">
-                {note}
-              </Text>
+          )}
+        </section>
+        <div className="atelier-today-side">
+          <aside className="atelier-calendar-panel">
+            <div className="eyebrow">THIS WEEK</div>
+            <h2>交付日历</h2>
+            {releaseTodo ? (
+              <>
+                <strong className="atelier-calendar-date">候选更新 · {formatTodoDate(releaseTodo.updatedAt)}</strong>
+                <Text type="tertiary">项目 #{releaseTodo.projectId}</Text>
+                <Text type="tertiary" size="small">{releaseTodo.summary}</Text>
+                {releaseHref ? <Button theme="borderless" onClick={() => navigate(releaseHref)}>查看发布候选 →</Button> : null}
+              </>
+            ) : (
+              <>
+                <strong className="atelier-calendar-date">暂无排期</strong>
+                <Text type="tertiary">还没有服务端返回的交付候选。</Text>
+                <Button theme="borderless" onClick={() => navigate(studioPath('projects'))}>查看项目 →</Button>
+              </>
+            )}
+          </aside>
+          <aside className="atelier-workstyle-panel">
+            <div className="eyebrow">YOUR WAY OF WORKING</div>
+            <h2>你的工作方式</h2>
+            <p>设计方案 → 小批试制 → 扩量 → 审阅 → 发布。</p>
+            <Text type="tertiary" size="small">每次运行独立记录，每次发布固定内容。你可以随时回到修改前一版。</Text>
+            <Button theme="borderless" onClick={() => navigate(studioPath('help'))}>了解 Atelier 旅程 →</Button>
+          </aside>
+        </div>
+      </div>
+
+      <section className="atelier-continue-panel">
+        <div className="atelier-section-heading"><div><div className="eyebrow">PROJECTS</div><h2>继续项目</h2></div><Button theme="borderless" onClick={() => navigate(studioPath('projects'))}>查看全部 →</Button></div>
+        {projectTodos.length === 0 ? (
+          <div className="atelier-inline-state">暂无可继续的项目。</div>
+        ) : (
+          <div className="atelier-project-mini-grid">
+            {projectTodos.map(({ projectId, items, latest, href }) => (
+              <button key={projectId} type="button" disabled={!href} onClick={() => { if (href) navigate(href) }}>
+                <strong>项目 #{projectId}</strong>
+                <Text type="tertiary">{items.map((item) => TODO_TITLES[item.kind] ?? item.kind).join(' · ')}</Text>
+                <small>{latest.summary} · 最近更新 {formatTodoDate(latest.updatedAt)}</small>
+              </button>
             ))}
           </div>
-        </>
-      )}
+        )}
+      </section>
+      {/* 保留原始动态提示与已读动作，但视觉上从决策内容中分离。 */}
+      {!loading && todos.length > 0 ? <div className="mt-3 flex items-center gap-3">
+        <Button size="small" icon={<Bell size={14} />} disabled={busy} onClick={() => void markRead()} data-today-mark-read="true">全部已读</Button>
+        {notes.map((note) => <Text key={note} type="tertiary" size="small">{note}</Text>)}
+      </div> : null}
     </div>
   )
 }
@@ -371,6 +420,7 @@ export function CommandSearch() {
     return (
       <Button
         size="small"
+        type="tertiary"
         icon={<Search size={14} />}
         data-command-search-trigger="true"
         onClick={() => setOpen(true)}

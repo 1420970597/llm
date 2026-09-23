@@ -7,6 +7,9 @@ import '@douyinfe/semi-ui/dist/css/semi.css'
 import App from './App'
 import './i18n'
 import './index.css'
+// Atelier workspace tokens and page compositions. Loaded after the legacy
+// console sheet so the new studio shell owns its visual language.
+import './styles.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
