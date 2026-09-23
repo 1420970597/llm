@@ -191,30 +191,7 @@ func (app *application) publishRecipeVersion(w http.ResponseWriter, r *http.Requ
 //
 // 返回 false 表示已经写了响应。
 func (app *application) resolveRecipeWorkspace(w http.ResponseWriter, r *http.Request, userID, requested int64) (int64, bool) {
-	workspaceID := requested
-	if workspaceID <= 0 {
-		workspace, err := app.projects.DefaultWorkspace(r.Context())
-		if err != nil {
-			app.writeAPIEntityError(w, r, err)
-			return 0, false
-		}
-		workspaceID = workspace.ID
-	} else if _, err := app.workspaceByID(r.Context(), workspaceID); err != nil {
-		app.writeAPIEntityError(w, r, err)
-		return 0, false
-	}
-	// 成员校验：非成员看不到工作区里的方案（返回 404 而不是 403，
-	// 与项目权限的资源隐藏约定一致）。
-	decision, err := app.authz.AuthorizeWorkspace(r.Context(), workspaceID, userID, store.AuthzRead)
-	if err != nil {
-		app.writeAPIEntityError(w, r, err)
-		return 0, false
-	}
-	if !decision.IsMember {
-		app.writeStudioError(w, r, studio.NewError(studio.CodeNotFound, "未找到该工作区"))
-		return 0, false
-	}
-	return workspaceID, true
+	return app.resolveWorkspaceForMember(w, r, userID, requested)
 }
 
 // authorizeRecipeWrite 校验「可以修改这个方案」并返回方案。

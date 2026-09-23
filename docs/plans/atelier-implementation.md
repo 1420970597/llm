@@ -165,6 +165,7 @@
 | 2026-09-22 | T31 | 「旧路由兼容」在 API 层怎么表达 | 新增 `GET /api/v1/legacy/datasets/{id}/project`：按 `projects.legacy_dataset_id` 反查；**未映射时返回 200 + `not_mapped` 而不是 404** —— T31 要求「无法确定对象的阶段入口保留只读历史列表，不跳错项目」，而 404 会让前端把它当成错误页，丢掉「这是历史资产」的语义。旧写入口冻结（`LEGACY_WRITES_FROZEN=true`）放在**中间件层**：旧端点数以十计，逐个加检查必然漏一个，而漏掉的那个会在迁移期间继续写旧库。判定放在认证之后（未登录先得 401，不泄露运维状态） |
 | 2026-09-22 | T31 | 契约把导入落点写作 `legacy_imports`（迁移 0034），未规定逻辑放哪 | 逻辑落在 `internal/legacy/import.go`（可测、与 T30 的盘点同包），store 落在 `internal/store/legacy_import_store.go`，CLI 扩展 `cmd/studio-migrate -import-dataset ... -apply`。默认 dry-run：一次误执行的导入会在新库里留下一批看起来正常的样本，而它们与真实运行出来的内容无法区分 |
 | 2026-09-22 | T31 | 交付状态 | **已交付**：迁移 0034（唯一来源键 + 游标 + 分列计数 + 前后对账快照 + `projects.legacy_dataset_id` 索引）、`internal/legacy/import.go`（幂等导入 + 对账 + 失败明细）、`internal/store/legacy_import_store.go`（台账/映射/内容 hash/批次完成）、`apps/api/routes_legacy.go`（映射端点 + 冻结判定）、`apps/api/auth.go` 中间件冻结、`cmd/studio-migrate` 的导入子命令、`CreateProjectInput.LegacyDatasetID` 接线，及 9 个真实 DB 测试 + HTTP 层测试。**未交付**：按项处理而非批量（10 万条会慢，已记录）、非 SFT 来源（reasoning/reward/grpo_prompts）仍留在旧库、文件下载字节对账（属 T30 的已知未知项）|
+| 2026-09-23 | T03/T28 | 默认账号的工作区引导原先在 API 启动时无条件 upsert，管理员移除普通成员后重启会把权限悄悄授回 | 新增迁移 **0039** `workspace_bootstrap_members` 作为一次性引导台账；首次引导在同一事务写入成员与台账，后续启动只检查台账，不恢复被移除的成员。真实项目创建与 workspace member upsert 都继续由目标工作区的服务端授权复核，不把默认引导当权限凭证 |
 ---
 
 ## 2. 必须先定清的固定口径
@@ -512,7 +513,7 @@ Decision:     追加式。更正通过 supersedes；有效处置是审计日志�
 
 ### 7.1 迁移编号分配
 
-已应用到 `0021`。新迁移从 **`0022`** 起，禁止重写已应用迁移。
+`main` 基线已应用到 `0021`；Atelier 迁移从 **`0022`** 起，当前目录最新为 `0039`。禁止重写已应用迁移；下表必须与 `sql/migrations/` 文件逐一对应。
 
 | 编号 | 文件 | 归属任务 |
 |---|---|---|
@@ -529,7 +530,11 @@ Decision:     追加式。更正通过 supersedes；有效处置是审计日志�
 | 0032 | `sql/migrations/0032_studio_recipes.sql` | T26（已交付；`projects.source_recipe_version_id` 也在这里）|
 | 0033 | `sql/migrations/0033_studio_activity_comments.sql` | T27（已交付：活动水位 + 评论）|
 | 0034 | `sql/migrations/0034_studio_legacy_imports.sql` | T31（T30 的盘点工具不建表）|
+| 0035 | `sql/migrations/0035_studio_selection_snapshots.sql` | T17（服务端大范围选择快照；URL 不承载数万 ID）|
+| 0036 | `sql/migrations/0036_studio_comparison.sql` | T18（同基准比较与采用依据）|
+| 0037 | `sql/migrations/0037_studio_release_artifacts.sql` | T21（不可变 manifest/制品/hash）|
 | 0038 | `sql/migrations/0038_studio_grpo_quality.sql` | T24 |
+| 0039 | `sql/migrations/0039_workspace_bootstrap_members.sql` | T03/T28（一次性默认工作区成员引导，保留管理员撤权）|
 
 ---
 

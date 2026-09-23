@@ -14,12 +14,14 @@ const { Title, Text } = Typography
 /** L13：抽样配置 + 启动评估（维度多选、按分类全选、被排除裁判禁用）。 */
 export function EvalRunForm({
   datasets,
+  initialDatasetId,
   onCreated,
 }: {
   datasets: Dataset[]
+  initialDatasetId?: number | null
   onCreated: (runId: number) => void
 }) {
-  const [datasetId, setDatasetId] = useState<number | null>(datasets[0]?.id ?? null)
+  const [datasetId, setDatasetId] = useState<number | null>(initialDatasetId ?? datasets[0]?.id ?? null)
   const [name, setName] = useState('')
   const [samplingMode, setSamplingMode] = useState<SamplingMode>('full')
   const [sampleRatio, setSampleRatio] = useState(0.3)
@@ -68,8 +70,12 @@ export function EvalRunForm({
 
   // 父组件异步加载 datasets：首帧可能为空，加载完成后补齐默认数据集。
   useEffect(() => {
+    if (initialDatasetId && datasets.some((item) => item.id === initialDatasetId)) {
+      setDatasetId(initialDatasetId)
+      return
+    }
     if (datasetId === null && datasets.length > 0) setDatasetId(datasets[0].id)
-  }, [datasets, datasetId])
+  }, [datasets, datasetId, initialDatasetId])
 
   const groupedDimensions = useMemo(() => groupByCategory(dimensions, (item) => item.category), [dimensions])
 

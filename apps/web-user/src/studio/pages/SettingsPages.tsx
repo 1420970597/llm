@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, Empty, Input, Select, Spin, Tag, Typography } from '@douyinfe/semi-ui'
 import { ShieldCheck, Users } from 'lucide-react'
-import { client } from '../../lib/api'
+import { authApi } from '../../lib/api'
 import { settingsApi } from '../../lib/api/studio'
 import type {
   ConnectionOptions,
-  Page,
+  ProjectCapabilities,
+  ProjectIdentity,
   ProjectMemberRecord,
+  TypedEnvelope,
   WorkspaceMemberRecord,
 } from '../../lib/api/studio'
 import { APP_BUILD_TIME, APP_VERSION, versionSummary } from '../../buildInfo'
@@ -159,6 +161,36 @@ export function ConnectionsPage() {
 // 团队与角色（S03）
 // ---------------------------------------------------------------------------
 
+export function parseManageableProjectOptions(items: unknown): Array<{ id: number; name: string; canManageMembers: true }> {
+  if (!Array.isArray(items)) return []
+  return items.flatMap((value: unknown) => {
+    if (!value || typeof value !== 'object') return []
+    const item = value as Record<string, unknown>
+    const data = item.data && typeof item.data === 'object' ? item.data as Record<string, unknown> : null
+    const capabilities = item.capabilities && typeof item.capabilities === 'object'
+      ? item.capabilities as Record<string, unknown>
+      : null
+    if (!data) return []
+    const id = data.id
+    const envelopeID = typeof item.id === 'string' ? item.id.match(/^p_(\d+)$/)?.[1] : undefined
+    if (
+      typeof id !== 'number' ||
+      !Number.isSafeInteger(id) ||
+      id <= 0 ||
+      envelopeID !== String(id) ||
+      capabilities?.canManageMembers !== true
+    ) return []
+    return [{ id, name: typeof data.name === 'string' && data.name ? data.name : `项目 #${id}`, canManageMembers: true as const }]
+  })
+}
+
+export function isWorkspaceAdminMember(
+  userId: number | null,
+  members: ReadonlyArray<{ userId: number; role: string }>,
+): boolean {
+  return Number.isSafeInteger(userId) && (userId ?? 0) > 0 && members.some((member) => member.userId === userId && member.role === 'admin')
+}
+
 export function TeamPage() {
   const navigate = useNavigate()
   const { Title, Text } = Typography
@@ -170,22 +202,47 @@ export function TeamPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [projects, setProjects] = useState<{ id: number; name: string }[]>([])
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null)
+  const [canManageWorkspace, setCanManageWorkspace] = useState(false)
+  const [projects, setProjects] = useState<Array<{ id: number; name: string; canManageMembers: boolean }>>([])
   const [selectedProject, setSelectedProject] = useState('')
   const [projectMembers, setProjectMembers] = useState<ProjectMemberRecord[]>([])
+  const [projectBusy, setProjectBusy] = useState(false)
+  const [projectMembersLoading, setProjectMembersLoading] = useState(false)
+  const [projectMemberEmail, setProjectMemberEmail] = useState('')
+  const [projectMemberRole, setProjectMemberRole] = useState('viewer')
+  const [projectMemberReason, setProjectMemberReason] = useState('')
+  const [projectListError, setProjectListError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    try {
-      const response = await settingsApi.workspaceMembers()
-      setMembers(response.items ?? [])
-      setNotes(response.notes ?? [])
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : '加载成员失败')
-    } finally {
+    setCanManageWorkspace(false)
+    const [membersResult, currentUserResult] = await Promise.allSettled([
+      settingsApi.workspaceMembers(),
+      authApi.me(),
+    ])
+    if (membersResult.status === 'rejected') {
+      setMembers([])
+      setNotes([])
+      setCurrentUserId(null)
+      setError(membersResult.reason instanceof Error ? membersResult.reason.message : '加载成员失败')
       setLoading(false)
+      return
     }
+
+    const workspaceMembers = membersResult.value.items ?? []
+    setMembers(workspaceMembers)
+    setNotes(membersResult.value.notes ?? [])
+    if (currentUserResult.status === 'fulfilled') {
+      const userId = currentUserResult.value.user.id
+      setCurrentUserId(userId)
+      setCanManageWorkspace(isWorkspaceAdminMember(userId, workspaceMembers))
+    } else {
+      setCurrentUserId(null)
+      setError('无法确认当前账号的工作区角色；成员管理操作已隐藏。')
+    }
+    setLoading(false)
   }, [])
 
   useEffect(() => {
@@ -196,10 +253,31 @@ export function TeamPage() {
     let cancelled = false
     void (async () => {
       try {
-        const response = await client.get<Page<{ id: number; name: string }>>('/v1/projects')
-        if (!cancelled) setProjects((response.data.items ?? []).map((item) => ({ id: item.id, name: item.name })))
-      } catch {
+        type ProjectListItem = TypedEnvelope<ProjectIdentity, ProjectCapabilities>
+        const collected: ProjectListItem[] = []
+        const seenCursors = new Set<string>()
+        let cursor = ''
+        do {
+          const response = await settingsApi.projects({ limit: 50, ...(cursor ? { cursor } : {}) })
+          collected.push(...(response.items ?? []))
+          cursor = response.nextCursor ?? ''
+        } while (cursor && !seenCursors.has(cursor) && seenCursors.add(cursor))
+
+        const manageable = parseManageableProjectOptions(collected)
+        if (!cancelled) {
+          setProjects(manageable)
+          setSelectedProject((selected) => manageable.some((project) => String(project.id) === selected) ? selected : '')
+          setProjectMembers([])
+          setProjectListError(null)
+        }
+      } catch (loadError) {
         // 项目列表拿不到不影响工作区成员管理（它是辅助信息）。
+        if (!cancelled) {
+          setProjects([])
+          setSelectedProject('')
+          setProjectMembers([])
+          setProjectListError(loadError instanceof Error ? loadError.message : '加载可管理项目失败')
+        }
       }
     })()
     return () => {
@@ -208,19 +286,87 @@ export function TeamPage() {
   }, [])
 
   const loadProjectMembers = useCallback(async (projectID: number) => {
-    if (projectID <= 0) {
+    const project = projects.find((item) => item.id === projectID)
+    if (projectID <= 0 || project?.canManageMembers !== true) {
       setProjectMembers([])
+      setProjectMembersLoading(false)
       return
     }
+    setError(null)
+    setProjectMembersLoading(true)
     try {
       const response = await settingsApi.projectMembers(projectID)
       setProjectMembers(response.items ?? [])
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载项目成员失败')
+      setProjectMembers([])
+    } finally {
+      setProjectMembersLoading(false)
     }
-  }, [])
+  }, [projects])
+
+  const upsertProjectMember = useCallback(async () => {
+    const projectID = Number(selectedProject)
+    const project = projects.find((item) => item.id === projectID)
+    if (project?.canManageMembers !== true) return
+    const targetEmail = projectMemberEmail.trim()
+    if (!targetEmail) {
+      setError('请填写要添加或更新的已有账号邮箱。')
+      return
+    }
+    if (!projectMemberReason.trim()) {
+      setError('请填写成员变更原因，此信息会写入项目审计记录。')
+      return
+    }
+
+    setProjectBusy(true)
+    setError(null)
+    setNotice(null)
+    try {
+      await settingsApi.upsertProjectMember(projectID, {
+        email: targetEmail,
+        role: projectMemberRole as 'owner' | 'reviewer' | 'viewer',
+        reason: projectMemberReason.trim(),
+      })
+      setProjectMemberEmail('')
+      setProjectMemberReason('')
+      setNotice('项目成员与角色已更新，变更原因已写入审计记录。')
+      await loadProjectMembers(projectID)
+    } catch (upsertError) {
+      setError(upsertError instanceof Error ? upsertError.message : '更新项目成员失败')
+    } finally {
+      setProjectBusy(false)
+    }
+  }, [loadProjectMembers, projectMemberEmail, projectMemberReason, projectMemberRole, projects, selectedProject])
+
+  const removeProjectMember = useCallback(async (projectID: number, userID: number) => {
+    const project = projects.find((item) => item.id === projectID)
+    if (project?.canManageMembers !== true) return
+    if (!projectMemberReason.trim()) {
+      setError('请填写成员移除原因，此信息会写入项目审计记录。')
+      return
+    }
+
+    setProjectBusy(true)
+    setError(null)
+    setNotice(null)
+    try {
+      await settingsApi.removeProjectMember(projectID, userID, projectMemberReason.trim())
+      setProjectMemberReason('')
+      setNotice('项目成员已移除，变更原因已写入审计记录。')
+      await loadProjectMembers(projectID)
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : '移除项目成员失败')
+    } finally {
+      setProjectBusy(false)
+    }
+  }, [loadProjectMembers, projectMemberReason, projects])
 
   const addMember = useCallback(async () => {
+    if (!canManageWorkspace) {
+      setError('只有工作区管理员可以添加成员。')
+      return
+    }
     if (email.trim() === '') {
       setError('请填写要添加的账号邮箱（首版只能选择已有账号）')
       return
@@ -238,10 +384,14 @@ export function TeamPage() {
     } finally {
       setBusy(false)
     }
-  }, [email, load, role])
+  }, [canManageWorkspace, email, load, role])
 
   const removeMember = useCallback(
     async (userId: number) => {
+      if (!canManageWorkspace) {
+        setError('只有工作区管理员可以移除成员。')
+        return
+      }
       setBusy(true)
       setError(null)
       setNotice(null)
@@ -255,7 +405,7 @@ export function TeamPage() {
         setBusy(false)
       }
     },
-    [load],
+    [canManageWorkspace, load],
   )
 
   return (
@@ -293,7 +443,7 @@ export function TeamPage() {
             <div className="comparison-row comparison-row--head">
               <span>账号</span>
               <span>工作区角色</span>
-              <span>操作</span>
+              {canManageWorkspace ? <span>操作</span> : null}
             </div>
             {members.map((member) => (
               <div key={member.userId} className="comparison-row" data-member-id={member.userId}>
@@ -303,57 +453,67 @@ export function TeamPage() {
                     {member.role === 'admin' ? '工作区管理员' : '成员'}
                   </Tag>
                 </span>
-                <span>
-                  <Button
-                    size="small"
-                    theme="borderless"
-                    disabled={busy}
-                    onClick={() => void removeMember(member.userId)}
-                    data-team-remove={member.userId}
-                  >
-                    移除
-                  </Button>
-                </span>
+                {canManageWorkspace ? (
+                  <span>
+                    <Button
+                      size="small"
+                      theme="borderless"
+                      disabled={busy}
+                      onClick={() => void removeMember(member.userId)}
+                      data-team-remove={member.userId}
+                    >
+                      移除
+                    </Button>
+                  </span>
+                ) : null}
               </div>
             ))}
           </div>
         )}
 
-        <div className="wizard-grid mt-3">
-          <div className="wizard-field">
-            <label className="wizard-field__label" htmlFor="team-email">
-              按邮箱添加已有账号
-            </label>
-            <Input id="team-email" value={email} onChange={setEmail} placeholder="someone@company.com" />
-          </div>
-          <div className="wizard-field">
-            <label className="wizard-field__label" htmlFor="team-role">
-              角色
-            </label>
-            <Select
-              id="team-role"
-              value={role}
-              style={{ width: '100%' }}
-              optionList={[
-                { value: 'member', label: '成员' },
-                { value: 'admin', label: '工作区管理员' },
-              ]}
-              onChange={(value) => setRole(String(value))}
-            />
-          </div>
-        </div>
-        <div className="mt-2">
-          <Button
-            size="small"
-            theme="solid"
-            icon={<ShieldCheck size={14} />}
-            loading={busy}
-            onClick={() => void addMember()}
-            data-team-add="true"
-          >
-            添加/更新成员
-          </Button>
-        </div>
+        {canManageWorkspace ? (
+          <>
+            <div className="wizard-grid mt-3">
+              <div className="wizard-field">
+                <label className="wizard-field__label" htmlFor="team-email">
+                  按邮箱添加已有账号
+                </label>
+                <Input id="team-email" value={email} onChange={setEmail} placeholder="someone@company.com" />
+              </div>
+              <div className="wizard-field">
+                <label className="wizard-field__label" htmlFor="team-role">
+                  角色
+                </label>
+                <Select
+                  id="team-role"
+                  value={role}
+                  style={{ width: '100%' }}
+                  optionList={[
+                    { value: 'member', label: '成员' },
+                    { value: 'admin', label: '工作区管理员' },
+                  ]}
+                  onChange={(value) => setRole(String(value))}
+                />
+              </div>
+            </div>
+            <div className="mt-2">
+              <Button
+                size="small"
+                theme="solid"
+                icon={<ShieldCheck size={14} />}
+                loading={busy}
+                onClick={() => void addMember()}
+                data-team-add="true"
+              >
+                添加/更新成员
+              </Button>
+            </div>
+          </>
+        ) : (
+          <Text type="tertiary" size="small" className="block mt-3" data-team-workspace-readonly="true">
+            {currentUserId === null ? '当前账号的工作区角色未确认，成员管理操作不可用。' : '当前账号是工作区成员；仅工作区管理员可以添加或移除成员。'}
+          </Text>
+        )}
         {notes.map((note) => (
           <Text key={note} type="tertiary" size="small" className="block mt-2">
             {note}
@@ -376,41 +536,105 @@ export function TeamPage() {
           aria-label="选择项目"
           optionList={projects.map((project) => ({ value: String(project.id), label: project.name }))}
           onChange={(value) => {
-            const next = String(value ?? '')
+            if (typeof value !== 'string' && typeof value !== 'number') return
+            const nextID = Number(value)
+            if (!Number.isSafeInteger(nextID) || !projects.some((project) => project.id === nextID && project.canManageMembers)) return
+            const next = String(nextID)
+            setError(null)
             setSelectedProject(next)
-            void loadProjectMembers(Number.parseInt(next, 10) || 0)
+            void loadProjectMembers(nextID)
           }}
         />
-        {selectedProject ? (
-          <div className="comparison-table mt-2" data-team-project-members="true">
-            <div className="comparison-row comparison-row--head">
-              <span>用户</span>
-              <span>项目角色</span>
-              <span>操作</span>
-            </div>
-            {projectMembers.map((member) => (
-              <div key={member.userId} className="comparison-row" data-project-member-id={member.userId}>
-                <span>{member.email ?? `用户 ${member.userId}`}</span>
-                <span>{member.role}</span>
-                <span>
-                  <Button
-                    size="small"
-                    theme="borderless"
-                    disabled={busy}
-                    onClick={() =>
-                      void settingsApi
-                        .removeProjectMember(Number(selectedProject), member.userId)
-                        .then(() => loadProjectMembers(Number(selectedProject)))
-                        .catch((removeError: unknown) =>
-                          setError(removeError instanceof Error ? removeError.message : '移除项目成员失败'),
-                        )
-                    }
-                  >
-                    移除
-                  </Button>
-                </span>
+        {projectListError ? <Text type="danger" size="small" className="block mt-2" data-team-project-error="true">{projectListError}</Text> : null}
+        {!projectListError && projects.length === 0 ? (
+          <Text type="tertiary" size="small" className="block mt-2" data-team-project-empty="true">
+            当前账号没有可管理成员的项目。工作区管理员身份不会自动获得项目内容或成员管理权限。
+          </Text>
+        ) : null}
+        {selectedProject && projects.some((project) => String(project.id) === selectedProject && project.canManageMembers) ? (
+          <div className="mt-3" data-team-project-members="true">
+            <div className="wizard-grid">
+              <div className="wizard-field">
+                <label className="wizard-field__label" htmlFor="project-member-email">
+                  成员邮箱
+                </label>
+                <Input
+                  id="project-member-email"
+                  value={projectMemberEmail}
+                  onChange={setProjectMemberEmail}
+                  placeholder="已有账号的邮箱"
+                  disabled={projectBusy || projectMembersLoading}
+                />
               </div>
-            ))}
+              <div className="wizard-field">
+                <label className="wizard-field__label" htmlFor="project-member-role">
+                  项目角色
+                </label>
+                <Select
+                  id="project-member-role"
+                  value={projectMemberRole}
+                  style={{ width: '100%' }}
+                  optionList={[
+                    { value: 'owner', label: '负责人' },
+                    { value: 'reviewer', label: '审阅者' },
+                    { value: 'viewer', label: '只读成员' },
+                  ]}
+                  onChange={(value) => setProjectMemberRole(String(value))}
+                  disabled={projectBusy || projectMembersLoading}
+                />
+              </div>
+              <div className="wizard-field">
+                <label className="wizard-field__label" htmlFor="project-member-reason">
+                  变更原因（写入审计）
+                </label>
+                <Input
+                  id="project-member-reason"
+                  value={projectMemberReason}
+                  onChange={setProjectMemberReason}
+                  placeholder="例如：负责质量复核"
+                  disabled={projectBusy || projectMembersLoading}
+                />
+              </div>
+            </div>
+            <div className="mt-2">
+              <Button
+                size="small"
+                theme="solid"
+                disabled={projectBusy || projectMembersLoading || !projectMemberEmail.trim() || !projectMemberReason.trim()}
+                loading={projectBusy}
+                onClick={() => void upsertProjectMember()}
+                data-team-project-upsert="true"
+              >
+                添加或更新项目成员
+              </Button>
+            </div>
+            <div className="comparison-table mt-3" data-team-project-roster="true">
+              <div className="comparison-row comparison-row--head">
+                <span>用户</span>
+                <span>项目角色</span>
+                <span>操作</span>
+              </div>
+              {projectMembersLoading ? <div className="py-3"><Spin tip="正在加载项目成员" /></div> : null}
+              {!projectMembersLoading && projectMembers.length === 0 ? <Empty description="此项目还没有成员。" /> : null}
+              {!projectMembersLoading && projectMembers.map((member) => (
+                <div key={member.userId} className="comparison-row" data-project-member-id={member.userId}>
+                  <span>{member.email ?? `用户 ${member.userId}`}</span>
+                  <span>{member.role}</span>
+                  <span>
+                    <Button
+                      size="small"
+                      theme="borderless"
+                      disabled={projectBusy || !projectMemberReason.trim()}
+                      loading={projectBusy}
+                      onClick={() => void removeProjectMember(Number(selectedProject), member.userId)}
+                      data-team-project-remove={member.userId}
+                    >
+                      移除
+                    </Button>
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
         <div className="mt-2">
@@ -428,6 +652,7 @@ export function TeamPage() {
 // ---------------------------------------------------------------------------
 
 export function HelpPage() {
+  const navigate = useNavigate()
   const { Title, Text } = Typography
   const shortcuts = [
     ['命令搜索', '侧边栏「搜索」：Esc 关闭、回车打开第一条'],
@@ -441,6 +666,18 @@ export function HelpPage() {
     ['缺分', '裁判没给出分数。它不是 0 分，也不参与均值'],
     ['未知费用', '超时/断连但可能已收费：按当时预留金额占用额度，不记 0'],
     ['发布候选', '发布前的清单与门槛检查；只有制品校验成功才会 published'],
+  ]
+  const recoveryChecklist = [
+    '先阅读当前页面显示的错误与恢复提示，再决定是否重试。',
+    '重试运行前确认引用的蓝图、标准和范围版本仍是预期版本。',
+    '长时间无变化时刷新页面；运行状态以服务端返回为准。',
+    '遇到权限错误时联系项目 owner 或管理员，不要重复提交写操作。',
+    '登录失效后重新登录，再从当前项目或历史资产链接继续。',
+  ]
+  const highRiskActions = [
+    '启动运行、评估或发布前确认目标项目、输入版本与预算。',
+    '超时但可能已计费的请求显示为未知费用；先核对运行记录，不要盲目重跑。',
+    '旧版兼容工作台是否允许写入由服务端 LEGACY_WRITES_FROZEN 配置决定。',
   ]
   return (
     <div className="console-page" data-studio-page="help">
@@ -484,6 +721,21 @@ export function HelpPage() {
           </Text>
         ))}
       </Card>
+
+      <div className="console-card-grid-2 mb-3">
+        <Card className="console-card" bodyStyle={{ padding: 14 }} data-help-recovery="true">
+          <Text strong className="block mb-2">失败恢复清单</Text>
+          {recoveryChecklist.map((item) => <Text key={item} type="tertiary" size="small" className="block">• {item}</Text>)}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="small" onClick={() => navigate('/projects')}>查看数据项目</Button>
+            <Button size="small" onClick={() => navigate('/today')}>返回今日工作</Button>
+          </div>
+        </Card>
+        <Card className="console-card" bodyStyle={{ padding: 14 }} data-help-risk="true">
+          <Text strong className="block mb-2">高风险操作</Text>
+          {highRiskActions.map((item) => <Text key={item} type="tertiary" size="small" className="block">• {item}</Text>)}
+        </Card>
+      </div>
 
       <Card className="console-card" bodyStyle={{ padding: 14 }} data-help-build="true">
         <Text strong className="block mb-1">

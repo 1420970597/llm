@@ -14,7 +14,7 @@ const { Title, Text } = Typography
  * 契约：docs/plans/eval-and-cleaning-plan.md 第 4.2 节，props 签名保持 foundation 版本不变。
  * 四个子页签对应：维度管理（L8）、抽样配置与启动（L9）、运行列表（L9）、结果与报告（L10）。
  */
-export function EvaluationView({ datasets }: { datasets: Dataset[] }) {
+export function EvaluationView({ datasets, initialDatasetId }: { datasets: Dataset[]; initialDatasetId?: number | null }) {
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null)
   const [tabKey, setTabKey] = useState('dimensions')
 
@@ -37,6 +37,7 @@ export function EvaluationView({ datasets }: { datasets: Dataset[] }) {
         <TabPane tab="新建评估" itemKey="create">
           <EvalRunForm
             datasets={datasets}
+            initialDatasetId={initialDatasetId}
             onCreated={(runId) => {
               setSelectedRunId(runId)
               setTabKey('runs')
@@ -44,7 +45,7 @@ export function EvaluationView({ datasets }: { datasets: Dataset[] }) {
           />
         </TabPane>
         <TabPane tab="运行列表" itemKey="runs">
-          <EvalRunList datasets={datasets} selectedRunId={selectedRunId} onSelect={setSelectedRunId} />
+          <EvalRunList datasets={datasets} initialDatasetId={initialDatasetId} selectedRunId={selectedRunId} onSelect={setSelectedRunId} />
         </TabPane>
         <TabPane tab="结果与报告" itemKey="report">
           {selectedRunId === null ? (

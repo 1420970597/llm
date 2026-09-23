@@ -67,12 +67,19 @@ func NewProjectStore(db *pgxpool.Pool) *ProjectStore {
 	return &ProjectStore{db: db}
 }
 
-// EnsureDefaultWorkspace 幂等创建默认工作区，并把指定用户加为该工作区的 admin。
+// EnsureDefaultWorkspace 幂等创建默认工作区，并引导初始成员关系。
 //
 // 为什么 admin 关系也要幂等写入：初始化发生在每次启动，而「工作区存在但没有任何
 // admin」会让成员管理永久不可用（T28 依赖它）。这里用 ON CONFLICT DO NOTHING，
 // 既不覆盖已调整的角色，也不留下无 admin 的空工作区。
-func (s *ProjectStore) EnsureDefaultWorkspace(ctx context.Context, bootstrapUserID int64) (model.Workspace, error) {
+// bootstrapMemberIDs 是首启时允许进入默认工作区的普通成员；保留为可变参数，
+// 让旧调用方只传管理员 ID 时仍然成立。
+//
+// 普通成员与管理员的引导语义不同：管理员是默认工作区的恢复路径，现有行为会在
+// 每次启动确认其关系；普通成员只应在首次引导时加入。否则管理员把某人移出团队
+// 后，下一次 API 重启又会无声地把权限加回去。0039 的一次性标记把这两种语义
+// 分开，并与成员写入放在同一个事务里。
+func (s *ProjectStore) EnsureDefaultWorkspace(ctx context.Context, bootstrapAdminID int64, bootstrapMemberIDs ...int64) (model.Workspace, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return model.Workspace{}, err
@@ -81,8 +88,8 @@ func (s *ProjectStore) EnsureDefaultWorkspace(ctx context.Context, bootstrapUser
 
 	var workspace model.Workspace
 	var createdBy *int64
-	if bootstrapUserID > 0 {
-		createdBy = &bootstrapUserID
+	if bootstrapAdminID > 0 {
+		createdBy = &bootstrapAdminID
 	}
 	err = tx.QueryRow(ctx, `
     INSERT INTO workspaces (name, slug, created_by)
@@ -96,13 +103,43 @@ func (s *ProjectStore) EnsureDefaultWorkspace(ctx context.Context, bootstrapUser
 		return model.Workspace{}, fmt.Errorf("ensure default workspace: %w", err)
 	}
 
-	if bootstrapUserID > 0 {
+	if bootstrapAdminID > 0 {
 		if _, err := tx.Exec(ctx, `
       INSERT INTO workspace_members (workspace_id, user_id, role, created_by)
       VALUES ($1, $2, 'admin', $2)
       ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-			workspace.ID, bootstrapUserID); err != nil {
+			workspace.ID, bootstrapAdminID); err != nil {
 			return model.Workspace{}, fmt.Errorf("ensure default workspace admin: %w", err)
+		}
+	}
+	for _, memberID := range bootstrapMemberIDs {
+		if memberID <= 0 || memberID == bootstrapAdminID {
+			continue
+		}
+		// 先抢一次性引导标记。冲突表示该账号曾被加入过默认工作区：若其后被
+		// 管理员移除，必须尊重撤权而不是在重启时重新写入成员关系。
+		var markedUserID int64
+		err := tx.QueryRow(ctx, `
+      INSERT INTO workspace_bootstrap_members (workspace_id, user_id)
+      VALUES ($1, $2)
+      ON CONFLICT (workspace_id, user_id) DO NOTHING
+      RETURNING user_id`, workspace.ID, memberID).Scan(&markedUserID)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			continue
+		case err != nil:
+			return model.Workspace{}, fmt.Errorf("mark default workspace bootstrap member: %w", err)
+		}
+		var memberCreatedBy *int64
+		if bootstrapAdminID > 0 {
+			memberCreatedBy = &bootstrapAdminID
+		}
+		if _, err := tx.Exec(ctx, `
+      INSERT INTO workspace_members (workspace_id, user_id, role, created_by)
+      VALUES ($1, $2, 'member', $3)
+      ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+			workspace.ID, memberID, memberCreatedBy); err != nil {
+			return model.Workspace{}, fmt.Errorf("ensure default workspace member: %w", err)
 		}
 	}
 

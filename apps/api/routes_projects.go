@@ -234,20 +234,12 @@ func (app *application) createProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workspaceID := input.WorkspaceID
-	if workspaceID <= 0 {
-		workspace, err := app.projects.DefaultWorkspace(r.Context())
-		if err != nil {
-			app.writeAPIEntityError(w, r, err)
-			return
-		}
-		workspaceID = workspace.ID
-	} else {
-		// 显式指定工作区时必须存在，否则会写出一个引用不存在工作区的项目。
-		if _, err := app.workspaceByID(r.Context(), workspaceID); err != nil {
-			app.writeAPIEntityError(w, r, err)
-			return
-		}
+	// 项目是工作区成员才能创建的对象。只检查 workspace 是否存在是不够的：
+	// store 为创建者写入 owner 行，而项目/工作区成员是两张有意分开的表，
+	// 因此缺少这次授权会让任意登录用户把项目注入别人的工作区。
+	workspaceID, ok := app.resolveWorkspaceForMember(w, r, user.ID, input.WorkspaceID)
+	if !ok {
+		return
 	}
 
 	// 幂等处理：先查记录，命中则回放原结果。
@@ -265,12 +257,24 @@ func (app *application) createProject(w http.ResponseWriter, r *http.Request) {
 					"该请求标识已用于另一次不同的创建请求，请勿复用同一个 Idempotency-Key", nil)
 				return
 			}
-			existing, err := app.projects.GetProject(r.Context(), record.ResourceID)
+			// 幂等键不是权限凭证。项目成员可能在首次请求后被撤权，
+			// 所以回放必须重新按服务端当前成员关系授权，不能直接把旧的
+			// owner 能力位和项目正文返回出去。
+			decision, denial, message, err := app.authz.RequireProjectAccess(
+				r.Context(), record.ResourceID, user.ID, store.AuthzRead)
 			if err != nil {
 				app.writeAPIEntityError(w, r, err)
 				return
 			}
-			app.writeJSON(w, http.StatusCreated, app.projectEnvelope(existing, model.ProjectRoleOwner))
+			switch denial {
+			case store.DenialHidden:
+				app.writeAPIError(w, r, http.StatusNotFound, codeNotFound, message, nil)
+				return
+			case store.DenialForbidden:
+				app.writeAPIError(w, r, http.StatusForbidden, codeForbidden, message, nil)
+				return
+			}
+			app.writeJSON(w, http.StatusCreated, app.projectEnvelope(decision.Project, decision.Role))
 			return
 		}
 	}
@@ -665,16 +669,54 @@ func (app *application) workspaceByID(ctx context.Context, workspaceID int64) (m
 	return app.projects.GetWorkspace(ctx, workspaceID)
 }
 
+// resolveWorkspaceForMember resolves a requested workspace and requires current
+// workspace membership. Workspace membership is the minimum scope for creating a
+// project or recipe; workspace admin is deliberately not required here.
+//
+// Non-members receive a hidden 404 so callers cannot use this endpoint to probe
+// workspace existence. Keeping this check in one helper prevents project and
+// recipe creation from drifting into different authorization rules.
+func (app *application) resolveWorkspaceForMember(w http.ResponseWriter, r *http.Request, userID, requested int64) (int64, bool) {
+	workspaceID := requested
+	if workspaceID <= 0 {
+		workspace, err := app.projects.DefaultWorkspace(r.Context())
+		if err != nil {
+			app.writeAPIEntityError(w, r, err)
+			return 0, false
+		}
+		workspaceID = workspace.ID
+	}
+	decision, err := app.authz.AuthorizeWorkspace(r.Context(), workspaceID, userID, store.AuthzRead)
+	if err != nil {
+		app.writeAPIEntityError(w, r, err)
+		return 0, false
+	}
+	if !decision.IsMember {
+		app.writeStudioError(w, r, studio.NewError(studio.CodeNotFound, "未找到该工作区"))
+		return 0, false
+	}
+	return workspaceID, true
+}
+
 // bootstrapUserID 返回默认工作区的初始 admin。
 //
 // 为什么用配置文件里的管理员邮箱反查用户，而不是写死 ID：引导顺序里
 // `EnsureBootstrapUser` 已保证该用户存在，而 ID 在不同环境不同。
-// 查不到时返回 0，`EnsureDefaultWorkspace` 会跳过成员行 —— 那不阻塞启动，
-// 只是需要管理员稍后把自己加进工作区（T28 的成员管理）。
+// 查不到时返回 0，`EnsureDefaultWorkspace` 会跳过该成员行 —— 那不阻塞启动，
+// 只是需要管理员稍后通过成员管理补齐关系。
 func bootstrapUserID(ctx context.Context, app *application) int64 {
-	user, err := app.auth.GetUserByEmail(ctx, app.cfg.DefaultAdminEmail)
+	return bootstrapUserIDForEmail(ctx, app, app.cfg.DefaultAdminEmail, "默认工作区的初始管理员")
+}
+
+// bootstrapUserIDForEmail 按配置邮箱解析首启工作区成员。
+//
+// 默认普通用户也必须是工作区成员：Atelier 的今日工作、方案库和新建项目
+// 都是工作区作用域；但这条关系只授予治理范围，不会让普通用户自动获得
+// 既有项目的内容权限（项目成员仍由 project_members 单独判定）。
+func bootstrapUserIDForEmail(ctx context.Context, app *application, email, purpose string) int64 {
+	user, err := app.auth.GetUserByEmail(ctx, email)
 	if err != nil {
-		log.Printf("WARNING: 无法解析默认工作区的初始管理员（%s）: %v", app.cfg.DefaultAdminEmail, err)
+		log.Printf("WARNING: 无法解析%s（%s）: %v", purpose, email, err)
 		return 0
 	}
 	return user.ID

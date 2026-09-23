@@ -116,7 +116,9 @@ func main() {
 	//
 	// 失败**不阻断启动**：与 provider/storage 引导一致，少一个初始化步骤
 	// 不该升级为「容器起不来」；此时创建项目会返回可操作的中文提示。
-	if workspace, err := app.projects.EnsureDefaultWorkspace(ctx, bootstrapUserID(ctx, app)); err != nil {
+	bootstrapAdminID := bootstrapUserID(ctx, app)
+	bootstrapMemberID := bootstrapUserIDForEmail(ctx, app, cfg.DefaultUserEmail, "默认工作区普通成员")
+	if workspace, err := app.projects.EnsureDefaultWorkspace(ctx, bootstrapAdminID, bootstrapMemberID); err != nil {
 		log.Printf("WARNING: 默认工作区初始化失败: %v（服务继续启动，项目 API 会提示工作区未初始化）", err)
 	} else {
 		log.Printf("default workspace ensured: id=%d slug=%s", workspace.ID, workspace.Slug)

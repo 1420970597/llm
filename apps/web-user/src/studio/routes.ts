@@ -440,6 +440,27 @@ export const auxiliaryRoutes: StudioRouteMeta[] = [
     permission: 'read',
   },
   {
+    key: 'legacy.history',
+    path: '/legacy/history',
+    label: '历史资产',
+    caption: '只读查阅旧数据集、阶段记录与导出制品',
+    kind: 'auxiliary',
+    moduleStatus: 'available',
+    task: 'T31',
+    permission: 'read',
+  },
+  {
+    key: 'legacy.history.detail',
+    path: '/legacy/history/:datasetId',
+    label: '历史资产详情',
+    caption: '按旧数据集 ID 查阅迁移前记录',
+    kind: 'auxiliary',
+    moduleStatus: 'available',
+    task: 'T31',
+    navParent: 'legacy.history',
+    permission: 'read',
+  },
+  {
     key: 'activity',
     path: '/activity',
     label: '动态',
@@ -537,7 +558,7 @@ export function navVisibleRoutes(): StudioRouteMeta[] {
 /** 侧边栏菜单项（全局入口 + 辅助入口），由元数据派生。 */
 export function menuRoutes(): StudioRouteMeta[] {
   const wizardKeys = new Set(wizardRoutes.map((route) => route.key))
-  return navVisibleRoutes().filter((route) => !wizardKeys.has(route.key))
+  return navVisibleRoutes().filter((route) => !wizardKeys.has(route.key) && !route.navParent)
 }
 
 /**

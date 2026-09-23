@@ -25,8 +25,8 @@ body,
 
 body {
   font-family: Inter, 'Noto Sans CJK SC', 'Microsoft YaHei', system-ui, sans-serif;
-  color: #262631;
-  background: #faf9f6;
+  color: var(--text, #262631);
+  background: var(--bg, #faf9f6);
 }
 
 body::before {
@@ -124,6 +124,12 @@ a {
 .sidebar-workspace-plan {
   font-size: 11px;
   color: var(--semi-color-text-2);
+}
+
+.legacy-atelier-entry {
+  flex: 0 0 100%;
+  margin-top: 4px;
+  justify-content: center;
 }
 
 .sidebar-nav-section {

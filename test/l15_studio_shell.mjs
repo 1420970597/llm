@@ -209,11 +209,11 @@ record(
 )
 record(
   '每个路由都有明确的实现状态',
-  // 基础契约包含 34 条；评估/清洗两个 Atelier 辅助工作台与兼容索引
-  // 是额外入口。保留精确计数，避免整组路由被误删时「>=」仍然通过，
+  // 基础契约包含 34 条；评估/清洗两个 Atelier 辅助工作台、兼容索引
+  // 与历史资产索引/详情是额外入口。保留精确计数，避免整组路由被误删时「>=」仍然通过，
   // 同时把每个产品级入口的加入明确写进守卫，而不是让它变成隐式漂移。
-  routeBlocks.length === 37 && routeBlocks.every((block) => block.status === 'planned' || block.status === 'available'),
-  `共 ${routeBlocks.length} 条路由（34 基础 + 2 评估/清洗工作台 + 1 兼容索引）；状态缺失：${routeBlocks.filter((block) => !block.status).map((block) => block.key).join(', ') || '无'}`,
+  routeBlocks.length === 39 && routeBlocks.every((block) => block.status === 'planned' || block.status === 'available'),
+  `共 ${routeBlocks.length} 条路由（34 基础 + 2 评估/清洗工作台 + 1 兼容索引 + 2 历史资产）；状态缺失：${routeBlocks.filter((block) => !block.status).map((block) => block.key).join(', ') || '无'}`,
 )
 
 /**
@@ -374,6 +374,15 @@ record(
   '所有项目路由都能按 pathname 匹配回元数据',
   unmatched.length === 0,
   unmatched.length === 0 ? `检查了 ${deepLinks.length} 条项目路由` : `未匹配：${unmatched.join(', ')}`,
+)
+
+const historyDetailRoute = prodRoutes.matchRoute('/legacy/history/42')
+record(
+  '历史资产详情不伪装成辅助菜单项',
+  historyDetailRoute?.navParent === 'legacy.history' &&
+    !prodRoutes.menuRoutes().some((route) => route.key === 'legacy.history.detail') &&
+    prodRoutes.menuRoutes().some((route) => route.key === 'legacy.history'),
+  '详情深链仍匹配并高亮历史资产，但不会在侧栏展示占位参数 URL',
 )
 
 /**

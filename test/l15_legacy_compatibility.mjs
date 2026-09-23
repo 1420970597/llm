@@ -16,6 +16,12 @@ const app = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'App.tsx'), 
 const routes = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'legacyCapabilities.ts'), 'utf8')
 const studioRoutes = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'routes.ts'), 'utf8')
 const studioTree = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'StudioRoutes.tsx'), 'utf8')
+const cleaningView = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'views', 'CleaningView.tsx'), 'utf8')
+const toolPages = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'pages', 'LegacyToolPages.tsx'), 'utf8')
+const projectsPage = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'pages', 'ProjectsPages.tsx'), 'utf8')
+const adminPage = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'pages', 'AdminWorkspacePage.tsx'), 'utf8')
+const bridge = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'LegacyRouteBridge.tsx'), 'utf8')
+const historyPage = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'pages', 'LegacyHistoryPage.tsx'), 'utf8')
 
 const failures = []
 function record(name, ok, detail) {
@@ -79,9 +85,105 @@ record('Atelier 兼容索引有可达路由', /key:\s*'settings\.capabilities'[\
 record('兼容索引已注册页面组件', /['"]settings\.capabilities['"]:\s*\(\)\s*=>\s*<LegacyCapabilitiesPage\s*\/>/.test(studioTree), 'StudioRoutes.tsx 注册 LegacyCapabilitiesPage')
 record(
   'Atelier 下钻旧阶段时保留任务上下文',
-  studioTree.includes('const withTask = (path: string) => `${path}?taskId=${projectId}') &&
-    /stageRouteDatasetId\(search: string\)[\s\S]*?get\('taskId'\)/.test(app),
-  '兼容链接与旧壳使用同一 taskId 查询参数，避免进入后显示空任务',
+  studioTree.includes('const withProject = (next: string) => `/projects?next=') &&
+    projectsPage.includes('const requestedProjectId = parseProjectResourceId(searchParams.get(\'projectId\'))') &&
+    projectsPage.includes('studioApi.getProject(requestedProjectId)') &&
+    projectsPage.includes('const target = projectHref(projectTarget, response.id)') &&
+    projectsPage.includes('context.delete(\'next\')') &&
+    projectsPage.includes('context.delete(\'projectId\')') &&
+    projectsPage.includes('navigate(query ? `${target}?${query}` : target)'),
+  '兼容链接按项目 ID 直查，不依赖列表请求；目标跳转保留非路由控制参数，避免丢失旧数据集上下文',
+)
+record(
+  '清洗原生工作台不会把流程按钮送回旧壳',
+  cleaningView.includes('export type CleaningNavigation') &&
+    cleaningView.includes('mapCleaningFlowRoute(route, navigation)') &&
+    toolPages.includes("planning: '/new'") &&
+    toolPages.includes("results: '/deliveries'") &&
+    toolPages.includes('navigation={navigation}'),
+  '旧清洗组件保留兼容默认值，Atelier 工作台注入 /new、/projects、/deliveries 等新路径',
+)
+record(
+  '旧阶段入口选择项目后进入对应 Atelier 工作区',
+  routes.includes("nativeHref: '/projects?next=project.blueprint'") &&
+    routes.includes("nativeHref: '/projects?next=project.data'") &&
+    routes.includes("nativeHref: '/projects?next=project.quality'") &&
+    projectsPage.includes('useSearchParams') &&
+    projectsPage.includes('projectTarget') &&
+    projectsPage.includes('navigate(projectHref(projectTarget'),
+  '设计、数据和质量阶段不会只落到项目首页',
+)
+record(
+  '任务详情通过 T31 映射桥接，而非把 datasetId 当 projectId',
+  app.includes('<Route path="/console/tasks/:taskId" element={<LegacyTaskBridgeRoute />} />') &&
+    bridge.includes("`/v1/legacy/datasets/${datasetId}/project`") &&
+    bridge.includes('fillRoutePathByKey(target, { projectId })') &&
+    bridge.includes('mapping.datasetId !== datasetId') &&
+    bridge.includes("nativePathForMapping(mapping, 'project.overview')") &&
+    bridge.includes("mapping.migrationStatus !== 'mapped'") &&
+    bridge.includes('legacyHistoryPath(datasetId)'),
+  '请求映射后仅使用响应 projectId 生成项目地址；无映射/错误回退到同 id 的只读历史页',
+)
+record(
+  '旧阶段带 taskId 时进入对应历史页签，不把旧记录伪装成 Atelier 新数据',
+  app.includes('target="project.blueprint"') &&
+    app.includes('target="project.data"') &&
+    app.includes('target="project.quality"') &&
+    app.includes('target="project.releases"') &&
+    bridge.includes('legacyHistoryPathForTarget(datasetId, target)') &&
+    bridge.includes("'project.blueprint': 'structure'") &&
+    bridge.includes("'project.data': 'samples'") &&
+    bridge.includes("'project.releases': 'artifacts'") &&
+    bridge.includes("<Navigate to=\"/legacy/history\" replace />") &&
+    bridge.includes('`${legacyHistoryPath(datasetId)}?tab=${HISTORY_TAB_BY_TARGET[target]}`') &&
+    app.includes("const legacyView = location.pathname.endsWith('/legacy')"),
+  '方向、数据、质量、导出分别打开结构/样本/制品只读页签；缺上下文回到历史索引',
+)
+record(
+  '旧任务与阶段只读历史路径实际挂载',
+  studioRoutes.includes("path: '/legacy/history'") &&
+    studioRoutes.includes("path: '/legacy/history/:datasetId'") &&
+    studioTree.includes("'legacy.history': () => <LegacyHistoryRoute />") &&
+    studioTree.includes("'legacy.history.detail': () => <LegacyHistoryRoute />") &&
+    studioTree.includes('onDatasetChange={(nextId) => navigate(`/legacy/history/${nextId}?tab=overview`, { replace: true })') &&
+    studioTree.includes('{auxiliaryRoutes.map((route) =>') &&
+    historyPage.includes('client.get<LegacyProjectMapping>') &&
+    !bridge.includes('client.post(') && !bridge.includes('client.put('),
+  'Studio 路由承载历史页，历史页读取映射与真实旧资产，桥接层不发写请求',
+)
+record(
+  '普通用户旧任务详情不请求管理员专属导出映射',
+  app.includes("isAdmin ? settle(consoleApi.listExportMappings(), 'export-mappings') : Promise.resolve(null)") &&
+    app.includes('字段映射由管理员治理工作区管理'),
+  '基于实际浏览器 403 修正为角色化读取，不把权限拒绝记成静默能力失败',
+)
+record(
+  '旧详情仍可显式打开兼容视图',
+    app.includes('path="/console/tasks/:taskId/legacy" element={renderTaskDetail()}') &&
+    app.includes('navigate(`/console/tasks/${dataset.id}/legacy`)') &&
+    app.includes('>旧版操作</Button>') &&
+    app.includes("const legacyRoute = `${route.replace(/\\/$/, '')}/legacy`") &&
+    app.includes('path="/console/domains/legacy" element={renderDomains()}') &&
+    app.includes('path="/console/exports/legacy" element={renderExportStage()}'),
+  '原旧页面作为显式兼容子路由保留，默认深链则执行 T31 桥接',
+)
+record(
+  '历史资产页将可写兼容操作与只读浏览明确分离',
+  historyPage.includes('Modal.confirm({') && historyPage.includes('LEGACY_WRITES_FROZEN 配置') &&
+    historyPage.includes("okText: '打开兼容操作'") && historyPage.includes("cancelText: '留在历史页'") &&
+    historyPage.includes('onDatasetChange?.(next)') && historyPage.includes('兼容操作</Button>'),
+  '旧版操作必须二次确认，切换历史数据集同步 URL，浏览/下载仍是只读 GET',
+)
+record(
+  '管理员旧入口可直达治理标签',
+  routes.includes("#admin-governance/providers") &&
+    routes.includes("#admin-governance/storage") &&
+    routes.includes("#admin-governance/strategies") &&
+    routes.includes("#admin-governance/prompts") &&
+    routes.includes("#admin-governance/audit") &&
+    adminPage.includes('adminTabFromHash') &&
+    adminPage.includes('hashchange'),
+  'provider/storage/strategy/prompt/audit 深链接不再默认落到运行监控',
 )
 
 // Mutation self-check: removing one indexed declaration must be observable.

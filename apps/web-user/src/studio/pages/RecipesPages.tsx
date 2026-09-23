@@ -4,6 +4,7 @@ import { Button, Card, Empty, Input, Select, Spin, Tag, Typography } from '@douy
 import { AlertTriangle } from 'lucide-react'
 import { recipeApi } from '../../lib/api/studio'
 import type { Recipe, RecipeCopyResult, RecipeDetail, RecipeVersion } from '../../lib/api/studio'
+import { projectHref } from '../StudioLayout'
 
 /**
  * 方案库页面（Issue #160 T26）：列表与详情（版本、发布、以方案创建项目）。
@@ -455,7 +456,7 @@ export function RecipeDetailPage() {
                 <Button
                   size="small"
                   theme="solid"
-                  onClick={() => navigate(`/p/${createdProjectID}/overview`)}
+                  onClick={() => navigate(projectHref('project.overview', createdProjectID))}
                   data-recipe-open-project="true"
                 >
                   打开新项目

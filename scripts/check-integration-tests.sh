@@ -67,7 +67,12 @@ TestCommentsAreRevisionChainAndNotDecisions
 TestSearchOnlyAccessibleProjects
 TestLastWorkspaceAdminCannotBeRemoved
 TestRemoveWorkspaceMemberBlockedByLastProjectOwner
-TestResolveUserIDByEmail"
+TestResolveUserIDByEmail
+TestWorkspaceMemberStoreRejectsActorFromAnotherWorkspace
+TestEnsureDefaultWorkspaceDoesNotRestoreRemovedBootstrapMember
+TestCreateProjectRequiresWorkspaceMembership
+TestWorkspaceMemberUpsertCannotChangeAuthorizedScope
+TestProjectIdempotencyReplayRechecksMembership"
 
 echo "[integration] go test ./... -v -count=1"
 output_file="$(mktemp)"

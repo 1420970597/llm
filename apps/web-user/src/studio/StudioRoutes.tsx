@@ -1,6 +1,6 @@
 import { Component, useEffect, useMemo, useState } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
-import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button, Card, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle } from 'lucide-react'
 import { client } from '../lib/api'
@@ -21,6 +21,7 @@ import { RecipeDetailPage, RecipesListPage } from './pages/RecipesPages'
 import { ActivityPage, TodayPage } from './pages/TodayPages'
 import { ConnectionsPage, HelpPage, TeamPage } from './pages/SettingsPages'
 import { LegacyCapabilitiesPage } from './pages/LegacyCapabilitiesPage'
+import { LegacyHistoryPage } from './pages/LegacyHistoryPage'
 import { CleaningToolPage, EvaluationToolPage } from './pages/LegacyToolPages'
 import {
   allStudioRoutes,
@@ -71,6 +72,8 @@ const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   'settings.team': () => <TeamPage />,
   help: () => <HelpPage />,
   'settings.capabilities': () => <LegacyCapabilitiesPage />,
+  'legacy.history': () => <LegacyHistoryRoute />,
+  'legacy.history.detail': () => <LegacyHistoryRoute />,
   'tools.evaluation': () => <EvaluationToolPage />,
   'tools.cleaning': () => <CleaningToolPage />,
   // 方案库（T26）：工作区作用域的全局入口，不属于任何项目。
@@ -108,6 +111,21 @@ const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
 function WizardRoute({ step }: { step: 'basic' | 'coverage' | 'quality' }) {
   const userId = useCurrentUserId()
   return <NewProjectWizard step={step} userId={userId} />
+}
+
+function LegacyHistoryRoute() {
+  const { datasetId: pathDatasetId } = useParams()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const rawId = pathDatasetId ?? searchParams.get('datasetId')
+  const parsedId = Number(rawId)
+  const datasetId = Number.isSafeInteger(parsedId) && parsedId > 0 ? parsedId : null
+  return (
+    <LegacyHistoryPage
+      datasetId={datasetId}
+      onDatasetChange={(nextId) => navigate(`/legacy/history/${nextId}?tab=overview`, { replace: true })}
+    />
+  )
 }
 
 /**
@@ -344,26 +362,26 @@ function ModuleElement({ route }: { route: StudioRouteMeta }) {
  */
 function legacyHrefFor(route: StudioRouteMeta, projectId?: string, search = ''): string | undefined {
   if (!projectId) return undefined
-  // The legacy shell restores its active dataset from `taskId` (see
-  // stageRouteDatasetId in App.tsx). Using another name makes the link look
-  // reachable while silently dropping the project context on entry.
-  const withTask = (path: string) => `${path}?taskId=${projectId}${search ? `&${search.slice(1)}` : ''}`
+  // Project IDs and legacy dataset IDs are different identities. The project
+  // list resolves the project first, then the capability bridge uses the
+  // server-provided legacyDatasetId. Never put projectId into `taskId` here.
+  const withProject = (next: string) => `/projects?next=${encodeURIComponent(next)}&projectId=${encodeURIComponent(projectId)}${search ? `&${search.slice(1)}` : ''}`
   switch (route.key) {
     case 'project.runs':
     case 'project.pilot':
     case 'project.runNew':
-      return withTask('/console/tasks')
+      return withProject('project.runs')
     case 'project.data':
     case 'project.review':
-      return withTask('/console/results')
+      return withProject('project.data')
     case 'project.quality':
     case 'project.rules':
     case 'project.qualityNew':
-      return withTask('/console/evaluation')
+      return withProject('project.quality')
     case 'project.blueprint':
     case 'project.coverage':
     case 'project.standard':
-      return withTask('/console/domains')
+      return withProject('project.blueprint')
     default:
       return undefined
   }

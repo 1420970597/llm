@@ -22,6 +22,27 @@ const { Text, Title } = Typography
 
 const POLL_INTERVAL_MS = 5000
 
+/** Navigation targets can be remapped by the Atelier wrapper while the
+ * legacy console keeps its original URLs. The cleaning API/state remains
+ * shared; only cross-workbench links differ. */
+export type CleaningNavigation = {
+  planning: string
+  tasks: string
+  evaluation: string
+  cleaning: string
+  results: string
+  home: string
+}
+
+const LEGACY_CLEANING_NAVIGATION: CleaningNavigation = {
+  planning: '/console/planning',
+  tasks: '/console/tasks',
+  evaluation: '/console/evaluation',
+  cleaning: '/console/cleaning',
+  results: '/console/results',
+  home: '/console/home',
+}
+
 /**
  * 数据清洗模块（L14 独占实现）。
  *
@@ -37,7 +58,15 @@ const POLL_INTERVAL_MS = 5000
  * 全部数据来自真实接口，无 mock。清洗是异步任务：运行中每 5 秒轮询一次，
  * 组件卸载时清理定时器。
  */
-export function CleaningView({ datasets }: { datasets: Dataset[] }) {
+export function CleaningView({
+  datasets,
+  initialDatasetId,
+  navigation = LEGACY_CLEANING_NAVIGATION,
+}: {
+  datasets: Dataset[]
+  initialDatasetId?: number | null
+  navigation?: CleaningNavigation
+}) {
   const navigate = useNavigate()
 
   const [keywords, setKeywords] = useState<CleaningKeyword[]>([])
@@ -133,8 +162,11 @@ export function CleaningView({ datasets }: { datasets: Dataset[] }) {
       setDatasetId(null)
       return
     }
-    setDatasetId((current) => (current && datasets.some((item) => item.id === current) ? current : datasets[0].id))
-  }, [datasets])
+    setDatasetId((current) => {
+      if (initialDatasetId && datasets.some((item) => item.id === initialDatasetId)) return initialDatasetId
+      return current && datasets.some((item) => item.id === current) ? current : datasets[0].id
+    })
+  }, [datasets, initialDatasetId])
 
   useEffect(() => {
     if (!datasetId) {
@@ -211,14 +243,14 @@ export function CleaningView({ datasets }: { datasets: Dataset[] }) {
           <Title heading={2} className="!mb-0 console-page-title">拦截拒答与异常样本</Title>
           <Text className="console-page-subtitle">在数据交付前，把模型因安全限制拒答、含糊推脱或留下占位文本的样本挑出来。</Text>
         </div>
-        <CleaningFlowSteps onNavigate={(route) => navigate(route)} />
+        <CleaningFlowSteps onNavigate={(route) => navigate(mapCleaningFlowRoute(route, navigation))} />
         <Card className="console-panel" bodyStyle={{ padding: 20 }}>
           <div className="console-empty">
             <Empty description="你还没有任何任务，所以暂时没有数据可以清洗。先到「新建任务」创建任务并生成数据，再回来这里。" />
           </div>
           <Space className="mt-4">
-            <Button theme="solid" type="primary" onClick={() => navigate('/console/planning')}>去新建任务</Button>
-            <Button onClick={() => navigate('/console/home')}>回到工作台</Button>
+            <Button theme="solid" type="primary" onClick={() => navigate(navigation.planning)}>去新建任务</Button>
+            <Button onClick={() => navigate(navigation.home)}>回到工作台</Button>
           </Space>
         </Card>
       </div>
@@ -239,11 +271,11 @@ export function CleaningView({ datasets }: { datasets: Dataset[] }) {
           <Button icon={<RefreshCw size={14} />} loading={keywordsLoading || rulesLoading || runsLoading} onClick={() => void refreshAll()}>
             刷新
           </Button>
-          <Button icon={<Filter size={14} />} onClick={() => navigate('/console/results')}>去数据资产导出</Button>
+          <Button icon={<Filter size={14} />} onClick={() => navigate(navigation.results)}>去数据资产导出</Button>
         </Space>
       </div>
 
-      <CleaningFlowSteps onNavigate={(route) => navigate(route)} />
+      <CleaningFlowSteps onNavigate={(route) => navigate(mapCleaningFlowRoute(route, navigation))} />
 
       <Card className="console-panel" bodyStyle={{ padding: 20 }}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -335,9 +367,9 @@ export function CleaningView({ datasets }: { datasets: Dataset[] }) {
           清洗只改样本状态，不改写内容：被丢弃的样本不会再进入导出，被标记的样本仍可在数据资产里核对。
         </Text>
         <Space className="mt-4" wrap>
-          <Button icon={<ArrowRight size={14} />} onClick={() => navigate('/console/results')}>去数据资产导出</Button>
-          <Button onClick={() => navigate('/console/evaluation')}>回到质量评估</Button>
-          <Button onClick={() => navigate('/console/tasks')}>回到我的任务</Button>
+          <Button icon={<ArrowRight size={14} />} onClick={() => navigate(navigation.results)}>去数据资产导出</Button>
+          <Button onClick={() => navigate(navigation.evaluation)}>回到质量评估</Button>
+          <Button onClick={() => navigate(navigation.tasks)}>回到我的任务</Button>
         </Space>
       </Card>
     </div>
@@ -345,3 +377,20 @@ export function CleaningView({ datasets }: { datasets: Dataset[] }) {
 }
 
 export default CleaningView
+
+function mapCleaningFlowRoute(route: string, navigation: CleaningNavigation): string {
+  switch (route) {
+    case '/console/planning':
+      return navigation.planning
+    case '/console/tasks':
+      return navigation.tasks
+    case '/console/evaluation':
+      return navigation.evaluation
+    case '/console/cleaning':
+      return navigation.cleaning
+    case '/console/results':
+      return navigation.results
+    default:
+      return route
+  }
+}

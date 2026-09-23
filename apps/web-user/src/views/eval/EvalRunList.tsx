@@ -20,14 +20,16 @@ function samplingLabel(run: EvalRun): string {
 /** L13：评估运行列表（按数据集过滤 + 进度轮询，卸载时清理定时器）。 */
 export function EvalRunList({
   datasets,
+  initialDatasetId,
   selectedRunId,
   onSelect,
 }: {
   datasets: Dataset[]
+  initialDatasetId?: number | null
   selectedRunId: number | null
   onSelect: (runId: number) => void
 }) {
-  const [datasetId, setDatasetId] = useState<number | null>(null)
+  const [datasetId, setDatasetId] = useState<number | null>(initialDatasetId ?? null)
   const [runs, setRuns] = useState<EvalRun[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -43,6 +45,12 @@ export function EvalRunList({
       setLoading(false)
     }
   }, [datasetId])
+
+  useEffect(() => {
+    if (initialDatasetId && datasets.some((item) => item.id === initialDatasetId)) {
+      setDatasetId(initialDatasetId)
+    }
+  }, [datasets, initialDatasetId])
 
   useEffect(() => {
     setLoading(true)

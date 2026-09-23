@@ -223,6 +223,10 @@ type ProjectOverview struct {
 	TargetKind string `json:"targetKind"`
 	Status     string `json:"status"`
 	Goal       string `json:"goal"`
+	// LegacyDatasetID keeps the source identity available to the compatibility
+	// bridge. A project created natively has no legacy dataset, so the field is
+	// omitted rather than pretending the project ID is a dataset ID.
+	LegacyDatasetID *int64 `json:"legacyDatasetId,omitempty"`
 	// Versions 是各类最新版本摘要（没有则为 null，不伪造一个空版本）。
 	Versions OverviewVersions `json:"versions"`
 	// Batches 是批次事实计数（不按最大 ID 猜「当前运行」）。
@@ -288,10 +292,11 @@ func (s *Service) LoadProjectOverview(ctx context.Context, projectID int64) (Pro
 	}
 
 	overview := ProjectOverview{
-		ProjectID:  project.ID,
-		TargetKind: project.TargetKind,
-		Status:     project.Status,
-		Goal:       project.Goal,
+		ProjectID:       project.ID,
+		TargetKind:      project.TargetKind,
+		Status:          project.Status,
+		Goal:            project.Goal,
+		LegacyDatasetID: project.LegacyDatasetID,
 	}
 
 	documents, err := s.Documents.ListDocuments(ctx, projectID)

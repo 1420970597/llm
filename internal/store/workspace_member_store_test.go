@@ -102,6 +102,43 @@ func TestLastWorkspaceAdminCannotBeRemoved(t *testing.T) {
 	}
 }
 
+// TestWorkspaceMemberStoreRejectsActorFromAnotherWorkspace freezes the store
+// boundary as well as the HTTP handler boundary: an admin from workspace A
+// must not be able to mutate workspace B merely by passing B's ID.
+func TestWorkspaceMemberStoreRejectsActorFromAnotherWorkspace(t *testing.T) {
+	fixture := newMemberFixture(t)
+	ctx := context.Background()
+	var otherWorkspaceID int64
+	if err := fixture.pool.QueryRow(ctx, `
+    INSERT INTO workspaces (name, slug) VALUES ($1, $2) RETURNING id`,
+		"另一个成员测试工作区 "+fixture.suffix, "member-test-other-"+fixture.suffix).Scan(&otherWorkspaceID); err != nil {
+		t.Fatalf("seed other workspace: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = fixture.pool.Exec(context.Background(), `DELETE FROM workspace_members WHERE workspace_id = $1`, otherWorkspaceID)
+		_, _ = fixture.pool.Exec(context.Background(), `DELETE FROM workspaces WHERE id = $1`, otherWorkspaceID)
+	})
+
+	// B has its own administrator; actor adminA is only an administrator in A.
+	if _, err := fixture.members.UpsertWorkspaceMember(ctx, otherWorkspaceID, fixture.adminB,
+		fixture.adminB, model.WorkspaceRoleAdmin); err != nil {
+		t.Fatalf("seed other workspace admin: %v", err)
+	}
+	if _, err := fixture.members.UpsertWorkspaceMember(ctx, otherWorkspaceID, fixture.adminA,
+		fixture.member, model.WorkspaceRoleMember); !errors.Is(err, ErrWorkspaceMemberManageDenied) {
+		t.Fatalf("跨工作区 actor 必须被拒绝，实际 %v", err)
+	}
+	var present bool
+	if err := fixture.pool.QueryRow(ctx, `
+    SELECT EXISTS(SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2)`,
+		otherWorkspaceID, fixture.member).Scan(&present); err != nil {
+		t.Fatalf("check unauthorized member: %v", err)
+	}
+	if present {
+		t.Fatal("被拒绝的跨工作区写入不得留下成员关系")
+	}
+}
+
 // TestRemoveWorkspaceMemberBlockedByLastProjectOwner 覆盖规则 2 与规则 3。
 func TestRemoveWorkspaceMemberBlockedByLastProjectOwner(t *testing.T) {
 	fixture := newMemberFixture(t)

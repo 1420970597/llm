@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button, Card, Checkbox, Empty, Input, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, ChevronLeft, ChevronRight, Copy, Expand, Minimize2, RefreshCw, Save } from 'lucide-react'
 import { client } from '../../lib/api'
-import { projectPath, studioApi } from '../../lib/api/studio'
+import { projectNumericId, projectPath, studioApi } from '../../lib/api/studio'
 import type {
   ApiBlocker,
   Page,
@@ -15,6 +15,8 @@ import type {
   SampleVersionView,
 } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
+import { projectHref } from '../StudioLayout'
+import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
 import { CommentPanel } from '../CommentsPanel'
 import { currentActorID, enqueue, pendingCount } from '../../lib/pendingQueue'
 
@@ -180,7 +182,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
               }),
         })
         setSnapshotID(snapshot.id)
-        navigate(`/p/${scope.projectId}/releases/new?selection=${encodeURIComponent(String(snapshot.id))}`)
+        navigate(`${projectHref('project.newRelease', scope.projectId)}?selection=${encodeURIComponent(String(snapshot.id))}`)
       } catch (snapshotError) {
         setSnapshotNotice(snapshotError instanceof Error ? snapshotError.message : '冻结选择范围失败')
       }
@@ -206,6 +208,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
 
   return (
     <div className="console-page" data-studio-page={queueMode ? 'review-queue' : 'sample-list'}>
+      <LegacyCapabilityWorkbench surface="data" />
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">
@@ -370,7 +373,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
                     type="primary"
                     onClick={() =>
                       navigate(
-                        `/p/${scope.projectId}/data/${sample.resourceId}` +
+                        `${projectHref('project.sample', scope.projectId, { sampleId: sample.resourceId })}` +
                           (searchParams.toString() ? `?${searchParams.toString()}` : ''),
                       )
                     }
@@ -379,7 +382,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
                   </Button> : null}
                   <Button
                     size="small"
-                    onClick={() => navigate(`/p/${scope.projectId}/data/${sample.resourceId}/history`)}
+                    onClick={() => navigate(projectHref('project.sampleHistory', scope.projectId, { sampleId: sample.resourceId }))}
                   >
                     来源
                   </Button>
@@ -487,7 +490,8 @@ export function SampleReviewPage() {
 
   const refreshPending = useCallback(() => {
     const actorId = currentActorID()
-    setPending(actorId > 0 ? pendingCount(actorId, scope.projectId) : 0)
+    const numericProjectId = projectNumericId(scope.projectId) ?? 0
+    setPending(actorId > 0 && numericProjectId > 0 ? pendingCount(actorId, numericProjectId) : 0)
   }, [scope.projectId])
 
   useEffect(() => {
@@ -549,7 +553,7 @@ export function SampleReviewPage() {
 
   const navigateToQueueItem = useCallback((resourceId: string) => {
     const query = searchParams.toString()
-    navigate(`/p/${scope.projectId}/data/${resourceId}${query ? `?${query}` : ''}`)
+    navigate(`${projectHref('project.sample', scope.projectId, { sampleId: resourceId })}${query ? `?${query}` : ''}`)
   }, [navigate, scope.projectId, searchParams])
 
   /** 下一条 / 上一条：沿用当前筛选条件，并用服务端游标走完队列。 */
@@ -593,7 +597,7 @@ export function SampleReviewPage() {
       setSavedNotice(null)
       setReason('')
       navigate(
-        `/p/${scope.projectId}/data/${target.resourceId}` +
+        `${projectHref('project.sample', scope.projectId, { sampleId: target.resourceId })}` +
           (searchParams.toString() ? `?${searchParams.toString()}` : ''),
       )
     },
@@ -649,10 +653,15 @@ export function SampleReviewPage() {
       return
     }
     const actorId = currentActorID()
+    const numericProjectId = projectNumericId(scope.projectId) ?? 0
+    if (numericProjectId <= 0) {
+      setSubmitError('项目地址无效；不能保存判断草稿')
+      return
+    }
     const result = enqueue({
       kind: 'review_decision_draft',
       actorId,
-      workspaceId: scope.projectId,
+      workspaceId: numericProjectId,
       objectRef: `sample_version:${detail?.version.versionId ?? 0}`,
       revision: projection?.evidenceRevision ?? 0,
       payload: { body: reason.trim(), action },
@@ -731,7 +740,7 @@ export function SampleReviewPage() {
           <Button size="small" icon={<ChevronRight size={14} />} onClick={() => void goRelative('next')}>
             下一条
           </Button>
-          <Button size="small" onClick={() => navigate(`/p/${scope.projectId}/data/${sampleID}/history`)}>
+          <Button size="small" onClick={() => navigate(projectHref('project.sampleHistory', scope.projectId, { sampleId: sampleID }))}>
             版本与来源
           </Button>
           <Button
@@ -879,14 +888,14 @@ export function SampleReviewPage() {
             <Button
               size="small"
               theme="borderless"
-              onClick={() => navigate(`/p/${scope.projectId}/rules?sampleVersionId=${detail.version.versionId}`)}
+              onClick={() => navigate(`${projectHref('project.rules', scope.projectId)}?sampleVersionId=${encodeURIComponent(String(detail.version.versionId))}`)}
             >
               查看策略
             </Button>
             <Button
               size="small"
               theme="borderless"
-              onClick={() => navigate(`/p/${scope.projectId}/quality?sampleVersionId=${detail.version.versionId}`)}
+              onClick={() => navigate(`${projectHref('project.quality', scope.projectId)}?sampleVersionId=${encodeURIComponent(String(detail.version.versionId))}`)}
             >
               完整评估
             </Button>
@@ -1009,10 +1018,10 @@ export function SampleReviewPage() {
           </div>
 
           {/* 评论面板（T27）：锚定**当前内容版本**，与判断分开 —— 讨论不改处置。 */}
-          {detail?.version?.versionId ? (
+          {detail?.version?.versionId && projectNumericId(scope.projectId) ? (
             <div className="mt-3">
               <CommentPanel
-                projectId={scope.projectId}
+                projectId={projectNumericId(scope.projectId) ?? 0}
                 anchorKind="sample_version"
                 anchorId={detail.version.versionId}
               />

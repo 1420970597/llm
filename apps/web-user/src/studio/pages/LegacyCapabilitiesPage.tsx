@@ -4,6 +4,7 @@ import { Card, Tag, Typography } from '@douyinfe/semi-ui'
 import { ArrowUpRight, ShieldCheck } from 'lucide-react'
 import { client } from '../../lib/api'
 import { legacyRouteGroups, legacyRoutes } from '../legacyCapabilities'
+import { AdminWorkspacePage } from './AdminWorkspacePage'
 
 /**
  * Transitional directory for capabilities that still live in the legacy
@@ -26,6 +27,17 @@ export function LegacyCapabilitiesPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!isAdmin || !window.location.hash.startsWith('#admin-governance')) return
+    // The governance section is role-gated and therefore appears after the
+    // first render. Scroll after React has committed it so admin deep links
+    // land on the requested workspace instead of the top of the index.
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('admin-governance')?.scrollIntoView({ block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [isAdmin])
+
   const visibleRoutes = useMemo(
     () => legacyRoutes.filter((route) => !route.adminOnly || isAdmin),
     [isAdmin],
@@ -43,6 +55,7 @@ export function LegacyCapabilitiesPage() {
 
       {legacyRouteGroups.map((group) => {
         const entries = visibleRoutes.filter((route) => route.group === group.key)
+        if (entries.length === 0) return null
         return (
           <section key={group.key} className="mb-4" data-legacy-group={group.key}>
             <div className="mb-2 flex items-center gap-2">
@@ -77,6 +90,16 @@ export function LegacyCapabilitiesPage() {
           </section>
         )
       })}
+
+      {isAdmin ? (
+        <section id="admin-governance" className="mt-6" style={{ scrollMarginTop: 88 }} data-legacy-admin-workspace="true">
+          <div className="mb-3">
+            <Title heading={5} className="!mb-1">管理员治理工作区</Title>
+            <Text type="tertiary">以下操作已在 Atelier 内提供真实表单；旧版 admin 深链接仍保留用于书签和脚本兼容。</Text>
+          </div>
+          <AdminWorkspacePage />
+        </section>
+      ) : null}
     </div>
   )
 }

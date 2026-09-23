@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { Button, Card, Spin, Typography } from '@douyinfe/semi-ui'
 import { RefreshCw } from 'lucide-react'
 import { consoleApi, type Dataset } from '../../lib/api'
-import { CleaningView } from '../../views/CleaningView'
+import { CleaningView, type CleaningNavigation } from '../../views/CleaningView'
 import { EvaluationView } from '../../views/EvaluationView'
 
 const { Title, Text } = Typography
@@ -92,13 +93,16 @@ function DatasetLoadingState({
 /** Atelier 原生入口：多模型评估、维度管理、运行与报告。 */
 export function EvaluationToolPage() {
   const { datasets, loading, error, reload } = useLegacyDatasets()
+  const [searchParams] = useSearchParams()
+  const requestedDatasetId = Number(searchParams.get('datasetId'))
+  const initialDatasetId = Number.isSafeInteger(requestedDatasetId) && requestedDatasetId > 0 ? requestedDatasetId : null
   return (
     <LegacyToolFrame
       title="评估工作台"
       description="从评估维度与裁判配置，到运行进度、逐条证据和最终报告，完整保留原有质量评估能力。"
     >
       <DatasetLoadingState loading={loading} error={error} onReload={() => void reload()} />
-      {!loading && !error ? <EvaluationView datasets={datasets} /> : null}
+      {!loading && !error ? <EvaluationView datasets={datasets} initialDatasetId={initialDatasetId} /> : null}
     </LegacyToolFrame>
   )
 }
@@ -106,13 +110,24 @@ export function EvaluationToolPage() {
 /** Atelier 原生入口：关键词/规则配置、异步扫描与命中报告。 */
 export function CleaningToolPage() {
   const { datasets, loading, error, reload } = useLegacyDatasets()
+  const [searchParams] = useSearchParams()
+  const requestedDatasetId = Number(searchParams.get('datasetId'))
+  const initialDatasetId = Number.isSafeInteger(requestedDatasetId) && requestedDatasetId > 0 ? requestedDatasetId : null
+  const navigation: CleaningNavigation = {
+    planning: '/new',
+    tasks: '/projects',
+    evaluation: '/tools/evaluation',
+    cleaning: '/tools/cleaning',
+    results: '/deliveries',
+    home: '/today',
+  }
   return (
     <LegacyToolFrame
       title="清洗工作台"
       description="配置拒答关键词和清洗规则，发起真实扫描，查看命中证据并把干净结果送往交付。"
     >
       <DatasetLoadingState loading={loading} error={error} onReload={() => void reload()} />
-      {!loading && !error ? <CleaningView datasets={datasets} /> : null}
+      {!loading && !error ? <CleaningView datasets={datasets} initialDatasetId={initialDatasetId} navigation={navigation} /> : null}
     </LegacyToolFrame>
   )
 }

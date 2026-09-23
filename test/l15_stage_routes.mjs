@@ -16,8 +16,8 @@
  * 所以拆成两层：
  *   - **源码级断言（默认，exit code 由此决定）**：只读 App.tsx 源码文本求值，
  *     不需要容器、不需要 DOM、不需要网络。CI 直接跑它。
- *     覆盖：#61 自指重定向形态、5 个阶段路由必须渲染页面、render* 不得成死代码、
- *     stageRouteNavMap 必须由阶段工作台声明派生、以及 **route→navParent 取值正确性**。
+ *     覆盖：#61 自指重定向形态、默认阶段路由进入 T31 只读桥、旧操作页仅显式
+ *     /legacy 可达、stageRouteNavMap 派生和 **route→navParent 取值正确性**。
  *   - **真实 API + 渲染级断言（--with-api，可选）**：起候选容器后跑，
  *     验证打的是本 lane 的镜像，并用 esbuild + SSR 真实渲染页面。
  *     未启用时输出 [SKIP]，**不影响 exit code**。
@@ -53,8 +53,8 @@
  *      产品源码一个字节都不改（下面有 selfCheckSeedIsMinimal 逐行证明）。
  *
  *   3. 「URL 未被重定向」在 SSR 下的可观测形式：
- *      - 决定性证据：若某阶段路由的 element 是 <Navigate>，SSR 下该路由渲染 null，
- *        阶段页标题就不可能出现。所以「阶段页标题出现」直接证伪了重定向。
+ *      - T31 后，默认旧阶段路由有意跳入只读历史桥；静态断言验证目标组件，
+ *        并确认旧操作页只在显式 /legacy 子路由挂载。
  *      - 辅助证据：在 MemoryRouter 内挂一个读取 useLocation() 的回显组件，
  *        输出路由解析后的真实 pathname，断言它等于请求的路径。
  *      - 静态证据：直接断言 5 条阶段 <Route> 的 element 里没有 <Navigate>，
@@ -92,11 +92,11 @@ const WITH_API = process.argv.includes('--with-api')
  * 这正是本 lane 要锁定的一致性不变量（契约 §2 R1 行的冻结范围）。
  */
 const STAGE_ROUTES = [
-  { route: '/console/domains', navParent: '/console/tasks', label: '主题结构', title: '生成主题结构并完成确认' },
-  { route: '/console/questions', navParent: '/console/results', label: '问题生成', title: '题目生成结果中心' },
-  { route: '/console/reasoning', navParent: '/console/results', label: '答案内容', title: '答案与思路结果中心' },
-  { route: '/console/rewards', navParent: '/console/results', label: '质量评估', title: '质量评分结果中心' },
-  { route: '/console/exports', navParent: '/console/results', label: '导出交付', title: '导出结果中心' },
+  { route: '/console/domains', legacyRoute: '/console/domains/legacy', target: 'project.blueprint', navParent: '/console/tasks', label: '主题结构' },
+  { route: '/console/questions', legacyRoute: '/console/questions/legacy', target: 'project.data', navParent: '/console/results', label: '问题生成' },
+  { route: '/console/reasoning', legacyRoute: '/console/reasoning/legacy', target: 'project.data', navParent: '/console/results', label: '答案内容' },
+  { route: '/console/rewards', legacyRoute: '/console/rewards/legacy', target: 'project.quality', navParent: '/console/results', label: '质量评估' },
+  { route: '/console/exports', legacyRoute: '/console/exports/legacy', target: 'project.releases', navParent: '/console/results', label: '导出交付' },
 ]
 
 /** 任务详情页在 SSR 下（无 activeDataset）的特征，阶段页不得出现。 */
@@ -159,7 +159,7 @@ function extractRouteElement(source, route) {
  */
 function problemsWithStageRoutes(source) {
   const problems = []
-  for (const { route } of STAGE_ROUTES) {
+  for (const { route, legacyRoute, target } of STAGE_ROUTES) {
     const element = extractRouteElement(source, route)
     if (element === null) {
       problems.push(`${route} 在路由表中缺失`)
@@ -167,6 +167,13 @@ function problemsWithStageRoutes(source) {
     }
     if (element.includes('<Navigate')) {
       problems.push(`${route} 的 element 是 <Navigate>（自指重定向，issue #61 原形态）`)
+    }
+    if (!element.includes(`<LegacyStageBridgeRoute target="${target}" />`)) {
+      problems.push(`${route} 默认路由未进入 T31 只读历史桥`)
+    }
+    const legacyElement = extractRouteElement(source, legacyRoute)
+    if (!legacyElement || !legacyElement.startsWith('render')) {
+      problems.push(`${legacyRoute} 未保留显式旧操作工作台`)
     }
   }
   return problems
@@ -410,13 +417,14 @@ try {
   const userLabels = extractArrayField(source, 'userPages', 'label') ?? []
   userRoutes.forEach((r, i) => sidebarLabels.set(r, userLabels[i]))
 
-  for (const { route, navParent, label, title } of STAGE_ROUTES) {
+  for (const { route, navParent, label, target } of STAGE_ROUTES) {
     const html = render(route)
     const name = route.replace('/console/', '')
 
-    const titlePresent = html.includes(title)
-    record(`[${name}] 渲染出本阶段页面标题「${title}」`, titlePresent,
-      titlePresent ? '阶段页内容存在（若为 <Navigate>，SSR 下会渲染 null，此处不会命中）' : '未命中阶段页标题')
+    const element = extractRouteElement(source, route)
+    const bridgePresent = element?.includes(`<LegacyStageBridgeRoute target="${target}" />`) ?? false
+    record(`[${name}] 默认阶段进入只读历史桥`, bridgePresent,
+      bridgePresent ? '默认入口使用 T31 桥接；旧写操作仅通过 /legacy 显式进入' : '未找到预期桥接目标')
 
     const echo = html.match(/<span id="l15-location">([^<]*)<\/span>/)
     record(`[${name}] 路由解析后 pathname 未被重定向`, echo?.[1] === route,

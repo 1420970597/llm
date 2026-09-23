@@ -360,11 +360,12 @@ func TestEnsureDefaultWorkspaceIsIdempotent(t *testing.T) {
 	store := NewProjectStore(pool)
 
 	userID := seedStudioUser(t, pool, "default-ws-admin")
-	first, err := store.EnsureDefaultWorkspace(ctx, userID)
+	memberID := seedStudioUser(t, pool, "default-ws-member")
+	first, err := store.EnsureDefaultWorkspace(ctx, userID, memberID)
 	if err != nil {
 		t.Fatalf("first EnsureDefaultWorkspace: %v", err)
 	}
-	second, err := store.EnsureDefaultWorkspace(ctx, userID)
+	second, err := store.EnsureDefaultWorkspace(ctx, userID, memberID)
 	if err != nil {
 		t.Fatalf("second EnsureDefaultWorkspace: %v", err)
 	}
@@ -381,6 +382,67 @@ func TestEnsureDefaultWorkspaceIsIdempotent(t *testing.T) {
 	}
 	if !isMember || role != model.WorkspaceRoleAdmin {
 		t.Fatalf("初始管理员必须是 workspace admin，实际 isMember=%v role=%q", isMember, role)
+	}
+
+	memberRole, isMember, err := store.WorkspaceRole(ctx, second.ID, memberID)
+	if err != nil {
+		t.Fatalf("WorkspaceRole(member): %v", err)
+	}
+	if !isMember || memberRole != model.WorkspaceRoleMember {
+		t.Fatalf("默认普通用户必须是 workspace member，实际 isMember=%v role=%q", isMember, memberRole)
+	}
+}
+
+// TestEnsureDefaultWorkspaceAllowsMemberBootstrapWithoutAdmin guards the
+// degraded first-start path: an unavailable admin lookup must not turn the
+// nullable audit actor into user id 0 and roll back the ordinary member.
+func TestEnsureDefaultWorkspaceAllowsMemberBootstrapWithoutAdmin(t *testing.T) {
+	pool := newStudioTestPool(t)
+	ctx := context.Background()
+	store := NewProjectStore(pool)
+	memberID := seedStudioUser(t, pool, "default-ws-member-no-admin")
+
+	workspace, err := store.EnsureDefaultWorkspace(ctx, 0, memberID)
+	if err != nil {
+		t.Fatalf("EnsureDefaultWorkspace without admin: %v", err)
+	}
+	role, isMember, err := store.WorkspaceRole(ctx, workspace.ID, memberID)
+	if err != nil {
+		t.Fatalf("WorkspaceRole(member): %v", err)
+	}
+	if !isMember || role != model.WorkspaceRoleMember {
+		t.Fatalf("member bootstrap must succeed without admin, actual isMember=%v role=%q", isMember, role)
+	}
+}
+
+// TestEnsureDefaultWorkspaceDoesNotRestoreRemovedBootstrapMember proves that
+// the convenient default-user onboarding does not turn an explicit removal
+// into a temporary permission that vanishes on the next API restart.
+func TestEnsureDefaultWorkspaceDoesNotRestoreRemovedBootstrapMember(t *testing.T) {
+	pool := newStudioTestPool(t)
+	ctx := context.Background()
+	store := NewProjectStore(pool)
+	adminID := seedStudioUser(t, pool, "default-ws-revoke-admin")
+	memberID := seedStudioUser(t, pool, "default-ws-revoke-member")
+
+	workspace, err := store.EnsureDefaultWorkspace(ctx, adminID, memberID)
+	if err != nil {
+		t.Fatalf("initial EnsureDefaultWorkspace: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+    DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`, workspace.ID, memberID); err != nil {
+		t.Fatalf("remove bootstrap member: %v", err)
+	}
+
+	if _, err := store.EnsureDefaultWorkspace(ctx, adminID, memberID); err != nil {
+		t.Fatalf("restart EnsureDefaultWorkspace: %v", err)
+	}
+	_, isMember, err := store.WorkspaceRole(ctx, workspace.ID, memberID)
+	if err != nil {
+		t.Fatalf("WorkspaceRole after removal: %v", err)
+	}
+	if isMember {
+		t.Fatal("显式移除的默认普通成员不得在 API 重启后被重新授予工作区权限")
 	}
 }
 

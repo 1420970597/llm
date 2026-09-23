@@ -97,6 +97,7 @@ import { buildLoginPath, resolveLoginRedirect } from './lib/authRedirect'
 import { APP_BUILD_TIME, APP_VERSION_SHORT, APP_VERSION_UNKNOWN } from './buildInfo'
 import { CleaningView } from './views/CleaningView'
 import { studioRouteTree } from './studio/StudioRoutes'
+import { LegacyStageBridgeRoute, LegacyTaskBridgeRoute } from './studio/LegacyRouteBridge'
 import { EvaluationView } from './views/EvaluationView'
 
 const { Title, Text } = Typography
@@ -562,18 +563,19 @@ function stageRouteDatasetId(search: string) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-// stageRouteWithTask 把当前任务 id 附到阶段路由上（?taskId=NN）。
+// stageRouteWithTask 把当前任务 id 附到显式旧版阶段页（/legacy?taskId=NN）。
 //
-// 这样用户从任务详情页跳到阶段页后，**刷新或直接访问该 URL 仍能恢复任务上下文**；
+// 这样新壳中的阶段链接不会误入 T31 默认只读桥接；旧版操作页刷新时也能恢复任务上下文。
 // 没有选中任务时原样返回路由（保持全局导航语义，不伪造 taskId）。
 function stageRouteWithTask(route: string, datasetId: number | null | undefined) {
   if (!route.startsWith('/console/')) return route
   if (!datasetId) return route
-  return `${route}${route.includes('?') ? '&' : '?'}taskId=${datasetId}`
+  const legacyRoute = `${route.replace(/\/$/, '')}/legacy`
+  return `${legacyRoute}${legacyRoute.includes('?') ? '&' : '?'}taskId=${datasetId}`
 }
 
 function taskRouteDatasetId(pathname: string) {
-  const matched = pathname.match(/^\/console\/tasks\/(\d+)(?:\/)?$/)
+  const matched = pathname.match(/^\/console\/tasks\/(\d+)(?:\/legacy)?\/?$/)
   if (!matched) return null
   const parsed = Number(matched[1])
   return Number.isFinite(parsed) ? parsed : null
@@ -867,37 +869,34 @@ function LoginPage({
   }
 
   return (
-    <div className="console-login-shell flex items-center justify-center px-4 py-10">
-      <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[1.2fr,0.8fr]">
-        <Card className="console-panel" bodyStyle={{ padding: 28 }}>
-          <span className="console-chip">企业数据工厂</span>
-          <Title heading={1} className="!mb-0 mt-4">先创建任务，再持续推进交付。</Title>
-          <Text className="mt-4 block console-page-subtitle">
-            控制台按「工作台 → 新建任务 → 我的任务 → 数据资产」组织。
-            登录后先创建任务，再继续推进和交付。
-          </Text>
-          <div className="console-card-grid-2 mt-6">
+    <div className="atelier-login-shell">
+      <div className="atelier-login-frame">
+        <section className="atelier-login-hero" aria-labelledby="atelier-login-title">
+          <div className="atelier-login-brand"><span className="atelier-login-brand__mark">A</span><span>Atelier</span><small>数据项目工作室</small></div>
+          <div className="eyebrow">DATA PROJECT STUDIO</div>
+          <h1 id="atelier-login-title">从目标，到可交付的数据版本。</h1>
+          <p>把设计、试制、审阅和发布放在一个可追溯的项目旅程里。</p>
+          <div className="atelier-login-principles">
             {[
-              { icon: CirclePlus, title: '新建任务前置', text: '主入口更醒目' },
-              { icon: Target, title: '任务推进清晰', text: '已有任务从「我的任务」继续' },
-              { icon: HardDriveDownload, title: '结果集中看', text: '交付与复核集中' },
-              { icon: ShieldCheck, title: '状态持续可见', text: '登录后可接续进度' },
+              { icon: CirclePlus, title: '先定义目标', text: '规模、覆盖与质量边界先说清楚。' },
+              { icon: Target, title: '独立试制', text: '用小批结果验证方案，再决定扩量。' },
+              { icon: ShieldCheck, title: '证据驱动', text: '样本、判断和版本始终可追溯。' },
+              { icon: HardDriveDownload, title: '固定交付', text: '发布后文件与数据卡不可变。' },
             ].map((item) => (
-              <Card key={item.title} className="console-quick-card" bodyStyle={{ padding: 18 }}>
-                <div className="feature-icon"><item.icon size={18} strokeWidth={1.9} /></div>
-                <Title heading={5} className="!mb-0 mt-4">{item.title}</Title>
-                <Text className="mt-2 block console-caption">{item.text}</Text>
-              </Card>
+              <div key={item.title} className="atelier-login-principle">
+                <div className="atelier-login-principle__icon"><item.icon size={17} strokeWidth={1.9} /></div>
+                <div><strong>{item.title}</strong><span>{item.text}</span></div>
+              </div>
             ))}
           </div>
-        </Card>
+        </section>
 
-        <Card className="console-login-card" bodyStyle={{ padding: 28 }}>
-          <div className="flex items-center gap-3">
-            <div className="feature-icon"><Users size={18} strokeWidth={1.9} /></div>
+        <section className="atelier-login-form" aria-labelledby="atelier-login-form-title">
+          <div className="atelier-login-form__heading">
+            <div className="atelier-login-form__icon"><Users size={18} strokeWidth={1.9} /></div>
             <div>
-              <Title heading={4} className="!mb-0">登录你的账号</Title>
-              <Text className="console-caption">先进入工作台，再从新建任务或我的任务开始</Text>
+              <Title heading={4} className="!mb-0" id="atelier-login-form-title">进入 Atelier</Title>
+              <Text className="console-caption">登录后从「今日工作」开始。</Text>
             </div>
           </div>
           {signal ? (
@@ -1480,7 +1479,7 @@ export default function App() {
       settle(consoleApi.questionDifficultyStats(datasetId), 'difficulty-stats'),
       settle(consoleApi.listGrpo(datasetId), 'grpo'),
       settle(consoleApi.listSft(datasetId), 'sft'),
-      settle(consoleApi.listExportMappings(), 'export-mappings'),
+      isAdmin ? settle(consoleApi.listExportMappings(), 'export-mappings') : Promise.resolve(null),
       settle(consoleApi.listGenerationRuns(datasetId), 'generation-runs'),
       settle(consoleApi.exportFormats(datasetId), 'export-formats'),
     ])
@@ -1491,7 +1490,7 @@ export default function App() {
     setExportMappings(mappings ?? [])
     setGenerationRuns(runs ?? [])
     setExportFormats(formats)
-  }, [])
+  }, [isAdmin])
 
   useEffect(() => {
     let active = true
@@ -1519,10 +1518,14 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return
-    // 优先认任务详情路由（/console/tasks/{id}）；
-    // 其次认阶段路由上的 ?taskId=NN —— 否则直接打开/刷新阶段路由会丢上下文
-    //（这正是 #104「数据资产页拿不到交付文件」的隐藏成因）。
-    const routeDatasetId = taskRouteDatasetId(location.pathname) ?? stageRouteDatasetId(location.search)
+    // T31 default routes resolve through the Atelier mapping bridge and must
+    // not eagerly hydrate old dataset state. Explicit `/legacy` compatibility
+    // routes still restore task/stage context for users intentionally using
+    // the former read/operation screens.
+    const legacyView = location.pathname.endsWith('/legacy')
+    const routeDatasetId = legacyView
+      ? taskRouteDatasetId(location.pathname) ?? stageRouteDatasetId(location.search)
+      : null
     if (!routeDatasetId) return
     if (routeDatasetId === activeDatasetId && graph?.dataset.id === routeDatasetId) return
     void loadDatasetWorkspace(routeDatasetId)
@@ -2490,7 +2493,10 @@ export default function App() {
                       <Tag color="blue">任务 #{dataset.id}</Tag>
                       <Tag color={dataset.id === activeDatasetId ? 'green' : 'cyan'}>{dataset.id === activeDatasetId ? '当前任务' : statusLabel(dataset.status)}</Tag>
                     </Space>
-                    <Button size="small" onClick={() => navigate(`/console/tasks/${dataset.id}`)}>{dataset.id === activeDatasetId ? '进入详情' : '继续任务'}</Button>
+                    <Space>
+                      <Button size="small" onClick={() => navigate(`/console/tasks/${dataset.id}`)}>{dataset.id === activeDatasetId ? '进入 Atelier 项目' : '继续到 Atelier'}</Button>
+                      <Button size="small" theme="borderless" onClick={() => navigate(`/console/tasks/${dataset.id}/legacy`)}>旧版操作</Button>
+                    </Space>
                   </div>
                   <Text className="mt-2 block" strong>{dataset.name}</Text>
                   <Text className="mt-1 block console-caption">{dataset.rootKeyword} · 更新于 {formatTime(dataset.updatedAt)}</Text>
@@ -2652,7 +2658,9 @@ export default function App() {
         badgeColor: (exportFormats?.formats?.length || exportMappings.length > 0 ? 'green' : 'grey') as 'green' | 'grey',
         description: '查看支持的导出格式与字段映射配置，决定导出时用哪套字段；可直接发起一次真实导出。',
         statusText: exportFormats?.formats?.length
-          ? `可用格式：${exportFormats.formats.slice(0, 8).join('、')}；已配置 ${exportMappings.length} 套字段映射`
+          ? isAdmin
+            ? `可用格式：${exportFormats.formats.slice(0, 8).join('、')}；已配置 ${exportMappings.length} 套字段映射`
+            : `可用格式：${exportFormats.formats.slice(0, 8).join('、')}；字段映射由管理员治理工作区管理`
           : '尚无格式/字段映射；需要先在管理后台配置。',
         actionLabel: '按默认格式导出',
         run: async () => {
@@ -2913,14 +2921,14 @@ export default function App() {
                 <span>问题</span>
                 <Space>
                   <Tag color={warningQuestionCount > 0 ? 'orange' : 'green'}>{warningQuestionCount > 0 ? `${warningQuestionCount} 待关注` : '正常'}</Tag>
-                  <Button size="small" onClick={() => navigate('/console/questions')}>查看</Button>
+                  <Button size="small" onClick={() => navigate(stageRouteWithTask('/console/questions', activeDataset?.id))}>查看</Button>
                 </Space>
               </div>
               <div className="console-summary-row">
                 <span>答案</span>
                 <Space>
                   <Tag color={missingReasoningCount > 0 ? 'orange' : 'green'}>{missingReasoningCount > 0 ? `${missingReasoningCount} 缺失` : '完整'}</Tag>
-                  <Button size="small" onClick={() => navigate('/console/reasoning')}>查看</Button>
+                  <Button size="small" onClick={() => navigate(stageRouteWithTask('/console/reasoning', activeDataset?.id))}>查看</Button>
                 </Space>
               </div>
             </div>
@@ -2929,14 +2937,14 @@ export default function App() {
                 <span>评分</span>
                 <Space>
                   <Tag color={lowRewardCount > 0 ? 'red' : 'green'}>{lowRewardCount > 0 ? `${lowRewardCount} 低分` : '稳定'}</Tag>
-                  <Button size="small" onClick={() => navigate('/console/rewards')}>查看</Button>
+                  <Button size="small" onClick={() => navigate(stageRouteWithTask('/console/rewards', activeDataset?.id))}>查看</Button>
                 </Space>
               </div>
               <div className="console-summary-row">
                 <span>交付包</span>
                 <Space>
                   <Tag color={deliveryArtifactCount > 0 ? 'green' : 'grey'}>{deliveryArtifactCount > 0 ? `${deliveryArtifactCount} 个` : '待生成'}</Tag>
-                  <Button size="small" onClick={() => navigate('/console/exports')}>查看</Button>
+                  <Button size="small" onClick={() => navigate(stageRouteWithTask('/console/exports', activeDataset?.id))}>查看</Button>
                 </Space>
               </div>
             </div>
@@ -2944,7 +2952,7 @@ export default function App() {
           <Space className="mt-4" wrap>
             <Button onClick={() => void loadDatasetWorkspace(activeDataset.id, '任务状态已刷新')}>刷新状态</Button>
             <Button onClick={() => navigate('/console/help')}>恢复指引</Button>
-            {deliveryArtifactCount > 0 ? <Button theme="solid" type="primary" onClick={() => navigate('/console/exports')}>进入导出中心</Button> : null}
+            {deliveryArtifactCount > 0 ? <Button theme="solid" type="primary" onClick={() => navigate(stageRouteWithTask('/console/exports', activeDataset?.id))}>进入导出中心</Button> : null}
           </Space>
         </Card>
       </div>
@@ -4199,7 +4207,7 @@ export default function App() {
         path="/login"
         element={
           user ? (
-            <Navigate to="/console/tasks" replace />
+            <Navigate to={loginRedirect} replace />
           ) : (
             <LoginPage
               onSubmit={handleLogin}
@@ -4225,6 +4233,7 @@ export default function App() {
         path="/*"
         element={
           user ? (
+            location.pathname === '/console' || location.pathname.startsWith('/console/') ? (
             <div className="app-layout">
               <div className="app-layout__banners">
                 {trustSignal ? (
@@ -4241,9 +4250,18 @@ export default function App() {
                     <div className="sidebar-workspace-header">
                       <Avatar color="blue" size="small">L</Avatar>
                       <div className="sidebar-workspace-info">
-                        <div className="sidebar-workspace-name">企业数据工厂</div>
-                        <div className="sidebar-workspace-plan">{isAdmin ? '管理员' : '普通用户'}</div>
+                        <div className="sidebar-workspace-name">兼容控制台</div>
+                        <div className="sidebar-workspace-plan">旧版入口 · {isAdmin ? '管理员' : '普通用户'}</div>
                       </div>
+                      <Button
+                        size="small"
+                        theme="light"
+                        type="primary"
+                        className="legacy-atelier-entry"
+                        onClick={() => navigate('/today')}
+                      >
+                        返回 Atelier
+                      </Button>
                     </div>
                     <div className="sidebar-nav-section">
                       <Card className="console-sidebar-card mb-3" bodyStyle={{ padding: 12 }}>
@@ -4385,17 +4403,23 @@ export default function App() {
                       <Route path="/console/home" element={renderOverview()} />
                       <Route path="/console/overview" element={<Navigate to="/console/home" replace />} />
                       <Route path="/console/tasks" element={renderTaskIndex()} />
-                      <Route path="/console/tasks/:taskId" element={renderTaskDetail()} />
+                      <Route path="/console/tasks/:taskId" element={<LegacyTaskBridgeRoute />} />
+                      <Route path="/console/tasks/:taskId/legacy" element={renderTaskDetail()} />
                       <Route path="/console/planning" element={renderPlanning()} />
                       <Route path="/console/results" element={renderResultsHub()} />
                       <Route path="/console/evaluation" element={<EvaluationView datasets={datasets} />} />
                       <Route path="/console/cleaning" element={<CleaningView datasets={datasets} />} />
                       {isAdmin ? <Route path="/console/operations" element={renderOperations()} /> : null}
-                      <Route path="/console/domains" element={renderDomains()} />
-                      <Route path="/console/questions" element={renderQuestionStage()} />
-                      <Route path="/console/reasoning" element={renderReasoningStage()} />
-                      <Route path="/console/rewards" element={renderRewardStage()} />
-                      <Route path="/console/exports" element={renderExportStage()} />
+                      <Route path="/console/domains" element={<LegacyStageBridgeRoute target="project.blueprint" />} />
+                      <Route path="/console/domains/legacy" element={renderDomains()} />
+                      <Route path="/console/questions" element={<LegacyStageBridgeRoute target="project.data" />} />
+                      <Route path="/console/questions/legacy" element={renderQuestionStage()} />
+                      <Route path="/console/reasoning" element={<LegacyStageBridgeRoute target="project.data" />} />
+                      <Route path="/console/reasoning/legacy" element={renderReasoningStage()} />
+                      <Route path="/console/rewards" element={<LegacyStageBridgeRoute target="project.quality" />} />
+                      <Route path="/console/rewards/legacy" element={renderRewardStage()} />
+                      <Route path="/console/exports" element={<LegacyStageBridgeRoute target="project.releases" />} />
+                      <Route path="/console/exports/legacy" element={renderExportStage()} />
                       <Route path="/console/help" element={renderHelp()} />
                       {isAdmin ? <Route path="/console/admin/providers" element={renderProviders()} /> : null}
                       {isAdmin ? <Route path="/console/admin/storage" element={renderStorage()} /> : null}
@@ -4407,8 +4431,11 @@ export default function App() {
               </div>
               <div className="app-layout__aside" />
             </div>
+            ) : (
+              <Navigate to="/today" replace />
+            )
           ) : (
-            <Navigate to="/login" replace />
+            <Navigate to={buildLoginPath(location.pathname, location.search, location.hash)} replace />
           )
         }
       />
