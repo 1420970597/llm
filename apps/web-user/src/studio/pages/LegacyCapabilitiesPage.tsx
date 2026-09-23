@@ -60,9 +60,17 @@ export function LegacyCapabilitiesPage() {
                     </div>
                     <Tag size="small" color="grey">{entry.status === 'compat' ? '兼容旧版' : 'Atelier 原生'}</Tag>
                   </div>
-                  <Link className="console-link mt-3 inline-flex items-center gap-1" to={entry.route}>
-                    打开旧版入口 <ArrowUpRight size={14} aria-hidden />
-                  </Link>
+                  {entry.note ? <Text type="tertiary" size="small" className="block mt-3">{entry.note}</Text> : null}
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    {entry.nativeHref ? (
+                      <Link className="console-link inline-flex items-center gap-1" to={entry.nativeHref}>
+                        在 Atelier 中打开 <ArrowUpRight size={14} aria-hidden />
+                      </Link>
+                    ) : null}
+                    <Link className="console-link inline-flex items-center gap-1" to={entry.indexHref ?? entry.route}>
+                      {entry.visibility === 'detail' ? '进入我的任务' : entry.indexHref ? '先选择任务' : '打开兼容入口'} <ArrowUpRight size={14} aria-hidden />
+                    </Link>
+                  </div>
                 </Card>
               ))}
             </div>

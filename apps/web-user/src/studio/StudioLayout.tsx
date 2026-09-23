@@ -6,6 +6,8 @@ import {
   BookOpen,
   ChevronRight,
   Compass,
+  Filter,
+  FlaskConical,
   FolderCog,
   HardDriveDownload,
   LayoutDashboard,
@@ -56,6 +58,8 @@ const GLOBAL_ICONS: Record<string, LucideIcon> = {
 }
 
 const AUXILIARY_ICONS: Record<string, LucideIcon> = {
+  'tools.evaluation': FlaskConical,
+  'tools.cleaning': Filter,
   activity: Activity,
   'settings.connections': FolderCog,
   'settings.team': Users,
@@ -293,9 +297,13 @@ export function Breadcrumbs({ items }: { items: { label: string; path?: string }
 }
 
 /** 供页面引用的路由构造器（避免各处手写 `/p/${id}/...`）。 */
-export function projectHref(key: string, projectId: number | string): string {
+export function projectHref(
+  key: string,
+  projectId: number | string,
+  extra: Record<string, string | number> = {},
+): string {
   try {
-    return fillRoutePathByKey(key, { projectId })
+    return fillRoutePathByKey(key, { projectId, ...extra })
   } catch {
     return fillRoutePathByKey('projects', {})
   }

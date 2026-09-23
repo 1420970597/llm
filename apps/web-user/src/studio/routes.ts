@@ -420,6 +420,26 @@ export const wizardRoutes: StudioRouteMeta[] = [
  */
 export const auxiliaryRoutes: StudioRouteMeta[] = [
   {
+    key: 'tools.evaluation',
+    path: '/tools/evaluation',
+    label: '评估工作台',
+    caption: '维度、裁判、运行与质量报告',
+    kind: 'auxiliary',
+    moduleStatus: 'available',
+    task: 'T32',
+    permission: 'read',
+  },
+  {
+    key: 'tools.cleaning',
+    path: '/tools/cleaning',
+    label: '清洗工作台',
+    caption: '关键词、规则、扫描与命中报告',
+    kind: 'auxiliary',
+    moduleStatus: 'available',
+    task: 'T32',
+    permission: 'read',
+  },
+  {
     key: 'activity',
     path: '/activity',
     label: '动态',

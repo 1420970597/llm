@@ -5,6 +5,7 @@ import { Button, Card, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle } from 'lucide-react'
 import { client } from '../lib/api'
 import type { User } from '../lib/api'
+import { buildLoginPath } from '../lib/authRedirect'
 import { CapabilityNotice } from './CapabilityNotice'
 import { ProjectLayout } from './ProjectLayout'
 import { StudioLayout } from './StudioLayout'
@@ -20,6 +21,7 @@ import { RecipeDetailPage, RecipesListPage } from './pages/RecipesPages'
 import { ActivityPage, TodayPage } from './pages/TodayPages'
 import { ConnectionsPage, HelpPage, TeamPage } from './pages/SettingsPages'
 import { LegacyCapabilitiesPage } from './pages/LegacyCapabilitiesPage'
+import { CleaningToolPage, EvaluationToolPage } from './pages/LegacyToolPages'
 import {
   allStudioRoutes,
   auxiliaryRoutes,
@@ -69,6 +71,8 @@ const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   'settings.team': () => <TeamPage />,
   help: () => <HelpPage />,
   'settings.capabilities': () => <LegacyCapabilitiesPage />,
+  'tools.evaluation': () => <EvaluationToolPage />,
+  'tools.cleaning': () => <CleaningToolPage />,
   // 方案库（T26）：工作区作用域的全局入口，不属于任何项目。
   recipes: () => <RecipesListPage />,
   'recipe.detail': () => <RecipeDetailPage />,
@@ -267,8 +271,7 @@ function AuthenticatedShell({
   const location = useLocation()
   if (!user) {
     // 带上来源路径：登录后能回到用户原本要打开的对象（深链接语义）。
-    const next = encodeURIComponent(`${location.pathname}${location.search}`)
-    return <Navigate to={`/login?next=${next}`} replace />
+    return <Navigate to={buildLoginPath(location.pathname, location.search, location.hash)} replace />
   }
   return <StudioErrorBoundary onLogout={onLogout}>{children}</StudioErrorBoundary>
 }
@@ -341,7 +344,10 @@ function ModuleElement({ route }: { route: StudioRouteMeta }) {
  */
 function legacyHrefFor(route: StudioRouteMeta, projectId?: string, search = ''): string | undefined {
   if (!projectId) return undefined
-  const withTask = (path: string) => `${path}?task=${projectId}${search ? `&${search.slice(1)}` : ''}`
+  // The legacy shell restores its active dataset from `taskId` (see
+  // stageRouteDatasetId in App.tsx). Using another name makes the link look
+  // reachable while silently dropping the project context on entry.
+  const withTask = (path: string) => `${path}?taskId=${projectId}${search ? `&${search.slice(1)}` : ''}`
   switch (route.key) {
     case 'project.runs':
     case 'project.pilot':
