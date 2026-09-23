@@ -1,23 +1,42 @@
 # LLM Data Factory · Atelier 数据项目工作室
 
-一个面向企业级使用场景的 LLM 数据项目工作室：从目标、版本化设计、独立试制、质量判断到固定发布，形成可复核、可恢复、可交付的完整旅程。
+一个面向企业级使用场景的 LLM 数据项目工作室，目标是把目标、版本化设计、独立试制、质量判断和固定发布串成可复核、可恢复、可交付的完整旅程。当前代码已落地主线壳、项目 API 和兼容入口；真实 provider、灰度回退和真实用户验收仍按 Issue #160 保持未完成，见[当前验收边界](#81-当前验收边界)。
 
-本仓库当前产品主线是 **Atelier 数据项目工作室**，严格按 [Issue #160](https://github.com/1420970597/llm/issues/160) 与 [Discussion #159](https://github.com/1420970597/llm/discussions/159) 实现。旧版控制台仍保留兼容入口，但不再作为新产品的信息架构标准。
+本仓库当前产品主线是 **Atelier 数据项目工作室**，按 [Issue #160](https://github.com/1420970597/llm/issues/160) 与 [Discussion #159](https://github.com/1420970597/llm/discussions/159) 的契约推进。旧版控制台仍保留兼容入口，但不再作为新产品的信息架构标准；实现状态和未完成验收项以 `docs/plans/atelier-implementation.md` 为准。
 
 ## Atelier 重设计实拍
 
-下面的截图来自本分支执行 `docker compose up -d --build` 后的真实浏览器，尺寸为桌面
-`1440×1024`、移动 `390×844`。它们是运行证据，不是原型图；没有样本/发布数据的页面会诚实呈现空状态。
+下面的截图来自本分支执行 `docker compose up -d --build` 后、通过正式入口
+`http://127.0.0.1:3210` 打开的真实浏览器，尺寸为桌面 `1440×1024`、移动
+`390×844`。它们是运行证据，不是原型图；没有样本/发布数据的页面会诚实呈现空状态。
 
-![W01 今日工作：目标、证据、交付](docs/screenshots/atelier-redesign/today-desktop.png)
+`3210` 是系统的规范 Web 入口，由根目录 Compose 配置统一发布（只有显式设置 `WEB_USER_PORT` 时才改变映射）。不要使用临时端口或旧工作树启动第二套前端；验收、截图和日常开发都必须从 `http://127.0.0.1:3210` 进入。
 
-![W01 今日工作：390px 响应式](docs/screenshots/atelier-redesign/today-mobile.png)
+![Atelier 登录入口](docs/screenshots/atelier-redesign/login-3210-desktop.png)
+
+![W01 今日工作：目标、证据、交付](docs/screenshots/atelier-redesign/today-3210-desktop.png)
+
+![W01 今日工作：390px 响应式](docs/screenshots/atelier-redesign/today-3210-mobile.png)
 
 | 页面 | 设计意图 | 运行截图 |
 | --- | --- | --- |
-| P01 项目概览 | 把旅程、项目约定、下一决定和版本台账放在同一上下文 | ![P01](docs/screenshots/atelier-redesign/overview-desktop.png) |
-| P02 生产蓝图 | 左侧有限语义画布，右侧步骤检查器，底部只读版本历史 | ![P02](docs/screenshots/atelier-redesign/blueprint-desktop.png) |
-| L03 发布版本 | 候选、阻塞、数据卡和固定制品按 release 分层 | ![L03](docs/screenshots/atelier-redesign/releases-desktop.png) |
+| P01 项目概览 | 把旅程、项目约定、下一决定和版本台账放在同一上下文 | ![P01](docs/screenshots/atelier-redesign/overview-3210-desktop.png) |
+| P02 生产蓝图 | 左侧有限语义画布，右侧步骤检查器，底部只读版本历史 | ![P02](docs/screenshots/atelier-redesign/blueprint-3210-desktop.png) |
+| L03 发布版本 | 候选、阻塞、数据卡和固定制品按 release 分层 | ![L03](docs/screenshots/atelier-redesign/releases-3210-desktop.png) |
+
+### 辅助工作台与旧能力迁移边界
+
+主线页面之外，评估、清洗和管理员治理也已经从同一个 Atelier 壳进入，仍调用原有真实 API；旧版
+`/console/*` 深链继续保留。下面是同一次 Compose 启动后的真实运行画面，管理员治理包含模型服务、存储、
+策略、提示词、导出映射和审计，普通用户截图则明确不显示管理员区。
+
+| 页面 | 关键交互 | 运行截图 |
+| --- | --- | --- |
+| 评估工作台 | 维度、创建评估、运行列表、报告与真实数据 | ![评估工作台](docs/screenshots/atelier-redesign/evaluation-3210-desktop.png) |
+| 清洗工作台 | 关键词、规则、扫描、命中证据与交付跳转 | ![清洗工作台](docs/screenshots/atelier-redesign/cleaning-3210-desktop.png) |
+| 管理治理 | 运行监控、连接配置、导出映射编辑器与审计 | ![管理治理](docs/screenshots/atelier-redesign/admin-governance-3210-desktop.png) |
+| 导出映射编辑器 | 字段增删、表达式、JSON 选项校验和复制内置映射 | ![映射编辑器](docs/screenshots/atelier-redesign/admin-mapping-editor-3210-desktop.png) |
+| 普通用户移动端 | 390px 抽屉导航与角色隔离 | ![普通用户移动端](docs/screenshots/atelier-redesign/capabilities-user-3210-mobile.png) |
 
 登录、旧控制台兼容页和设计图册仍保留在 `docs/screenshots/` 与
 `docs/design/2026-09-21-data-studio/`，但不作为 Atelier 的视觉验收证据。
@@ -67,6 +86,9 @@
 - 奖励数据生成任务触发与预览
 - 导出任务触发与工件预览
 - 运行态统计查看
+- 原生评估工作台：维度管理、评估创建、运行队列、逐条证据与报告
+- 原生清洗工作台：关键词/规则 CRUD、阶段选择、异步扫描与命中报告
+- `/settings/capabilities` 兼容索引：20 个旧入口均有新目标和旧深链
 
 ### 统一控制台中的管理员能力
 - 模型提供方管理
@@ -80,6 +102,7 @@
   - 支持启用 / 停用开关
 - 生成策略管理
 - Prompt 模板管理
+- 导出映射管理：格式/训练类型、字段表达式、选项 JSON、默认映射和内置映射复制
 - 审计日志查看
 
 ### 后端与基础设施
@@ -303,6 +326,8 @@ curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
 6. 在“发布”冻结候选范围，逐项处理 blocker，再构建带 manifest、hash 和数据卡的 release。
 7. 从“交付库”按具体 `releaseId` 下载不可变制品；后续项目修改不会改变历史下载。
 
+SFT 与 GRPO 共用项目壳和批次生命周期，但 GRPO 的档位、逐档判据、质量维度和 JSONL 字段保持独立；不会用 SFT 的 `answer/reasoning` 或固定统计填充 GRPO。旧 Dataset/Console 链路只作为兼容读写边界，迁移状态与未等价能力见[兼容入口与迁移边界](#辅助工作台与旧能力迁移边界)。
+
 ### 6.2 系统治理流程
 管理员在连接、存储、成员与角色、预算和帮助页面维护工作区；管理员身份不自动绕过项目成员授权。
 连接测试、保存配置、成员变更和发布操作分别写入审计事件，密钥不会进入版本快照或数据卡。
@@ -317,6 +342,12 @@ curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
 - 存储配置
 - 生成策略
 - Prompt 模板
+- Atelier 工作区、项目、成员与项目授权
+- 蓝图/覆盖/标准/质量策略/映射的不可变版本
+- pilot/scale 批次、作业租约、样本与追加式样本版本
+- 质量实验、规则证据、人工判断、同基准比较与采用记录
+- release 候选、冻结清单、manifest、制品 hash、方案库与交付索引
+- 动态/评论、预算与用量台账、旧数据导入台账和灰度健康读模型
 - 数据集元数据
 - 领域/问题/推理/奖励记录元数据
 - 审计日志
@@ -332,7 +363,7 @@ curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
 保存：
 - 推理长文本 JSON
 - 奖励数据 JSON
-- 导出 JSONL 工件
+- 旧版导出与 Atelier release 的不可变导出工件（对象路径带 release/hash）
 
 ---
 
@@ -340,11 +371,21 @@ curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
 
 ### 8.0 本次 Compose + 真实浏览器验收
 
-- 使用 `docker compose up -d --build` 实际构建并启动 API、Worker、Web、PostgreSQL、Redis、MinIO。
+- 使用 `docker compose up -d --build` 实际构建并启动 API、Worker、Web、PostgreSQL、Redis、MinIO；Web 通过默认 `3210` 端口访问。
 - 真实浏览器登录后访问 `/today`、`/projects`、`/p/1/overview`、`/p/1/blueprint`、`/p/1/review`、`/p/1/releases`。
 - 已保存 `1440×1024` 桌面端和 `390×844` 移动端截图，并在本文开头展示。
 - 已验证全局四入口、项目六标签、深链接面包屑、P02 节点检查器和 L03 空发布态。
+- 已验证 `/tools/evaluation`、`/tools/cleaning` 的真实数据、规则/维度操作区和 390px 无横向溢出；管理员治理页的
+  七个标签、导出映射字段编辑器、空名称/JSON 校验和 `#admin-governance` 深链接均已实测。
 - 当前数据库没有真实样本、实验或 release，因此 D02/L03 的有内容状态没有被伪造；截图中的空状态是实际 API 返回。
+
+Atelier 不会以新菜单为理由静默抹去旧入口。辅助入口 `/settings/capabilities` 逐项标出原生能力、只读历史、
+旧工具和未等价迁移边界。20 个旧路由（含别名与任务详情）仍可解析；在 `/console/tasks` 选择具体任务后，
+可分别进入映射后的 Atelier 项目或显式“旧版操作”工作台。旧版阶段操作链接保留 `taskId` 并打开兼容子路由；
+默认旧深链仍由 T31 映射桥接，未映射时落到只读历史页。服务端 `LEGACY_WRITES_FROZEN` 决定旧写请求是否拒绝，
+因此旧页面可达不代表旧写操作始终开放；旧历史资产页始终只读。`test/l15_legacy_compatibility.mjs` 对入口、
+映射和只读回退设有门禁。评估与清洗继续以旧 dataset 为上下文，项目质量实验/规则不是其一对一替代；
+难度统计、旧图谱写入、旧标准编辑等明确未等价迁移的能力不会被描述成已完成。
 
 ### 8.1 当前验收边界
 
@@ -364,6 +405,12 @@ curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
 | `docs/architecture/round2-remediation.md` | **第二轮缺陷治理**：修复语义、新不变量与运维影响 |
 | `docs/guides/eval-and-cleaning-usage.md` | 评估与清洗的使用说明 |
 | `docs/plans/issue-remediation-plan.md` | 第二轮冻结契约（lane 划分与跨 lane 接口） |
+| `docs/plans/atelier-implementation.md` | #159 → #160 的 39 屏、路由、命令、对象、迁移和任务追踪表 |
+| `docs/plans/atelier-api-contract.md` | Atelier API 信封、错误、分页、能力和增量端点契约 |
+| `docs/plans/atelier-acceptance-protocol.md` | 真实用户任务、角色旅程和 DoD 证据记录模板（未执行项明确标注） |
+| `docs/plans/atelier-field-schema-and-retention.md` | 样本/导出字段、版本语义、保留策略与未知边界 |
+| `docs/plans/studio-rollout-runbook.md` | 开关、部署顺序、观测、灰度、回退和故障处理 |
+| `docs/plans/legacy-migration-report.md` | 旧 Dataset 盘点、映射、导入和对账边界 |
 
 运维需重点读 `docs/architecture/round2-remediation.md`，它记录了本轮引入的
 **新不变量**（活跃 run 唯一约束、`invalid` 记录状态、阶段路由单一事实来源）与
@@ -381,12 +428,12 @@ curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
 - API 镜像构建
 - Worker 镜像构建
 - 前端镜像构建
-- PostgreSQL + Redis + MinIO + API + Worker 端到端真实链路验证
+- PostgreSQL + Redis + MinIO + API + Worker 的 Compose 健康状态与旧版兼容链路烟雾验证（不等同于 Atelier 的真实 provider 全旅程）
 - 通过 `http://127.0.0.1:3210/api/...` 的同源代理验证
 - 登录鉴权：`/api/v1/auth/login`、`/api/v1/auth/me`、`/api/v1/auth/logout`
 - 统一控制台真实链路脚本：`python3 scripts/frontend_same_origin_smoke.py http://127.0.0.1:3210`
 
-已验证的完整链路包括：
+已验证的旧版兼容业务链路包括：
 - 管理员角色配置模型提供方
 - 管理员角色配置存储配置
 - 管理员角色配置生成策略
@@ -408,10 +455,12 @@ curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
 - 通过统一控制台同源 `/api` 完成管理员配置与用户数据链路
 - 验证结果：`domainCount=10`、`questionCount=20`、`reasoningCount=20`、`rewardCount=20`、`artifactCount=1`、`runtimeQueueDepth=0`
 
-当前数据库状态：
+截图采集时的数据库状态（不是对所有部署环境的永久保证）：
 - 已清空验收阶段残留的临时业务数据
 - 当前不再预置模型提供方、存储配置、生成策略、Prompt 模板、数据集、问题、推理、奖励、导出工件
 - 登录账号保留，用于进入统一控制台
+
+本地联调、集成测试或其他用户操作可能会改变这些数据；需要重新得到空状态时，请按[维护说明](#131-清理临时验收数据)执行清理脚本，不要把截图中的空状态当成业务约束。
 
 ---
 
@@ -498,7 +547,7 @@ docker compose down -v
 
 ## 12. 后续建议
 
-虽然当前系统已经完成从计划到导出的完整闭环，但仍建议继续做：
+旧版 `/console/*` 仍保留从计划到导出的兼容链路；Atelier 主线已经接入真实项目 API 和页面路由，但这不等于 Issue #160 的全部生产验收已经完成。后续工作包括：
 
 - 管理端代码分割与包体优化
 - 更完整的浏览器端自动化测试
