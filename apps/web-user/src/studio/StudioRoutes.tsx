@@ -19,6 +19,7 @@ import { DeliveriesPage, ReleaseCardPage, ReleaseNewPage, ReleasesListPage } fro
 import { RecipeDetailPage, RecipesListPage } from './pages/RecipesPages'
 import { ActivityPage, TodayPage } from './pages/TodayPages'
 import { ConnectionsPage, HelpPage, TeamPage } from './pages/SettingsPages'
+import { LegacyCapabilitiesPage } from './pages/LegacyCapabilitiesPage'
 import {
   allStudioRoutes,
   auxiliaryRoutes,
@@ -67,6 +68,7 @@ const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   'settings.connections': () => <ConnectionsPage />,
   'settings.team': () => <TeamPage />,
   help: () => <HelpPage />,
+  'settings.capabilities': () => <LegacyCapabilitiesPage />,
   // 方案库（T26）：工作区作用域的全局入口，不属于任何项目。
   recipes: () => <RecipesListPage />,
   'recipe.detail': () => <RecipeDetailPage />,
