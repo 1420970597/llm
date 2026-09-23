@@ -93,6 +93,7 @@ import {
   describeArtifactType,
   describeDomainReviewStatus,
 } from './lib/enumLabels'
+import { buildLoginPath, resolveLoginRedirect } from './lib/authRedirect'
 import { APP_BUILD_TIME, APP_VERSION_SHORT, APP_VERSION_UNKNOWN } from './buildInfo'
 import { CleaningView } from './views/CleaningView'
 import { studioRouteTree } from './studio/StudioRoutes'
@@ -904,39 +905,55 @@ function LoginPage({
               <TrustSignalCard signal={signal} onDismiss={onDismissSignal} onNavigate={onNavigate} />
             </div>
           ) : null}
-          <div className="mt-5 grid gap-4">
-            <div>
-              <Text className="mb-2 block font-medium">邮箱</Text>
+          <form
+            className="mt-5 grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              handleSubmit()
+            }}
+          >
+            <div className={clsx({ 'atelier-login-field--error': Boolean(fieldError.email) })}>
+              <label className="atelier-login-field-label" htmlFor="atelier-login-email">邮箱</label>
               <Input
+                id="atelier-login-email"
+                name="email"
                 value={email}
                 onChange={(value) => { setEmail(value); if (fieldError.email) setFieldError((c) => ({ ...c, email: undefined })) }}
                 size="large"
                 placeholder="请输入邮箱"
+                autoComplete="username"
+                aria-invalid={Boolean(fieldError.email)}
+                aria-describedby={fieldError.email ? 'atelier-login-email-error' : undefined}
               />
-              {fieldError.email ? <Text className="mt-2 block" type="danger">{fieldError.email}</Text> : null}
+              {fieldError.email ? <Text id="atelier-login-email-error" className="atelier-login-field-error" type="danger" role="alert">{fieldError.email}</Text> : null}
             </div>
-            <div>
-              <Text className="mb-2 block font-medium">密码</Text>
+            <div className={clsx({ 'atelier-login-field--error': Boolean(fieldError.password) })}>
+              <label className="atelier-login-field-label" htmlFor="atelier-login-password">密码</label>
               <Input
+                id="atelier-login-password"
+                name="password"
                 value={password}
                 onChange={(value) => { setPassword(value); if (fieldError.password) setFieldError((c) => ({ ...c, password: undefined })) }}
                 mode="password"
                 size="large"
                 placeholder="请输入密码"
+                autoComplete="current-password"
+                aria-invalid={Boolean(fieldError.password)}
+                aria-describedby={fieldError.password ? 'atelier-login-password-error' : undefined}
                 onEnterPress={handleSubmit}
               />
-              {fieldError.password ? <Text className="mt-2 block" type="danger">{fieldError.password}</Text> : null}
+              {fieldError.password ? <Text id="atelier-login-password-error" className="atelier-login-field-error" type="danger" role="alert">{fieldError.password}</Text> : null}
             </div>
-            <Button theme="solid" type="primary" size="large" loading={loading} onClick={handleSubmit}>
-进入我的任务
+            <Button theme="solid" type="primary" size="large" loading={loading} htmlType="submit" aria-label="进入今日工作">
+              进入今日工作
             </Button>
+          </form>
+          <div className="atelier-login-form__notes">
+            <div><span>默认落点</span><strong>今日工作</strong></div>
+            <div><span>项目主线</span><strong>设计 → 试制 → 审阅 → 发布</strong></div>
+            <div><span>旧控制台</span><strong>保留为兼容入口</strong></div>
           </div>
-          <div className="mt-6 console-summary-grid">
-            <div className="console-summary-row"><span>登录后第一步</span><Text strong>先点击「新建任务」</Text></div>
-            <div className="console-summary-row"><span>已有任务</span><Text strong>从「我的任务」继续</Text></div>
-            <div className="console-summary-row"><span>交付完成后</span><Text strong>去「数据资产」查看和下载</Text></div>
-          </div>
-        </Card>
+        </section>
       </div>
     </div>
   )
@@ -945,6 +962,7 @@ function LoginPage({
 export default function App() {
   const location = useLocation()
   const navigate = useNavigate()
+  const loginRedirect = resolveLoginRedirect(location.search)
   const [sessionLoading, setSessionLoading] = useState(true)
   const [authSubmitting, setAuthSubmitting] = useState(false)
   const [bootstrapLoading, setBootstrapLoading] = useState(false)
@@ -1516,17 +1534,19 @@ export default function App() {
   useEffect(() => {
     if (sessionLoading) return
     if (!user && location.pathname !== '/login') {
-      navigate('/login', { replace: true })
+      navigate(buildLoginPath(location.pathname, location.search, location.hash), { replace: true })
       return
     }
     if (user && location.pathname === '/login') {
-      navigate('/console/tasks', { replace: true })
+      // Atelier is the product entry point. The legacy console remains available
+      // only through an explicit /console URL during the compatibility period.
+      navigate(loginRedirect, { replace: true })
       return
     }
     if (user && !isAdmin && location.pathname.startsWith('/console/admin/')) {
-      navigate('/console/tasks', { replace: true })
+      navigate(loginRedirect, { replace: true })
     }
-  }, [isAdmin, location.pathname, navigate, sessionLoading, user])
+  }, [isAdmin, location.hash, location.pathname, location.search, loginRedirect, navigate, sessionLoading, user])
 
   const handleLogin = async (email: string, password: string) => {
     setAuthSubmitting(true)
@@ -1535,7 +1555,7 @@ export default function App() {
       setUser(result.user)
       setTrustSignal(null)
       Toast.success(`欢迎回来，${result.user.email}`)
-      navigate('/console/tasks', { replace: true })
+      navigate(loginRedirect, { replace: true })
     } catch (error) {
       const message = (error as Error).message
       setTrustSignal({
