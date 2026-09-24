@@ -98,7 +98,7 @@ jobs:
           failed=0
           for t in stage_routes silent_guards capability_entries legacy_compatibility capability_coverage markdown_ui recipes_empty_state detail_context auth_redirect nmx_params \
                    artifact_download dataset_status app_ux cleaning_ux studio_shell studio_entrypoint studio_wizard \
-                   studio_review studio_browser_router offline_queue team_permissions; do
+                   studio_review studio_browser_router deployment_version offline_queue team_permissions; do
             f="test/l15_${t}.mjs"
             [ -f "$f" ] || { echo "缺少冻结测试 $f"; failed=1; continue; }
             echo "=== $f ==="
@@ -140,7 +140,10 @@ jobs:
       - name: compose config
         run: docker compose config >/dev/null
       - name: Boot stack
-        run: docker compose up -d --build
+        run: |
+          export GIT_SHA="$(git rev-parse HEAD)"
+          export BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          docker compose up -d --build
       - name: Wait for api + worker health
         run: |
           for i in $(seq 1 60); do
@@ -158,6 +161,8 @@ jobs:
           echo "::error::api did not become healthy"
           docker compose logs --tail=200
           exit 1
+      - name: Verify deployed frontend version
+        run: ./scripts/check-deployed-version.sh "http://127.0.0.1:${WEB_USER_PORT:-3210}"
       # T32：不能只 `\dt`（那只证明「有表」）。必须核对
       #   * schema_migrations 与 sql/migrations 目录**一一对应**
       #     —— 少记一条会在下次启动时重复执行迁移；

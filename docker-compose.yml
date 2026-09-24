@@ -8,8 +8,12 @@
 # 通过根入口 include 子文件后，compose 的 project 目录就是仓库根，
 # .env 插值、env_file 相对路径、内置默认值三者行为一致。
 #
-# 统一用（在仓库根执行）：
-#   docker compose up -d --build
+# 统一启动（在仓库根执行）：
+#   make compose-up
+#
+# Makefile 入口会把当前 HEAD 与 UTC 构建时间注入 web-user 镜像，确保
+# /version.json 可以自证部署内容。若直接调用 docker compose，需显式传入
+# GIT_SHA 与 BUILD_TIME；Compose 不会执行 git/date 命令替换。
 #   docker compose down
 #
 # name 固定为 llm：与冻结契约 docs/plans/issue-remediation-plan.md 及 test/ 下

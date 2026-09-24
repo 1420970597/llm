@@ -1,5 +1,7 @@
 # 统一走仓库根入口，确保 .env 插值与 env_file 一致（见根 docker-compose.yml 注释）
 COMPOSE := docker compose
+GIT_SHA ?= $(shell git rev-parse HEAD 2>/dev/null || printf unknown)
+BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 .PHONY: install build web-build compose-config compose-up compose-down compose-logs docker-prune go-test-docker db-migrate-smoke legacy-inventory legacy-import
 
@@ -15,7 +17,7 @@ compose-config:
 	$(COMPOSE) config
 
 compose-up:
-	$(COMPOSE) up -d --build
+	GIT_SHA="$(GIT_SHA)" BUILD_TIME="$(BUILD_TIME)" $(COMPOSE) up -d --build
 
 compose-down:
 	$(COMPOSE) down
