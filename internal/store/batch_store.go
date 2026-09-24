@@ -266,6 +266,9 @@ func validateBatchExecutionSnapshot(input model.CreateBatchInput, config model.B
 			Message: fmt.Sprintf("必须为 0（使用连接默认）或不小于 %d", model.GenerationMinTokens),
 		})
 	}
+	if len(errs) == 0 {
+		return nil
+	}
 	return errs
 }
 

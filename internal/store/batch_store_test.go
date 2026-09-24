@@ -258,6 +258,7 @@ func TestBatchSnapshotIsFrozenAgainstNewBlueprint(t *testing.T) {
 
 	// 保存一个新蓝图版本，把并发从 8 改成 16。
 	newBlueprint := blueprintPayload(fixture.coverageID, fixture.standardID)
+	newBlueprint.Nodes.Generation.ModelConnectionID = 1
 	newBlueprint.Nodes.Rules.QualityPolicyVersionID = fixture.policyID
 	newBlueprint.Nodes.Delivery.MappingVersionID = fixture.mappingID
 	newBlueprint.Nodes.Delivery.Format = model.ExportFormatJSONL
@@ -908,6 +909,7 @@ func TestConcurrentBatchCreationDoesNotShareState(t *testing.T) {
 
 	// 两份蓝图，并发数不同 —— 若扫描缓冲被共享，配置会串。
 	other := blueprintPayload(fixture.coverageID, fixture.standardID)
+	other.Nodes.Generation.ModelConnectionID = 1
 	other.Nodes.Rules.QualityPolicyVersionID = fixture.policyID
 	other.Nodes.Delivery.MappingVersionID = fixture.mappingID
 	other.Nodes.Delivery.Format = model.ExportFormatJSONL
