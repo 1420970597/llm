@@ -121,13 +121,13 @@ func BlueprintNodeSpecs() []BlueprintNodeSpec {
 			Key:          BlueprintNodeCoverage,
 			PayloadField: "coverage",
 			Label:        "覆盖范围",
-			Caption:      "引用覆盖版本：稳定领域/方向 ID、配额、难度配比与来源",
+			Caption:      "确定要覆盖哪些领域和方向，以及每个方向要产出多少内容",
 			Availability: NodeAvailabilityAvailable,
 			Task:         "T04、T11",
 			Fields: []NodeFieldSpec{
 				{
 					Name: "coverageVersionId", Label: "覆盖版本", Kind: FieldKindID, Required: true,
-					Help: "引用版本行 ID。删除草稿方向不会破坏已引用的版本 —— 引用的不是数组下标。",
+					Help: "选择一份已保存的覆盖方案；后续调整不会影响已经运行的批次。",
 				},
 			},
 		},
@@ -135,21 +135,21 @@ func BlueprintNodeSpecs() []BlueprintNodeSpec {
 			Key:          BlueprintNodeStandard,
 			PayloadField: "standard",
 			Label:        "思维标准",
-			Caption:      "引用标准版本：可排序步骤与每步检查点",
+			Caption:      "定义内容应该怎样思考，以及每一步完成前要检查什么",
 			Availability: NodeAvailabilityAvailable,
 			Task:         "T04、T11",
 			Fields: []NodeFieldSpec{
 				{
 					Name: "standardVersionId", Label: "标准版本", Kind: FieldKindID, Required: true,
-					Help: "标准步骤的顺序会被执行侧沿用，因此排序必须显式保存为新版本。",
+					Help: "步骤顺序会被生产过程沿用；调整顺序后请保存为新的标准版本。",
 				},
 				{
 					// 草稿期内联步骤：允许先把步骤写下来再保存为标准版本。
 					// 一旦 standardVersionId 非零，服务端以被引用版本为准
 					//（见 BlueprintStandardNode 的注释），因此它**不是**执行前必填 ——
 					// 必填会让「引用已有标准」这种正常用法被拦下。
-					Name: "steps", Label: "内联步骤（草稿）", Kind: FieldKindJSON, Required: false,
-					Help: "保存为标准版本前可在此直接编辑步骤；已引用标准版本时以被引用版本为准。",
+					Name: "steps", Label: "思考步骤（可直接编辑）", Kind: FieldKindJSON, Required: false,
+					Help: "可以先写下步骤和检查点；选择标准版本后，生产时以被引用版本为准。",
 				},
 			},
 		},
@@ -157,29 +157,29 @@ func BlueprintNodeSpecs() []BlueprintNodeSpec {
 			Key:          BlueprintNodeGeneration,
 			PayloadField: "generation",
 			Label:        "生成",
-			Caption:      "模型连接（非秘密标识）、输出 schema、并发与输出上限",
+			Caption:      "决定系统使用哪个模型服务，以及每次生成的数量和边界",
 			// 生成节点在 T12 接通执行侧；配置本身在 T11 就可保存与校验。
 			Availability:       NodeAvailabilityAvailable,
 			Task:               "T11、T12",
 			RequiresGeneration: true,
 			Fields: []NodeFieldSpec{
 				{
-					Name: "modelConnectionId", Label: "模型连接", Kind: FieldKindID, Required: true,
-					Help: "只存连接 ID，不存明文密钥 —— 快照与账目都不允许出现凭证。",
+					Name: "modelConnectionId", Label: "模型服务", Kind: FieldKindID, Required: true,
+					Help: "选择已启用的模型服务；密钥只保存在连接设置中。",
 				},
 				{Name: "modelVersion", Label: "模型版本", Kind: FieldKindString, Required: false},
 				{
-					Name: "schemaVersion", Label: "样本 schema", Kind: FieldKindEnum, Required: true,
+					Name: "schemaVersion", Label: "输出内容类型", Kind: FieldKindEnum, Required: true,
 					Options: []string{"sft.sample.v1", "grpo.sample.v1"},
-					Help:    "SFT 用 reasoning，GRPO 用 judge_prompt/levels/level_rubrics；两者结构不同，不能混用。",
+					Help:    "SFT 适合指令微调，GRPO 适合带评分标准的偏好评估；两种结构不同。",
 				},
 				{
 					Name: "concurrency", Label: "并发", Kind: FieldKindInt, Required: true, Min: 1, Max: 32,
 					Help: "1–32。更高的并发会被预算预留与供应商限流拦住，而不是在这里放开。",
 				},
 				{
-					Name: "maxTokens", Label: "输出上限", Kind: FieldKindInt, Required: true,
-					Help: "必须显式设置：没有输出上限时无法界定单次调用风险，因而无法可靠预留预算（T07）。",
+					Name: "maxTokens", Label: "单次输出上限", Kind: FieldKindInt, Required: true,
+					Help: "限制单条内容的最大长度，便于预估耗时和费用。",
 				},
 				{
 					Name: "temperature", Label: "温度", Kind: FieldKindFloat, Required: false, Min: 0, Max: 2,
@@ -191,7 +191,7 @@ func BlueprintNodeSpecs() []BlueprintNodeSpec {
 				},
 				{
 					Name: "jsonSchema", Label: "输出字段约束", Kind: FieldKindJSON, Required: false,
-					Help: "留空表示用样本 schema 的默认约束。",
+					Help: "留空表示使用所选输出类型的默认字段约束。",
 				},
 			},
 		},
@@ -199,18 +199,18 @@ func BlueprintNodeSpecs() []BlueprintNodeSpec {
 			Key:          BlueprintNodeEvaluation,
 			PayloadField: "evaluation",
 			Label:        "独立评估",
-			Caption:      "裁判连接、量表权重、抽样 seed；至少一名独立裁判",
+			Caption:      "用独立的模型服务检查生成结果，并按量表抽取样本",
 			Availability: NodeAvailabilityAvailable,
 			Task:         "T11、T14",
 			Fields: []NodeFieldSpec{
 				{
-					Name: "judgeConnectionIds", Label: "裁判连接", Kind: FieldKindIDList, Required: true,
-					Help: "至少一名，且不得与生成者同源（同真实来源的别名连接不算独立）。",
+					Name: "judgeConnectionIds", Label: "检查模型服务", Kind: FieldKindIDList, Required: true,
+					Help: "至少选择一个与生成服务不同的独立服务，避免同一来源自评。",
 				},
 				{Name: "rubricVersionId", Label: "量表版本", Kind: FieldKindID, Required: true},
 				{
-					Name: "samplingSeed", Label: "抽样 seed", Kind: FieldKindInt, Required: false,
-					Help: "固定 seed 让抽样可复现；实验创建后改 seed 不会改变既有实验。",
+					Name: "samplingSeed", Label: "可复现抽样编号", Kind: FieldKindInt, Required: false,
+					Help: "使用相同编号会得到相同的抽样结果；已经创建的实验不会被改写。",
 				},
 				{
 					Name: "weights", Label: "维度权重", Kind: FieldKindRatioMap, Required: false,
@@ -226,7 +226,7 @@ func BlueprintNodeSpecs() []BlueprintNodeSpec {
 			Key:          BlueprintNodeRules,
 			PayloadField: "rules",
 			Label:        "规则检查",
-			Caption:      "引用质量策略版本：规则表达式、字段、严重度与建议动作",
+			Caption:      "设置哪些问题需要拦截、提醒或进入人工判断",
 			Availability: NodeAvailabilityAvailable,
 			Task:         "T11、T15",
 			Fields: []NodeFieldSpec{
@@ -237,17 +237,17 @@ func BlueprintNodeSpecs() []BlueprintNodeSpec {
 			Key:          BlueprintNodeHumanReview,
 			PayloadField: "humanReview",
 			Label:        "人工检查点",
-			Caption:      "分派策略、必需证据集与风险范围",
+			Caption:      "决定哪些内容需要人工确认，以及确认时必须提供什么依据",
 			Availability: NodeAvailabilityAvailable,
 			Task:         "T11、T16",
 			Fields: []NodeFieldSpec{
 				{
-					Name: "assignment", Label: "分派策略", Kind: FieldKindEnum, Required: true,
+					Name: "assignment", Label: "人工检查方式", Kind: FieldKindEnum, Required: true,
 					Options: []string{"risk-based", "all", "sampled"},
 				},
 				{
-					Name: "requiredEvidence", Label: "必需证据集", Kind: FieldKindStringList, Required: true,
-					Help: "它定义了 evidence_revision：补齐证据或发现新风险都会让它递增，使旧接纳回到待判断。",
+					Name: "requiredEvidence", Label: "必须提供的依据", Kind: FieldKindStringList, Required: true,
+					Help: "列出人工判断必须看到的依据；依据变化后，旧判断会回到待确认。",
 				},
 				{Name: "riskScope", Label: "风险范围", Kind: FieldKindString, Required: false},
 				{
@@ -259,7 +259,7 @@ func BlueprintNodeSpecs() []BlueprintNodeSpec {
 			Key:          BlueprintNodeDelivery,
 			PayloadField: "delivery",
 			Label:        "版本交付",
-			Caption:      "引用映射版本、输出格式与用途/限制",
+			Caption:      "确定交付文件的格式、字段对应关系和使用边界",
 			Availability: NodeAvailabilityAvailable,
 			Task:         "T11、T20",
 			Fields: []NodeFieldSpec{

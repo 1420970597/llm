@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Button, Card, Empty, Input, InputNumber, Spin, Tag, Typography } from '@douyinfe/semi-ui'
+import { Button, Card, Empty, Input, InputNumber, Select, Spin, Tag, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, ArrowLeftRight, Pause, Play, RefreshCw, RotateCcw } from 'lucide-react'
 import { newIdempotencyKey, projectPath, studioApi } from '../../lib/api/studio'
 import type {
@@ -16,7 +16,6 @@ import type {
 import { client } from '../../lib/api'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
-import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
 
 /**
  * 生产工作区页面（Issue #160 T13）：批次列表、详情、异常恢复、试制与扩量规划。
@@ -122,7 +121,6 @@ export function RunsPage() {
 
   return (
     <div className="console-page" data-studio-page="runs">
-      <LegacyCapabilityWorkbench surface="production" />
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">
@@ -431,7 +429,7 @@ export function BatchDetailPage() {
           </Text>
           <ul className="batch-snapshot">
             <li>
-              样本 schema：<code>{detail.generationConfig.schemaVersion || '（未设置）'}</code>
+              输出内容类型：<code>{detail.generationConfig.schemaVersion || '（未设置）'}</code>
             </li>
             <li>
               模型连接：<code>{detail.generationConfig.modelConnectionId || '（未设置）'}</code>
@@ -442,16 +440,16 @@ export function BatchDetailPage() {
               {detail.generationConfig.maxTokens}
             </li>
             <li>
-              蓝图 hash：<code>{detail.snapshot.blueprintContentHash.slice(0, 12) || '（未引用）'}</code>
+              蓝图内容指纹：<code>{detail.snapshot.blueprintContentHash.slice(0, 12) || '（未引用）'}</code>
             </li>
             <li>
-              标准 hash：<code>{detail.snapshot.standardContentHash.slice(0, 12) || '（未引用）'}</code>
+              标准内容指纹：<code>{detail.snapshot.standardContentHash.slice(0, 12) || '（未引用）'}</code>
             </li>
           </ul>
           <div className="mt-2 flex items-center gap-2">
             <ArrowLeftRight size={14} aria-hidden />
             <Text type="tertiary" size="small" data-snapshot-immutable="true">
-              快照不可就地修改：改模型/标准必须**复制为新批次**，否则已有成功内容无法复现。
+              快照不可就地修改：改模型或标准必须复制为新批次，否则已有成功内容无法复现。
             </Text>
           </div>
         </Card>
@@ -569,7 +567,7 @@ export function FailuresPage() {
             异常恢复
           </Title>
           <Text type="tertiary">
-            只恢复**可重试**的失败单元；成功内容保留，因此反复点击不会重复产出。
+            只恢复可重试的失败单元；成功内容保留，因此反复点击不会重复产出。
           </Text>
         </div>
         {canRetryFailed ? (
@@ -639,6 +637,40 @@ export function FailuresPage() {
 const MAX_PILOT_UNITS = 100
 const MAX_SCALE_UNITS = 100000
 
+type PlanningVersion = { id: number; version: number; changeReason?: string }
+type PlanningVersionList = { items?: PlanningVersion[] }
+
+type BlueprintPlanningPayload = {
+  nodes?: {
+    coverage?: { coverageVersionId?: number }
+    standard?: { standardVersionId?: number }
+    generation?: {
+      modelConnectionId?: number
+      schemaVersion?: string
+      concurrency?: number
+      maxTokens?: number
+    }
+    evaluation?: { judgeConnectionIds?: number[]; rubricVersionId?: number }
+    rules?: { qualityPolicyVersionId?: number }
+    humanReview?: { assignment?: string; requiredEvidence?: string[] }
+    delivery?: { mappingVersionId?: number; format?: string; intendedUse?: string }
+  }
+}
+
+type PlanningBlueprintVersion = PlanningVersion & { payload?: BlueprintPlanningPayload }
+
+const BLUEPRINT_EXECUTION_REQUIREMENTS = [
+  '模型服务、输出内容类型、并发和单次输出上限',
+  '独立检查模型与量表',
+  '质量策略、交付映射、输出格式和用途',
+  '人工检查方式和必需依据',
+]
+
+function planningVersionLabel(items: PlanningVersion[], id: string): string {
+  const version = items.find((item) => String(item.id) === id)
+  return version ? `v${version.version}` : '未选择'
+}
+
 export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   const scope = useProjectScope()
   const navigate = useNavigate()
@@ -661,6 +693,15 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   const [standardVersionId, setStandardVersionId] = useState('')
   const [qualityPolicyVersionId, setQualityPolicyVersionId] = useState('')
   const [mappingVersionId, setMappingVersionId] = useState('')
+  const [blueprintPayload, setBlueprintPayload] = useState<BlueprintPlanningPayload | null>(null)
+  const [blueprintPayloadError, setBlueprintPayloadError] = useState<string | null>(null)
+  const [versionOptions, setVersionOptions] = useState({
+    blueprint: [] as PlanningVersion[],
+    coverage: [] as PlanningVersion[],
+    standard: [] as PlanningVersion[],
+    qualityPolicy: [] as PlanningVersion[],
+    mapping: [] as PlanningVersion[],
+  })
   /**
    * 采用指针只保存批次/基准 ID；版本快照必须再从批次详情读取。
    * 不把版本 ID 放在 URL 或 localStorage，避免用户改 URL 后把另一套配置
@@ -671,19 +712,82 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [canRun, setCanRun] = useState(false)
+  const selectedBlueprint = versionOptions.blueprint.find((version) => String(version.id) === blueprintVersionId)
   // A retry after a network timeout must replay the same command. Generating
   // the key inside submit would turn an uncertain retry into a second paid run.
   const idempotencyKeyRef = useRef(newIdempotencyKey())
 
   useEffect(() => {
     let cancelled = false
-    void studioApi.overviewEnvelope(scope.projectId).then((overview) => {
-      if (!cancelled) setCanRun(overview.capabilities.canRun === true)
+    void Promise.all([
+      studioApi.overviewEnvelope(scope.projectId),
+      client.get<PlanningVersionList>(`${projectPath(scope.projectId)}/blueprint-versions?limit=50`),
+      client.get<PlanningVersionList>(`${projectPath(scope.projectId)}/coverage-versions?limit=50`),
+      client.get<PlanningVersionList>(`${projectPath(scope.projectId)}/standard-versions?limit=50`),
+      client.get<PlanningVersionList>(`${projectPath(scope.projectId)}/quality-policy-versions?limit=50`),
+      client.get<PlanningVersionList>(`${projectPath(scope.projectId)}/mapping-versions?limit=50`),
+    ]).then(([overview, blueprint, coverage, standard, qualityPolicy, mapping]) => {
+      if (cancelled) return
+      setCanRun(overview.capabilities.canRun === true)
+      const next = {
+        blueprint: blueprint.data.items ?? [],
+        coverage: coverage.data.items ?? [],
+        standard: standard.data.items ?? [],
+        qualityPolicy: qualityPolicy.data.items ?? [],
+        mapping: mapping.data.items ?? [],
+      }
+      setVersionOptions(next)
+      const latestID = (items: PlanningVersion[]) => items[0] && String(items[0].id)
+      setBlueprintVersionId((value) => value || latestID(next.blueprint) || '')
+      setCoverageVersionId((value) => value || latestID(next.coverage) || '')
+      setStandardVersionId((value) => value || latestID(next.standard) || '')
+      setQualityPolicyVersionId((value) => value || latestID(next.qualityPolicy) || '')
+      setMappingVersionId((value) => value || latestID(next.mapping) || '')
     }).catch(() => {
       if (!cancelled) setCanRun(false)
     })
     return () => { cancelled = true }
   }, [scope.projectId])
+
+  // 选择蓝图不应要求用户再逐项复述一次已经在蓝图中保存的引用。读取版本
+  // 本体后，把其中的覆盖、标准、规则和映射带入本次快照；用户仍可以在下面
+  // 显式改为另一版，以支持同一生成方案的对照试制。
+  useEffect(() => {
+    if (!blueprintVersionId || !selectedBlueprint?.version) {
+      setBlueprintPayload(null)
+      setBlueprintPayloadError(null)
+      return
+    }
+    let cancelled = false
+    setBlueprintPayloadError(null)
+    void client.get<{ data?: PlanningBlueprintVersion; version?: PlanningBlueprintVersion; payload?: BlueprintPlanningPayload }>(
+      `${projectPath(scope.projectId)}/blueprint-versions/${selectedBlueprint.version}`,
+    ).then((response) => {
+      if (cancelled) return
+      const body = response.data
+      const version = body?.data
+        ?? (body?.version && typeof body.version === 'object'
+          ? body.version
+          : body as unknown as PlanningBlueprintVersion)
+      const payload = version.payload ?? {}
+      setBlueprintPayload(payload)
+      const nodes = payload.nodes
+      const setFromBlueprint = (value: number | undefined, setter: (next: string) => void) => {
+        // 清掉上一个蓝图留下的自动默认值；否则选择一个尚未配置映射的
+        // 蓝图，会悄悄沿用项目最新映射，形成不可见的跨版本引用。
+        setter(value && value > 0 ? String(value) : '')
+      }
+      setFromBlueprint(nodes?.coverage?.coverageVersionId, setCoverageVersionId)
+      setFromBlueprint(nodes?.standard?.standardVersionId, setStandardVersionId)
+      setFromBlueprint(nodes?.rules?.qualityPolicyVersionId, setQualityPolicyVersionId)
+      setFromBlueprint(nodes?.delivery?.mappingVersionId, setMappingVersionId)
+    }).catch((loadError) => {
+      if (cancelled) return
+      setBlueprintPayload(null)
+      setBlueprintPayloadError(loadError instanceof Error ? loadError.message : '无法读取所选蓝图的配置')
+    })
+    return () => { cancelled = true }
+  }, [blueprintVersionId, scope.projectId, selectedBlueprint?.version])
 
   const maxUnits = purpose === 'pilot' ? MAX_PILOT_UNITS : MAX_SCALE_UNITS
   const title = purpose === 'pilot' ? '小批试制' : '扩量规划'
@@ -738,7 +842,50 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
     items.push({
       label: '已选择蓝图版本',
       ok: blueprintVersionId.trim() !== '',
-      detail: blueprintVersionId.trim() === '' ? '缺少蓝图版本，批次无法固定执行配置' : `#${blueprintVersionId}`,
+      detail: blueprintVersionId.trim() === '' ? '缺少蓝图版本，批次无法固定执行配置' : `${planningVersionLabel(versionOptions.blueprint, blueprintVersionId)} 已固定`,
+    })
+    const blueprintNodes = blueprintPayload?.nodes
+    items.push({
+      label: '覆盖范围已固定',
+      ok: coverageVersionId.trim() !== '',
+      detail: coverageVersionId.trim() === ''
+        ? '请先在“覆盖范围”配置领域和方向，再回到这里。'
+        : `${planningVersionLabel(versionOptions.coverage, coverageVersionId)}${blueprintNodes?.coverage?.coverageVersionId ? '（来自蓝图）' : '（本次选择）'}`,
+    })
+    items.push({
+      label: '思维标准已固定',
+      ok: standardVersionId.trim() !== '',
+      detail: standardVersionId.trim() === ''
+        ? '请先在“思维标准”写清步骤和检查点，再回到这里。'
+        : `${planningVersionLabel(versionOptions.standard, standardVersionId)}${blueprintNodes?.standard?.standardVersionId ? '（来自蓝图）' : '（本次选择）'}`,
+    })
+    items.push({
+      label: '生成设置已检查',
+      ok: Boolean(blueprintNodes?.generation?.modelConnectionId && blueprintNodes.generation.schemaVersion && blueprintNodes.generation.concurrency && blueprintNodes.generation.maxTokens),
+      detail: !blueprintPayload
+        ? '正在读取蓝图设置。'
+        : '模型服务、输出类型、并发和单次输出上限都必须在蓝图中设置。',
+    })
+    items.push({
+      label: '独立评估已设置',
+      ok: Boolean(blueprintNodes?.evaluation?.judgeConnectionIds?.length && blueprintNodes.evaluation.rubricVersionId),
+      detail: Boolean(blueprintNodes?.evaluation?.judgeConnectionIds?.length && blueprintNodes.evaluation.rubricVersionId)
+        ? '已有独立检查模型与量表。'
+        : '请在蓝图的“独立评估”步骤选择检查模型和量表。',
+    })
+    items.push({
+      label: '规则与交付已设置',
+      ok: Boolean(blueprintNodes?.rules?.qualityPolicyVersionId && blueprintNodes?.delivery?.mappingVersionId && blueprintNodes.delivery.format && blueprintNodes.delivery.intendedUse),
+      detail: Boolean(blueprintNodes?.rules?.qualityPolicyVersionId && blueprintNodes?.delivery?.mappingVersionId && blueprintNodes.delivery.format && blueprintNodes.delivery.intendedUse)
+        ? '质量策略、映射、格式和用途均已固定。'
+        : '请补齐蓝图的规则检查和版本交付步骤。',
+    })
+    items.push({
+      label: '人工检查点已设置',
+      ok: Boolean(blueprintNodes?.humanReview?.assignment && blueprintNodes.humanReview.requiredEvidence?.length),
+      detail: Boolean(blueprintNodes?.humanReview?.assignment && blueprintNodes.humanReview.requiredEvidence?.length)
+        ? '人工检查方式和必需依据已明确。'
+        : '请在蓝图的“人工检查点”写清分派方式和必需依据。',
     })
     items.push({
       label: '预算上限合法',
@@ -754,7 +901,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       detail: purpose === 'pilot' ? '试制是独立批次，不会改动已有生产批次的内容' : '扩量是新的独立批次',
     })
     return items
-  }, [blueprintVersionId, budgetLimitMinor, maxUnits, purpose, unitCount])
+  }, [blueprintPayload, blueprintVersionId, budgetLimitMinor, coverageVersionId, maxUnits, purpose, standardVersionId, unitCount, versionOptions.blueprint, versionOptions.coverage, versionOptions.standard])
 
   const ready = checklist.every((item) => item.ok)
 
@@ -765,6 +912,10 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
     }
     if (!ready) {
       setError('请先修正核对项中的问题')
+      return
+    }
+    if (!blueprintPayload?.nodes?.generation?.modelConnectionId) {
+      setError('所选蓝图还没有模型服务，请先打开设计区的“生成”步骤完成配置。')
       return
     }
     setSubmitting(true)
@@ -814,6 +965,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
     navigate,
     purpose,
     ready,
+    blueprintPayload,
     qualityPolicyVersionId,
     scope.projectId,
     slice,
@@ -830,8 +982,8 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
           </Title>
           <Text type="tertiary">
             {purpose === 'pilot'
-              ? '用低成本的小批验证方案与标准；结果不会覆盖主生产。'
-              : '按范围与预算规划一次扩量；执行前逐项核对。'}
+              ? '先用小批验证方案；结果不会覆盖主生产。蓝图里未完成的步骤会在执行前明确拦截。'
+              : '按范围与预算规划一次扩量；执行前会核对蓝图中的每个配置步骤。'}
           </Text>
         </div>
       </div>
@@ -840,7 +992,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
         <Card className="console-card mb-3" bodyStyle={{ padding: 12 }} data-slice-context={slice}>
           <Text size="small">
             来自覆盖矩阵的缺口方向：<code>{slice}</code>。本次规划只针对该切片，
-            **不会**触发任何已有内容的重生成。
+            不会触发任何已有内容的重生成。
           </Text>
         </Card>
       ) : null}
@@ -856,46 +1008,63 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
         </Card>
       ) : null}
 
+      {blueprintPayloadError ? (
+        <div className="wizard-field__error mb-3" role="alert">无法带入蓝图配置：{blueprintPayloadError}</div>
+      ) : null}
+
       <Card className="console-card" bodyStyle={{ padding: 20 }}>
+        <div className="planning-configuration-note" role="note">
+          <strong>这次批次会固定蓝图里的配置</strong>
+          <span>蓝图负责定义生成、评估、规则、人工检查和交付边界；本页只决定本次范围、数量和预算。</span>
+          <span>执行前需要完成：{BLUEPRINT_EXECUTION_REQUIREMENTS.join('；')}。</span>
+        </div>
         <div className="wizard-fields">
-          <Field label="蓝图版本 ID" required fieldId="plan-blueprint">
-            <Input
+          <Field label="生产蓝图版本" required fieldId="plan-blueprint" action={<Button size="small" theme="borderless" onClick={() => navigate(scope.href('project.blueprint'))}>编辑蓝图</Button>}>
+            <Select
               id="plan-blueprint"
               value={blueprintVersionId}
-              onChange={(value) => setBlueprintVersionId(value)}
-              placeholder="例如 9"
+              optionList={versionOptions.blueprint.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))}
+              onChange={(value) => setBlueprintVersionId(String(value))}
+              placeholder="选择蓝图版本"
             />
+            {selectedBlueprint ? <Text type="tertiary" size="small">当前方案：v{selectedBlueprint.version}。选择后会自动带入蓝图中保存的覆盖、标准、规则与交付引用。</Text> : null}
           </Field>
-          <Field label="覆盖版本 ID" fieldId="plan-coverage">
-            <Input
+          <Field label="覆盖范围版本" required fieldId="plan-coverage" action={<Button size="small" theme="borderless" onClick={() => navigate(scope.href('project.coverage'))}>编辑覆盖范围</Button>}>
+            <Select
               id="plan-coverage"
-              value={coverageVersionId}
-              onChange={(value) => setCoverageVersionId(value)}
-              placeholder="留空 = 按单元数生成"
+              value={coverageVersionId || undefined}
+              optionList={versionOptions.coverage.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))}
+              onChange={(value) => setCoverageVersionId(String(value))}
+              placeholder="选择覆盖版本"
             />
+            <Text type="tertiary" size="small">蓝图已配置时会自动带入；这里改动只影响本次批次。</Text>
           </Field>
-          <Field label="标准版本 ID" fieldId="plan-standard">
-            <Input
+          <Field label="思维标准版本" required fieldId="plan-standard" action={<Button size="small" theme="borderless" onClick={() => navigate(scope.href('project.standard'))}>编辑思维标准</Button>}>
+            <Select
               id="plan-standard"
-              value={standardVersionId}
-              onChange={(value) => setStandardVersionId(value)}
-              placeholder="留空 = 不使用标准步骤"
+              value={standardVersionId || undefined}
+              optionList={versionOptions.standard.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))}
+              onChange={(value) => setStandardVersionId(String(value))}
+              placeholder="选择标准版本"
             />
+            <Text type="tertiary" size="small">步骤和检查点来自这里的固定版本，已运行批次不会被修改。</Text>
           </Field>
-          <Field label="质量策略版本 ID" fieldId="plan-quality-policy">
-            <Input
+          <Field label="质量策略版本" fieldId="plan-quality-policy" action={<Button size="small" theme="borderless" onClick={() => navigate(scope.href('project.rules'))}>编辑规则策略</Button>}>
+            <Select
               id="plan-quality-policy"
-              value={qualityPolicyVersionId}
-              onChange={(value) => setQualityPolicyVersionId(value)}
-              placeholder="留空 = 不绑定质量策略"
+              value={qualityPolicyVersionId || undefined}
+              optionList={versionOptions.qualityPolicy.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))}
+              onChange={(value) => setQualityPolicyVersionId(String(value))}
+              placeholder="质量策略会在规则检查时使用"
             />
           </Field>
-          <Field label="映射版本 ID" fieldId="plan-mapping">
-            <Input
+          <Field label="交付映射版本" fieldId="plan-mapping" action={<Button size="small" theme="borderless" onClick={() => navigate(scope.href('project.newRelease'))}>编辑交付映射</Button>}>
+            <Select
               id="plan-mapping"
-              value={mappingVersionId}
-              onChange={(value) => setMappingVersionId(value)}
-              placeholder="留空 = 使用默认映射"
+              value={mappingVersionId || undefined}
+              optionList={versionOptions.mapping.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))}
+              onChange={(value) => setMappingVersionId(String(value))}
+              placeholder="交付映射会在发布时使用"
             />
           </Field>
           <Field label={`计划单元数（1–${maxUnits}）`} required fieldId="plan-units">
@@ -960,19 +1129,24 @@ function Field({
   label,
   required,
   fieldId,
+  action,
   children,
 }: {
   label: string
   required?: boolean
   fieldId: string
+  action?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
     <div className="wizard-field" data-field={fieldId}>
-      <label className="wizard-field__label" htmlFor={fieldId}>
-        {label}
-        {required ? <span className="wizard-field__required"> *</span> : null}
-      </label>
+      <div className="planning-field__heading">
+        <label className="wizard-field__label" htmlFor={fieldId}>
+          {label}
+          {required ? <span className="wizard-field__required"> *</span> : null}
+        </label>
+        {action}
+      </div>
       {children}
     </div>
   )

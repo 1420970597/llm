@@ -53,6 +53,7 @@ func newWorkspaceAuthzIntegrationFixture(t *testing.T) *workspaceAuthzIntegratio
 			authz:       store.NewAuthzStore(pool),
 			recipes:     store.NewRecipeStore(pool),
 			idempotency: store.NewIdempotencyStore(pool),
+			documents:   store.NewDocumentStore(pool),
 			studio:      studio.NewWithRollout(pool, studio.Rollout{}),
 		},
 	}

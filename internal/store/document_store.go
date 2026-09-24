@@ -95,6 +95,78 @@ func NewDocumentStore(db *pgxpool.Pool) *DocumentStore {
 	return &DocumentStore{db: db}
 }
 
+// BootstrapProjectDocuments creates the five native Atelier documents for a
+// project that was created without a recipe. It is idempotent: existing
+// versions are preserved and only missing document heads are initialized.
+// Keeping this in the document store makes the bootstrap atomic, so a project
+// never presents a half-created set of references after a failed request.
+func (s *DocumentStore) BootstrapProjectDocuments(ctx context.Context, projectID, actorID int64, targetKind, name, goal string) error {
+	coverage, standard, quality, mapping, blueprint := model.DefaultProjectDocuments(targetKind, name, goal)
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	ids := map[model.DocumentKind]int64{}
+	for _, entry := range []struct {
+		kind    model.DocumentKind
+		payload any
+	}{{model.KindCoverage, coverage}, {model.KindStandard, standard}, {model.KindQualityPolicy, quality}, {model.KindMapping, mapping}} {
+		id, exists, err := currentDocumentVersionIDTx(ctx, tx, projectID, entry.kind, DefaultLogicalID)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			_, version, err := saveVersionTx(ctx, tx, projectID, entry.kind, actorID, SaveDocumentVersionInput{
+				ChangeReason: "项目创建：初始化 Atelier 配置",
+				Payload:      entry.payload,
+			})
+			if err != nil {
+				return err
+			}
+			id = version.ID
+		}
+		ids[entry.kind] = id
+	}
+
+	blueprint.Nodes.Coverage.CoverageVersionID = ids[model.KindCoverage]
+	blueprint.Nodes.Standard.StandardVersionID = ids[model.KindStandard]
+	blueprint.Nodes.Rules.QualityPolicyVersionID = ids[model.KindQualityPolicy]
+	blueprint.Nodes.Delivery.MappingVersionID = ids[model.KindMapping]
+	if id, exists, err := currentDocumentVersionIDTx(ctx, tx, projectID, model.KindBlueprint, DefaultLogicalID); err != nil {
+		return err
+	} else if !exists {
+		if _, _, err := saveVersionTx(ctx, tx, projectID, model.KindBlueprint, actorID, SaveDocumentVersionInput{
+			ChangeReason: "项目创建：初始化 Atelier 生产蓝图",
+			Payload:      blueprint,
+		}); err != nil {
+			return err
+		}
+	} else if id == 0 {
+		return errors.New("蓝图文档状态无效")
+	}
+
+	return tx.Commit(ctx)
+}
+
+func currentDocumentVersionIDTx(ctx context.Context, tx pgx.Tx, projectID int64, kind model.DocumentKind, logicalID string) (int64, bool, error) {
+	var versionID int64
+	err := tx.QueryRow(ctx, `
+    SELECT v.id
+    FROM versioned_documents d
+    JOIN document_versions v ON v.document_id = d.id AND v.version = d.current_version
+    WHERE d.project_id = $1 AND d.kind = $2 AND d.logical_id = $3`,
+		projectID, string(kind), logicalID).Scan(&versionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return versionID, true, nil
+}
+
 // validatePayloadForKind 按类型分派到 typed 校验并返回 schema 版本。
 //
 // 分派集中在一处：新增文档类型时编译器会强制在这里加一个分支（switch 无 default

@@ -165,20 +165,35 @@ func (s *LegacyImportStore) FinishImport(ctx context.Context, id int64, status s
 // `generation_config` 为空，且没有任何 batch_items 被写入 —— 日志与台账
 // 都能区分「导入的快照」与「跑出来的批次」。
 //
-// 只对**没有任何已提交单元**的批次生效：若批次已经有 batch_items（说明它
-// 真的在跑或跑过），改它的状态会掩盖真实进度。
+// 迁移现在会为每个源对象写入 batch_items；因此这里把 succeeded/skipped
+// 视为已定稿，failed 保留为 partial_failed，仍在执行的单元不会被覆盖。
 func (s *LegacyImportStore) MarkImportedBatchCompleted(ctx context.Context, batchID int64) error {
 	tag, err := s.db.Exec(ctx, `
+    WITH counts AS (
+      SELECT
+        COUNT(*) FILTER (WHERE status IN ('succeeded', 'skipped')) AS done,
+        COUNT(*) FILTER (WHERE status = 'failed') AS failed,
+        COUNT(*) FILTER (WHERE status NOT IN ('succeeded', 'skipped', 'failed')) AS open
+      FROM batch_items WHERE batch_id = $1
+    )
     UPDATE batches
-    SET status = 'completed', control_state = 'run',
-        completed_units = planned_units, updated_at = NOW()
-    WHERE id = $1
-      AND NOT EXISTS (SELECT 1 FROM batch_items WHERE batch_id = $1)`, batchID)
+    SET status = CASE
+          WHEN counts.open > 0 THEN batches.status
+          WHEN counts.failed > 0 THEN 'partial_failed'
+          ELSE 'completed'
+        END,
+        control_state = 'run',
+        completed_units = counts.done,
+        failed_units = counts.failed,
+        updated_at = NOW()
+    FROM counts
+    WHERE batches.id = $1
+      AND counts.open = 0`, batchID)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("批次 %d 已有单元或不存在，不能标为导入快照完成", batchID)
+		return fmt.Errorf("批次 %d 仍有未定稿单元或不存在，不能标为导入快照完成", batchID)
 	}
 	return nil
 }

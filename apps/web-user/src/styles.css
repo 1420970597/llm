@@ -1264,6 +1264,90 @@ select:focus {
   [data-studio-page="release-card"] .console-stat-grid { grid-template-columns: 1fr; }
 }
 
+/* Blueprint interaction contract: status, dependencies and editor feedback. */
+.blueprint-page .blueprint-node__status {
+  justify-self: end;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.blueprint-page .blueprint-node__status--ready { border-color: rgba(30, 128, 74, .25); background: rgba(30, 128, 74, .08); color: var(--success); }
+.blueprint-page .blueprint-node__status--incomplete { border-color: rgba(186, 116, 22, .25); background: rgba(186, 116, 22, .08); color: var(--warning); }
+.blueprint-page .blueprint-node__status--blocked { border-color: rgba(183, 58, 58, .25); background: rgba(183, 58, 58, .08); color: var(--danger); }
+.blueprint-page .blueprint-node__status--planned { border-color: var(--panel-border); background: var(--panel); color: var(--text-muted); }
+.blueprint-page .blueprint-node__icon--ready { color: var(--success); background: rgba(30, 128, 74, .1); }
+.blueprint-page .blueprint-node__icon--incomplete { color: var(--warning); background: rgba(186, 116, 22, .1); }
+.blueprint-page .blueprint-node__icon--blocked { color: var(--danger); background: rgba(183, 58, 58, .1); }
+.blueprint-page .blueprint-node__icon--planned { color: var(--text-muted); background: var(--panel); }
+.blueprint-health {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0 0 18px;
+  padding: 11px 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.blueprint-health > div { display: grid; gap: 2px; min-width: 0; }
+.blueprint-health span { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.blueprint-health--ready { border-color: rgba(30, 128, 74, .25); color: var(--success); }
+.blueprint-health--incomplete { border-color: rgba(186, 116, 22, .25); color: var(--warning); }
+.blueprint-health--blocked { border-color: rgba(183, 58, 58, .25); color: var(--danger); }
+.blueprint-health--planned { color: var(--text-muted); }
+.blueprint-related-config {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.blueprint-related-config > div { display: grid; gap: 3px; min-width: 0; }
+.blueprint-related-config span { color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blueprint-validation-error {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  color: var(--danger);
+  font-size: 12px;
+}
+.blueprint-save-bar { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.blueprint-save-bar > span { margin-right: auto; font-size: 12px; }
+.blueprint-dirty { color: var(--warning); }
+.blueprint-clean { color: var(--success); }
+.blueprint-json-editor { display: grid; gap: 7px; }
+.blueprint-json-editor__toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.blueprint-json-editor__status { margin-left: auto; color: var(--success); font-size: 12px; }
+.blueprint-json-editor__status--invalid { color: var(--danger); }
+.blueprint-page .blueprint-input,
+.blueprint-page .blueprint-select,
+.blueprint-page .semi-select { min-height: 36px; }
+.blueprint-page .blueprint-input:disabled,
+.blueprint-page .semi-select-disabled { cursor: not-allowed; opacity: .65; }
+.blueprint-page .wizard-field { display: grid; gap: 6px; }
+.blueprint-page .wizard-field__label { color: var(--text); font-size: 13px; font-weight: 650; }
+.blueprint-page .wizard-field + .wizard-field { margin-top: 15px; }
+.blueprint-page .wizard-field__required { color: var(--danger); }
+
+@media (max-width: 560px) {
+  .blueprint-page .blueprint-related-config { align-items: flex-start; flex-direction: column; }
+  .blueprint-page .blueprint-related-config .semi-button { width: 100%; }
+  .blueprint-page .blueprint-node { grid-template-columns: 30px minmax(0, 1fr); }
+  .blueprint-page .blueprint-node__status { grid-column: 2; justify-self: start; }
+  .blueprint-page .blueprint-node__caption { white-space: normal; }
+  .blueprint-json-editor__status { margin-left: 0; }
+}
+
 /* ---------------------------------------------------------------------------
  * Atelier 壳层样式（Issue #160 T09）
  *
@@ -1424,6 +1508,146 @@ select:focus {
     grid-column: 2;
     grid-row: 1;
   }
+}
+
+/* Versioned document editors: the design, quality and release workspaces use
+   the same editing rhythm so users can move between them without relearning
+   where draft, history and save actions live. */
+.document-editor {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.document-editor__intro {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-muted, #f7f8fa);
+}
+
+.document-editor__section {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+}
+
+.document-editor__section-head,
+.document-editor__save-head,
+.document-editor__subhead,
+.document-editor__embedded-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.document-editor__subhead {
+  margin: 14px 0 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.document-editor__grid {
+  display: grid;
+  gap: 12px;
+}
+
+.document-editor__grid--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.document-editor__grid--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.document-editor__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 110px minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.document-editor__row--mapping { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 92px 36px; }
+.document-editor__row:last-child { border-bottom: 0; }
+.document-editor__actions { display: flex; justify-content: flex-start; }
+.document-editor__icon-actions { display: flex; align-items: center; gap: 2px; }
+.document-editor__checkbox { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 13px; }
+.document-editor__save-card { border: 1px solid var(--panel-border); border-radius: 8px; }
+.document-editor__reason { display: grid; gap: 6px; margin-top: 12px; }
+.document-editor__history { display: grid; gap: 8px; margin: 14px 0; }
+.document-editor__history-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.document-editor__history-item { display: inline-flex; flex-direction: column; gap: 2px; min-width: 150px; padding: 9px 11px; border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text-primary); text-decoration: none; background: var(--panel-bg, #fff); }
+.document-editor__history-item span:first-child { font-weight: 650; }
+.document-editor__history-item span:last-child { color: var(--text-tertiary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.document-editor__history-item.is-current { border-color: var(--semi-color-primary, #1677ff); box-shadow: 0 0 0 1px var(--semi-color-primary, #1677ff); }
+.document-editor__embedded-header { margin-bottom: 14px; }
+.document-editor--mapping > .wizard-field { max-width: 360px; }
+.planning-field__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.planning-field__heading .semi-button {
+  min-height: 24px;
+  padding: 0 4px;
+  color: var(--accent-strong);
+  font-size: 12px;
+}
+.planning-configuration-note {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 18px;
+  padding: 13px 14px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.planning-configuration-note strong { color: var(--text); font-size: 13px; }
+
+@media (max-width: 760px) {
+  .document-editor__grid--two,
+  .document-editor__grid--three { grid-template-columns: minmax(0, 1fr); }
+  .document-editor__row,
+  .document-editor__row--mapping { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px; }
+  .document-editor__row input:nth-child(3),
+  .document-editor__row input:nth-child(4),
+  .document-editor__row--mapping .document-editor__checkbox { grid-column: 1 / 3; }
+  .document-editor__save-head { align-items: flex-start; flex-direction: column; }
+  .document-editor__save-head .semi-button { width: 100%; }
+}
+
+/* Team membership rows use the same explicit columns at every width. Without
+ * this, the optional action column collapses into the role text and appears
+ * as an unstyled inline list in the dense settings page. */
+.atelier-shell [data-studio-page="settings-team"] .comparison-table {
+  overflow-x: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.atelier-shell [data-studio-page="settings-team"] .comparison-row {
+  min-width: 560px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(150px, .9fr) minmax(82px, auto);
+  gap: 14px;
+  align-items: center;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--text);
+  font-size: 13px;
+}
+.atelier-shell [data-studio-page="settings-team"] .comparison-row--head {
+  background: var(--accent-soft);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.atelier-shell [data-studio-page="settings-team"] .comparison-row:last-child { border-bottom: 0; }
+.atelier-shell [data-studio-page="settings-team"] .comparison-row > span { min-width: 0; overflow-wrap: anywhere; }
+.atelier-shell [data-studio-page="settings-team"] [data-team-project-roster="true"] .comparison-row {
+  grid-template-columns: minmax(0, 1.6fr) minmax(120px, .7fr) minmax(82px, auto);
 }
 
 .atelier-project-shell {
@@ -2664,6 +2888,174 @@ a {
     /* 窄屏不横向挤压：宁可允许横向滚动，也不要让单元格内容互相遮挡。 */
     min-width: 640px;
   }
+}
+
+/* Atelier shared surfaces for global pages.  These rules deliberately scope to
+ * the new shell so legacy console routes keep their existing contracts while
+ * every first-class page gets the same canvas, spacing and table treatment. */
+.atelier-shell .app-layout__content > .console-page {
+  min-height: calc(100vh - 64px);
+  width: 100%;
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 32px 44px 72px;
+  background: var(--page-bg);
+}
+
+.atelier-shell [data-studio-page="projects"],
+.atelier-shell [data-studio-page^="settings-"],
+.atelier-shell [data-studio-page="recipes"],
+.atelier-shell [data-studio-page="deliveries"] {
+  gap: 24px;
+}
+
+.atelier-shell [data-studio-page="projects"] .console-page__header,
+.atelier-shell [data-studio-page^="settings-"] .console-page__header,
+.atelier-shell [data-studio-page="recipes"] .console-page__header,
+.atelier-shell [data-studio-page="deliveries"] .console-page__header {
+  align-items: flex-end;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.atelier-shell [data-studio-page="projects"] .console-page__header h4,
+.atelier-shell [data-studio-page^="settings-"] .console-page__header h4,
+.atelier-shell [data-studio-page="recipes"] .console-page__header h4,
+.atelier-shell [data-studio-page="deliveries"] .console-page__header h4 {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+.atelier-shell .console-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  box-shadow: 0 8px 24px rgba(27, 35, 31, .04);
+}
+
+.atelier-shell [data-studio-page="settings-connections"] > .console-card,
+.atelier-shell [data-studio-page="settings-team"] > .console-card {
+  padding: 20px;
+}
+
+.atelier-shell [data-studio-page="settings-connections"] .comparison-table {
+  margin-top: 14px;
+  overflow-x: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.atelier-shell [data-studio-page="settings-connections"] .comparison-row {
+  min-width: 720px;
+  display: grid;
+  grid-template-columns: 1.4fr 1.2fr 1fr 1fr .7fr;
+  gap: 14px;
+  align-items: center;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--text);
+  font-size: 13px;
+}
+.atelier-shell [data-studio-page="settings-connections"] .comparison-row > span { min-width: 0; overflow-wrap: anywhere; }
+
+.atelier-shell [data-studio-page="settings-connections"] .comparison-row:last-child { border-bottom: 0; }
+.atelier-shell [data-studio-page="settings-connections"] .comparison-row--head {
+  background: var(--accent-soft);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.atelier-shell [data-studio-page="settings-team"] > div:not(.console-page__header) {
+  display: grid;
+  gap: 14px;
+}
+
+.atelier-shell [data-studio-page="settings-team"] .semi-select,
+.atelier-shell [data-studio-page="settings-team"] .semi-input-wrapper {
+  min-width: 220px;
+}
+
+.atelier-shell [data-studio-page="legacy-history"] .console-page__header {
+  padding: 20px 22px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: #eeeae1;
+}
+
+.atelier-shell [data-studio-page="legacy-history"] .legacy-history-card {
+  border-radius: 8px;
+}
+
+.blueprint-select { width: 100%; }
+.blueprint-list-editor,
+.blueprint-ratio-editor { display: grid; gap: 8px; }
+.blueprint-list-editor__row,
+.blueprint-ratio-editor__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.blueprint-ratio-editor__row { grid-template-columns: minmax(0, 1fr) 120px auto; }
+.blueprint-input--number { text-align: right; }
+.blueprint-icon-button {
+  width: 32px;
+  min-height: 32px;
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.blueprint-icon-button:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
+.blueprint-add-row {
+  justify-self: start;
+  min-height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font-size: 12px;
+}
+.blueprint-ratio-total { color: var(--warning); font-size: 12px; }
+.blueprint-ratio-total--valid { color: var(--success); }
+
+@media (max-width: 900px) {
+  .atelier-shell .app-layout__content > .console-page { padding: 24px 20px 56px; }
+  .atelier-shell [data-studio-page="projects"] .console-page__header,
+  .atelier-shell [data-studio-page^="settings-"] .console-page__header,
+  .atelier-shell [data-studio-page="recipes"] .console-page__header,
+  .atelier-shell [data-studio-page="deliveries"] .console-page__header { align-items: stretch; }
+}
+
+@media (max-width: 560px) {
+  .atelier-shell .app-layout__content > .console-page { padding-inline: 14px; }
+  .atelier-shell [data-studio-page="projects"] .console-page__header h4,
+  .atelier-shell [data-studio-page^="settings-"] .console-page__header h4,
+  .atelier-shell [data-studio-page="recipes"] .console-page__header h4,
+  .atelier-shell [data-studio-page="deliveries"] .console-page__header h4 { font-size: 25px; }
+  .blueprint-ratio-editor__row { grid-template-columns: minmax(0, 1fr) 88px auto; }
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-table { overflow-x: visible; }
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-row {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 12px;
+  }
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-row--head { font-size: 10px; }
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-row:not(.comparison-row--head) > span:nth-child(n+3) {
+    grid-column: span 2;
+  }
+  .atelier-shell [data-studio-page="settings-team"] .comparison-table { overflow-x: visible; }
+  .atelier-shell [data-studio-page="settings-team"] .comparison-row {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+  }
+  .atelier-shell [data-studio-page="settings-team"] .comparison-row > span:nth-child(2) { grid-column: 1; }
+  .atelier-shell [data-studio-page="settings-team"] .comparison-row > span:nth-child(3) { grid-column: 2; grid-row: 1 / span 2; }
+  .atelier-shell [data-studio-page="settings-team"] .comparison-row--head > span:nth-child(3) { grid-column: 2; grid-row: 1; }
+  .planning-field__heading { align-items: flex-start; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -167,7 +167,8 @@ func TestImportDatasetIsIdempotent(t *testing.T) {
 	if err != nil || mapped != first.ProjectID {
 		t.Fatalf("legacy_dataset_id 未正确写入：mapped=%d err=%v", mapped, err)
 	}
-	// 快照批次必须已完成且没有单元（没有伪造一次运行）。
+	// 快照批次必须已完成，并且每个旧问题都有一个迁移台账单元。
+	// 单元不是伪造生成过程，而是用来记录 succeeded/skipped/failed 的迁移事实。
 	var batchStatus string
 	var batchItems int64
 	if err := fixture.pool.QueryRow(ctx, `SELECT status FROM batches WHERE id = $1`, first.BatchID).Scan(&batchStatus); err != nil {
@@ -180,8 +181,8 @@ func TestImportDatasetIsIdempotent(t *testing.T) {
 		`SELECT COUNT(*) FROM batch_items WHERE batch_id = $1`, first.BatchID).Scan(&batchItems); err != nil {
 		t.Fatalf("count batch items: %v", err)
 	}
-	if batchItems != 0 {
-		t.Fatalf("导入不应产生任何 batch_items（那会假装有生成过程），实际 %d", batchItems)
+	if batchItems != 3 {
+		t.Fatalf("导入应为每个旧问题建立迁移台账单元，实际 %d", batchItems)
 	}
 
 	// 第二次：台账已完成 → 回放，不产生任何新版本。

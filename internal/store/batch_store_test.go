@@ -243,6 +243,54 @@ func TestBatchSnapshotIsFrozenAgainstNewBlueprint(t *testing.T) {
 	}
 }
 
+// TestBatchSnapshotCompletesReferencesFromBlueprint verifies the production
+// handoff contract: the planner may send only a blueprint version, while the
+// server still freezes the versions that blueprint references. This prevents
+// a page-level default from silently creating a partial batch snapshot.
+func TestBatchSnapshotCompletesReferencesFromBlueprint(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+	input := model.CreateBatchInput{
+		Purpose:            model.BatchPurposePilot,
+		BlueprintVersionID: fixture.blueprintID,
+		UnitCount:          2,
+	}
+
+	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT, input)
+	if err != nil {
+		t.Fatalf("create batch with blueprint-only input: %v", err)
+	}
+	if batch.Snapshot.CoverageVersionID != fixture.coverageID ||
+		batch.Snapshot.StandardVersionID != fixture.standardID ||
+		batch.Snapshot.QualityPolicyVersionID != fixture.policyID ||
+		batch.Snapshot.MappingVersionID != fixture.mappingID {
+		t.Fatalf("blueprint references must be frozen into snapshot: %+v", batch.Snapshot)
+	}
+
+	// An explicit override remains authoritative for this batch; fallback must
+	// only fill omitted fields rather than overwrite a deliberate choice.
+	mappingDocument, err := fixture.documents.GetDocument(ctx, fixture.projectID, model.KindMapping, DefaultLogicalID)
+	if err != nil {
+		t.Fatalf("get mapping document: %v", err)
+	}
+	_, override, err := fixture.documents.SaveVersion(ctx, fixture.projectID, model.KindMapping,
+		fixture.editorID, SaveDocumentVersionInput{ExpectedRevision: mappingDocument.RowVersion, ChangeReason: "替换映射", Payload: model.MappingPayload{
+			SchemaVersion: model.SchemaVersionFor(model.KindMapping), Format: model.ExportFormatJSONL,
+			Fields: []model.MappingField{{TargetField: "question", SourceField: "question", Required: true}},
+		}})
+	if err != nil {
+		t.Fatalf("save mapping override: %v", err)
+	}
+	input.MappingVersionID = override.ID
+	second, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT, input)
+	if err != nil {
+		t.Fatalf("create overridden batch: %v", err)
+	}
+	if second.Snapshot.MappingVersionID != override.ID {
+		t.Fatalf("explicit mapping override must win, got %d want %d", second.Snapshot.MappingVersionID, override.ID)
+	}
+}
+
 // TestBatchRejectsCrossProjectSnapshot 覆盖 §4.1「跨项目引用被拒绝」在批次上的表现。
 func TestBatchRejectsCrossProjectSnapshot(t *testing.T) {
 	fixture := newBatchFixture(t)

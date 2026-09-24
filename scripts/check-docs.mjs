@@ -262,6 +262,9 @@ const OUT_OF_REPO_REFS = new Set([
 const GENERATED_REFS = new Map([
   ['test/artifacts/page-structure/page-structure.json', 'test/l15_page_structure_capture.mjs'],
   ['test/artifacts/page-structure/hub-and-form.json', 'test/l15_hub_and_form_capture.mjs'],
+  // Vite emits this file into the web image root; it is intentionally not
+  // committed, but deployment/audit docs may refer to the served path.
+  ['version.json', 'apps/web-user/vite.config.ts'],
 ])
 
 /**

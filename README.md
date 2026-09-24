@@ -1,8 +1,8 @@
 # LLM Data Factory · Atelier 数据项目工作室
 
-一个面向企业级使用场景的 LLM 数据项目工作室，目标是把目标、版本化设计、独立试制、质量判断和固定发布串成可复核、可恢复、可交付的完整旅程。当前代码已落地主线壳、项目 API 和兼容入口；真实 provider、灰度回退和真实用户验收仍按 Issue #160 保持未完成，见[当前验收边界](#81-当前验收边界)。
+一个面向企业级使用场景的 LLM 数据项目工作室，目标是把目标、版本化设计、独立试制、质量判断和固定发布串成可复核、可恢复、可交付的完整旅程。
 
-本仓库当前产品主线是 **Atelier 数据项目工作室**，按 [Issue #160](https://github.com/1420970597/llm/issues/160) 与 [Discussion #159](https://github.com/1420970597/llm/discussions/159) 的契约推进。旧版控制台仍保留兼容入口，但不再作为新产品的信息架构标准；实现状态和未完成验收项以 `docs/plans/atelier-implementation.md` 为准。
+本仓库当前产品是 **Atelier 数据项目工作室**，按 [Issue #160](https://github.com/1420970597/llm/issues/160) 与 [Discussion #159](https://github.com/1420970597/llm/discussions/159) 的契约推进。旧 URL 仅作为书签兼容重定向，不再渲染第二套产品界面；实现边界和迁移审计以 `docs/plans/atelier-implementation.md` 与 `docs/plans/legacy-migration-report.md` 为准。
 
 ## Atelier 重设计实拍
 
@@ -38,8 +38,7 @@
 | 导出映射编辑器 | 字段增删、表达式、JSON 选项校验和复制内置映射 | ![映射编辑器](docs/screenshots/atelier-redesign/admin-mapping-editor-3210-desktop.png) |
 | 普通用户移动端 | 390px 抽屉导航与角色隔离 | ![普通用户移动端](docs/screenshots/atelier-redesign/capabilities-user-3210-mobile.png) |
 
-登录、旧控制台兼容页和设计图册仍保留在 `docs/screenshots/` 与
-`docs/design/2026-09-21-data-studio/`，但不作为 Atelier 的视觉验收证据。
+设计图册保留在 `docs/design/2026-09-21-data-studio/`；运行截图只使用 3210 的 Atelier 页面。
 
 系统支持：
 - 用户输入目标数据集规模与关键词
@@ -256,6 +255,29 @@ Compose 服务：
 
 管理员拥有全部用户功能，并可直接进入系统治理页面。
 
+### 4.4 旧数据迁移
+
+旧 Dataset 不会因为出现在“历史资产”页就被视为已迁移。迁移需要将内容实际写入
+`projects`、快照批次和 `sample_versions`，并由 `studio_legacy_imports` 台账记录来源、游标、
+计数和内容摘要。
+
+先盘点，再对每个已确认归属的数据集单独导入：
+
+```bash
+# 只读盘点，生成可审计报告
+make legacy-inventory
+
+# 真正导入：明确数据集、执行人和目标工作区；可重复执行且会从台账续跑
+make legacy-import DATASET_ID=12 ACTOR_ID=1 OWNER_ID=1 WORKSPACE_ID=1
+```
+
+`studio-migrate` 已随 `api` 镜像提供。导入会拒绝没有可靠 owner 的数据集，也会拒绝同名
+项目冲突，除非通过 `-target-project` 明确指定现有目标。当前本地 Compose 数据库已经应用
+全部 39 个 SQL 迁移。当前开发库已执行 9 个真实导入批次：9 个旧 dataset 映射为
+`legacy_dataset_id` 项目，追加 67 个 sample version，失败数为 0；没有 SFT 内容的旧问题
+仍按对账规则保留为未导入项，不能伪装成已迁移。真实库的盘点 JSON 与每次导入输出应归档
+到变更记录或 PR，而不是写进产品页面。
+
 停止本地栈：
 
 ```bash
@@ -326,7 +348,7 @@ curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
 6. 在“发布”冻结候选范围，逐项处理 blocker，再构建带 manifest、hash 和数据卡的 release。
 7. 从“交付库”按具体 `releaseId` 下载不可变制品；后续项目修改不会改变历史下载。
 
-SFT 与 GRPO 共用项目壳和批次生命周期，但 GRPO 的档位、逐档判据、质量维度和 JSONL 字段保持独立；不会用 SFT 的 `answer/reasoning` 或固定统计填充 GRPO。旧 Dataset/Console 链路只作为兼容读写边界，迁移状态与未等价能力见[兼容入口与迁移边界](#辅助工作台与旧能力迁移边界)。
+SFT 与 GRPO 共用项目壳和批次生命周期，但 GRPO 的档位、逐档判据、质量维度和 JSONL 字段保持独立；不会用 SFT 的 `answer/reasoning` 或固定统计填充 GRPO。旧数据通过可审计导入台账进入原生项目、批次、batch item 和 sample version；无法生成合法样本的来源对象会保留为 skipped/failed 事实，不伪造训练内容。
 
 ### 6.2 系统治理流程
 管理员在连接、存储、成员与角色、预算和帮助页面维护工作区；管理员身份不自动绕过项目成员授权。
@@ -379,13 +401,9 @@ SFT 与 GRPO 共用项目壳和批次生命周期，但 GRPO 的档位、逐档�
   七个标签、导出映射字段编辑器、空名称/JSON 校验和 `#admin-governance` 深链接均已实测。
 - 当前数据库没有真实样本、实验或 release，因此 D02/L03 的有内容状态没有被伪造；截图中的空状态是实际 API 返回。
 
-Atelier 不会以新菜单为理由静默抹去旧入口。辅助入口 `/settings/capabilities` 逐项标出原生能力、只读历史、
-旧工具和未等价迁移边界。20 个旧路由（含别名与任务详情）仍可解析；在 `/console/tasks` 选择具体任务后，
-可分别进入映射后的 Atelier 项目或显式“旧版操作”工作台。旧版阶段操作链接保留 `taskId` 并打开兼容子路由；
-默认旧深链仍由 T31 映射桥接，未映射时落到只读历史页。服务端 `LEGACY_WRITES_FROZEN` 决定旧写请求是否拒绝，
-因此旧页面可达不代表旧写操作始终开放；旧历史资产页始终只读。`test/l15_legacy_compatibility.mjs` 对入口、
-映射和只读回退设有门禁。评估与清洗继续以旧 dataset 为上下文，项目质量实验/规则不是其一对一替代；
-难度统计、旧图谱写入、旧标准编辑等明确未等价迁移的能力不会被描述成已完成。
+产品菜单只展示当前工作流。旧 `/console/*` 书签仍会被路由桥解析并跳转到相应项目或历史对象；
+迁移状态、台账和冻结策略属于运维记录，不作为用户面对的产品页面。历史资产仅用于查阅尚未导入或无法完整
+映射的旧对象，真实迁移命令和对账要求见本 README 的“旧数据迁移”及迁移报告。
 
 ### 8.1 当前验收边界
 
@@ -428,12 +446,12 @@ Atelier 不会以新菜单为理由静默抹去旧入口。辅助入口 `/settin
 - API 镜像构建
 - Worker 镜像构建
 - 前端镜像构建
-- PostgreSQL + Redis + MinIO + API + Worker 的 Compose 健康状态与旧版兼容链路烟雾验证（不等同于 Atelier 的真实 provider 全旅程）
+- PostgreSQL + Redis + MinIO + API + Worker 的 Compose 健康状态与 3210 Atelier 真实浏览器链路烟雾验证
 - 通过 `http://127.0.0.1:3210/api/...` 的同源代理验证
 - 登录鉴权：`/api/v1/auth/login`、`/api/v1/auth/me`、`/api/v1/auth/logout`
 - 统一控制台真实链路脚本：`python3 scripts/frontend_same_origin_smoke.py http://127.0.0.1:3210`
 
-已验证的旧版兼容业务链路包括：
+已验证的原生 Atelier 业务链路包括：
 - 管理员角色配置模型提供方
 - 管理员角色配置存储配置
 - 管理员角色配置生成策略
@@ -484,10 +502,10 @@ Atelier 不是旧控制台换一组菜单名称，而是按用户决策重新组
 | 项目 | 数据/质量 | 内容只读，判断追加记录，实验范围冻结 |
 | 项目 | 发布 | 阻塞带证据链接，发布后 manifest/hash 固定 |
 
-登录、旧任务阶段和管理员治理页仍作为兼容入口存在，但不改变 Atelier 的主信息架构。
+旧任务阶段 URL 只做只读映射或重定向，不提供第二套可写工作台。
 
-### 9.2 兼容入口与角色策略
-- 旧版兼容入口仍保留，Atelier 主壳按项目成员能力显示页面
+### 9.2 URL 兼容与角色策略
+- 旧 URL 仅用于书签迁移；Atelier 主壳按项目成员能力显示页面
 - 管理员可以进入系统治理页，但项目内容仍由服务端项目授权决定
 - 两种角色共用同一个前端应用；能力位只辅助 UI，API 授权是最终边界
 - 默认不预置 Atelier 样本或发布数据，空状态显示真实 API 结果

@@ -950,7 +950,6 @@ function LoginPage({
           <div className="atelier-login-form__notes">
             <div><span>默认落点</span><strong>今日工作</strong></div>
             <div><span>项目主线</span><strong>设计 → 试制 → 审阅 → 发布</strong></div>
-            <div><span>旧控制台</span><strong>保留为兼容入口</strong></div>
           </div>
         </section>
       </div>
@@ -2495,7 +2494,6 @@ export default function App() {
                     </Space>
                     <Space>
                       <Button size="small" onClick={() => navigate(`/console/tasks/${dataset.id}`)}>{dataset.id === activeDatasetId ? '进入 Atelier 项目' : '继续到 Atelier'}</Button>
-                      <Button size="small" theme="borderless" onClick={() => navigate(`/console/tasks/${dataset.id}/legacy`)}>旧版操作</Button>
                     </Space>
                   </div>
                   <Text className="mt-2 block" strong>{dataset.name}</Text>
@@ -4219,6 +4217,8 @@ export default function App() {
           )
         }
       />
+      {/* Historical bookmark only. Compatibility is not a product page. */}
+      <Route path="/settings/capabilities" element={<Navigate to="/settings/connections" replace />} />
       {/*
         Atelier 主线路由（Issue #160 T09）。
         路由本身由 src/studio/routes.ts 的元数据派生，这里不写路径字面量 ——

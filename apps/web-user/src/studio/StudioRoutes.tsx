@@ -20,7 +20,6 @@ import { DeliveriesPage, ReleaseCardPage, ReleaseNewPage, ReleasesListPage } fro
 import { RecipeDetailPage, RecipesListPage } from './pages/RecipesPages'
 import { ActivityPage, TodayPage } from './pages/TodayPages'
 import { ConnectionsPage, HelpPage, TeamPage } from './pages/SettingsPages'
-import { LegacyCapabilitiesPage } from './pages/LegacyCapabilitiesPage'
 import { LegacyHistoryPage } from './pages/LegacyHistoryPage'
 import { CleaningToolPage, EvaluationToolPage } from './pages/LegacyToolPages'
 import {
@@ -71,7 +70,6 @@ const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   'settings.connections': () => <ConnectionsPage />,
   'settings.team': () => <TeamPage />,
   help: () => <HelpPage />,
-  'settings.capabilities': () => <LegacyCapabilitiesPage />,
   'legacy.history': () => <LegacyHistoryRoute />,
   'legacy.history.detail': () => <LegacyHistoryRoute />,
   'tools.evaluation': () => <EvaluationToolPage />,
@@ -339,52 +337,14 @@ class StudioErrorBoundary extends Component<{ children: ReactNode; onLogout: () 
 
 /** 按模块状态渲染真实页面或诚实的能力提示。 */
 function ModuleElement({ route }: { route: StudioRouteMeta }) {
-  const location = useLocation()
-  const params = useParams()
   const page = useMemo(() => AVAILABLE_PAGES[route.key], [route.key])
 
   if (route.moduleStatus === 'available' && page) {
     return page()
   }
   return (
-    <CapabilityNotice
-      route={route}
-      legacyHref={legacyHrefFor(route, params.projectId, location.search)}
-    />
+    <CapabilityNotice route={route} />
   )
-}
-
-/**
- * 过渡期内旧控制台里能做同样事情的入口（契约 §7 的兼容要求）。
- *
- * 只对**确实已有旧实现**的模块给出入口：写一个指向不存在页面的链接
- * 比不给链接更糟（用户点进去看到 404，会以为系统坏了）。
- */
-function legacyHrefFor(route: StudioRouteMeta, projectId?: string, search = ''): string | undefined {
-  if (!projectId) return undefined
-  // Project IDs and legacy dataset IDs are different identities. The project
-  // list resolves the project first, then the capability bridge uses the
-  // server-provided legacyDatasetId. Never put projectId into `taskId` here.
-  const withProject = (next: string) => `/projects?next=${encodeURIComponent(next)}&projectId=${encodeURIComponent(projectId)}${search ? `&${search.slice(1)}` : ''}`
-  switch (route.key) {
-    case 'project.runs':
-    case 'project.pilot':
-    case 'project.runNew':
-      return withProject('project.runs')
-    case 'project.data':
-    case 'project.review':
-      return withProject('project.data')
-    case 'project.quality':
-    case 'project.rules':
-    case 'project.qualityNew':
-      return withProject('project.quality')
-    case 'project.blueprint':
-    case 'project.coverage':
-    case 'project.standard':
-      return withProject('project.blueprint')
-    default:
-      return undefined
-  }
 }
 
 /**

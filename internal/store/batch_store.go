@@ -223,6 +223,39 @@ func resolveBatchSnapshotTx(ctx context.Context, tx pgx.Tx, projectID int64, inp
 	var snapshot model.BatchSnapshot
 	var generationConfig model.BatchGenerationConfig
 
+	// 蓝图是生产配置的组合入口。规划页可以显式覆写某一类版本（例如
+	// 扩量采用同一蓝图但切换映射），但省略的引用必须从蓝图节点补齐，
+	// 否则用户在设计区明明已经配置，生产快照却会丢掉这条关系。
+	if input.BlueprintVersionID > 0 {
+		var rawBlueprint []byte
+		if err := tx.QueryRow(ctx, `
+      SELECT payload FROM document_versions
+      WHERE id = $1 AND project_id = $2 AND kind = 'blueprint'`,
+			input.BlueprintVersionID, projectID).Scan(&rawBlueprint); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return snapshot, generationConfig, model.FieldErrors{{
+					Field: "blueprintVersionId", Message: "引用的蓝图版本不存在或不属于本项目，请重新选择",
+				}}
+			}
+			return snapshot, generationConfig, err
+		}
+		var blueprint model.BlueprintPayload
+		if err := json.Unmarshal(rawBlueprint, &blueprint); err == nil {
+			if input.CoverageVersionID <= 0 {
+				input.CoverageVersionID = blueprint.Nodes.Coverage.CoverageVersionID
+			}
+			if input.StandardVersionID <= 0 {
+				input.StandardVersionID = blueprint.Nodes.Standard.StandardVersionID
+			}
+			if input.QualityPolicyVersionID <= 0 {
+				input.QualityPolicyVersionID = blueprint.Nodes.Rules.QualityPolicyVersionID
+			}
+			if input.MappingVersionID <= 0 {
+				input.MappingVersionID = blueprint.Nodes.Delivery.MappingVersionID
+			}
+		}
+	}
+
 	resolve := func(versionID int64, field string) (string, error) {
 		if versionID <= 0 {
 			return "", nil
@@ -267,8 +300,7 @@ func resolveBatchSnapshotTx(ctx context.Context, tx pgx.Tx, projectID int64, inp
 	snapshot.MappingVersionID = input.MappingVersionID
 
 	// 生成配置从蓝图 payload 的 generation 节点解出（它是「这一批怎么跑」的权威来源）。
-	// 蓝图版本缺省时保持零值：试制允许只给标准（走连接默认），
-	// 真正的「必须配齐」检查在 T13 的执行前核对里。
+	// 蓝图版本缺省时保持零值：真正的「必须配齐」检查在执行前核对里。
 	if input.BlueprintVersionID > 0 {
 		var payload []byte
 		if err := tx.QueryRow(ctx, `
@@ -954,8 +986,15 @@ func validateSamplePayload(targetKind string, payload any) error {
 
 	var errs model.FieldErrors
 	required := model.RequiredSampleFields(targetKind)
+	aliases := map[string]string{
+		"judge_prompt":  "judgePrompt",
+		"level_rubrics": "levelRubrics",
+	}
 	for _, field := range required {
 		value, ok := decoded[field]
+		if !ok {
+			value, ok = decoded[aliases[field]]
+		}
 		if !ok || len(value) == 0 || string(value) == "null" {
 			errs = append(errs, model.FieldError{Field: field, Message: "必填"})
 		}
@@ -982,8 +1021,12 @@ func validateSamplePayload(targetKind string, payload any) error {
 			}
 		}
 		var rubrics []model.GrpoLevelRubric
-		if raw, ok := decoded["level_rubrics"]; ok {
-			if err := json.Unmarshal(raw, &rubrics); err != nil {
+		rubricRaw, rubricOK := decoded["level_rubrics"]
+		if !rubricOK {
+			rubricRaw, rubricOK = decoded["levelRubrics"]
+		}
+		if rubricOK {
+			if err := json.Unmarshal(rubricRaw, &rubrics); err != nil {
 				errs = append(errs, model.FieldError{
 					Field:   "level_rubrics",
 					Message: "必须是对象数组（每档含判据与边界例）",
@@ -1230,9 +1273,9 @@ func (s *BatchStore) CommitBatchItemSuccess(ctx context.Context, batchID, projec
 	// 单元置为成功并指向产出（同一事务）。
 	if _, err := tx.Exec(ctx, `
     UPDATE batch_items
-    SET status = 'succeeded', sample_version_id = $2, error_class = '', error_message = '',
+    SET status = 'succeeded', sample_id = $3, sample_version_id = $2, error_class = '', error_message = '',
         finished_at = NOW(), updated_at = NOW()
-    WHERE id = $1`, itemID, version.ID); err != nil {
+    WHERE id = $1`, itemID, version.ID, version.SampleID); err != nil {
 		return model.SampleVersion{}, false, err
 	}
 
@@ -1335,6 +1378,26 @@ func (s *BatchStore) CommitBatchItemFailure(ctx context.Context, batchID, itemID
         finished_at = NOW(), updated_at = NOW()
     WHERE id = $1 AND batch_id = $2 AND status <> 'succeeded'`,
 		itemID, batchID, errorClass, message, retryable)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// MarkBatchItemSkipped records a source unit that cannot produce a sample
+// without inventing content (for example a legacy question with no answer).
+// Skipped is a terminal, auditable state and is intentionally distinct from a
+// provider failure: it must not be retried or counted as a generated sample.
+func (s *BatchStore) MarkBatchItemSkipped(ctx context.Context, batchID, itemID int64, message string) (bool, error) {
+	if len([]rune(message)) > 1000 {
+		message = string([]rune(message)[:1000])
+	}
+	tag, err := s.db.Exec(ctx, `
+    UPDATE batch_items
+    SET status = 'skipped', error_class = 'schema_violation', error_message = $3,
+        retryable = FALSE, finished_at = NOW(), updated_at = NOW()
+    WHERE id = $1 AND batch_id = $2 AND status NOT IN ('succeeded', 'skipped')`,
+		itemID, batchID, message)
 	if err != nil {
 		return false, err
 	}

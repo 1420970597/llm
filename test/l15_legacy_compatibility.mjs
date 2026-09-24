@@ -1,9 +1,9 @@
 /**
  * Atelier legacy compatibility index guard.
  *
- * The old console remains a supported read/operation surface during migration.
- * This source-level check prevents a legacy entry from silently disappearing
- * from the Atelier discoverability index or from the actual App route tree.
+ * The old console remains a supported deep-link surface during migration.
+ * The Atelier product shell must not expose a compatibility index as a menu or
+ * product page; legacy links are validated separately against App's bridge.
  * It intentionally has no API/browser dependency and is safe to run in CI.
  */
 
@@ -16,6 +16,7 @@ const app = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'App.tsx'), 
 const routes = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'legacyCapabilities.ts'), 'utf8')
 const studioRoutes = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'routes.ts'), 'utf8')
 const studioTree = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'StudioRoutes.tsx'), 'utf8')
+const capabilityNotice = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'CapabilityNotice.tsx'), 'utf8')
 const cleaningView = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'views', 'CleaningView.tsx'), 'utf8')
 const toolPages = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'pages', 'LegacyToolPages.tsx'), 'utf8')
 const projectsPage = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'pages', 'ProjectsPages.tsx'), 'utf8')
@@ -57,7 +58,7 @@ for (const route of expected) {
   const mounted = route.includes(':taskId')
     ? /path=["']\/console\/tasks\/:taskId["']/.test(app)
     : new RegExp(`path=["']${route.replaceAll('/', '\\/')}["']`).test(app)
-  record(`旧入口 ${route} 已进入 Atelier 索引`, indexed, indexed ? 'legacyCapabilities.ts 已声明 compat 状态' : 'legacyCapabilities.ts 缺少声明')
+  record(`旧入口 ${route} 保留深链元数据`, indexed, indexed ? 'legacyCapabilities.ts 已声明 compat 状态' : 'legacyCapabilities.ts 缺少声明')
   record(`旧入口 ${route} 仍由 App 挂载`, mounted, mounted ? 'App.tsx 保留兼容路由' : 'App.tsx 未找到兼容路由')
 }
 
@@ -81,18 +82,29 @@ for (const [legacyRoute, nativePath, nativeKey] of [
   record(`Atelier 工作台 ${nativePath} 已声明并注册`, routeDeclared && pageRegistered, `${nativeKey} 元数据与页面注册表均存在`)
 }
 
-record('Atelier 兼容索引有可达路由', /key:\s*'settings\.capabilities'[\s\S]*?path:\s*'\/settings\/capabilities'/.test(studioRoutes), '辅助入口元数据包含 /settings/capabilities')
-record('兼容索引已注册页面组件', /['"]settings\.capabilities['"]:\s*\(\)\s*=>\s*<LegacyCapabilitiesPage\s*\/>/.test(studioTree), 'StudioRoutes.tsx 注册 LegacyCapabilitiesPage')
 record(
-  'Atelier 下钻旧阶段时保留任务上下文',
-  studioTree.includes('const withProject = (next: string) => `/projects?next=') &&
-    projectsPage.includes('const requestedProjectId = parseProjectResourceId(searchParams.get(\'projectId\'))') &&
-    projectsPage.includes('studioApi.getProject(requestedProjectId)') &&
-    projectsPage.includes('const target = projectHref(projectTarget, response.id)') &&
-    projectsPage.includes('context.delete(\'next\')') &&
-    projectsPage.includes('context.delete(\'projectId\')') &&
-    projectsPage.includes('navigate(query ? `${target}?${query}` : target)'),
-  '兼容链接按项目 ID 直查，不依赖列表请求；目标跳转保留非路由控制参数，避免丢失旧数据集上下文',
+  '正式菜单移除兼容功能',
+  !/key:\s*'settings\.capabilities'/.test(studioRoutes) && !/兼容功能/.test(studioRoutes),
+  '辅助入口不再暴露迁移说明索引',
+)
+record(
+  '兼容功能旧书签重定向到原生设置',
+  app.includes('<Route path="/settings/capabilities" element={<Navigate to="/settings/connections" replace />} />') &&
+    !studioTree.includes("settings.capabilities") &&
+    !studioRoutes.includes("settings.capabilities"),
+  '顶层保留书签重定向，但 Atelier 不再声明兼容产品页',
+)
+record(
+  'Atelier 不再暴露旧控制台下钻操作',
+  !studioTree.includes('const withProject = (next: string) => `/projects?next=') &&
+    !capabilityNotice.includes('legacyHref') &&
+    !capabilityNotice.includes('旧控制台'),
+  '旧 URL 仅由顶层兼容路由重定向或只读桥接，产品页面不提供第二套旧操作入口',
+)
+record(
+  '项目概览不再承载迁移说明矩阵',
+  !projectsPage.includes('LegacyCapabilityWorkbench') && !projectsPage.includes('能力覆盖与迁移边界'),
+  '迁移边界放在 issue/PR 与历史资产入口，项目主流程只呈现当前项目事实',
 )
 record(
   '清洗原生工作台不会把流程按钮送回旧壳',
@@ -160,8 +172,7 @@ record(
 record(
   '旧详情仍可显式打开兼容视图',
     app.includes('path="/console/tasks/:taskId/legacy" element={renderTaskDetail()}') &&
-    app.includes('navigate(`/console/tasks/${dataset.id}/legacy`)') &&
-    app.includes('>旧版操作</Button>') &&
+    !app.includes('>旧版操作</Button>') &&
     app.includes("const legacyRoute = `${route.replace(/\\/$/, '')}/legacy`") &&
     app.includes('path="/console/domains/legacy" element={renderDomains()}') &&
     app.includes('path="/console/exports/legacy" element={renderExportStage()}'),

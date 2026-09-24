@@ -299,6 +299,17 @@ func (app *application) createProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		project = created
+		// A hand-created project must open with a real, editable Atelier
+		// configuration. Bootstrap is idempotent and does not require a model
+		// connection, so an empty provider catalog never creates a half-configured
+		// project that only fails after the user presses "run".
+		if err := app.documents.BootstrapProjectDocuments(r.Context(), project.ID, user.ID,
+			project.TargetKind, project.Name, project.Goal); err != nil {
+			app.logInternal(r, "project document bootstrap failed", err)
+			app.writeAPIError(w, r, http.StatusInternalServerError, "DOCUMENT_BOOTSTRAP_FAILED",
+				"项目已创建，但初始配置未完成，请刷新项目后重试", nil)
+			return
+		}
 	}
 
 	if key != "" {

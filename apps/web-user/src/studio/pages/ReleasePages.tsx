@@ -19,7 +19,7 @@ import type {
 } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
-import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
+import { CopyVersionButton, DocumentHistory, DocumentSaveBar, MappingPayloadEditor, useVersionedDocument } from '../DocumentEditors'
 
 type BlockerLinkProps = {
   link: string
@@ -135,7 +135,6 @@ export function ReleasesListPage() {
 
   return (
     <div className="console-page" data-studio-page="releases">
-      <LegacyCapabilityWorkbench surface="release" />
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">发布版本</Title>
@@ -198,6 +197,7 @@ export function ReleaseNewPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { Title, Text } = Typography
+  const mappingState = useVersionedDocument(scope.projectId, 'mapping-versions')
 
   // `?selection=` 指向服务端选择快照（T17）：URL 只带快照 ID，不带 ID 列表。
   // 非法值必须在页面层被识别为错误，不能悄悄回退成手工范围。
@@ -286,6 +286,12 @@ export function ReleaseNewPage() {
     })()
     return () => { cancelled = true }
   }, [scope.projectId])
+
+  useEffect(() => {
+    if (mappingState.current && mappingVersionId === '') {
+      setMappingVersionId(String(mappingState.current.id))
+    }
+  }, [mappingState.current, mappingVersionId])
 
   // 从服务端选择快照恢复范围（**重新鉴权**由服务端完成）。
   useEffect(() => {
@@ -427,11 +433,26 @@ export function ReleaseNewPage() {
         <div>
           <Title heading={4} className="!mb-1">准备发布</Title>
           <Text type="tertiary">
-            候选创建时同时分配候选 ID、**稳定的发布 ID** 与项目内唯一的版本名；
+            候选创建时同时分配候选 ID、稳定的发布 ID 与项目内唯一的版本名；
             发布失败重试沿用同一身份。
           </Text>
         </div>
       </div>
+
+      <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-mapping-editor="true">
+        <div className="console-page__header document-editor__embedded-header">
+          <div>
+            <Text strong>交付映射</Text>
+            <Text type="tertiary" size="small" className="block">先在这里维护字段对应关系，下面的发布候选会引用你保存的版本。</Text>
+          </div>
+          <CopyVersionButton state={mappingState} />
+        </div>
+        {mappingState.loading ? <Spin tip="正在加载映射版本" /> : <>
+          <MappingPayloadEditor payload={mappingState.payload ?? { schemaVersion: 'mapping.v1', format: targetKind === 'grpo' ? 'jsonl' : 'jsonl', fields: [] }} disabled={mappingState.isReadOnly || !mappingState.canEdit} onChange={mappingState.setPayload} />
+          <DocumentSaveBar state={mappingState} label="交付映射" />
+          <DocumentHistory state={mappingState} />
+        </>}
+      </Card>
 
       {snapshotNotice ? (
         <Card className="console-card mb-3" bodyStyle={{ padding: 12 }} data-selection-restored="true">
@@ -450,11 +471,13 @@ export function ReleaseNewPage() {
             </Text>
           </div>
           <div className="wizard-field">
-            <label className="wizard-field__label" htmlFor="mapping-version">映射版本 ID</label>
-            <Input id="mapping-version" value={mappingVersionId} onChange={(value) => setMappingVersionId(value)}
-              placeholder="例如 12" />
+            <label className="wizard-field__label" htmlFor="mapping-version">用于本次发布的映射版本</label>
+            <Select id="mapping-version" value={mappingVersionId || undefined}
+              optionList={mappingState.versions.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))}
+              onChange={(value) => setMappingVersionId(String(value))}
+              placeholder="请选择已保存的映射版本" disabled={mappingState.versions.length === 0} />
             <Text type="tertiary" size="small" className="block mt-1">
-              默认带入项目当前映射版本；如需其他版本，请从设计区复制其版本 ID。
+              发布会冻结这个版本的字段映射；后续修改需要保存为新版本。
             </Text>
           </div>
           <div className="wizard-field">
@@ -496,7 +519,7 @@ export function ReleaseNewPage() {
         <Text strong className="block mb-2">发布范围（已接纳的内容版本）</Text>
         <Text type="tertiary" size="small" className="block mb-2">
           已选 {selectionSnapshotID > 0 ? selectionSnapshotItems?.length ?? 0 : selected.length} 条
-          {selectionSnapshotID > 0 ? '（来自服务端冻结快照，范围已锁定）' : '（当前页）'}。候选保存的是**具体内容版本**，不是筛选条件。
+          {selectionSnapshotID > 0 ? '（来自服务端冻结快照，范围已锁定）' : '（当前页）'}。候选保存的是具体内容版本，不是筛选条件。
         </Text>
         {samples.length === 0 ? (
           <Empty description="还没有已接纳的内容。请先在审阅队列中完成判断。" />
@@ -703,7 +726,7 @@ export function ReleaseCardPage() {
       {published ? (
         <Card className="console-card mb-3" bodyStyle={{ padding: 12 }} data-published-notice="true">
           <Text size="small">
-            该版本已发布：内容、映射、数据卡与 hash 只读。之后修改项目配置、隔离样本或切换默认存储，
+            该版本已发布：内容、映射、数据卡与指纹只读。之后修改项目配置、隔离样本或切换默认存储，
             都不会改变这些文件；后续风险通过独立警告表达。
           </Text>
         </Card>
@@ -747,7 +770,7 @@ export function ReleaseCardPage() {
                 {artifact.state === 'verified' ? '已校验' : artifact.state === 'failed' ? '失败' : '待校验'}
               </Tag>
               <Text size="small">
-                {artifact.format} · {artifact.sizeBytes} 字节 · hash {artifact.artifactHash.slice(0, 16)}…
+                {artifact.format} · {artifact.sizeBytes} 字节 · 文件指纹 {artifact.artifactHash.slice(0, 16)}…
               </Text>
               {artifact.state === 'verified' && capabilities.canDownload ? (
                 // 下载走同源 /api，因此复用统一会话与错误处理（401/403 有中文提示）。
@@ -768,7 +791,7 @@ export function ReleaseCardPage() {
         <Text strong className="block mb-1">发布清单（manifest）</Text>
         <Text type="tertiary" size="small" className="block mb-2">
           manifest 记录这一版发布了什么：清单项、映射与编码器版本、用途与限制。
-          hash 分层：内容 hash → 清单 hash → 文件 hash → manifest hash（不含它自己）。
+          指纹分层：内容指纹 → 清单指纹 → 文件指纹 → manifest 指纹（不含它自己）。
         </Text>
         <pre className="review-content">{JSON.stringify(card.manifest, null, 2)}</pre>
       </Card>
@@ -811,7 +834,7 @@ export function DeliveriesPage() {
         <div>
           <Title heading={4} className="!mb-1">交付库</Title>
           <Text type="tertiary">
-            只显示**已发布**且你有权访问的版本；候选不是交付物，不会出现在这里。
+            只显示已发布且你有权访问的版本；候选不是交付物，不会出现在这里。
           </Text>
         </div>
         <div className="flex gap-2">

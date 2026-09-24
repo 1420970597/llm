@@ -1,7 +1,7 @@
 # 统一走仓库根入口，确保 .env 插值与 env_file 一致（见根 docker-compose.yml 注释）
 COMPOSE := docker compose
 
-.PHONY: install build web-build compose-config compose-up compose-down compose-logs docker-prune go-test-docker db-migrate-smoke
+.PHONY: install build web-build compose-config compose-up compose-down compose-logs docker-prune go-test-docker db-migrate-smoke legacy-inventory legacy-import
 
 install:
 	npm install
@@ -36,3 +36,12 @@ db-migrate-smoke:
 	docker exec -i llm-postgres-migrate-smoke psql -U llm_factory -d llm_factory < sql/migrations/0001_phase1_foundation.sql
 	docker exec llm-postgres-migrate-smoke psql -U llm_factory -d llm_factory -c "\dt"
 	docker rm -f llm-postgres-migrate-smoke >/dev/null
+
+# 旧数据迁移始终先盘点，再按 dataset 显式导入。DATASET_ID / ACTOR_ID
+# 必须由操作者提供，避免把授权归属不明的数据自动带入项目工作区。
+legacy-inventory:
+	$(COMPOSE) exec api studio-migrate -dsn "postgres://$$POSTGRES_USER:$$POSTGRES_PASSWORD@$$POSTGRES_HOST:$$POSTGRES_PORT/$$POSTGRES_DB?sslmode=disable" -report /app/artifacts/studio-migrate/report.json
+
+legacy-import:
+	@test -n "$(DATASET_ID)" && test -n "$(ACTOR_ID)" && test -n "$(OWNER_ID)" || (echo "用法：make legacy-import DATASET_ID=<id> ACTOR_ID=<admin-id> OWNER_ID=<owner-id> [WORKSPACE_ID=<id>]"; exit 2)
+	$(COMPOSE) exec api studio-migrate -dsn "postgres://$$POSTGRES_USER:$$POSTGRES_PASSWORD@$$POSTGRES_HOST:$$POSTGRES_PORT/$$POSTGRES_DB?sslmode=disable" -import-dataset "$(DATASET_ID)" -actor "$(ACTOR_ID)" -owner "$(OWNER_ID)" -workspace "$(or $(WORKSPACE_ID),1)" -apply -resume
