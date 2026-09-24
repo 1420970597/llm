@@ -1,0 +1,309 @@
+{
+  "base": "http://127.0.0.1:3210",
+  "project": "p_1",
+  "collectedAt": "2026-09-24T21:02:16.190Z",
+  "findings": [
+    {
+      "key": "11-current-blueprint-canvas",
+      "route": "/p/:p/blueprint",
+      "url": "http://127.0.0.1:3210/p/p_1/blueprint",
+      "viewport": "desktop",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1561,
+        "viewportHeight": 1000,
+        "overflowX": 0
+      },
+      "probe": {
+        "canvasWidth": 890,
+        "canvasHeight": 791,
+        "canvasDisplay": "block",
+        "canvasFlexDirection": "row",
+        "nodeCount": 7,
+        "nodeKeys": [
+          "coverage",
+          "standard",
+          "generation",
+          "evaluation",
+          "rules",
+          "human_review",
+          "delivery"
+        ],
+        "nodesAreDraggable": false,
+        "hasEdgeOrConnector": true,
+        "hasCanvasZoom": false,
+        "viewportHeight": 1000,
+        "docHeight": 1561,
+        "inkOverlap": 9
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/11-current-blueprint-canvas-desktop.png"
+    },
+    {
+      "key": "12-current-blueprint-generation-node",
+      "route": "/p/:p/blueprint?node=generation",
+      "url": "http://127.0.0.1:3210/p/p_1/blueprint?node=generation",
+      "viewport": "desktop",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 2437,
+        "viewportHeight": 1000,
+        "overflowX": 0
+      },
+      "probe": {
+        "canvasWidth": 890,
+        "canvasHeight": 1666,
+        "canvasDisplay": "block",
+        "canvasFlexDirection": "row",
+        "nodeCount": 7,
+        "nodeKeys": [
+          "coverage",
+          "standard",
+          "generation",
+          "evaluation",
+          "rules",
+          "human_review",
+          "delivery"
+        ],
+        "nodesAreDraggable": false,
+        "hasEdgeOrConnector": true,
+        "hasCanvasZoom": false,
+        "viewportHeight": 1000,
+        "docHeight": 2437,
+        "inkOverlap": 20
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/12-current-blueprint-generation-node-desktop.png"
+    },
+    {
+      "key": "13-current-coverage-matrix",
+      "route": "/p/:p/coverage",
+      "url": "http://127.0.0.1:3210/p/p_1/coverage",
+      "viewport": "desktop",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1241,
+        "viewportHeight": 1000,
+        "overflowX": 0
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/13-current-coverage-matrix-desktop.png"
+    },
+    {
+      "key": "14a-current-project-data",
+      "route": "/p/:p/data",
+      "url": "http://127.0.0.1:3210/p/p_1/data",
+      "viewport": "desktop",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1000,
+        "viewportHeight": 1000,
+        "overflowX": 0
+      },
+      "probe": {
+        "heading": null,
+        "tabs": [
+          "今日工作",
+          "数据项目",
+          "方案库",
+          "交付库",
+          "评估工作台",
+          "清洗工作台",
+          "历史资产",
+          "动态",
+          "连接设置",
+          "成员与角色",
+          "帮助",
+          "概览"
+        ],
+        "bodyFingerprint": "今日工作 数据项目 方案库 交付库 评估工作台 清洗工作台 历史资产 动态 连接设置 成员与角色 帮助 数据项目 甲方验收-冷链问答 数据 搜索 A 已进入数据 甲方验收-冷链问答 样本内容、版本来源与审阅队列 概览 设计 生产 数据 质量 发布 样本工作区 按审阅状态与关键词在服务端筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。 待判断 刷新样本 按当前筛选冻结并准备发布（服务端解析） 样本 版本 审阅状态 操作 核心方向（难度 medium）：第 1 题 s_1 v1（版本 ID 1） 待判断 审阅 来源"
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/14a-current-project-data-desktop.png"
+    },
+    {
+      "key": "14b-current-project-review",
+      "route": "/p/:p/review",
+      "url": "http://127.0.0.1:3210/p/p_1/review",
+      "viewport": "desktop",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1000,
+        "viewportHeight": 1000,
+        "overflowX": 0
+      },
+      "probe": {
+        "heading": null,
+        "tabs": [
+          "今日工作",
+          "数据项目",
+          "方案库",
+          "交付库",
+          "评估工作台",
+          "清洗工作台",
+          "历史资产",
+          "动态",
+          "连接设置",
+          "成员与角色",
+          "帮助",
+          "概览"
+        ],
+        "bodyFingerprint": "今日工作 数据项目 方案库 交付库 评估工作台 清洗工作台 历史资产 动态 连接设置 成员与角色 帮助 数据项目 甲方验收-冷链问答 数据 审阅队列 搜索 A 已进入数据 甲方验收-冷链问答 样本内容、版本来源与审阅队列 概览 设计 生产 数据 质量 发布 审阅队列 按审阅状态与关键词在服务端筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。 待判断 刷新样本 按当前筛选冻结并准备发布（服务端解析） 样本 版本 审阅状态 操作 核心方向（难度 medium）：第 1 题 s_1 v1（版本 ID 1） 待判断 审阅 来源"
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/14b-current-project-review-desktop.png"
+    },
+    {
+      "key": "15-current-batch-runs",
+      "route": "/p/:p/runs",
+      "url": "http://127.0.0.1:3210/p/p_1/runs",
+      "viewport": "desktop",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1000,
+        "viewportHeight": 1000,
+        "overflowX": 0
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/15-current-batch-runs-desktop.png"
+    },
+    {
+      "key": "16-current-quality-new",
+      "route": "/p/:p/quality/new",
+      "url": "http://127.0.0.1:3210/p/p_1/quality/new",
+      "viewport": "desktop",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1047,
+        "viewportHeight": 1000,
+        "overflowX": 0
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/16-current-quality-new-desktop.png"
+    },
+    {
+      "key": "17-current-connections",
+      "route": "/settings/connections",
+      "url": "http://127.0.0.1:3210/settings/connections",
+      "viewport": "desktop",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 2315,
+        "viewportHeight": 1000,
+        "overflowX": 0
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/17-current-connections-desktop.png"
+    },
+    {
+      "key": "18-current-team",
+      "route": "/settings/team",
+      "url": "http://127.0.0.1:3210/settings/team",
+      "viewport": "desktop",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1006,
+        "viewportHeight": 1000,
+        "overflowX": 0
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/18-current-team-desktop.png"
+    },
+    {
+      "key": "19-current-today",
+      "route": "/today",
+      "url": "http://127.0.0.1:3210/today",
+      "viewport": "desktop",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1364,
+        "viewportHeight": 1000,
+        "overflowX": 0
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/19-current-today-desktop.png"
+    },
+    {
+      "key": "20-current-legacy-history",
+      "route": "/legacy/history",
+      "url": "http://127.0.0.1:3210/legacy/history",
+      "viewport": "desktop",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1006,
+        "viewportHeight": 1000,
+        "overflowX": 0
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/20-current-legacy-history-desktop.png"
+    },
+    {
+      "key": "11-current-blueprint-canvas",
+      "route": "/p/:p/blueprint",
+      "url": "http://127.0.0.1:3210/p/p_1/blueprint",
+      "viewport": "mobile",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 2789,
+        "viewportHeight": 844,
+        "overflowX": 66
+      },
+      "probe": {
+        "canvasWidth": 318,
+        "canvasHeight": 1177,
+        "canvasDisplay": "block",
+        "canvasFlexDirection": "row",
+        "nodeCount": 7,
+        "nodeKeys": [
+          "coverage",
+          "standard",
+          "generation",
+          "evaluation",
+          "rules",
+          "human_review",
+          "delivery"
+        ],
+        "nodesAreDraggable": false,
+        "hasEdgeOrConnector": true,
+        "hasCanvasZoom": false,
+        "viewportHeight": 844,
+        "docHeight": 2789,
+        "inkOverlap": 9
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/11-current-blueprint-canvas-mobile.png"
+    },
+    {
+      "key": "14a-current-project-data",
+      "route": "/p/:p/data",
+      "url": "http://127.0.0.1:3210/p/p_1/data",
+      "viewport": "mobile",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 844,
+        "viewportHeight": 844,
+        "overflowX": 0
+      },
+      "probe": {
+        "heading": null,
+        "tabs": [
+          "今日工作",
+          "数据项目",
+          "方案库",
+          "交付库",
+          "评估工作台",
+          "清洗工作台",
+          "历史资产",
+          "动态",
+          "连接设置",
+          "成员与角色",
+          "帮助",
+          "概览"
+        ],
+        "bodyFingerprint": "数据项目 甲方验收-冷链问答 数据 A 已进入数据 甲方验收-冷链问答 样本内容、版本来源与审阅队列 概览 设计 生产 数据 质量 发布 样本工作区 按审阅状态与关键词在服务端筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。 待判断 刷新样本 按当前筛选冻结并准备发布（服务端解析） 样本 版本 审阅状态 操作 核心方向（难度 medium）：第 1 题 s_1 v1（版本 ID 1） 待判断 审阅 来源"
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/14a-current-project-data-mobile.png"
+    },
+    {
+      "key": "17-current-connections",
+      "route": "/settings/connections",
+      "url": "http://127.0.0.1:3210/settings/connections",
+      "viewport": "mobile",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 5075,
+        "viewportHeight": 844,
+        "overflowX": 0
+      },
+      "screenshot": "docs/screenshots/issue-165-197-current/17-current-connections-mobile.png"
+    }
+  ]
+}

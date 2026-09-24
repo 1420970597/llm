@@ -4,6 +4,8 @@
     "docs/design/2026-09-21-data-studio/prototype/**",
     "docs/design/2026-09-21-data-studio/prototype.html",
     "docs/design/2026-09-20-console-rebuild/prototype/**",
-    "docs/design/2026-09-20-console-rebuild/prototype.html"
+    "docs/design/2026-09-20-console-rebuild/prototype.html",
+    "docs/prototypes/blueprint-workflow-rearchitecture/**",
+    "docs/prototypes/blueprint-workflow-rearchitecture/prototype.html"
   ]
 }
