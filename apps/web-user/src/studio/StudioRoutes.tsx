@@ -20,7 +20,6 @@ import { DeliveriesPage, ReleaseCardPage, ReleaseNewPage, ReleasesListPage } fro
 import { RecipeDetailPage, RecipesListPage } from './pages/RecipesPages'
 import { ActivityPage, TodayPage } from './pages/TodayPages'
 import { ConnectionsPage, HelpPage, TeamPage } from './pages/SettingsPages'
-import { LegacyCapabilitiesPage } from './pages/LegacyCapabilitiesPage'
 import { LegacyHistoryPage } from './pages/LegacyHistoryPage'
 import { CleaningToolPage, EvaluationToolPage } from './pages/LegacyToolPages'
 import {
@@ -71,7 +70,6 @@ const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   'settings.connections': () => <ConnectionsPage />,
   'settings.team': () => <TeamPage />,
   help: () => <HelpPage />,
-  'settings.capabilities': () => <LegacyCapabilitiesPage />,
   'legacy.history': () => <LegacyHistoryRoute />,
   'legacy.history.detail': () => <LegacyHistoryRoute />,
   'tools.evaluation': () => <EvaluationToolPage />,
@@ -239,6 +237,9 @@ export function studioRouteTree({ user, onLogout }: StudioRouteTreeProps) {
         {auxiliaryRoutes.map((route) => (
           <Route key={route.key} path={route.path} element={<ModuleElement route={route} />} />
         ))}
+
+        {/* 旧兼容索引不再是产品页面；保留书签可达性并直接落到真实设置工作区。 */}
+        <Route path="/settings/capabilities" element={<Navigate to="/settings/connections" replace />} />
 
         {/* 目录评审：仅非生产构建挂载（生产不带 /catalog）。 */}
         {isCatalogRouteMounted()

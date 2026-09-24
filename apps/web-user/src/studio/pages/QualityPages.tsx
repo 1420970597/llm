@@ -8,7 +8,6 @@ import { newIdempotencyKey, projectPath, studioApi } from '../../lib/api/studio'
 import type { BatchSummary, CreateExperimentRequest, Experiment, ExperimentDetail, Page, SampleSummary, RulePreviewResult } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
-import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
 
 /**
  * 质量工作区页面（Issue #160 T19）：实验列表、创建页、报告页与规则页。
@@ -120,7 +119,6 @@ export function QualityListPage() {
 
   return (
     <div className="console-page" data-studio-page="quality-list">
-      <LegacyCapabilityWorkbench surface="quality" />
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">

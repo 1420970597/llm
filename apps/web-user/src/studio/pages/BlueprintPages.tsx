@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Button, Card, Empty, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
+import { Button, Card, Empty, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, Copy, History, Save } from 'lucide-react'
 import { client } from '../../lib/api'
 import { newIdempotencyKey, projectPath } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
-import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
 
 /**
  * 设计区页面（Issue #160 T11）：蓝图节点检查器、覆盖矩阵、标准历史。
@@ -86,6 +85,17 @@ type VersionsResponse = {
   canEdit?: boolean
 }
 
+type BlueprintChoice = {
+  value: string
+  label: string
+  meta?: string
+}
+
+type BlueprintChoices = {
+  versions: Record<string, BlueprintChoice[]>
+  connections: BlueprintChoice[]
+}
+
 /** 版本详情端点返回 `{ document, version, references, readOnly }`。 */
 function versionFromResponse(body: unknown): DocumentVersion {
   if (body && typeof body === 'object') {
@@ -137,6 +147,7 @@ export function BlueprintPage() {
   const [changeReason, setChangeReason] = useState('')
   const [compareVersion, setCompareVersion] = useState<number | null>(null)
   const [canEdit, setCanEdit] = useState(false)
+  const [choices, setChoices] = useState<BlueprintChoices>({ versions: {}, connections: [] })
 
   // `?node=` 与 `?version=` 都来自 URL：分享链接要能指向同一个节点与版本。
   const activeNodeKey = searchParams.get('node') ?? ''
@@ -146,15 +157,41 @@ export function BlueprintPage() {
     setLoading(true)
     setError(null)
     try {
-      const [nodesResponse, versionsResponse] = await Promise.all([
+      const [nodesResponse, versionsResponse, coverageResponse, standardResponse, qualityResponse, mappingResponse, connectionsResponse] = await Promise.all([
         client.get<BlueprintNodesResponse>(`${projectPath(scope.projectId)}/blueprint-nodes`),
         client.get<VersionsResponse>(`${projectPath(scope.projectId)}/blueprint-versions?limit=50`),
+        client.get<VersionsResponse>(`${projectPath(scope.projectId)}/coverage-versions?limit=50`),
+        client.get<VersionsResponse>(`${projectPath(scope.projectId)}/standard-versions?limit=50`),
+        client.get<VersionsResponse>(`${projectPath(scope.projectId)}/quality-policy-versions?limit=50`),
+        client.get<VersionsResponse>(`${projectPath(scope.projectId)}/mapping-versions?limit=50`),
+        client.get<{ providers?: Array<{ id: number; name: string; model: string; isActive: boolean }> }>('/v1/settings/connection-options'),
       ])
       setSpecs(nodesResponse.data.items ?? [])
       const list = versionsResponse.data.items ?? []
       setVersions(list)
       setHeadRevision(versionsResponse.data.document?.revision ?? 0)
       setCanEdit(versionsResponse.data.canEdit === true)
+      const versionChoices = (response: VersionsResponse): BlueprintChoice[] =>
+        (response.items ?? []).map((item) => ({
+          value: String(item.id),
+          label: `v${item.version}${item.changeReason ? ` · ${item.changeReason}` : ''}`,
+          meta: item.contentHash ? item.contentHash.slice(0, 8) : undefined,
+        }))
+      setChoices({
+        versions: {
+          coverageVersionId: versionChoices(coverageResponse.data),
+          standardVersionId: versionChoices(standardResponse.data),
+          qualityPolicyVersionId: versionChoices(qualityResponse.data),
+          mappingVersionId: versionChoices(mappingResponse.data),
+          // 量表版本目前与质量策略共用项目版本目录；服务端保存的仍是明确的版本行 ID。
+          rubricVersionId: versionChoices(qualityResponse.data),
+        },
+        connections: (connectionsResponse.data.providers ?? []).map((item) => ({
+          value: String(item.id),
+          label: item.name,
+          meta: `${item.model}${item.isActive ? '' : ' · 已停用'}`,
+        })),
+      })
 
       // 保存后调用 load(null) 时不能依赖仍捕获着旧 URL 的 viewingVersion。
       const requestedVersion = versionOverride === undefined ? viewingVersion : versionOverride
@@ -365,6 +402,7 @@ export function BlueprintPage() {
                   spec={activeSpec}
                   values={nodeValuesForActive}
                   disabled={isReadOnly || !canEdit}
+                  choices={choices}
                   onChange={(name, value) => {
                     if (!draft || !activeSpec) return
                     const nextValues = { ...nodeValuesForActive, [name]: value }
@@ -474,7 +512,6 @@ export function BlueprintPage() {
           ) : null}
         </aside>
       </div>
-      <LegacyCapabilityWorkbench surface="design" />
     </div>
   )
 }
@@ -482,20 +519,20 @@ export function BlueprintPage() {
 /**
  * NodeFields 按元数据渲染检查器。
  *
- * 只实现「可安全编辑」的控件类型；`id`/`idList`/`json`/`ratioMap` 用只读
- * 文本展示当前值 —— 它们需要真实的候选列表（连接、量表、映射版本）与
- * 结构化编辑器，而那些属于 T28/T20 的页面。**显示当前值**而不是隐藏它们，
- * 是为了让用户至少能看到「现在引用的是什么」，而不是以为字段不存在。
+ * 所有字段都提供真实编辑控件。引用字段从服务端候选目录选择，权重与列表
+ * 使用可增删行编辑器；保存仍由服务端做最终类型与依赖校验。
  */
 function NodeFields({
   spec,
   values,
   disabled,
+  choices,
   onChange,
 }: {
   spec: NodeSpec
   values: Record<string, unknown>
   disabled: boolean
+  choices: BlueprintChoices
   onChange: (name: string, value: unknown) => void
 }) {
   const { Text } = Typography
@@ -508,10 +545,12 @@ function NodeFields({
         // GRPO 的档位配置就走生成节点的 jsonSchema 字段，把它设为只读会让
         // 「GRPO 需要至少两档」这件事在界面上根本无法满足 ——
         // 而服务端会因缺档拒绝执行，用户却找不到填写的地方。
-        // id/idList/ratioMap 仍只读：它们需要真实候选列表（连接/量表/维度），
-        // 给一个能编辑但无法选值的输入框会制造「看起来能配」的错觉。
-        const complex = ['id', 'idList', 'ratioMap'].includes(field.kind)
         const isJSONField = field.kind === 'json'
+        const isConnectionField = field.name === 'modelConnectionId' || field.name === 'judgeConnectionIds'
+        const options = isConnectionField ? choices.connections : (choices.versions[field.name] ?? [])
+        const selectValue = field.kind === 'idList'
+          ? (Array.isArray(value) ? value.map(String) : [])
+          : value === undefined || value === null || value === '' ? undefined : String(value)
         return (
           <div
             key={field.name}
@@ -539,12 +578,27 @@ function NodeFields({
                   else onChange(field.name, { __invalid: event.target.value })
                 }}
               />
-            ) : complex ? (
-              // 复杂引用字段先只读展示：给一个能编辑但无法选值的输入框
-              // 会制造「看起来能配、其实配不了」的错觉。
-              <Text type="tertiary" size="small">
-                当前值：{display || '（未设置）'}（候选选择器在 T28/T20 提供）
-              </Text>
+            ) : field.kind === 'id' || field.kind === 'idList' ? (
+              <Select
+                id={`blueprint-${spec.key}-${field.name}`}
+                className="blueprint-select"
+                multiple={field.kind === 'idList'}
+                value={selectValue as string | string[] | undefined}
+                placeholder={options.length > 0 ? '选择已保存版本' : '暂无可选版本'}
+                disabled={disabled}
+                optionList={options.map((option) => ({ value: option.value, label: option.label, extra: option.meta }))}
+                onChange={(next) => {
+                  if (field.kind === 'idList') {
+                    onChange(field.name, Array.isArray(next) ? next.map(Number) : [])
+                  } else {
+                    onChange(field.name, next === undefined || next === '' ? undefined : Number(next))
+                  }
+                }}
+              />
+            ) : field.kind === 'ratioMap' ? (
+              <RatioMapEditor value={value} disabled={disabled} onChange={(next) => onChange(field.name, next)} />
+            ) : field.kind === 'stringList' ? (
+              <StringListEditor value={value} disabled={disabled} onChange={(next) => onChange(field.name, next)} />
             ) : (
               <input
                 id={`blueprint-${spec.key}-${field.name}`}
@@ -562,10 +616,6 @@ function NodeFields({
                   }
                   if (field.kind === 'float' || field.kind === 'ratio') {
                     onChange(field.name, raw === '' ? undefined : Number(raw))
-                    return
-                  }
-                  if (field.kind === 'stringList') {
-                    onChange(field.name, raw === '' ? [] : raw.split(',').map((item) => item.trim()))
                     return
                   }
                   if (field.kind === 'enum') {
@@ -589,6 +639,49 @@ function NodeFields({
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function StringListEditor({ value, disabled, onChange }: { value: unknown; disabled: boolean; onChange: (value: string[]) => void }) {
+  const items = Array.isArray(value) ? value.map((item) => String(item)) : ['']
+  return (
+    <div className="blueprint-list-editor">
+      {items.map((item, index) => (
+        <div className="blueprint-list-editor__row" key={`${index}-${item}`}>
+          <input className="blueprint-input" value={item} disabled={disabled} onChange={(event) => {
+            const next = [...items]
+            next[index] = event.target.value
+            onChange(next.filter((entry, itemIndex) => entry.trim() !== '' || itemIndex === next.length - 1))
+          }} />
+          <button type="button" className="blueprint-icon-button" aria-label="删除这一项" disabled={disabled || items.length <= 1} onClick={() => onChange(items.filter((_, itemIndex) => itemIndex !== index))}>×</button>
+        </div>
+      ))}
+      <button type="button" className="blueprint-add-row" disabled={disabled} onClick={() => onChange([...items, ''])}>+ 添加一项</button>
+    </div>
+  )
+}
+
+function RatioMapEditor({ value, disabled, onChange }: { value: unknown; disabled: boolean; onChange: (value: Record<string, number>) => void }) {
+  const entries = value && typeof value === 'object' && !Array.isArray(value) ? Object.entries(value as Record<string, unknown>) : [['', 0]]
+  const total = entries.reduce((sum, [, item]) => sum + (Number(item) || 0), 0)
+  return (
+    <div className="blueprint-ratio-editor">
+      {entries.map(([key, item], index) => (
+        <div className="blueprint-ratio-editor__row" key={`${index}-${key}`}>
+          <input className="blueprint-input" aria-label={`权重维度 ${index + 1}`} placeholder="维度 key" value={key} disabled={disabled} onChange={(event) => {
+            const next = Object.fromEntries(entries.map(([entryKey, entryValue], entryIndex) => [entryIndex === index ? event.target.value : entryKey, Number(entryValue) || 0]).filter(([entryKey]) => String(entryKey).trim() !== ''))
+            onChange(next)
+          }} />
+          <input className="blueprint-input blueprint-input--number" aria-label={`权重值 ${index + 1}`} type="number" min={0} max={1} step={0.01} value={Number(item) || 0} disabled={disabled} onChange={(event) => {
+            const next = Object.fromEntries(entries.map(([entryKey, entryValue], entryIndex) => [String(entryKey), entryIndex === index ? Number(event.target.value) || 0 : Number(entryValue) || 0]).filter(([entryKey]) => String(entryKey).trim() !== ''))
+            onChange(next)
+          }} />
+          <button type="button" className="blueprint-icon-button" aria-label="删除这一项" disabled={disabled || entries.length <= 1} onClick={() => onChange(Object.fromEntries(entries.filter((_, itemIndex) => itemIndex !== index)))}>×</button>
+        </div>
+      ))}
+      <div className={Math.abs(total - 1) < 0.001 ? 'blueprint-ratio-total blueprint-ratio-total--valid' : 'blueprint-ratio-total'}>合计 {total.toFixed(2)}（需等于 1.00）</div>
+      <button type="button" className="blueprint-add-row" disabled={disabled} onClick={() => onChange({ ...Object.fromEntries(entries), '': 0 })}>+ 添加维度</button>
     </div>
   )
 }

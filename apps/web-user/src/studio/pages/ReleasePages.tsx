@@ -19,7 +19,6 @@ import type {
 } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
-import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
 
 type BlockerLinkProps = {
   link: string
@@ -135,7 +134,6 @@ export function ReleasesListPage() {
 
   return (
     <div className="console-page" data-studio-page="releases">
-      <LegacyCapabilityWorkbench surface="release" />
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">发布版本</Title>

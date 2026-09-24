@@ -2666,6 +2666,164 @@ a {
   }
 }
 
+/* Atelier shared surfaces for global pages.  These rules deliberately scope to
+ * the new shell so legacy console routes keep their existing contracts while
+ * every first-class page gets the same canvas, spacing and table treatment. */
+.atelier-shell .app-layout__content > .console-page {
+  min-height: calc(100vh - 64px);
+  width: 100%;
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 32px 44px 72px;
+  background: var(--page-bg);
+}
+
+.atelier-shell [data-studio-page="projects"],
+.atelier-shell [data-studio-page^="settings-"],
+.atelier-shell [data-studio-page="recipes"],
+.atelier-shell [data-studio-page="deliveries"] {
+  gap: 24px;
+}
+
+.atelier-shell [data-studio-page="projects"] .console-page__header,
+.atelier-shell [data-studio-page^="settings-"] .console-page__header,
+.atelier-shell [data-studio-page="recipes"] .console-page__header,
+.atelier-shell [data-studio-page="deliveries"] .console-page__header {
+  align-items: flex-end;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.atelier-shell [data-studio-page="projects"] .console-page__header h4,
+.atelier-shell [data-studio-page^="settings-"] .console-page__header h4,
+.atelier-shell [data-studio-page="recipes"] .console-page__header h4,
+.atelier-shell [data-studio-page="deliveries"] .console-page__header h4 {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+.atelier-shell .console-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  box-shadow: 0 8px 24px rgba(27, 35, 31, .04);
+}
+
+.atelier-shell [data-studio-page="settings-connections"] > .console-card,
+.atelier-shell [data-studio-page="settings-team"] > .console-card {
+  padding: 20px;
+}
+
+.atelier-shell [data-studio-page="settings-connections"] .comparison-table {
+  margin-top: 14px;
+  overflow-x: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.atelier-shell [data-studio-page="settings-connections"] .comparison-row {
+  min-width: 720px;
+  display: grid;
+  grid-template-columns: 1.4fr 1.2fr 1fr 1fr .7fr;
+  gap: 14px;
+  align-items: center;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--text);
+  font-size: 13px;
+}
+.atelier-shell [data-studio-page="settings-connections"] .comparison-row > span { min-width: 0; overflow-wrap: anywhere; }
+
+.atelier-shell [data-studio-page="settings-connections"] .comparison-row:last-child { border-bottom: 0; }
+.atelier-shell [data-studio-page="settings-connections"] .comparison-row--head {
+  background: var(--accent-soft);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.atelier-shell [data-studio-page="settings-team"] > div:not(.console-page__header) {
+  display: grid;
+  gap: 14px;
+}
+
+.atelier-shell [data-studio-page="settings-team"] .semi-select,
+.atelier-shell [data-studio-page="settings-team"] .semi-input-wrapper {
+  min-width: 220px;
+}
+
+.atelier-shell [data-studio-page="legacy-history"] .console-page__header {
+  padding: 20px 22px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: #eeeae1;
+}
+
+.atelier-shell [data-studio-page="legacy-history"] .legacy-history-card {
+  border-radius: 8px;
+}
+
+.blueprint-select { width: 100%; }
+.blueprint-list-editor,
+.blueprint-ratio-editor { display: grid; gap: 8px; }
+.blueprint-list-editor__row,
+.blueprint-ratio-editor__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.blueprint-ratio-editor__row { grid-template-columns: minmax(0, 1fr) 120px auto; }
+.blueprint-input--number { text-align: right; }
+.blueprint-icon-button {
+  width: 32px;
+  min-height: 32px;
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.blueprint-icon-button:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
+.blueprint-add-row {
+  justify-self: start;
+  min-height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font-size: 12px;
+}
+.blueprint-ratio-total { color: var(--warning); font-size: 12px; }
+.blueprint-ratio-total--valid { color: var(--success); }
+
+@media (max-width: 900px) {
+  .atelier-shell .app-layout__content > .console-page { padding: 24px 20px 56px; }
+  .atelier-shell [data-studio-page="projects"] .console-page__header,
+  .atelier-shell [data-studio-page^="settings-"] .console-page__header,
+  .atelier-shell [data-studio-page="recipes"] .console-page__header,
+  .atelier-shell [data-studio-page="deliveries"] .console-page__header { align-items: stretch; }
+}
+
+@media (max-width: 560px) {
+  .atelier-shell .app-layout__content > .console-page { padding-inline: 14px; }
+  .atelier-shell [data-studio-page="projects"] .console-page__header h4,
+  .atelier-shell [data-studio-page^="settings-"] .console-page__header h4,
+  .atelier-shell [data-studio-page="recipes"] .console-page__header h4,
+  .atelier-shell [data-studio-page="deliveries"] .console-page__header h4 { font-size: 25px; }
+  .blueprint-ratio-editor__row { grid-template-columns: minmax(0, 1fr) 88px auto; }
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-table { overflow-x: visible; }
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-row {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 12px;
+  }
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-row--head { font-size: 10px; }
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-row:not(.comparison-row--head) > span:nth-child(n+3) {
+    grid-column: span 2;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;

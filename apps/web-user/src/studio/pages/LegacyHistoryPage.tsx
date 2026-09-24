@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Button, Card, Empty, Modal, Select, Spin, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Button, Card, Empty, Select, Spin, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui'
 import {
   AlertTriangle,
   Archive,
@@ -16,7 +16,6 @@ import {
   RefreshCw,
   ShieldCheck,
   TableProperties,
-  Wrench,
 } from 'lucide-react'
 import {
   client,
@@ -640,7 +639,6 @@ const EMPTY_HISTORY: HistoryData = {
 }
 
 export function LegacyHistoryPage({ datasetId: requestedDatasetId, onDatasetChange, initialTab }: LegacyHistoryPageProps) {
-  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | null>(validDatasetId(requestedDatasetId))
@@ -796,21 +794,6 @@ export function LegacyHistoryPage({ datasetId: requestedDatasetId, onDatasetChan
     if (selectedDatasetId) void loadHistory(selectedDatasetId)
   }
 
-  const openLegacyOperations = () => {
-    if (!selectedDatasetId) return
-    const route = activeTab === 'structure'
-      ? `/console/domains/legacy?taskId=${selectedDatasetId}`
-      : activeTab === 'artifacts'
-        ? `/console/exports/legacy?taskId=${selectedDatasetId}`
-        : `/console/tasks/${selectedDatasetId}/legacy`
-    Modal.confirm({
-      title: '打开旧版兼容操作？',
-      content: '你仍停留在只读历史页。下一页包含旧版操作，可能创建或修改旧数据；是否允许取决于服务端 LEGACY_WRITES_FROZEN 配置。继续打开不会自动提交操作。',
-      okText: '打开兼容操作',
-      cancelText: '留在历史页',
-      onOk: () => navigate(route),
-    })
-  }
 
   const datasetOptions = useMemo(() => {
     if (!selectedDatasetId || datasets.some((dataset) => dataset.id === selectedDatasetId)) {
@@ -848,7 +831,6 @@ export function LegacyHistoryPage({ datasetId: requestedDatasetId, onDatasetChan
             onChange={selectDataset}
           />
           <Button icon={<RefreshCw size={14} />} loading={historyLoading || datasetLoading} onClick={reload}>刷新</Button>
-          <Button icon={<Wrench size={14} />} disabled={!selectedDatasetId} onClick={openLegacyOperations}>兼容操作</Button>
         </div>
       </div>
 

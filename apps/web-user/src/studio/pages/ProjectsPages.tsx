@@ -8,7 +8,6 @@ import type { ProjectOverviewData } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
 import { useProjectName } from '../projectName'
-import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
 
 /**
  * 项目列表页（Issue #160 T09 的入口页 + T10 的最小可用形态）。
@@ -417,7 +416,6 @@ export function ProjectOverviewPage() {
           </section>
         </aside>
       </div>
-      <LegacyCapabilityWorkbench />
     </div>
   )
 }

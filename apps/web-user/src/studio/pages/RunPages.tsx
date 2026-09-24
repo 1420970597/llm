@@ -16,7 +16,6 @@ import type {
 import { client } from '../../lib/api'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
-import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
 
 /**
  * 生产工作区页面（Issue #160 T13）：批次列表、详情、异常恢复、试制与扩量规划。
@@ -122,7 +121,6 @@ export function RunsPage() {
 
   return (
     <div className="console-page" data-studio-page="runs">
-      <LegacyCapabilityWorkbench surface="production" />
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">

@@ -18,7 +18,6 @@ import {
   PanelLeftOpen,
   Settings,
   Users,
-  Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -68,7 +67,6 @@ const AUXILIARY_ICONS: Record<string, LucideIcon> = {
   'settings.connections': FolderCog,
   'settings.team': Users,
   help: Settings,
-  'settings.capabilities': Wrench,
 }
 
 export type StudioLayoutProps = {

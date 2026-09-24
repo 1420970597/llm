@@ -1,9 +1,9 @@
 /**
  * Atelier legacy compatibility index guard.
  *
- * The old console remains a supported read/operation surface during migration.
- * This source-level check prevents a legacy entry from silently disappearing
- * from the Atelier discoverability index or from the actual App route tree.
+ * The old console remains a supported deep-link surface during migration.
+ * The Atelier product shell must not expose a compatibility index as a menu or
+ * product page; legacy links are validated separately against App's bridge.
  * It intentionally has no API/browser dependency and is safe to run in CI.
  */
 
@@ -57,7 +57,7 @@ for (const route of expected) {
   const mounted = route.includes(':taskId')
     ? /path=["']\/console\/tasks\/:taskId["']/.test(app)
     : new RegExp(`path=["']${route.replaceAll('/', '\\/')}["']`).test(app)
-  record(`旧入口 ${route} 已进入 Atelier 索引`, indexed, indexed ? 'legacyCapabilities.ts 已声明 compat 状态' : 'legacyCapabilities.ts 缺少声明')
+  record(`旧入口 ${route} 保留深链元数据`, indexed, indexed ? 'legacyCapabilities.ts 已声明 compat 状态' : 'legacyCapabilities.ts 缺少声明')
   record(`旧入口 ${route} 仍由 App 挂载`, mounted, mounted ? 'App.tsx 保留兼容路由' : 'App.tsx 未找到兼容路由')
 }
 
@@ -81,8 +81,17 @@ for (const [legacyRoute, nativePath, nativeKey] of [
   record(`Atelier 工作台 ${nativePath} 已声明并注册`, routeDeclared && pageRegistered, `${nativeKey} 元数据与页面注册表均存在`)
 }
 
-record('Atelier 兼容索引有可达路由', /key:\s*'settings\.capabilities'[\s\S]*?path:\s*'\/settings\/capabilities'/.test(studioRoutes), '辅助入口元数据包含 /settings/capabilities')
-record('兼容索引已注册页面组件', /['"]settings\.capabilities['"]:\s*\(\)\s*=>\s*<LegacyCapabilitiesPage\s*\/>/.test(studioTree), 'StudioRoutes.tsx 注册 LegacyCapabilitiesPage')
+record(
+  '正式菜单移除兼容功能',
+  !/key:\s*'settings\.capabilities'/.test(studioRoutes) && !/兼容功能/.test(studioRoutes),
+  '辅助入口不再暴露迁移说明索引',
+)
+record(
+  '兼容功能旧书签重定向到原生设置',
+  studioTree.includes('<Route path="/settings/capabilities" element={<Navigate to="/settings/connections" replace />} />') &&
+    !studioTree.includes("'settings.capabilities': () => <LegacyCapabilitiesPage />"),
+  '保留可达性但不再渲染兼容产品页',
+)
 record(
   'Atelier 下钻旧阶段时保留任务上下文',
   studioTree.includes('const withProject = (next: string) => `/projects?next=') &&
@@ -168,11 +177,12 @@ record(
   '原旧页面作为显式兼容子路由保留，默认深链则执行 T31 桥接',
 )
 record(
-  '历史资产页将可写兼容操作与只读浏览明确分离',
-  historyPage.includes('Modal.confirm({') && historyPage.includes('LEGACY_WRITES_FROZEN 配置') &&
-    historyPage.includes("okText: '打开兼容操作'") && historyPage.includes("cancelText: '留在历史页'") &&
-    historyPage.includes('onDatasetChange?.(next)') && historyPage.includes('兼容操作</Button>'),
-  '旧版操作必须二次确认，切换历史数据集同步 URL，浏览/下载仍是只读 GET',
+  '历史资产页只承载迁移对象浏览',
+  !historyPage.includes('Modal.confirm({') &&
+    !historyPage.includes('打开兼容操作') &&
+    historyPage.includes('onDatasetChange?.(next)') &&
+    historyPage.includes('client.get<LegacyProjectMapping>'),
+  '旧版写操作不再从产品页暴露，历史对象通过真实 GET 与项目映射查看',
 )
 record(
   '管理员旧入口可直达治理标签',

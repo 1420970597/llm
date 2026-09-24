@@ -16,7 +16,6 @@ import type {
 } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
-import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
 import { CommentPanel } from '../CommentsPanel'
 import { currentActorID, enqueue, pendingCount } from '../../lib/pendingQueue'
 
@@ -208,7 +207,6 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
 
   return (
     <div className="console-page" data-studio-page={queueMode ? 'review-queue' : 'sample-list'}>
-      <LegacyCapabilityWorkbench surface="data" />
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">
