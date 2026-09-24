@@ -32,16 +32,24 @@ import { APP_BUILD_TIME, APP_VERSION, versionSummary } from '../../buildInfo'
 
 export function ConnectionsPage() {
   const { Title, Text } = Typography
+  const navigate = useNavigate()
   const [options, setOptions] = useState<ConnectionOptions | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
       try {
-        const response = await settingsApi.connectionOptions()
-        if (!cancelled) setOptions(response)
+        const [response, identity] = await Promise.all([
+          settingsApi.connectionOptions(),
+          authApi.me(),
+        ])
+        if (!cancelled) {
+          setOptions(response)
+          setIsAdmin(identity.user.role === 'admin')
+        }
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : '加载连接选项失败')
       } finally {
@@ -62,6 +70,16 @@ export function ConnectionsPage() {
           </Title>
           <Text type="tertiary">可用的模型连接与结果存储。</Text>
         </div>
+        {isAdmin ? (
+          <Button
+            theme="solid"
+            type="primary"
+            onClick={() => navigate('/console/admin/providers')}
+            data-connection-admin-action="true"
+          >
+            管理模型连接
+          </Button>
+        ) : null}
       </div>
 
       {error ? (
@@ -77,9 +95,17 @@ export function ConnectionsPage() {
       ) : options ? (
         <>
           <Card className="console-card mb-3" bodyStyle={{ padding: 14 }} data-connections-providers="true">
-            <Text strong className="block mb-2">
-              模型连接
-            </Text>
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+              <div>
+                <Text strong className="block">模型连接</Text>
+                <Text type="tertiary" size="small">蓝图和质量实验只能选择已启用的连接；密钥不会在这里回显。</Text>
+              </div>
+              {isAdmin ? (
+                <Button size="small" onClick={() => navigate('/console/admin/providers')} data-connection-manage="true">
+                  新增或编辑
+                </Button>
+              ) : null}
+            </div>
             {options.providers.length === 0 ? (
               <Empty description="还没有可用的模型连接。" />
             ) : (
