@@ -302,6 +302,78 @@ a {
   gap: 16px;
 }
 
+.route-status-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: clamp(24px, 6vw, 72px);
+  background: var(--semi-color-bg-0, var(--bg));
+}
+
+.route-status-page__card {
+  width: min(100%, 640px);
+}
+
+.route-status-page__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 18px;
+  border-radius: 14px;
+  color: var(--semi-color-warning, #b7791f);
+  background: color-mix(in srgb, var(--semi-color-warning-light-default, #fff7e6) 78%, white 22%);
+}
+
+.route-status-page__description {
+  display: block;
+  max-width: 56ch;
+  line-height: 1.7;
+}
+
+.route-status-page__path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  color: var(--text-soft);
+  background: color-mix(in srgb, var(--panel-strong) 86%, var(--bg-strong) 14%);
+  font-size: 13px;
+}
+
+.route-status-page__path code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.route-status-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+@media (max-width: 560px) {
+  .route-status-page {
+    padding: 20px;
+  }
+
+  .route-status-page__card .semi-card-body {
+    padding: 24px;
+  }
+
+  .route-status-page__actions .semi-button {
+    flex: 1 1 100%;
+  }
+}
+
 .console-panel,
 .console-stat-card,
 .console-sidebar-card,

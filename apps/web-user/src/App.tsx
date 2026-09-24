@@ -98,6 +98,7 @@ import { APP_BUILD_TIME, APP_VERSION_SHORT, APP_VERSION_UNKNOWN } from './buildI
 import { CleaningView } from './views/CleaningView'
 import { studioRouteTree } from './studio/StudioRoutes'
 import { LegacyStageBridgeRoute, LegacyTaskBridgeRoute } from './studio/LegacyRouteBridge'
+import { RouteStatusPage } from './studio/pages/RouteStatusPage'
 import { EvaluationView } from './views/EvaluationView'
 
 const { Title, Text } = Typography
@@ -4400,6 +4401,7 @@ export default function App() {
                       </div>
                     ) : null}
                     <Routes>
+                      <Route path="/console" element={<Navigate to="/console/home" replace />} />
                       <Route path="/console/home" element={renderOverview()} />
                       <Route path="/console/overview" element={<Navigate to="/console/home" replace />} />
                       <Route path="/console/tasks" element={renderTaskIndex()} />
@@ -4426,13 +4428,13 @@ export default function App() {
                       {isAdmin ? <Route path="/console/admin/strategies" element={renderStrategies()} /> : null}
                       {isAdmin ? <Route path="/console/admin/prompts" element={renderPrompts()} /> : null}
                       {isAdmin ? <Route path="/console/admin/audit" element={renderAudit()} /> : null}
-                      <Route path="*" element={<Navigate to="/console/home" replace />} />
+                      <Route path="*" element={<RouteStatusPage />} />
                     </Routes>
               </div>
               <div className="app-layout__aside" />
             </div>
             ) : (
-              <Navigate to="/today" replace />
+              <RouteStatusPage />
             )
           ) : (
             <Navigate to={buildLoginPath(location.pathname, location.search, location.hash)} replace />
