@@ -201,6 +201,63 @@ func TestTodosArePermissionFiltered(t *testing.T) {
 	}
 }
 
+// TestActivityAggregatesBatchFailureEvents 覆盖 #173：同一批次的逐单元失败
+// 只生成一条聚合动态和一条未读提醒，业务待办仍按失败批次计数。
+func TestActivityAggregatesBatchFailureEvents(t *testing.T) {
+	fixture := newActivityFixture(t)
+	ctx := context.Background()
+	batchID := fixture.seedFailedBatch(t, fixture.projectA)
+	for sequence := 1; sequence <= 3; sequence++ {
+		if _, err := fixture.pool.Exec(ctx, `
+      INSERT INTO batch_events (batch_id, project_id, event_type, sequence, actor_id, detail)
+      VALUES ($1, $2, $3, $4, $5, jsonb_build_object('itemId', $4::int, 'errorClass', 'config_error'))`,
+			batchID, fixture.projectA, model.BatchEventPartialFailed, sequence, fixture.ownerID); err != nil {
+			t.Fatalf("seed partial failure event %d: %v", sequence, err)
+		}
+	}
+
+	items, next, err := fixture.activity.LoadActivity(ctx, fixture.ownerID, fixture.workspaceID, model.ActivityCursor{}, 20)
+	if err != nil {
+		t.Fatalf("LoadActivity: %v", err)
+	}
+	if next != "" {
+		t.Fatalf("20 条上限不应产生下一页，游标 %q", next)
+	}
+	if len(items) != 1 {
+		t.Fatalf("同一批次的 3 个失败事件应聚合为 1 条动态，实际 %d（%+v）", len(items), items)
+	}
+	item := items[0]
+	if item.GroupKey != "batch-failure:"+itoa64ForTest(batchID) {
+		t.Fatalf("聚合动态必须有稳定 group key，实际 %q", item.GroupKey)
+	}
+	if item.AggregateCount != 3 || item.AggregateTotal != 3 {
+		t.Fatalf("聚合动态应报告 3/3 个失败单元，实际 %d/%d", item.AggregateCount, item.AggregateTotal)
+	}
+	if item.Summary != "批次 "+itoa64ForTest(batchID)+" 部分失败（3/3 个单元失败）" {
+		t.Fatalf("聚合摘要不准确：%q", item.Summary)
+	}
+
+	todos, err := fixture.activity.LoadTodos(ctx, fixture.ownerID, fixture.workspaceID, 3)
+	if err != nil {
+		t.Fatalf("LoadTodos: %v", err)
+	}
+	var failedRecovery, unread int64
+	for _, todo := range todos {
+		switch todo.Kind {
+		case model.TodoFailedRecovery:
+			failedRecovery += todo.Count
+		case model.TodoUnreadActivity:
+			unread += todo.Count
+		}
+	}
+	if failedRecovery != 1 {
+		t.Fatalf("失败恢复待办应按批次计数为 1，实际 %d", failedRecovery)
+	}
+	if unread != 1 {
+		t.Fatalf("同一批次的 3 个失败事件应只产生 1 条未读动态，实际 %d", unread)
+	}
+}
+
 // TestActivityPaginationAndWatermark 覆盖多来源合并流的分页正确性与未读语义。
 func TestActivityPaginationAndWatermark(t *testing.T) {
 	fixture := newActivityFixture(t)

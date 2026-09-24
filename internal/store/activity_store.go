@@ -224,23 +224,47 @@ func (s *ActivityStore) LoadActivity(ctx context.Context, userID, workspaceID in
 		return []model.ActivityItem{}, "", nil
 	}
 
-	// 合并两个来源。`source_rank` 参与排序与游标比较（见 model.ActivityCursor）。
+	// 合并两个来源。批次的逐单元 BatchPartialFailed 先按批次聚合，避免一个
+	// 批次的 N 个失败单元在动态和未读数里被放大成 N 条通知。
+	// `source_rank` 参与排序与游标比较（见 model.ActivityCursor）。
 	rows, err := s.db.Query(ctx, `
-    WITH merged AS (
-      SELECT '`+model.ActivitySourceBatch+`'::text AS source, e.id AS event_id, e.project_id,
-             e.event_type AS kind, e.actor_id AS actor_id, e.batch_id AS object_id,
-             -- detail 在两个来源里类型不同（batch_events 是 jsonb、audit_logs 是 text）：
-             -- UNION 要求两侧类型一致，因此这里显式转 text。
-             e.detail::text AS detail, e.created_at, 0 AS source_rank
-      FROM batch_events e WHERE e.project_id = ANY($1::bigint[])
-      UNION ALL
-      SELECT '`+model.ActivitySourceAudit+`'::text, a.id, a.project_id,
-             a.action, a.actor_user_id, COALESCE(NULLIF(a.resource_id, '')::bigint, 0),
-             COALESCE(NULLIF(a.reason, ''), a.detail), a.created_at, 1
-      FROM audit_logs a WHERE a.project_id = ANY($1::bigint[])
-    )
-    SELECT source, event_id, project_id, kind, actor_id, object_id, detail, created_at
-    FROM merged
+	WITH batch_failures AS (
+	  SELECT '`+model.ActivitySourceBatch+`'::text AS source,
+	         MIN(e.id) AS event_id, e.project_id, e.event_type AS kind,
+	         (array_agg(e.actor_id ORDER BY e.created_at DESC))[1] AS actor_id,
+	         e.batch_id AS object_id,
+	         (array_agg(e.detail::text ORDER BY e.created_at DESC))[1] AS detail,
+	         MAX(e.created_at) AS created_at, 0 AS source_rank,
+	         COUNT(*)::bigint AS aggregate_count,
+	         b.planned_units::bigint AS aggregate_total,
+	         ('batch-failure:' || e.batch_id::text) AS group_key
+	  FROM batch_events e
+	  JOIN batches b ON b.id = e.batch_id
+	  WHERE e.project_id = ANY($1::bigint[]) AND e.event_type = '`+model.BatchEventPartialFailed+`'
+	  GROUP BY e.project_id, e.batch_id, e.event_type, b.planned_units
+	), batch_events_regular AS (
+	  SELECT '`+model.ActivitySourceBatch+`'::text AS source, e.id AS event_id, e.project_id,
+	         e.event_type AS kind, e.actor_id AS actor_id, e.batch_id AS object_id,
+	         e.detail::text AS detail, e.created_at, 0 AS source_rank,
+	         0::bigint AS aggregate_count, 0::bigint AS aggregate_total, ''::text AS group_key
+	  FROM batch_events e
+	  WHERE e.project_id = ANY($1::bigint[]) AND e.event_type <> '`+model.BatchEventPartialFailed+`'
+	), merged AS (
+	  SELECT source, event_id, project_id, kind, actor_id, object_id, detail, created_at,
+	         source_rank, aggregate_count, aggregate_total, group_key FROM batch_failures
+	  UNION ALL
+	  SELECT source, event_id, project_id, kind, actor_id, object_id, detail, created_at,
+	         source_rank, aggregate_count, aggregate_total, group_key FROM batch_events_regular
+	  UNION ALL
+	  SELECT '`+model.ActivitySourceAudit+`'::text, a.id, a.project_id,
+	         a.action, a.actor_user_id, COALESCE(NULLIF(a.resource_id, '')::bigint, 0),
+	         COALESCE(NULLIF(a.reason, ''), a.detail), a.created_at, 1,
+	         0::bigint, 0::bigint, ''::text
+	  FROM audit_logs a WHERE a.project_id = ANY($1::bigint[])
+	)
+	SELECT source, event_id, project_id, kind, actor_id, object_id, detail, created_at,
+	       aggregate_count, aggregate_total, group_key
+	FROM merged
     WHERE ($2::bigint IS NULL OR (created_at, source_rank, event_id) < (to_timestamp($2::bigint / 1000000.0), $3::int, $4::bigint))
     ORDER BY created_at DESC, source_rank ASC, event_id DESC
     LIMIT $5`,
@@ -256,13 +280,19 @@ func (s *ActivityStore) LoadActivity(ctx context.Context, userID, workspaceID in
 		var objectID int64
 		var actorID *int64
 		var detail string
+		var aggregateCount int64
+		var aggregateTotal int64
+		var groupKey string
 		if err := rows.Scan(&item.Source, &item.EventID, &item.ProjectID, &item.Kind,
-			&actorID, &objectID, &detail, &item.CreatedAt); err != nil {
+			&actorID, &objectID, &detail, &item.CreatedAt, &aggregateCount, &aggregateTotal, &groupKey); err != nil {
 			return nil, "", err
 		}
 		item.ActorID = actorID
 		item.Detail = detail
-		item.Summary = activitySummary(item.Source, item.Kind, objectID)
+		item.GroupKey = groupKey
+		item.AggregateCount = aggregateCount
+		item.AggregateTotal = aggregateTotal
+		item.Summary = activitySummary(item.Source, item.Kind, objectID, aggregateCount, aggregateTotal)
 		item.Links = activityLinks(item.Source, item.ProjectID, objectID)
 		item.Unread = model.ActivityUnread(item, watermark)
 		items = append(items, item)
@@ -322,18 +352,28 @@ func (s *ActivityStore) MarkAllRead(ctx context.Context, userID, workspaceID int
 	return watermark, nil
 }
 
-// countUnreadActivity 统计未读动态数（可读项目范围内）。
+// countUnreadActivity 统计未读动态数（可读项目范围内）。批次逐单元失败
+// 先按批次折叠，保证一个批次的 N 个失败不会制造 N 条未读动态。
 func (s *ActivityStore) countUnreadActivity(ctx context.Context, projectIDs []int64, watermark model.ReadWatermark) (int64, error) {
 	if len(projectIDs) == 0 {
 		return 0, nil
 	}
 	var count int64
 	err := s.db.QueryRow(ctx, `
-    WITH merged AS (
-      SELECT project_id, created_at FROM batch_events WHERE project_id = ANY($1::bigint[])
-      UNION ALL
-      SELECT project_id, created_at FROM audit_logs WHERE project_id = ANY($1::bigint[])
-    )
+	WITH batch_failures AS (
+	  SELECT project_id, batch_id, MAX(created_at) AS created_at
+	  FROM batch_events
+	  WHERE project_id = ANY($1::bigint[]) AND event_type = '`+model.BatchEventPartialFailed+`'
+	  GROUP BY project_id, batch_id
+	), merged AS (
+	  SELECT project_id, created_at
+	  FROM batch_events
+	  WHERE project_id = ANY($1::bigint[]) AND event_type <> '`+model.BatchEventPartialFailed+`'
+	  UNION ALL
+	  SELECT project_id, created_at FROM batch_failures
+	  UNION ALL
+	  SELECT project_id, created_at FROM audit_logs WHERE project_id = ANY($1::bigint[])
+	)
     SELECT COUNT(*) FROM merged
     WHERE $2::timestamptz IS NULL OR created_at > $2::timestamptz`,
 		projectIDs, nullableWatermark(watermark)).Scan(&count)
@@ -725,8 +765,14 @@ func nullableWatermark(watermark model.ReadWatermark) *time.Time {
 //
 // 未知事件**显示原始 kind**而不是一个猜的标签：猜错会让用户以为系统做了
 // 一件它没做的事，而显示代码至少可以被搜索到。
-func activitySummary(source, kind string, objectID int64) string {
+func activitySummary(source, kind string, objectID, aggregateCount, aggregateTotal int64) string {
 	if source == model.ActivitySourceBatch {
+		if kind == model.BatchEventPartialFailed && aggregateCount > 0 && objectID > 0 {
+			if aggregateTotal > 0 {
+				return fmt.Sprintf("批次 %d 部分失败（%d/%d 个单元失败）", objectID, aggregateCount, aggregateTotal)
+			}
+			return fmt.Sprintf("批次 %d 部分失败（%d 个单元失败）", objectID, aggregateCount)
+		}
 		if label, found := batchEventLabels[kind]; found {
 			if objectID > 0 {
 				return fmt.Sprintf("%s（批次 %d）", label, objectID)
