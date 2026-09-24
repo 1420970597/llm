@@ -54,6 +54,9 @@ const BLUEPRINT_PAGE_SOURCE = path.join(STUDIO_ROOT, 'pages', 'BlueprintPages.ts
 const QUALITY_PAGE_SOURCE = path.join(STUDIO_ROOT, 'pages', 'QualityPages.tsx')
 const RELEASE_PAGE_SOURCE = path.join(STUDIO_ROOT, 'pages', 'ReleasePages.tsx')
 const RUN_PAGE_SOURCE = path.join(STUDIO_ROOT, 'pages', 'RunPages.tsx')
+const REVIEW_PAGE_SOURCE = path.join(STUDIO_ROOT, 'pages', 'ReviewPages.tsx')
+const TODAY_PAGE_SOURCE = path.join(STUDIO_ROOT, 'pages', 'TodayPages.tsx')
+const STYLES_SOURCE = path.join(WEB_ROOT, 'src', 'styles.css')
 const NGINX_CONF = path.join(REPO_ROOT, 'deployments', 'docker', 'nginx', 'web-user.conf')
 
 const webRequire = createRequire(path.join(WEB_ROOT, 'package.json'))
@@ -95,6 +98,44 @@ const blueprintPageSource = readFileSync(BLUEPRINT_PAGE_SOURCE, 'utf8')
 const qualityPageSource = readFileSync(QUALITY_PAGE_SOURCE, 'utf8')
 const releasePageSource = readFileSync(RELEASE_PAGE_SOURCE, 'utf8')
 const runPageSource = readFileSync(RUN_PAGE_SOURCE, 'utf8')
+const reviewPageSource = readFileSync(REVIEW_PAGE_SOURCE, 'utf8')
+const todayPageSource = readFileSync(TODAY_PAGE_SOURCE, 'utf8')
+const stylesSource = readFileSync(STYLES_SOURCE, 'utf8')
+
+record(
+  '生产/数据/发布刷新动作带作用域文案',
+  runPageSource.includes('刷新批次') &&
+    reviewPageSource.includes('刷新样本') &&
+    releasePageSource.includes('刷新发布列表'),
+  '批次、样本与发布列表不再共用含义不明的「刷新」文案',
+)
+record(
+  '命令搜索只渲染顶栏实例',
+  !studioLayoutSource.includes('data-command-search-slot') &&
+    (studioLayoutSource.match(/<CommandSearch\s*\/>/g) ?? []).length === 1,
+  '侧边栏隐藏死实例已移除，顶栏保留唯一搜索入口',
+)
+record(
+  '不可重试时恢复按钮明确禁用',
+  runPageSource.includes('data-retry-failed') &&
+    runPageSource.includes('disabled={Boolean(retryDisabledReason)}') &&
+    runPageSource.includes('title={retryDisabledReason}') &&
+    runPageSource.includes('当前批次不可自动重试'),
+  '能力位关闭或没有可重试项时保留按钮但禁止无效提交，并解释原因',
+)
+record(
+  '今日工作移动端标题控制在 28px',
+  /\.atelier-today-hero h1\s*\{[\s\S]*?font-size: 28px;/.test(stylesSource),
+  '移动端首屏优先呈现待处理内容',
+)
+record(
+  '目标到交付入口是真实 CTA',
+  todayPageSource.includes('className="atelier-hero-journey-cta"') &&
+    todayPageSource.includes('aria-label="查看从目标到证据再到交付的项目流程"') &&
+    stylesSource.includes('.atelier-hero-journey-cta:focus-visible') &&
+    !stylesSource.includes('.atelier-hero-mark::before'),
+  '流程入口使用可点击按钮、明确去向并提供 hover/focus 状态',
+)
 
 record(
   '蓝图引用配置必须有真实编辑闭环',

@@ -137,8 +137,17 @@ export function TodayPage() {
             <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void load()} disabled={loading}>刷新</Button>
           </div>
         </div>
-        <div className="atelier-hero-mark" aria-label="目标、证据、交付">
-          <span className="atelier-hero-mark__label">目标 → 证据 → 交付</span>
+        <div className="atelier-hero-mark">
+          <button
+            type="button"
+            className="atelier-hero-journey-cta"
+            aria-label="查看从目标到证据再到交付的项目流程"
+            title="查看项目流程"
+            onClick={() => navigate(studioPath('projects'))}
+          >
+            <span>目标 → 证据 → 交付</span>
+            <small>查看项目流程 →</small>
+          </button>
         </div>
       </section>
 

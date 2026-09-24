@@ -143,7 +143,7 @@ export function ReleasesListPage() {
           </Text>
         </div>
         <div className="flex gap-2">
-          <Button icon={<RefreshCw size={14} />} onClick={() => void load()}>刷新</Button>
+          <Button icon={<RefreshCw size={14} />} onClick={() => void load()}>刷新发布列表</Button>
           {canPublish ? (
             <Button theme="solid" type="primary" onClick={() => navigate(projectHref('project.newRelease', scope.projectId))}>
               准备发布
