@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Avatar, Button, Typography } from '@douyinfe/semi-ui'
 import {
@@ -83,6 +83,39 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
   const breadcrumbs = useBreadcrumbs()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const mobileMenuRef = useRef<HTMLButtonElement>(null)
+  const mobileNavFocusTimer = useRef<number | null>(null)
+
+  const openMobileNav = useCallback(() => {
+    setMobileNavOpen(true)
+    if (mobileNavFocusTimer.current !== null) window.clearTimeout(mobileNavFocusTimer.current)
+    // 等点击默认焦点与侧栏过渡稳定，再移入导航首项。
+    mobileNavFocusTimer.current = window.setTimeout(() => {
+      document.querySelector<HTMLElement>('#studio-main-navigation a[href]')?.focus()
+      mobileNavFocusTimer.current = null
+    }, 500)
+  }, [])
+
+  const closeMobileNav = useCallback((restoreFocus = true) => {
+    if (mobileNavFocusTimer.current !== null) {
+      window.clearTimeout(mobileNavFocusTimer.current)
+      mobileNavFocusTimer.current = null
+    }
+    setMobileNavOpen(false)
+    if (restoreFocus) window.setTimeout(() => mobileMenuRef.current?.focus(), 0)
+  }, [])
+
+  useEffect(() => {
+    if (!mobileNavOpen) return
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      closeMobileNav()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [closeMobileNav, mobileNavOpen])
 
   const handleLogout = () => {
     // 退出账号时清理本机待同步队列（T29）：敏感正文不在本机留存；
@@ -110,6 +143,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
   return (
     <div className="app-layout atelier-shell">
       <nav
+        id="studio-main-navigation"
         className="app-layout__sidebar"
         aria-label="主导航"
         data-mobile-open={mobileNavOpen ? 'true' : 'false'}
@@ -157,14 +191,14 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
             {/* 第一层：全局四入口。 */}
             <div className="sidebar-nav-section">
               <div className="sidebar-nav-heading">工作区</div>
-              {globalRoutes.map((route) => renderNavItem(route.path, GLOBAL_ICONS[route.key], route.label, route.caption, activeKey === route.key, () => setMobileNavOpen(false)))}
+              {globalRoutes.map((route) => renderNavItem(route.path, GLOBAL_ICONS[route.key], route.label, route.caption, activeKey === route.key, () => closeMobileNav(false)))}
             </div>
 
             {/* 第三层：辅助入口。刻意放在下方且样式更轻，不与主流程争位置。 */}
             <div className="sidebar-nav-section">
               <div className="sidebar-nav-heading">辅助</div>
               {auxiliaryRoutes.filter((route) => !route.navParent).map((route) =>
-                renderNavItem(route.path, AUXILIARY_ICONS[route.key], route.label, route.caption, activeKey === route.key, () => setMobileNavOpen(false)),
+                renderNavItem(route.path, AUXILIARY_ICONS[route.key], route.label, route.caption, activeKey === route.key, () => closeMobileNav(false)),
               )}
             </div>
 
@@ -191,7 +225,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
           type="button"
           className="atelier-mobile-backdrop"
           aria-label="关闭主导航"
-          onClick={() => setMobileNavOpen(false)}
+          onClick={() => closeMobileNav()}
         />
       ) : null}
 
@@ -201,9 +235,11 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
             <button
               type="button"
               className="atelier-mobile-menu"
-              aria-label="打开主导航"
+              aria-label={mobileNavOpen ? '关闭主导航' : '打开主导航'}
+              aria-controls="studio-main-navigation"
               aria-expanded={mobileNavOpen}
-              onClick={() => setMobileNavOpen((open) => !open)}
+              onClick={() => (mobileNavOpen ? closeMobileNav(false) : openMobileNav())}
+              ref={mobileMenuRef}
             >
               <Menu size={18} aria-hidden />
             </button>

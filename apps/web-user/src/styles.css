@@ -1208,11 +1208,15 @@ select:focus {
     width: 82px !important;
     transform: translateX(-110%);
     transition: transform .18s ease;
+    visibility: hidden;
+    pointer-events: none;
     box-shadow: 10px 0 24px rgba(42, 37, 54, .12);
   }
 
   .atelier-shell .app-layout__sidebar[data-mobile-open='true'] {
     transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
   }
 
   .atelier-mobile-backdrop {
