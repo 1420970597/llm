@@ -1380,11 +1380,14 @@ export type ReadWatermark = {
 export type ActivityItem = {
   source: string
   eventId: number
+  groupKey?: string
   projectId: number
   kind: string
   actorId?: number
   summary: string
   detail?: string
+  aggregateCount?: number
+  aggregateTotal?: number
   createdAt: string
   links: Record<string, string>
   unread: boolean

@@ -77,6 +77,15 @@ export function TodayPage() {
       .slice(0, 4)
   }, [todos])
 
+  const decisionTodos = useMemo(
+    () => todos.filter((todo) => todo.kind !== 'unread_activity'),
+    [todos],
+  )
+  const unreadTodo = useMemo(
+    () => todos.find((todo) => todo.kind === 'unread_activity'),
+    [todos],
+  )
+
   const releaseTodo = useMemo(
     () => todos.find((todo) => todo.kind === 'release_blocked'),
     [todos],
@@ -144,11 +153,11 @@ export function TodayPage() {
           <div className="atelier-section-heading"><div><div className="eyebrow">DECISIONS</div><h2>需要你的决定</h2></div></div>
           {loading ? (
             <div className="atelier-inline-state"><Spin tip="正在汇总待办" /></div>
-          ) : todos.length === 0 ? (
+          ) : decisionTodos.length === 0 ? (
             <div className="atelier-inline-state" data-today-empty="true"><Empty description="当前没有需要你处理的待办。" /></div>
           ) : (
             <div className="atelier-todo-list" data-today-todos="true">
-              {todos.map((todo) => {
+              {decisionTodos.map((todo) => {
                 const href = todoHref(todo)
                 return (
                   <div key={`${todo.kind}-${todo.projectId}`} className="atelier-todo-row" data-todo-kind={todo.kind}>
@@ -206,10 +215,15 @@ export function TodayPage() {
         )}
       </section>
       {/* 保留原始动态提示与已读动作，但视觉上从决策内容中分离。 */}
-      {!loading && todos.length > 0 ? <div className="mt-3 flex items-center gap-3">
-        <Button size="small" icon={<Bell size={14} />} disabled={busy} onClick={() => void markRead()} data-today-mark-read="true">全部已读</Button>
-        {notes.map((note) => <Text key={note} type="tertiary" size="small">{note}</Text>)}
-      </div> : null}
+      {!loading && unreadTodo ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3" data-today-unread="true">
+          <Tag size="small" color="grey">动态未读</Tag>
+          <Text type="tertiary" size="small">{unreadTodo.summary}</Text>
+          {todoHref(unreadTodo) ? <Button size="small" theme="borderless" onClick={() => navigate(todoHref(unreadTodo) as string)}>查看动态 →</Button> : null}
+          <Button size="small" icon={<Bell size={14} />} disabled={busy} onClick={() => void markRead()} data-today-mark-read="true">全部已读</Button>
+          {notes.map((note) => <Text key={note} type="tertiary" size="small">{note}</Text>)}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -227,12 +241,14 @@ export function ActivityPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  const activityKey = useCallback((item: ActivityItem) => item.groupKey || `${item.source}#${item.eventId}`, [])
+
   const merge = useCallback((incoming: ActivityItem[]) => {
     setItems((previous) => {
-      const seen = new Set(previous.map((item) => `${item.source}#${item.eventId}`))
+      const seen = new Set(previous.map(activityKey))
       const merged = [...previous]
       for (const item of incoming) {
-        const key = `${item.source}#${item.eventId}`
+        const key = activityKey(item)
         if (!seen.has(key)) {
           seen.add(key)
           merged.push(item)
@@ -240,7 +256,7 @@ export function ActivityPage() {
       }
       return merged
     })
-  }, [])
+  }, [activityKey])
 
   const loadHead = useCallback(async () => {
     setError(null)
@@ -319,7 +335,7 @@ export function ActivityPage() {
         <Card className="console-card" bodyStyle={{ padding: 14 }} data-activity-items="true">
           <ul className="review-evidence">
             {items.map((item) => (
-              <li key={`${item.source}-${item.eventId}`} data-activity-item={item.source}>
+              <li key={activityKey(item)} data-activity-item={item.source}>
                 <Text size="small">
                   {item.unread ? <Tag size="small" color="amber">未读</Tag> : null} {item.summary}
                 </Text>

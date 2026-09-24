@@ -68,15 +68,21 @@ const (
 
 // ActivityItem 是一条动态。
 type ActivityItem struct {
-	Source    string    `json:"source"`
-	EventID   int64     `json:"eventId"`
-	ProjectID int64     `json:"projectId"`
-	Kind      string    `json:"kind"`
-	ActorID   *int64    `json:"actorId,omitempty"`
-	Summary   string    `json:"summary"`
-	Detail    string    `json:"detail,omitempty"`
-	CreatedAt time.Time `json:"createdAt"`
-	Links     Links     `json:"links"`
+	Source  string `json:"source"`
+	EventID int64  `json:"eventId"`
+	// GroupKey 是聚合动态的稳定身份。批次失败事件会不断追加新 event id，
+	// 但同一批次的失败通知必须在轮询/分页合并时仍被视为同一条动态。
+	GroupKey  string `json:"groupKey,omitempty"`
+	ProjectID int64  `json:"projectId"`
+	Kind      string `json:"kind"`
+	ActorID   *int64 `json:"actorId,omitempty"`
+	Summary   string `json:"summary"`
+	Detail    string `json:"detail,omitempty"`
+	// AggregateCount/AggregateTotal 仅用于聚合动态（例如批次失败 12/12）。
+	AggregateCount int64     `json:"aggregateCount,omitempty"`
+	AggregateTotal int64     `json:"aggregateTotal,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	Links          Links     `json:"links"`
 	// Unread 是「相对当前用户水位」的判断结果，由服务端计算。
 	// 它**不是**事件自身的属性（同一事件对不同用户可能一个已读一个未读）。
 	Unread bool `json:"unread"`
