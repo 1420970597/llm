@@ -683,6 +683,24 @@ function planningVersionLabel(items: PlanningVersion[], id: string): string {
   return version ? `v${version.version}` : '未选择'
 }
 
+function VersionChoiceEmpty({
+  message,
+  actionLabel,
+  onAction,
+}: {
+  message: string
+  actionLabel: string
+  onAction: () => void
+}) {
+  const { Text } = Typography
+  return (
+    <div className="version-choice-empty" role="status">
+      <Text type="tertiary" size="small">{message}</Text>
+      <Button size="small" theme="borderless" onClick={onAction}>{actionLabel} →</Button>
+    </div>
+  )
+}
+
 export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   const scope = useProjectScope()
   const navigate = useNavigate()
@@ -1041,9 +1059,11 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
               value={blueprintVersionId}
               optionList={versionOptions.blueprint.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))}
               onChange={(value) => setBlueprintVersionId(String(value))}
-              placeholder="选择蓝图版本"
+              placeholder={versionOptions.blueprint.length > 0 ? '选择蓝图版本' : '暂无可用蓝图版本'}
+              disabled={versionOptions.blueprint.length === 0}
             />
             {selectedBlueprint ? <Text type="tertiary" size="small">当前方案：v{selectedBlueprint.version}。选择后会自动带入蓝图中保存的覆盖、标准、规则与交付引用。</Text> : null}
+            {versionOptions.blueprint.length === 0 ? <VersionChoiceEmpty message="还没有保存蓝图版本，无法启动批次。" actionLabel="去设计页创建" onAction={() => navigate(scope.href('project.blueprint'))} /> : null}
           </Field>
           <Field label="覆盖范围版本" required fieldId="plan-coverage" action={<Button size="small" theme="borderless" onClick={() => navigate(scope.href('project.coverage'))}>编辑覆盖范围</Button>}>
             <Select
@@ -1051,9 +1071,11 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
               value={coverageVersionId || undefined}
               optionList={versionOptions.coverage.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))}
               onChange={(value) => setCoverageVersionId(String(value))}
-              placeholder="选择覆盖版本"
+              placeholder={versionOptions.coverage.length > 0 ? '选择覆盖版本' : '暂无可用覆盖版本'}
+              disabled={versionOptions.coverage.length === 0}
             />
             <Text type="tertiary" size="small">蓝图已配置时会自动带入；这里改动只影响本次批次。</Text>
+            {versionOptions.coverage.length === 0 ? <VersionChoiceEmpty message="还没有保存覆盖范围版本，先补齐领域和方向。" actionLabel="去覆盖范围创建" onAction={() => navigate(scope.href('project.coverage'))} /> : null}
           </Field>
           <Field label="思维标准版本" required fieldId="plan-standard" action={<Button size="small" theme="borderless" onClick={() => navigate(scope.href('project.standard'))}>编辑思维标准</Button>}>
             <Select
@@ -1061,9 +1083,11 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
               value={standardVersionId || undefined}
               optionList={versionOptions.standard.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))}
               onChange={(value) => setStandardVersionId(String(value))}
-              placeholder="选择标准版本"
+              placeholder={versionOptions.standard.length > 0 ? '选择标准版本' : '暂无可用标准版本'}
+              disabled={versionOptions.standard.length === 0}
             />
             <Text type="tertiary" size="small">步骤和检查点来自这里的固定版本，已运行批次不会被修改。</Text>
+            {versionOptions.standard.length === 0 ? <VersionChoiceEmpty message="还没有保存思维标准版本，先写清步骤和检查点。" actionLabel="去思维标准创建" onAction={() => navigate(scope.href('project.standard'))} /> : null}
           </Field>
           <Field label="质量策略版本" fieldId="plan-quality-policy" action={<Button size="small" theme="borderless" onClick={() => navigate(scope.href('project.rules'))}>编辑规则策略</Button>}>
             <Select
@@ -1071,8 +1095,10 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
               value={qualityPolicyVersionId || undefined}
               optionList={versionOptions.qualityPolicy.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))}
               onChange={(value) => setQualityPolicyVersionId(String(value))}
-              placeholder="质量策略会在规则检查时使用"
+              placeholder={versionOptions.qualityPolicy.length > 0 ? '选择质量策略版本' : '暂无可用质量策略版本'}
+              disabled={versionOptions.qualityPolicy.length === 0}
             />
+            {versionOptions.qualityPolicy.length === 0 ? <VersionChoiceEmpty message="还没有保存质量策略版本，规则检查会阻止执行。" actionLabel="去规则页创建" onAction={() => navigate(scope.href('project.rules'))} /> : null}
           </Field>
           <Field label="交付映射版本" fieldId="plan-mapping" action={<Button size="small" theme="borderless" onClick={() => navigate(scope.href('project.newRelease'))}>编辑交付映射</Button>}>
             <Select
@@ -1080,8 +1106,10 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
               value={mappingVersionId || undefined}
               optionList={versionOptions.mapping.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))}
               onChange={(value) => setMappingVersionId(String(value))}
-              placeholder="交付映射会在发布时使用"
+              placeholder={versionOptions.mapping.length > 0 ? '选择交付映射版本' : '暂无可用交付映射版本'}
+              disabled={versionOptions.mapping.length === 0}
             />
+            {versionOptions.mapping.length === 0 ? <VersionChoiceEmpty message="还没有保存交付映射版本，发布时无法冻结字段映射。" actionLabel="去交付映射创建" onAction={() => navigate(scope.href('project.newRelease'))} /> : null}
           </Field>
           <Field label={`计划单元数（1–${maxUnits}）`} required fieldId="plan-units">
             <InputNumber
