@@ -60,7 +60,7 @@ export function ConnectionsPage() {
           <Title heading={4} className="!mb-1">
             连接与存储
           </Title>
-          <Text type="tertiary">这里只显示非秘密标识；新增/修改与「测试连接」在管理员设置页。</Text>
+          <Text type="tertiary">可用的模型连接与结果存储。</Text>
         </div>
       </div>
 
@@ -146,11 +146,6 @@ export function ConnectionsPage() {
             )}
           </Card>
 
-          {options.notes.map((note) => (
-            <Text key={note} type="tertiary" size="small" className="block">
-              {note}
-            </Text>
-          ))}
         </>
       ) : null}
     </div>
@@ -195,7 +190,6 @@ export function TeamPage() {
   const navigate = useNavigate()
   const { Title, Text } = Typography
   const [members, setMembers] = useState<WorkspaceMemberRecord[]>([])
-  const [notes, setNotes] = useState<string[]>([])
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('member')
   const [loading, setLoading] = useState(true)
@@ -224,7 +218,6 @@ export function TeamPage() {
     ])
     if (membersResult.status === 'rejected') {
       setMembers([])
-      setNotes([])
       setCurrentUserId(null)
       setError(membersResult.reason instanceof Error ? membersResult.reason.message : '加载成员失败')
       setLoading(false)
@@ -233,7 +226,6 @@ export function TeamPage() {
 
     const workspaceMembers = membersResult.value.items ?? []
     setMembers(workspaceMembers)
-    setNotes(membersResult.value.notes ?? [])
     if (currentUserResult.status === 'fulfilled') {
       const userId = currentUserResult.value.user.id
       setCurrentUserId(userId)
@@ -416,7 +408,7 @@ export function TeamPage() {
             团队与角色
           </Title>
           <Text type="tertiary">
-            工作区管理员管理成员与连接；项目 owner 管理项目成员 —— 两者职责分开。
+            选择工作区成员或项目成员。
           </Text>
         </div>
       </div>
@@ -514,11 +506,6 @@ export function TeamPage() {
             {currentUserId === null ? '当前账号的工作区角色未确认，成员管理操作不可用。' : '当前账号是工作区成员；仅工作区管理员可以添加或移除成员。'}
           </Text>
         )}
-        {notes.map((note) => (
-          <Text key={note} type="tertiary" size="small" className="block mt-2">
-            {note}
-          </Text>
-        ))}
       </Card>
 
       <Card className="console-card" bodyStyle={{ padding: 14 }} data-team-project="true">
@@ -526,8 +513,7 @@ export function TeamPage() {
           项目成员
         </Text>
         <Text type="tertiary" size="small" className="block mb-2">
-          项目内容权限（owner / reviewer / viewer）由项目决定；工作区管理员**不自动**
-          拥有项目内容读权。
+          项目内容权限由项目成员角色决定。
         </Text>
         <Select
           value={selectedProject || undefined}
@@ -548,7 +534,7 @@ export function TeamPage() {
         {projectListError ? <Text type="danger" size="small" className="block mt-2" data-team-project-error="true">{projectListError}</Text> : null}
         {!projectListError && projects.length === 0 ? (
           <Text type="tertiary" size="small" className="block mt-2" data-team-project-empty="true">
-            当前账号没有可管理成员的项目。工作区管理员身份不会自动获得项目内容或成员管理权限。
+            当前账号没有可管理成员的项目。
           </Text>
         ) : null}
         {selectedProject && projects.some((project) => String(project.id) === selectedProject && project.canManageMembers) ? (
@@ -677,7 +663,6 @@ export function HelpPage() {
   const highRiskActions = [
     '启动运行、评估或发布前确认目标项目、输入版本与预算。',
     '超时但可能已计费的请求显示为未知费用；先核对运行记录，不要盲目重跑。',
-    '旧版兼容工作台是否允许写入由服务端 LEGACY_WRITES_FROZEN 配置决定。',
   ]
   return (
     <div className="console-page" data-studio-page="help">

@@ -38,10 +38,7 @@ import './LegacyHistoryPage.css'
   const { Title, Text } = Typography
 
 /**
- * 历史数据集到 Atelier 项目的迁移映射。
- *
- * 这个接口只用于解释迁移边界和提供安全的项目链接；它不是历史数据的
- * 业务来源，也不能用来把 datasetId 当成 projectId。
+ * 历史数据集到 Atelier 项目的映射，只用于显示对象关联与安全项目链接。
  */
 type LegacyProjectMapping = {
   datasetId: number
@@ -185,7 +182,7 @@ function ResourceCountCard({
     <button type="button" className="legacy-history-count-card" onClick={onOpen}>
       <span className="legacy-history-count-card__label">{RESOURCE_LABELS[resource]}</span>
       <strong>{count === null ? '—' : count}</strong>
-      <span className="legacy-history-count-card__state">{state ?? '只读 GET'}</span>
+      <span className="legacy-history-count-card__state">{state ?? '已读取'}</span>
     </button>
   )
 }
@@ -283,18 +280,15 @@ function MappingBoundary({
       <div className="legacy-history-boundary__icon"><ShieldCheck size={18} aria-hidden /></div>
       <div className="legacy-history-boundary__copy">
         <div className="flex flex-wrap items-center gap-2">
-          <Text strong>迁移边界：只读历史</Text>
+        <Text strong>历史数据集</Text>
           <Tag size="small" color={mapping?.migrationStatus === 'mapped' ? 'blue' : 'grey'}>
-            {mapping?.migrationStatus === 'mapped' ? '已映射 Atelier 项目' : '旧资产只读'}
+            {mapping?.migrationStatus === 'mapped' ? '已关联项目' : '待关联'}
           </Tag>
         </div>
-        <Text type="tertiary" size="small">
-          此页面只读取旧数据集的历史 GET 资源。生成、编辑、清洗、评估和发布请在 Atelier 项目工作区完成；这里不会调用旧写接口。
-        </Text>
         {error ? <Text type="danger" size="small" className="block mt-1">映射状态读取失败：{error}</Text> : null}
         {mapping ? (
           <Text type="tertiary" size="small" className="block mt-1">
-            {mapping.message}
+            {mapping.migrationStatus === 'mapped' ? '项目已建立关联。' : '尚未建立项目关联。'}
             {mapping.projectId && mappedHref ? (
               <> · <Link className="console-link" to={mappedHref}>打开项目 #{mapping.projectId}</Link></>
             ) : null}
@@ -354,7 +348,7 @@ function OverviewPanel({
             key={key}
             resource={key}
             count={count}
-            state={errors[key] ? '读取失败' : '只读 GET'}
+            state={errors[key] ? '读取失败' : '已读取'}
             onOpen={() => onOpenResource(key)}
           />
         ))}
@@ -582,7 +576,7 @@ function ArtifactsPanel({
   return (
     <Card className="legacy-history-card" bodyStyle={{ padding: 18 }}>
       <div className="legacy-history-section-heading">
-        <div><Title heading={6}>旧导出制品</Title><Text type="tertiary" size="small" className="block">历史导出对象仍可下载，但不会被标记为 Atelier 发布版本。</Text></div>
+        <div><Title heading={6}>导出制品</Title><Text type="tertiary" size="small" className="block">可下载已保存的导出对象。</Text></div>
         <Tag size="small" color="grey">{artifacts.length} 件</Tag>
       </div>
       {error ? <ResourceError message={error} /> : null}
@@ -819,7 +813,7 @@ export function LegacyHistoryPage({ datasetId: requestedDatasetId, onDatasetChan
         <div>
           <div className="eyebrow"><History size={14} aria-hidden /> LEGACY / TRACE</div>
           <Title heading={4} className="!mb-1">历史资产</Title>
-          <Text type="tertiary">在 Atelier 迁移边界内查阅旧数据集、生成记录与导出制品。浏览与下载为只读；进入旧版操作前会再次确认，且不会自动提交写入。</Text>
+          <Text type="tertiary">查阅历史数据集、生成记录与导出制品。</Text>
         </div>
         <div className="legacy-history-toolbar">
           <Select
