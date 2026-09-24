@@ -262,6 +262,17 @@ const OUT_OF_REPO_REFS = new Set([
 const GENERATED_REFS = new Map([
   ['test/artifacts/page-structure/page-structure.json', 'test/l15_page_structure_capture.mjs'],
   ['test/artifacts/page-structure/hub-and-form.json', 'test/l15_hub_and_form_capture.mjs'],
+  // `version.json` 是**前端构建期产物**：由 apps/web-user/vite.config.ts 的
+  // `emit-version-json` 插件在 generateBundle 时写入产物根目录（issue #88）。
+  //
+  // 它不入库的原因与上面的采集产物同类：内容随每次构建变化（version/buildTime），
+  // 入库只会产生噪声，且它描述的是「哪一次构建」，不是源码事实。
+  //
+  // 为什么登记为「生成物」而不是改写文档里的写法或加进 CODE_REF_IGNORE：
+  // 前两者会让「version.json 的生成方被删除/改名」永远不被发现。
+  // 登记后引用仍然可校验 —— 一旦 vite.config.ts 不再生成它，
+  // 下面这条就会失败，正是应该失败的时候。
+  ['version.json', 'apps/web-user/vite.config.ts'],
 ])
 
 /**
