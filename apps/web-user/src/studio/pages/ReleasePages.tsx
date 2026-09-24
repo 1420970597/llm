@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { Button, Card, Empty, Input, Modal, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, Download, RefreshCw } from 'lucide-react'
 import { client } from '../../lib/api'
-import { projectPath, studioApi } from '../../lib/api/studio'
+import { projectNumericId, projectPath, studioApi } from '../../lib/api/studio'
 import type {
   BatchSummary,
   DeliveryItem,
@@ -18,6 +18,8 @@ import type {
   SampleSummary,
 } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
+import { projectHref } from '../StudioLayout'
+import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
 
 type BlockerLinkProps = {
   link: string
@@ -133,6 +135,7 @@ export function ReleasesListPage() {
 
   return (
     <div className="console-page" data-studio-page="releases">
+      <LegacyCapabilityWorkbench surface="release" />
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">发布版本</Title>
@@ -143,7 +146,7 @@ export function ReleasesListPage() {
         <div className="flex gap-2">
           <Button icon={<RefreshCw size={14} />} onClick={() => void load()}>刷新</Button>
           {canPublish ? (
-            <Button theme="solid" type="primary" onClick={() => navigate(`/p/${scope.projectId}/releases/new`)}>
+            <Button theme="solid" type="primary" onClick={() => navigate(projectHref('project.newRelease', scope.projectId))}>
               准备发布
             </Button>
           ) : null}
@@ -174,7 +177,7 @@ export function ReleasesListPage() {
               </span>
               <span>{release.intendedUse || '（未填写）'}</span>
               <span>
-                <Button size="small" onClick={() => navigate(`/p/${scope.projectId}/releases/${release.id}`)}>
+                <Button size="small" onClick={() => navigate(projectHref('project.releaseCard', scope.projectId, { releaseId: release.id }))}>
                   数据卡
                 </Button>
               </span>
@@ -202,6 +205,7 @@ export function ReleaseNewPage() {
   const parsedSelectionID = selectionParam ? Number(selectionParam) : 0
   const selectionSnapshotID = Number.isSafeInteger(parsedSelectionID) && parsedSelectionID > 0 ? parsedSelectionID : 0
   const hasInvalidSelectionParam = Boolean(selectionParam) && selectionSnapshotID === 0
+  const numericProjectId = projectNumericId(scope.projectId) ?? 0
 
   const [samples, setSamples] = useState<SampleSummary[]>([])
   const [batches, setBatches] = useState<BatchSummary[]>([])
@@ -304,7 +308,7 @@ export function ReleaseNewPage() {
       try {
         const resolved = await studioApi.getSelectionSnapshot(scope.projectId, selectionSnapshotID)
         if (cancelled) return
-        if (resolved.snapshot?.projectId !== scope.projectId || resolved.snapshot?.id !== selectionSnapshotID) {
+        if (resolved.snapshot?.projectId !== numericProjectId || resolved.snapshot?.id !== selectionSnapshotID) {
           setSelectionSnapshotState('invalid')
           setSnapshotNotice('选择范围与当前项目不一致，请从样本工作区重新选择')
           return
@@ -333,7 +337,7 @@ export function ReleaseNewPage() {
       }
     })()
     return () => { cancelled = true }
-  }, [scope.projectId, selectionParam, selectionSnapshotID])
+  }, [numericProjectId, scope.projectId, selectionParam, selectionSnapshotID])
 
   const submit = useCallback(async () => {
     setError(null)
@@ -394,7 +398,7 @@ export function ReleaseNewPage() {
       })
       setBlockers(result.blockers ?? [])
       // 导航到**服务端分配的**稳定 releaseId。
-      navigate(`/p/${scope.projectId}/releases/${result.release.id}`)
+      navigate(projectHref('project.releaseCard', scope.projectId, { releaseId: result.release.id }))
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : '创建发布候选失败')
     } finally {
@@ -646,7 +650,7 @@ export function ReleaseCardPage() {
     setActionError(null)
     try {
       const result = await studioApi.createNextCandidate(scope.projectId, releaseID)
-      navigate(`/p/${scope.projectId}/releases/${result.release.id}`)
+      navigate(projectHref('project.releaseCard', scope.projectId, { releaseId: result.release.id }))
     } catch (nextError) {
       setActionError(nextError instanceof Error ? nextError.message : '创建下一版失败')
     } finally {

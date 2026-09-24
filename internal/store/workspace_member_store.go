@@ -34,6 +34,11 @@ var ErrLastWorkspaceAdmin = errors.New("工作区必须至少保留一名管理�
 // ErrWorkspaceMemberNotBlocked 表示用户不是工作区成员（无需移除）。
 var ErrWorkspaceMemberNotBlocked = errors.New("该用户不是本工作区成员")
 
+// ErrWorkspaceMemberManageDenied 表示底层调用者没有目标工作区的治理权限。
+// HTTP handler 会在进入 store 前做同一判定；store 仍然重复检查，避免未来
+// 的导入、后台任务或新路由把 actor/target workspace 搞混后形成跨工作区写入。
+var ErrWorkspaceMemberManageDenied = errors.New("需要目标工作区管理员才能管理成员")
+
 // WorkspaceMember 是工作区成员（带用户邮箱与历史角色，便于界面展示）。
 type WorkspaceMember struct {
 	UserID    int64  `json:"userId"`
@@ -110,6 +115,24 @@ func (s *WorkspaceMemberStore) UpsertWorkspaceMember(ctx context.Context, worksp
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// 锁住工作区公共行，确保「管理员资格」与后面的成员写入针对同一个
+	// workspace 且不会在并发撤权时出现 write-skew。仅允许一个空工作区由
+	// actor 把自己初始化为第一名 admin；正常 API 路径仍要求已有 admin。
+	if err := ensureWorkspaceAdminTx(ctx, tx, workspaceID, actorID); err != nil {
+		var memberCount int
+		if errors.Is(err, ErrWorkspaceMemberManageDenied) && role == model.WorkspaceRoleAdmin && actorID == targetUserID {
+			if countErr := tx.QueryRow(ctx, `
+        SELECT COUNT(*) FROM workspace_members WHERE workspace_id = $1`, workspaceID).Scan(&memberCount); countErr != nil {
+				return WorkspaceMember{}, countErr
+			}
+			if memberCount != 0 {
+				return WorkspaceMember{}, err
+			}
+		} else {
+			return WorkspaceMember{}, err
+		}
+	}
+
 	// 目标用户必须存在：否则会写出一个指向不存在用户的关系行。
 	var exists bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`, targetUserID).Scan(&exists); err != nil {
@@ -153,6 +176,9 @@ func (s *WorkspaceMemberStore) RemoveWorkspaceMember(ctx context.Context, worksp
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := ensureWorkspaceAdminTx(ctx, tx, workspaceID, actorID); err != nil {
+		return err
+	}
 
 	var isMember bool
 	if err := tx.QueryRow(ctx, `
@@ -194,6 +220,31 @@ func (s *WorkspaceMemberStore) RemoveWorkspaceMember(ctx context.Context, worksp
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// ensureWorkspaceAdminTx locks the target workspace and verifies the actor's
+// current role. The lock makes the authorization decision and subsequent
+// member mutation share one serialized workspace scope.
+func ensureWorkspaceAdminTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID int64) error {
+	var lockedID int64
+	if err := tx.QueryRow(ctx, `
+    SELECT id FROM workspaces WHERE id = $1 FOR UPDATE`, workspaceID).Scan(&lockedID); err != nil {
+		return err
+	}
+	var role string
+	err := tx.QueryRow(ctx, `
+    SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`,
+		workspaceID, actorID).Scan(&role)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrWorkspaceMemberManageDenied
+	}
+	if err != nil {
+		return err
+	}
+	if role != model.WorkspaceRoleAdmin {
+		return ErrWorkspaceMemberManageDenied
+	}
+	return nil
 }
 
 // ensureNotLastWorkspaceAdminTx 拒绝「移除/降级最后一名工作区管理员」。

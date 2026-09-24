@@ -93,8 +93,10 @@ function problemsWithLoginValidation(appSrc) {
     problems.push('提交处理器没有「校验未过即返回」的守卫，本地校验无法阻止请求发出')
   }
 
-  // 点击按钮必须走带校验的处理函数，而不是直接 onSubmit。
-  if (/onClick=\{\(\) => void onSubmit\(email, password\)\}/.test(view)) {
+  // 表单提交与回车都必须走带校验的处理函数，而不是直接 onSubmit。
+  // 只检查 form 片段，避免把 handleSubmit 内部的合法调用误判为绕过校验。
+  const form = sliceBetween(view, '<form', '</form>') ?? ''
+  if (/onClick=\{\(\) => void onSubmit\(email, password\)\}/.test(view) || /onSubmit\(email, password\)/.test(form)) {
     problems.push('登录按钮直接调用 onSubmit，绕过了本地校验')
   }
   return problems
@@ -227,8 +229,8 @@ record('#107 变异：删掉本地必填提示 -> 谓词必须报错',
 
 /** 变异 5（#107）：让登录按钮绕过校验直接提交。 */
 const mut107b = source.replace(
-  'onClick={handleSubmit}',
-  'onClick={() => void onSubmit(email, password)}',
+  'event.preventDefault()\n              handleSubmit()',
+  'event.preventDefault()\n              void onSubmit(email, password)',
 )
 record('#107 变异：让登录按钮绕过校验 -> 谓词必须报错',
   problemsWithLoginValidation(mut107b).length > 0,

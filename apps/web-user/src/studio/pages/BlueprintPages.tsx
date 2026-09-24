@@ -5,6 +5,8 @@ import { AlertTriangle, Copy, History, Save } from 'lucide-react'
 import { client } from '../../lib/api'
 import { newIdempotencyKey, projectPath } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
+import { projectHref } from '../StudioLayout'
+import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
 
 /**
  * 设计区页面（Issue #160 T11）：蓝图节点检查器、覆盖矩阵、标准历史。
@@ -472,6 +474,7 @@ export function BlueprintPage() {
           ) : null}
         </aside>
       </div>
+      <LegacyCapabilityWorkbench surface="design" />
     </div>
   )
 }
@@ -702,7 +705,7 @@ export function CoveragePage() {
                             // 只进入**规划**（新批次），不触发任何重生成：
                             // 重跑已有内容会重复计费，也不会改善覆盖（T11 验收项）。
                             navigate(
-                              `/p/${scope.projectId}/pilot?slice=${encodeURIComponent(
+                              `${projectHref('project.pilot', scope.projectId)}?slice=${encodeURIComponent(
                                 String(direction.stableId ?? ''),
                               )}`,
                             )

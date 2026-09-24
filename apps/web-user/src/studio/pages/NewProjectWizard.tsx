@@ -22,6 +22,7 @@ import {
   type WizardFieldError,
   type WizardStep,
 } from '../wizard'
+import { projectHref } from '../StudioLayout'
 
 /**
  * 三步项目向导（Issue #160 T10）：`/new` → `/new/coverage` → `/new/quality`。
@@ -130,7 +131,7 @@ export function NewProjectWizard({ step, userId }: NewProjectWizardProps) {
     if (createdProjectId.current !== null) {
       // 已经建好了：直接进入，不再发请求。这是「重复点击只建一次」的
       // 最后一道防线（前两道是幂等键与服务端唯一约束）。
-      navigate(`/p/${createdProjectId.current}/overview`)
+      navigate(projectHref('project.overview', createdProjectId.current))
       return
     }
     const errors = validateStep(draft, step)
@@ -158,7 +159,7 @@ export function NewProjectWizard({ step, userId }: NewProjectWizardProps) {
       // 创建成功后清掉草稿：否则下次进向导会看到上一次的内容，
       // 用户很容易以为自己没建成功而再建一次。
       clearDraft(browserStorage(), userId)
-      navigate(`/p/${projectId}/overview`)
+      navigate(projectHref('project.overview', projectId))
     } catch (error) {
       const apiError = error as {
         statusCode?: number

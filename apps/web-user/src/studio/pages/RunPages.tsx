@@ -15,6 +15,8 @@ import type {
 } from '../../lib/api/studio'
 import { client } from '../../lib/api'
 import { useProjectScope } from '../ProjectLayout'
+import { projectHref } from '../StudioLayout'
+import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
 
 /**
  * 生产工作区页面（Issue #160 T13）：批次列表、详情、异常恢复、试制与扩量规划。
@@ -120,6 +122,7 @@ export function RunsPage() {
 
   return (
     <div className="console-page" data-studio-page="runs">
+      <LegacyCapabilityWorkbench surface="production" />
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">
@@ -133,9 +136,9 @@ export function RunsPage() {
           <Button icon={<RefreshCw size={14} />} onClick={() => void load()} disabled={loading}>
             刷新
           </Button>
-          {canRun ? <Button onClick={() => navigate(`/p/${scope.projectId}/pilot`)}>新建试制</Button> : null}
+          {canRun ? <Button onClick={() => navigate(projectHref('project.pilot', scope.projectId))}>新建试制</Button> : null}
           {canRun ? (
-            <Button theme="solid" type="primary" onClick={() => navigate(`/p/${scope.projectId}/runs/new`)}>
+            <Button theme="solid" type="primary" onClick={() => navigate(projectHref('project.runNew', scope.projectId))}>
               扩量规划
             </Button>
           ) : null}
@@ -185,7 +188,7 @@ export function RunsPage() {
               <button
                 type="button"
                 className="batch-row__link"
-                onClick={() => navigate(`/p/${scope.projectId}/runs/${batch.resourceId}`)}
+                onClick={() => navigate(projectHref('project.runDetail', scope.projectId, { batchId: batch.resourceId }))}
               >
                 {batch.resourceId}
               </button>
@@ -372,7 +375,7 @@ export function BatchDetailPage() {
               恢复失败项
             </Button>
           ) : null}
-          <Button onClick={() => navigate(`/p/${scope.projectId}/runs/${batchId}/failures`)}>
+          <Button onClick={() => navigate(projectHref('project.runFailures', scope.projectId, { batchId }))}>
             异常恢复
           </Button>
         </div>
@@ -411,10 +414,10 @@ export function BatchDetailPage() {
             下一步可以创建质量实验（固定范围与量表）或与另一个试制批次做同基准比较。
           </Text>
           <div className="mt-3 flex gap-2">
-            <Button size="small" onClick={() => navigate(`/p/${scope.projectId}/quality/new`)}>
+            <Button size="small" onClick={() => navigate(projectHref('project.qualityNew', scope.projectId))}>
               创建质量实验
             </Button>
-            <Button size="small" onClick={() => navigate(`/p/${scope.projectId}/compare`)}>
+            <Button size="small" onClick={() => navigate(projectHref('project.compare', scope.projectId))}>
               与试制比较
             </Button>
           </div>
@@ -796,7 +799,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       if (!batchId) {
         throw new Error('创建成功但没有返回批次 ID，请联系管理员并提供 requestId')
       }
-      navigate(`/p/${scope.projectId}/runs/b_${batchId}`)
+      navigate(projectHref('project.runDetail', scope.projectId, { batchId: `b_${batchId}` }))
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : '创建批次失败')
     } finally {

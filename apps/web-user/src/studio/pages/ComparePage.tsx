@@ -6,6 +6,7 @@ import { client } from '../../lib/api'
 import { projectPath, studioApi } from '../../lib/api/studio'
 import type { ComparisonDetail, Page, BatchSummary } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
+import { projectHref } from '../StudioLayout'
 
 /**
  * 试制对比页（Issue #160 T18 的 P06）。
@@ -160,7 +161,7 @@ export function ComparePage() {
       const query = planningParams.toString()
       setNextStep({
         label: result.nextStep.label,
-        href: `/p/${scope.projectId}/runs/new${query ? `?${query}` : ''}`,
+        href: `${projectHref('project.runNew', scope.projectId)}${query ? `?${query}` : ''}`,
       })
       setReason('')
       await load()

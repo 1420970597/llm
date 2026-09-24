@@ -17,6 +17,8 @@ import {
   projectRoutes,
 } from './routes'
 import { useProjectName } from './projectName'
+import { parseProjectResourceId } from '../lib/api/studio'
+import type { ProjectResourceId } from '../lib/api/studio'
 
 /**
  * 项目壳（Issue #160 T09）：六项目工作区标签 + 面包屑 + 项目作用域。
@@ -48,7 +50,7 @@ const PROJECT_TAB_ICONS: Record<string, LucideIcon> = {
 
 /** 项目作用域上下文的值。 */
 export type ProjectScope = {
-  projectId: number
+  projectId: ProjectResourceId
   /** 项目内链接构造器：`projectHref('project.data')`。 */
   href: (key: string) => string
 }
@@ -63,8 +65,8 @@ export type ProjectScope = {
 export function useProjectScope(): ProjectScope {
   const params = useParams()
   const raw = params.projectId ?? ''
-  const projectId = Number.parseInt(raw, 10)
-  if (!Number.isFinite(projectId) || projectId <= 0) {
+  const projectId = parseProjectResourceId(raw)
+  if (!projectId) {
     // 非法项目 ID 不应该让页面渲染一个「看不见的错误」：
     // 抛出让 ErrorBoundary 显示明确的「地址不正确」文案。
     throw new Error(`项目地址不正确：${raw || '(空)'}`)

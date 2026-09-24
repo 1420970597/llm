@@ -72,7 +72,9 @@ record(
 record(
   '选择快照可直达发布准备',
   /purpose:\s*'release'/.test(source) &&
-    /releases\/new\?selection=/.test(source) &&
+    // 项目链接必须从 routes.ts 元数据构造；接受旧的字面量形式仅为兼容
+    // 历史实现，当前实现使用 projectHref('project.newRelease')。
+    (/releases\/new\?selection=/.test(source) || /projectHref\('project\.newRelease',[\s\S]*?\}\?selection=/.test(source)) &&
     /sampleVersionIds/.test(source),
   '发布用途快照包含明确版本范围，并通过 ?selection= 进入发布准备',
 )

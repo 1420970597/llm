@@ -12,6 +12,7 @@ import (
 
 	appcrypto "github.com/1420970597/llm/internal/crypto"
 	"github.com/1420970597/llm/internal/model"
+	"github.com/1420970597/llm/internal/studio"
 )
 
 // 本文件覆盖 Issue #160 T02/T08 的**无数据库**契约断言：
@@ -315,9 +316,10 @@ func TestParseProjectIDAcceptsBothForms(t *testing.T) {
 // TestProjectEnvelopeCarriesContractFields 断言契约 §1.1 的稳定外壳字段齐全。
 func TestProjectEnvelopeCarriesContractFields(t *testing.T) {
 	app := &application{}
+	legacyDatasetID := int64(42)
 	project := model.Project{
 		ID: 7, WorkspaceID: 1, Name: "冷链问答", TargetKind: "sft",
-		Status: model.ProjectStatusDraft, RowVersion: 3,
+		Status: model.ProjectStatusDraft, RowVersion: 3, LegacyDatasetID: &legacyDatasetID,
 	}
 	envelope := app.projectEnvelope(project, model.ProjectRoleOwner)
 
@@ -336,9 +338,41 @@ func TestProjectEnvelopeCarriesContractFields(t *testing.T) {
 	if envelope.Warnings == nil {
 		t.Fatal("warnings 必须是 [] 而不是 null：前端按数组渲染")
 	}
+	data, ok := envelope.Data.(model.Project)
+	if !ok || data.LegacyDatasetID == nil || *data.LegacyDatasetID != legacyDatasetID {
+		t.Fatalf("GET /projects/{id} 的 data 必须保留旧 dataset 映射，实际 %+v", envelope.Data)
+	}
 	// 稳定 ID 与展示名分离（§2.5）：项目侧同样如此，ID 不是名字。
 	if strings.Contains(envelope.Links["self"], project.Name) {
 		t.Fatal("链接必须用稳定 ID 而不是名称")
+	}
+}
+
+// TestProjectOverviewCarriesLegacyDatasetID 保护兼容跳转所需的第二条读链路。
+// 概览不是直接复用 model.Project，而是独立读模型；若这里漏字段，前端只能
+// 把 projectId 误当 datasetId，旧阶段入口会打开错误任务。
+func TestProjectOverviewCarriesLegacyDatasetID(t *testing.T) {
+	legacyDatasetID := int64(42)
+	overview := studio.ProjectOverview{ProjectID: 7, LegacyDatasetID: &legacyDatasetID}
+	raw, err := json.Marshal(overview)
+	if err != nil {
+		t.Fatalf("序列化项目概览失败：%v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("解析项目概览 JSON 失败：%v", err)
+	}
+	if got, ok := decoded["legacyDatasetId"].(float64); !ok || int64(got) != legacyDatasetID {
+		t.Fatalf("GET /projects/{id}/overview 必须返回 legacyDatasetId=42，实际 %v", decoded["legacyDatasetId"])
+	}
+
+	// 原生新项目没有旧来源时仍应省略该字段，避免前端把 0 当成真实 dataset。
+	raw, err = json.Marshal(studio.ProjectOverview{ProjectID: 8})
+	if err != nil {
+		t.Fatalf("序列化无映射项目概览失败：%v", err)
+	}
+	if strings.Contains(string(raw), "legacyDatasetId") {
+		t.Fatalf("无旧来源的项目不应伪造 legacyDatasetId：%s", raw)
 	}
 }
 

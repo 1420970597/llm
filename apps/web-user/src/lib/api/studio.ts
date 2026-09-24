@@ -83,7 +83,36 @@ export type ProjectCapabilities = {
 export type ProjectIdentity = {
   id: number
   name: string
+  /** Legacy dataset source, when this project was imported from the old console. */
+  legacyDatasetId?: number | null
 }
+
+/**
+ * Stable project resource IDs are exposed by the API as `p_<numeric-id>`.
+ * Numeric values remain accepted for old links and callers that still hold the
+ * database ID. Keep this distinction at the API boundary: nested response
+ * fields such as `ProjectOverview.projectId` are database IDs and stay numeric.
+ */
+export type ProjectResourceId = string | number
+
+/** Accept the canonical `p_12` form and the legacy numeric `12` form. */
+export function parseProjectResourceId(raw: string | null | undefined): ProjectResourceId | null {
+  const value = raw?.trim() ?? ''
+  if (/^p_[1-9]\d*$/.test(value) || /^[1-9]\d*$/.test(value)) return value
+  return null
+}
+
+/** Convert a project resource ID to its numeric database ID where required. */
+export function projectNumericId(value: ProjectResourceId | null | undefined): number | null {
+  const raw = String(value ?? '').trim()
+  const digits = raw.startsWith('p_') ? raw.slice(2) : raw
+  if (!/^[1-9]\d*$/.test(digits)) return null
+  const numeric = Number(digits)
+  return Number.isSafeInteger(numeric) && numeric > 0 ? numeric : null
+}
+
+/** Project list rows keep the public resource ID separate from the numeric project ID. */
+export type ProjectListItem = TypedEnvelope<ProjectIdentity, ProjectCapabilities>
 
 export type BatchCapabilities = {
   canPause: boolean
@@ -228,6 +257,7 @@ export type ProjectOverview = {
   targetKind: string
   status: string
   goal: string
+  legacyDatasetId?: number | null
   versions: OverviewVersions
   batches: OverviewBatches
   budget: BudgetSnapshot
@@ -943,8 +973,8 @@ export function newIdempotencyKey(): string {
 }
 
 /** 项目 API 的基路径（`P` 在契约里就是它）。 */
-export function projectPath(projectId: number): string {
-  return `/v1/projects/${projectId}`
+export function projectPath(projectId: ProjectResourceId): string {
+  return `/v1/projects/${encodeURIComponent(String(projectId))}`
 }
 
 // ---------------------------------------------------------------------------
@@ -953,96 +983,96 @@ export function projectPath(projectId: number): string {
 
 export const studioApi = {
   /** `GET P`：项目壳与面包屑使用服务端项目名称。 */
-  getProject: (projectId: number) =>
+  getProject: (projectId: ProjectResourceId) =>
     client
       .get<TypedEnvelope<ProjectIdentity, ProjectCapabilities>>(projectPath(projectId))
       .then((response) => response.data),
 
   /** `GET P/overview`（契约 §3）。 */
-  overview: (projectId: number) =>
+  overview: (projectId: ProjectResourceId) =>
     client.get<Envelope>(`${projectPath(projectId)}/overview`).then((response) => unwrapStudioData<ProjectOverviewData>(response)),
-  overviewEnvelope: (projectId: number) =>
+  overviewEnvelope: (projectId: ProjectResourceId) =>
     client
       .get<TypedEnvelope<ProjectOverviewData, ProjectCapabilities>>(`${projectPath(projectId)}/overview`)
       .then((response) => response.data),
 
   /** `GET P/batches`（契约 §3）：服务端分页，不按最大 ID 猜「当前运行」。 */
-  listBatches: (projectId: number, params?: ListParams) =>
+  listBatches: (projectId: ProjectResourceId, params?: ListParams) =>
     client
       .get<Page<BatchSummary>>(`${projectPath(projectId)}/batches${queryString(params)}`)
       .then((response) => response.data),
 
   /** `GET P/batches/{batchId}`（契约 §3 的 R02）。 */
-  getBatch: (projectId: number, batchId: string) =>
+  getBatch: (projectId: ProjectResourceId, batchId: string) =>
     client.get<Envelope>(`${projectPath(projectId)}/batches/${batchId}`).then((response) => unwrapStudioData<BatchDetail>(response)),
-  getBatchEnvelope: (projectId: number, batchId: string) =>
+  getBatchEnvelope: (projectId: ProjectResourceId, batchId: string) =>
     client
       .get<TypedEnvelope<BatchDetail, BatchCapabilities>>(`${projectPath(projectId)}/batches/${batchId}`)
       .then((response) => response.data),
 
   /** `GET P/batches/{batchId}/failures`（契约 §3 的 R03）。 */
-  listBatchFailures: (projectId: number, batchId: string, params?: ListParams) =>
+  listBatchFailures: (projectId: ProjectResourceId, batchId: string, params?: ListParams) =>
     client
       .get<Page<BatchFailure>>(`${projectPath(projectId)}/batches/${batchId}/failures${queryString(params)}`)
       .then((response) => response.data),
 
   /** `GET P/batches/{batchId}/items`。 */
-  listBatchItems: (projectId: number, batchId: string, params?: ListParams) =>
+  listBatchItems: (projectId: ProjectResourceId, batchId: string, params?: ListParams) =>
     client
       .get<Page<BatchItem>>(`${projectPath(projectId)}/batches/${batchId}/items${queryString(params)}`)
       .then((response) => response.data),
 
   /** `GET P/batches/{batchId}/events`。 */
-  listBatchEvents: (projectId: number, batchId: string, params?: ListParams) =>
+  listBatchEvents: (projectId: ProjectResourceId, batchId: string, params?: ListParams) =>
     client
       .get<Page<BatchEvent>>(`${projectPath(projectId)}/batches/${batchId}/events${queryString(params)}`)
       .then((response) => response.data),
 
   /** `POST P/batches`（契约 §2.3）：202 + batchId；**幂等键必填**。 */
-  createBatch: (projectId: number, payload: CreateBatchRequest, options?: CommandOptions) =>
+  createBatch: (projectId: ProjectResourceId, payload: CreateBatchRequest, options?: CommandOptions) =>
     client
       .post(`${projectPath(projectId)}/batches`, payload, { headers: commandHeaders(options) })
       .then((response) => unwrapStudioData<BatchSummary>(response)),
 
   /** 批次控制（契约 §2.4）：暂停只阻止新提交，在途仍会计费。 */
-  pauseBatch: (projectId: number, batchId: string) =>
+  pauseBatch: (projectId: ProjectResourceId, batchId: string) =>
     client.post(`${projectPath(projectId)}/batches/${batchId}/pause`).then((response) => unwrapStudioData<BatchSummary>(response)),
-  resumeBatch: (projectId: number, batchId: string) =>
+  resumeBatch: (projectId: ProjectResourceId, batchId: string) =>
     client.post(`${projectPath(projectId)}/batches/${batchId}/resume`).then((response) => unwrapStudioData<BatchSummary>(response)),
   /** 恢复失败项：只重跑失败/未完成项，成功内容保留。 */
-  retryFailed: (projectId: number, batchId: string) =>
+  retryFailed: (projectId: ProjectResourceId, batchId: string) =>
     client
       .post(`${projectPath(projectId)}/batches/${batchId}/retry-failed`)
       .then((response) => unwrapStudioData<{ batch: BatchSummary; resetItems: number }>(response)),
 
   /** `GET P/samples`（契约 §3）：服务端分页；`status`/`risk` 尚未接入（T16/T17）。 */
-  listSamples: (projectId: number, params?: ListParams) =>
+  listSamples: (projectId: ProjectResourceId, params?: ListParams) =>
     client
       .get<Page<SampleSummary>>(`${projectPath(projectId)}/samples${queryString(params)}`)
       .then((response) => response.data),
 
   /** `GET P/samples/{sampleId}`（契约 §3 的 D02：内容只读）。 */
-  getSample: (projectId: number, sampleId: string) =>
+  getSample: (projectId: ProjectResourceId, sampleId: string) =>
     client.get<Envelope>(`${projectPath(projectId)}/samples/${sampleId}`).then((response) => unwrapStudioData<SampleDetail>(response)),
-  getSampleEnvelope: (projectId: number, sampleId: string) =>
+  getSampleEnvelope: (projectId: ProjectResourceId, sampleId: string) =>
     client
       .get<TypedEnvelope<SampleDetail, SampleCapabilities>>(`${projectPath(projectId)}/samples/${sampleId}`)
       .then((response) => response.data),
 
   /** `GET P/samples/{sampleId}/history`（契约 §3 的 D03）。 */
-  listSampleHistory: (projectId: number, sampleId: string, params?: ListParams) =>
+  listSampleHistory: (projectId: ProjectResourceId, sampleId: string, params?: ListParams) =>
     client
       .get<Page<SampleVersionView>>(`${projectPath(projectId)}/samples/${sampleId}/history${queryString(params)}`)
       .then((response) => response.data),
 
   /** `GET P/samples/{sampleId}/versions/{version}`。 */
-  getSampleVersion: (projectId: number, sampleId: string, version: number) =>
+  getSampleVersion: (projectId: ProjectResourceId, sampleId: string, version: number) =>
     client
       .get<SampleVersionView>(`${projectPath(projectId)}/samples/${sampleId}/versions/${version}`)
       .then((response) => unwrapStudioData<SampleVersionView>(response)),
 
   /** `POST P/samples/{sampleId}/versions/{version}/decisions`（契约 §2.7）。 */
-  submitDecision: (projectId: number, sampleId: string, version: number, payload: SubmitDecisionRequest) =>
+  submitDecision: (projectId: ProjectResourceId, sampleId: string, version: number, payload: SubmitDecisionRequest) =>
     client
       .post<DecisionResult>(
         `${projectPath(projectId)}/samples/${sampleId}/versions/${version}/decisions`,
@@ -1051,7 +1081,7 @@ export const studioApi = {
       .then((response) => unwrapStudioData<DecisionResult>(response)),
 
   /** `GET .../decisions`：返回**全部**判断（含被取代的）与当前投影。 */
-  listDecisions: (projectId: number, sampleId: string, version: number) =>
+  listDecisions: (projectId: ProjectResourceId, sampleId: string, version: number) =>
     client
       .get<{ items: ReviewDecision[]; projection: ReviewProjection; sortKey: string }>(
         `${projectPath(projectId)}/samples/${sampleId}/versions/${version}/decisions`,
@@ -1060,7 +1090,7 @@ export const studioApi = {
 
   /** `POST .../resolve-conflict`：仅项目负责人可用。 */
   resolveConflict: (
-    projectId: number,
+    projectId: ProjectResourceId,
     sampleId: string,
     version: number,
     payload: { action: 'accepted' | 'quarantined'; reason: string; supersedes?: number },
@@ -1074,7 +1104,7 @@ export const studioApi = {
 
   /** `POST .../assignments`：按风险聚合，重复分派更新同一条。 */
   assignReview: (
-    projectId: number,
+    projectId: ProjectResourceId,
     sampleId: string,
     version: number,
     payload: { riskKey?: string; assigneeId?: number; note?: string },
@@ -1087,7 +1117,7 @@ export const studioApi = {
       .then((response) => response.data as { assignment: ReviewAssignment }),
 
   /** `GET P/review-assignments`：`mine=1` 只看分派给我的。 */
-  listReviewAssignments: (projectId: number, mine = false) =>
+  listReviewAssignments: (projectId: ProjectResourceId, mine = false) =>
     client
       .get<Page<ReviewAssignment>>(
         `${projectPath(projectId)}/review-assignments${mine ? '?mine=1' : ''}`,
@@ -1095,46 +1125,46 @@ export const studioApi = {
       .then((response) => response.data),
 
   /** `POST P/selection-snapshots`：冻结范围（URL 只带快照 ID）。 */
-  createSelectionSnapshot: (projectId: number, payload: CreateSelectionSnapshotRequest) =>
+  createSelectionSnapshot: (projectId: ProjectResourceId, payload: CreateSelectionSnapshotRequest) =>
     client
       .post(`${projectPath(projectId)}/selection-snapshots`, payload)
       .then((response) => unwrapStudioData<SelectionSnapshot>(response)),
 
   /** `POST P/releases`：创建候选（同事务分配 candidateId + releaseId + 版本名）。 */
-  createReleaseCandidate: (projectId: number, payload: CreateReleaseCandidateRequest) =>
+  createReleaseCandidate: (projectId: ProjectResourceId, payload: CreateReleaseCandidateRequest) =>
     client
       .post(`${projectPath(projectId)}/releases`, payload)
       .then((response) => unwrapStudioData<{ release: ReleaseRecord; blockers: ReleaseBlocker[] }>(response)),
 
-  listReleases: (projectId: number) =>
+  listReleases: (projectId: ProjectResourceId) =>
     client
       .get<Page<ReleaseRecord>>(`${projectPath(projectId)}/releases`)
       .then((response) => response.data),
 
   /** `GET P/releases/{releaseId}`：发布 + 数据卡 + 制品 + blocker 快照。 */
-  getReleaseCard: (projectId: number, releaseId: number) =>
+  getReleaseCard: (projectId: ProjectResourceId, releaseId: number) =>
     client
       .get(`${projectPath(projectId)}/releases/${releaseId}`)
       .then((response) => unwrapStudioData<ReleaseCard>(response)),
-  getReleaseCardEnvelope: (projectId: number, releaseId: number) =>
+  getReleaseCardEnvelope: (projectId: ProjectResourceId, releaseId: number) =>
     client
       .get<TypedEnvelope<ReleaseCard, ReleaseCapabilities>>(`${projectPath(projectId)}/releases/${releaseId}`)
       .then((response) => response.data),
 
   /** `POST .../publish`：冻结并发布（202 + building；相同命令返回同一个 release）。 */
-  publishRelease: (projectId: number, releaseId: number) =>
+  publishRelease: (projectId: ProjectResourceId, releaseId: number) =>
     client
       .post(`${projectPath(projectId)}/releases/${releaseId}/publish`)
       .then((response) => unwrapStudioData<{ release: ReleaseRecord }>(response)),
 
   /** `POST .../next-candidate`：复制候选但**不改原版**。 */
-  createNextCandidate: (projectId: number, releaseId: number, releaseName?: string) =>
+  createNextCandidate: (projectId: ProjectResourceId, releaseId: number, releaseName?: string) =>
     client
       .post(`${projectPath(projectId)}/releases/${releaseId}/next-candidate`, { releaseName })
       .then((response) => unwrapStudioData<{ release: ReleaseRecord }>(response)),
 
   /** `GET P/releases/{releaseId}/artifacts/{artifactId}/download`。 */
-  downloadArtifactURL: (projectId: number, releaseId: number, artifactId: number) =>
+  downloadArtifactURL: (projectId: ProjectResourceId, releaseId: number, artifactId: number) =>
     `/api${projectPath(projectId)}/releases/${releaseId}/artifacts/${artifactId}/download`,
 
   /** `GET /api/v1/deliveries`：仅已发布且我可访问的版本。 */
@@ -1142,25 +1172,25 @@ export const studioApi = {
     client.get<Page<DeliveryItem>>(`/v1/deliveries${queryString(params)}`).then((response) => response.data),
 
   /** `POST P/experiments`：冻结实验（202；执行是异步的）。 */
-  createExperiment: (projectId: number, payload: CreateExperimentRequest, options?: CommandOptions) =>
+  createExperiment: (projectId: ProjectResourceId, payload: CreateExperimentRequest, options?: CommandOptions) =>
     client
       .post(`${projectPath(projectId)}/experiments`, payload, { headers: commandHeaders(options) })
       .then((response) => unwrapStudioData<Experiment>(response)),
 
-  listExperiments: (projectId: number) =>
+  listExperiments: (projectId: ProjectResourceId) =>
     client
       .get<Page<Experiment>>(`${projectPath(projectId)}/experiments`)
       .then((response) => response.data),
 
   /** `GET P/experiments/{id}`：实验 + 报告 + 待判断项。 */
-  getExperiment: (projectId: number, experimentId: number) =>
+  getExperiment: (projectId: ProjectResourceId, experimentId: number) =>
     client
       .get(`${projectPath(projectId)}/experiments/${experimentId}`)
       .then((response) => unwrapStudioData<ExperimentDetail>(response)),
 
   /** `POST P/rule-previews`：纯预览（不写处置、不入收费模型队列）。 */
   previewRules: (
-    projectId: number,
+    projectId: ProjectResourceId,
     payload: { qualityPolicyVersionId: number; sampleVersionIds: number[]; maxHits?: number },
   ) =>
     client
@@ -1168,42 +1198,42 @@ export const studioApi = {
       .then((response) => response.data as RulePreviewResult),
 
   /** `POST P/comparison-baselines`：冻结比较前提。 */
-  createComparisonBaseline: (projectId: number, payload: CreateComparisonBaselineRequest) =>
+  createComparisonBaseline: (projectId: ProjectResourceId, payload: CreateComparisonBaselineRequest) =>
     client
       .post(`${projectPath(projectId)}/comparison-baselines`, payload)
       .then((response) => unwrapStudioData<ComparisonBaseline>(response)),
 
   /** `GET P/comparison-baselines/{id}`：基准 + 报告（一起返回，避免两秒内自相矛盾）。 */
-  getComparisonBaseline: (projectId: number, baselineId: number) =>
+  getComparisonBaseline: (projectId: ProjectResourceId, baselineId: number) =>
     client
       .get(`${projectPath(projectId)}/comparison-baselines/${baselineId}`)
       .then((response) => unwrapStudioData<ComparisonDetail>(response)),
-  getComparisonBaselineEnvelope: (projectId: number, baselineId: number) =>
+  getComparisonBaselineEnvelope: (projectId: ProjectResourceId, baselineId: number) =>
     client
       .get<TypedEnvelope<ComparisonDetail, ComparisonCapabilities>>(
         `${projectPath(projectId)}/comparison-baselines/${baselineId}`,
       )
       .then((response) => response.data),
 
-  listComparisonBaselines: (projectId: number) =>
+  listComparisonBaselines: (projectId: ProjectResourceId) =>
     client
       .get<Page<ComparisonBaseline>>(`${projectPath(projectId)}/comparison-baselines`)
       .then((response) => response.data),
 
   /** `POST .../adopt`：采用只更新指针并记录依据，不自动运行或发布。 */
-  adoptComparison: (projectId: number, baselineId: number, payload: { side: 'left' | 'right'; reason: string }) =>
+  adoptComparison: (projectId: ProjectResourceId, baselineId: number, payload: { side: 'left' | 'right'; reason: string }) =>
     client
       .post(`${projectPath(projectId)}/comparison-baselines/${baselineId}/adopt`, payload)
       .then((response) => unwrapStudioData<AdoptComparisonResult>(response)),
 
   /** `GET P/adopted-batch`：`/runs/new` 用它预填版本。 */
-  adoptedBatch: (projectId: number) =>
+  adoptedBatch: (projectId: ProjectResourceId) =>
     client
       .get<AdoptedBatch>(`${projectPath(projectId)}/adopted-batch`)
       .then((response) => response.data),
 
   /** `GET P/selection-snapshots/{id}`：**重新鉴权**后解析范围。 */
-  getSelectionSnapshot: (projectId: number, snapshotId: number) =>
+  getSelectionSnapshot: (projectId: ProjectResourceId, snapshotId: number) =>
     client
       .get<{ snapshot: SelectionSnapshot; items: number[]; count: number }>(
         `${projectPath(projectId)}/selection-snapshots/${snapshotId}`,
@@ -1478,6 +1508,13 @@ export type ProjectMemberRecord = {
   email?: string
 }
 
+export type ProjectMemberRole = 'owner' | 'reviewer' | 'viewer'
+
+export type ProjectMemberUpsertInput = {
+  role: ProjectMemberRole
+  reason: string
+} & ({ userId: number; email?: never } | { email: string; userId?: never })
+
 export type ProjectBudgetView = {
   budget: {
     projectId: number
@@ -1502,6 +1539,9 @@ export const settingsApi = {
       )
       .then((response) => response.data),
 
+  projects: (params: { limit: number; cursor?: string }) =>
+    client.get<Page<ProjectListItem>>('/v1/projects', { params }).then((response) => response.data),
+
   upsertWorkspaceMember: (payload: { email?: string; userId?: number; role: string; workspaceId?: number }) =>
     client.post<WorkspaceMemberRecord>('/v1/workspace/members', payload).then((response) => response.data),
 
@@ -1515,11 +1555,13 @@ export const settingsApi = {
       .get<Page<ProjectMemberRecord>>(`${projectPath(projectId)}/members`)
       .then((response) => response.data),
 
-  upsertProjectMember: (projectId: number, payload: { userId: number; role: string; reason?: string }) =>
-    client.post(`${projectPath(projectId)}/members`, payload).then((response) => response.data),
+  upsertProjectMember: (projectId: number, payload: ProjectMemberUpsertInput) =>
+    client.post<Page<ProjectMemberRecord>>(`${projectPath(projectId)}/members`, payload).then((response) => response.data),
 
-  removeProjectMember: (projectId: number, userId: number) =>
-    client.delete(`${projectPath(projectId)}/members/${userId}`).then((response) => response.data),
+  removeProjectMember: (projectId: number, userId: number, reason: string) =>
+    client
+      .delete(`${projectPath(projectId)}/members/${userId}`, { params: { reason } })
+      .then((response) => response.data),
 
   /** `GET P/budget`：配置/预留/实际/未知（未知按预留金额占用）。 */
   projectBudget: (projectId: number) =>

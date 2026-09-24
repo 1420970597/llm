@@ -3,9 +3,12 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { Avatar, Button, Typography } from '@douyinfe/semi-ui'
 import {
   Activity,
+  Archive,
   BookOpen,
   ChevronRight,
   Compass,
+  Filter,
+  FlaskConical,
   FolderCog,
   HardDriveDownload,
   LayoutDashboard,
@@ -15,6 +18,7 @@ import {
   PanelLeftOpen,
   Settings,
   Users,
+  Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -25,7 +29,8 @@ import {
   fillRoutePathByKey,
   menuRoutes,
 } from './routes'
-import { newIdempotencyKey } from '../lib/api/studio'
+import { newIdempotencyKey, parseProjectResourceId } from '../lib/api/studio'
+import type { ProjectResourceId } from '../lib/api/studio'
 import { CommandSearch } from './pages/TodayPages'
 import { clearForActor, currentActorID } from '../lib/pendingQueue'
 import { useProjectName } from './projectName'
@@ -55,10 +60,15 @@ const GLOBAL_ICONS: Record<string, LucideIcon> = {
 }
 
 const AUXILIARY_ICONS: Record<string, LucideIcon> = {
+  'tools.evaluation': FlaskConical,
+  'tools.cleaning': Filter,
+  'legacy.history': Archive,
+  'legacy.history.detail': Archive,
   activity: Activity,
   'settings.connections': FolderCog,
   'settings.team': Users,
   help: Settings,
+  'settings.capabilities': Wrench,
 }
 
 export type StudioLayoutProps = {
@@ -158,7 +168,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
             {/* 第三层：辅助入口。刻意放在下方且样式更轻，不与主流程争位置。 */}
             <div className="sidebar-nav-section">
               <div className="sidebar-nav-heading">辅助</div>
-              {auxiliaryRoutes.map((route) =>
+              {auxiliaryRoutes.filter((route) => !route.navParent).map((route) =>
                 renderNavItem(route.path, AUXILIARY_ICONS[route.key], route.label, route.caption, activeKey === route.key, () => setMobileNavOpen(false)),
               )}
             </div>
@@ -256,8 +266,8 @@ function renderNavItem(
 export function useBreadcrumbs(): ReturnType<typeof breadcrumbsFor> {
   const location = useLocation()
   const matched = location.pathname.match(/^\/p\/([^/]+)/)
-  const projectId = matched ? Number.parseInt(matched[1], 10) : 0
-  const projectName = useProjectName(Number.isFinite(projectId) ? projectId : 0)
+  const projectId = matched ? parseProjectResourceId(matched[1]) : null
+  const projectName = useProjectName(projectId)
   return useMemo(() => {
     const params: Record<string, string> = {}
     if (matched) params.projectId = matched[1]
@@ -291,9 +301,13 @@ export function Breadcrumbs({ items }: { items: { label: string; path?: string }
 }
 
 /** 供页面引用的路由构造器（避免各处手写 `/p/${id}/...`）。 */
-export function projectHref(key: string, projectId: number | string): string {
+export function projectHref(
+  key: string,
+  projectId: ProjectResourceId,
+  extra: Record<string, string | number> = {},
+): string {
   try {
-    return fillRoutePathByKey(key, { projectId })
+    return fillRoutePathByKey(key, { projectId, ...extra })
   } catch {
     return fillRoutePathByKey('projects', {})
   }

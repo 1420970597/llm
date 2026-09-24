@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button, Card, Empty, Input, Spin, Tag, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, CirclePlus, RefreshCw } from 'lucide-react'
 import { client } from '../../lib/api'
-import { studioApi } from '../../lib/api/studio'
+import { parseProjectResourceId, studioApi } from '../../lib/api/studio'
 import type { ProjectOverviewData } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
 import { useProjectName } from '../projectName'
+import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
 
 /**
  * 项目列表页（Issue #160 T09 的入口页 + T10 的最小可用形态）。
@@ -44,6 +45,7 @@ type PageEnvelope<T> = {
 
 export function ProjectsPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { Title, Text } = Typography
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -57,6 +59,30 @@ export function ProjectsPage() {
   // 不一致，而那种不一致表现为「加载更多加载出重复内容」。
   const [nextCursor, setNextCursor] = useState('')
   const [pageIndex, setPageIndex] = useState(1)
+  const autoOpenedTarget = useRef('')
+  const targetRequest = useRef(0)
+  const [targetRetry, setTargetRetry] = useState(0)
+  const [targetError, setTargetError] = useState<string | null>(null)
+
+  // 兼容索引把旧阶段入口带到这里时，用户只需要选择项目一次；之后
+  // 进入对应的 Atelier 工作区，而不是再回到项目首页手动寻找同一功能。
+  const requestedRoute = searchParams.get('next')
+  const projectTarget = requestedRoute && [
+    'project.overview',
+    'project.blueprint',
+    'project.coverage',
+    'project.standard',
+    'project.runs',
+    'project.pilot',
+    'project.runNew',
+    'project.data',
+    'project.review',
+    'project.quality',
+    'project.rules',
+    'project.releases',
+  ].includes(requestedRoute) ? requestedRoute : 'project.overview'
+  const requestedProjectId = parseProjectResourceId(searchParams.get('projectId'))
+  const requestedContext = searchParams.toString()
 
   const load = useCallback(
     async (query: string, pageCursor: string, append: boolean) => {
@@ -87,6 +113,37 @@ export function ProjectsPage() {
     setPageIndex(1)
     void load(search, '', false)
   }, [load, search])
+
+  useEffect(() => {
+    if (!requestedProjectId) return
+    if (autoOpenedTarget.current === requestedContext) return
+    autoOpenedTarget.current = requestedContext
+    setTargetError(null)
+    const requestId = ++targetRequest.current
+    void studioApi.getProject(requestedProjectId)
+      .then((response) => {
+        if (requestId !== targetRequest.current) return
+        // Keep the server-provided stable envelope ID (`p_<n>`). The nested
+        // `data.id` is the legacy numeric database ID and must not become the
+        // canonical project URL.
+        const target = projectHref(projectTarget, response.id)
+        const context = new URLSearchParams(requestedContext)
+        context.delete('next')
+        context.delete('projectId')
+        const query = context.toString()
+        navigate(query ? `${target}?${query}` : target)
+      })
+      .catch((loadError) => {
+        if (requestId !== targetRequest.current) return
+        setTargetError(loadError instanceof Error ? loadError.message : `无法打开项目 ${requestedProjectId}`)
+      })
+    return () => {
+      if (targetRequest.current === requestId) {
+        targetRequest.current += 1
+        if (autoOpenedTarget.current === requestedContext) autoOpenedTarget.current = ''
+      }
+    }
+  }, [navigate, projectTarget, requestedContext, requestedProjectId, targetRetry])
 
   return (
     <div className="console-page" data-studio-page="projects">
@@ -123,6 +180,31 @@ export function ProjectsPage() {
         </div>
       </div>
 
+      {targetError ? (
+        <div role="alert" data-project-target-error="true">
+          <Card className="console-card mb-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={18} className="mt-1 text-amber-500" aria-hidden />
+              <div>
+                <Text strong className="block">无法打开指定项目 {requestedProjectId}</Text>
+                <Text type="tertiary">{targetError}</Text>
+                <Button
+                  size="small"
+                  className="mt-3"
+                  onClick={() => {
+                    autoOpenedTarget.current = ''
+                    setTargetError(null)
+                    setTargetRetry((previous) => previous + 1)
+                  }}
+                >
+                  重试
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="flex justify-center py-10">
           <Spin tip="正在加载项目" />
@@ -158,7 +240,7 @@ export function ProjectsPage() {
               type="button"
               key={project.id}
               className="console-card project-card project-card--button"
-              onClick={() => navigate(projectHref('project.overview', project.data.id))}
+              onClick={() => navigate(projectHref(projectTarget, project.id))}
               aria-label={`打开项目 ${project.data.name}`}
             >
               <div className="flex items-start justify-between gap-2">
@@ -335,6 +417,7 @@ export function ProjectOverviewPage() {
           </section>
         </aside>
       </div>
+      <LegacyCapabilityWorkbench />
     </div>
   )
 }

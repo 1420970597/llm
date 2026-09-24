@@ -7,6 +7,8 @@ import { client } from '../../lib/api'
 import { newIdempotencyKey, projectPath, studioApi } from '../../lib/api/studio'
 import type { BatchSummary, CreateExperimentRequest, Experiment, ExperimentDetail, Page, SampleSummary, RulePreviewResult } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
+import { projectHref } from '../StudioLayout'
+import { LegacyCapabilityWorkbench } from './LegacyCapabilityWorkbench'
 
 /**
  * 质量工作区页面（Issue #160 T19）：实验列表、创建页、报告页与规则页。
@@ -118,6 +120,7 @@ export function QualityListPage() {
 
   return (
     <div className="console-page" data-studio-page="quality-list">
+      <LegacyCapabilityWorkbench surface="quality" />
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">
@@ -127,7 +130,7 @@ export function QualityListPage() {
             报告的分母是实验创建时**冻结**的样本版本数；待审阅不算接纳，隔离也不缩小分母。
           </Text>
         </div>
-        <Button theme="solid" type="primary" disabled={!canRun} onClick={() => navigate(`/p/${scope.projectId}/quality/new`)}>
+        <Button theme="solid" type="primary" disabled={!canRun} onClick={() => navigate(projectHref('project.qualityNew', scope.projectId))}>
           新建质量实验
         </Button>
       </div>
@@ -164,7 +167,7 @@ export function QualityListPage() {
                   size="small"
                   theme="solid"
                   type="primary"
-                  onClick={() => navigate(`/p/${scope.projectId}/quality/${experiment.id}`)}
+                  onClick={() => navigate(projectHref('project.qualityReport', scope.projectId, { experimentId: experiment.id }))}
                 >
                   查看报告
                 </Button>
@@ -299,7 +302,7 @@ export function QualityNewPage() {
         targetConfig,
       }, { idempotencyKey: idempotencyKeyRef.current })
       // 202 后进入报告页：此时状态是排队/运行中，**不显示**最终分数。
-      navigate(`/p/${scope.projectId}/quality/${experiment.id}`)
+      navigate(projectHref('project.qualityReport', scope.projectId, { experimentId: experiment.id }))
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : '创建实验失败')
     } finally {
@@ -609,7 +612,7 @@ export function QualityReportPage() {
             {detail.pendingItems.slice(0, 20).map((item) => (
               <li key={item.id}>
                 <a
-                  href={`/p/${scope.projectId}/data/s_${item.sampleId}?version=${item.sampleVersionId}`}
+                  href={`${projectHref('project.sample', scope.projectId, { sampleId: `s_${item.sampleId}` })}?version=${encodeURIComponent(String(item.sampleVersionId))}`}
                   className="console-link"
                 >
                   样本 s_{item.sampleId} 的版本 {item.sampleVersionId}

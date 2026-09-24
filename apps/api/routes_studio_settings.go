@@ -77,18 +77,38 @@ func (app *application) listWorkspaceMembers(w http.ResponseWriter, r *http.Requ
 
 // upsertWorkspaceMember 添加成员或变更角色（需要工作区管理员）。
 func (app *application) upsertWorkspaceMember(w http.ResponseWriter, r *http.Request) {
-	workspaceID, ok := app.authorizeWorkspaceRequest(w, r, store.AuthzManageMembers)
+	user, ok := requestUser(r)
 	if !ok {
+		app.writeStudioError(w, r, studio.NewError(studio.CodeUnauthorized, msgAuthRequired))
 		return
 	}
-	user, _ := requestUser(r)
 	var request workspaceMemberRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		app.writeStudioError(w, r, studio.NewValidationError("请求格式有误，请检查填写的内容后重试", nil))
 		return
 	}
-	if request.WorkspaceID > 0 {
-		workspaceID = request.WorkspaceID
+	queryWorkspaceID, err := workspaceIDFromQuery(r)
+	if err != nil {
+		app.writeStudioError(w, r, studio.NewValidationError("工作区标识不正确", []model.FieldError{{
+			Field: "workspaceId", Message: "必须是正整数",
+		}}))
+		return
+	}
+	if queryWorkspaceID > 0 && request.WorkspaceID > 0 && queryWorkspaceID != request.WorkspaceID {
+		// 一个命令不能同时声明两个作用域。之前先授权 query、再用 body
+		// 覆盖目标，导致 workspace A 的管理员可以改写 workspace B。
+		app.writeStudioError(w, r, studio.NewValidationError("请求中的工作区标识不一致，请只保留一个目标工作区", []model.FieldError{{
+			Field: "workspaceId", Message: "query 与 body 必须一致",
+		}}))
+		return
+	}
+	requestedWorkspaceID := request.WorkspaceID
+	if queryWorkspaceID > 0 {
+		requestedWorkspaceID = queryWorkspaceID
+	}
+	workspaceID, ok := app.authorizeWorkspaceForUser(w, r, user.ID, requestedWorkspaceID, store.AuthzManageMembers)
+	if !ok {
+		return
 	}
 	members := store.NewWorkspaceMemberStore(app.studio.Pool)
 	targetID := request.UserID
@@ -137,6 +157,9 @@ func (app *application) writeWorkspaceMemberError(w http.ResponseWriter, r *http
 	case errors.Is(err, store.ErrWorkspaceMemberNotBlocked):
 		app.writeStudioError(w, r, studio.NewError(studio.CodeNotFound, err.Error()))
 		return
+	case errors.Is(err, store.ErrWorkspaceMemberManageDenied):
+		app.writeStudioError(w, r, studio.NewError(studio.CodeForbidden, err.Error()))
+		return
 	}
 	var owns *store.ErrWorkspaceMemberOwnsProjects
 	if errors.As(err, &owns) {
@@ -163,7 +186,35 @@ func (app *application) authorizeWorkspaceRequest(w http.ResponseWriter, r *http
 		app.writeStudioError(w, r, studio.NewError(studio.CodeUnauthorized, msgAuthRequired))
 		return 0, false
 	}
-	workspaceID, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("workspaceId")), 10, 64)
+	workspaceID, err := workspaceIDFromQuery(r)
+	if err != nil {
+		app.writeStudioError(w, r, studio.NewValidationError("工作区标识不正确", []model.FieldError{{
+			Field: "workspaceId", Message: "必须是正整数",
+		}}))
+		return 0, false
+	}
+	return app.authorizeWorkspaceForUser(w, r, user.ID, workspaceID, action)
+}
+
+// workspaceIDFromQuery parses the optional workspace scope without silently
+// treating malformed IDs as the default workspace.
+func workspaceIDFromQuery(r *http.Request) (int64, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get("workspaceId"))
+	if raw == "" {
+		return 0, nil
+	}
+	workspaceID, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || workspaceID <= 0 {
+		return 0, errors.New("invalid workspace id")
+	}
+	return workspaceID, nil
+}
+
+// authorizeWorkspaceForUser authorizes the final scope used by a request.
+// Callers must resolve all query/body scope inputs before invoking it; this
+// keeps the authorization decision and the write target identical.
+func (app *application) authorizeWorkspaceForUser(w http.ResponseWriter, r *http.Request, userID, requestedWorkspaceID int64, action store.AuthzAction) (int64, bool) {
+	workspaceID := requestedWorkspaceID
 	if workspaceID <= 0 {
 		workspace, err := app.projects.DefaultWorkspace(r.Context())
 		if err != nil {
@@ -172,7 +223,7 @@ func (app *application) authorizeWorkspaceRequest(w http.ResponseWriter, r *http
 		}
 		workspaceID = workspace.ID
 	}
-	decision, err := app.authz.AuthorizeWorkspace(r.Context(), workspaceID, user.ID, action)
+	decision, err := app.authz.AuthorizeWorkspace(r.Context(), workspaceID, userID, action)
 	if err != nil {
 		app.writeAPIEntityError(w, r, err)
 		return 0, false

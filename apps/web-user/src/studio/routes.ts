@@ -420,6 +420,47 @@ export const wizardRoutes: StudioRouteMeta[] = [
  */
 export const auxiliaryRoutes: StudioRouteMeta[] = [
   {
+    key: 'tools.evaluation',
+    path: '/tools/evaluation',
+    label: '评估工作台',
+    caption: '维度、裁判、运行与质量报告',
+    kind: 'auxiliary',
+    moduleStatus: 'available',
+    task: 'T32',
+    permission: 'read',
+  },
+  {
+    key: 'tools.cleaning',
+    path: '/tools/cleaning',
+    label: '清洗工作台',
+    caption: '关键词、规则、扫描与命中报告',
+    kind: 'auxiliary',
+    moduleStatus: 'available',
+    task: 'T32',
+    permission: 'read',
+  },
+  {
+    key: 'legacy.history',
+    path: '/legacy/history',
+    label: '历史资产',
+    caption: '只读查阅旧数据集、阶段记录与导出制品',
+    kind: 'auxiliary',
+    moduleStatus: 'available',
+    task: 'T31',
+    permission: 'read',
+  },
+  {
+    key: 'legacy.history.detail',
+    path: '/legacy/history/:datasetId',
+    label: '历史资产详情',
+    caption: '按旧数据集 ID 查阅迁移前记录',
+    kind: 'auxiliary',
+    moduleStatus: 'available',
+    task: 'T31',
+    navParent: 'legacy.history',
+    permission: 'read',
+  },
+  {
     key: 'activity',
     path: '/activity',
     label: '动态',
@@ -457,6 +498,16 @@ export const auxiliaryRoutes: StudioRouteMeta[] = [
     kind: 'auxiliary',
     moduleStatus: 'available',
     task: 'T28',
+    permission: 'read',
+  },
+  {
+    key: 'settings.capabilities',
+    path: '/settings/capabilities',
+    label: '兼容功能',
+    caption: '旧版入口索引与过渡链接',
+    kind: 'auxiliary',
+    moduleStatus: 'available',
+    task: 'T32',
     permission: 'read',
   },
 ]
@@ -507,7 +558,7 @@ export function navVisibleRoutes(): StudioRouteMeta[] {
 /** 侧边栏菜单项（全局入口 + 辅助入口），由元数据派生。 */
 export function menuRoutes(): StudioRouteMeta[] {
   const wizardKeys = new Set(wizardRoutes.map((route) => route.key))
-  return navVisibleRoutes().filter((route) => !wizardKeys.has(route.key))
+  return navVisibleRoutes().filter((route) => !wizardKeys.has(route.key) && !route.navParent)
 }
 
 /**
