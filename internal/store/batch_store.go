@@ -61,6 +61,16 @@ func (s *BatchStore) CreateBatch(ctx context.Context, projectID, actorID int64, 
 	return batch, err
 }
 
+// CreateImportedSnapshotBatch 创建一个由旧系统内容组成的快照批次。
+//
+// 导入批次没有生成配置，也没有蓝图版本：它记录的是已经存在的内容，
+// 不是等待 worker 执行的生产任务。普通 CreateBatch* 路径拒绝这类输入，
+// 迁移必须通过这个显式入口保留「无生成过程」这一事实。
+func (s *BatchStore) CreateImportedSnapshotBatch(ctx context.Context, projectID, actorID int64, targetKind string, input model.CreateBatchInput) (model.Batch, error) {
+	batch, _, err := s.createBatchWithJob(ctx, projectID, actorID, targetKind, input, nil, false)
+	return batch, err
+}
+
 // CreateBatchWithJob 在**同一事务**内创建批次并创建作业（Issue #160 T06/T08）。
 //
 // 为什么必须同事务（T06 验收项「API 落库后、派发前崩溃不丢任务」）：
@@ -70,6 +80,10 @@ func (s *BatchStore) CreateBatch(ctx context.Context, projectID, actorID int64, 
 //
 // job 为 nil 时退化为「只建批次不派发」，供只做设计验证的场景使用。
 func (s *BatchStore) CreateBatchWithJob(ctx context.Context, projectID, actorID int64, targetKind string, input model.CreateBatchInput, job *EnqueueJobInput) (model.Batch, *model.Job, error) {
+	return s.createBatchWithJob(ctx, projectID, actorID, targetKind, input, job, true)
+}
+
+func (s *BatchStore) createBatchWithJob(ctx context.Context, projectID, actorID int64, targetKind string, input model.CreateBatchInput, job *EnqueueJobInput, requireExecutionConfig bool) (model.Batch, *model.Job, error) {
 	input.Normalize()
 	if err := input.Validate(); err != nil {
 		return model.Batch{}, nil, err
@@ -89,6 +103,11 @@ func (s *BatchStore) CreateBatchWithJob(ctx context.Context, projectID, actorID 
 		return model.Batch{}, nil, err
 	}
 	generationConfig.SchemaVersion = model.SampleSchemaForTarget(targetKind)
+	if requireExecutionConfig {
+		if err := validateBatchExecutionSnapshot(input, generationConfig); err != nil {
+			return model.Batch{}, nil, err
+		}
+	}
 
 	slice := input.CoverageSlice
 	if len(slice) == 0 {
@@ -213,6 +232,41 @@ func (s *BatchStore) CreateBatchWithJob(ctx context.Context, projectID, actorID 
 		return model.Batch{}, nil, err
 	}
 	return batch, createdJob, nil
+}
+
+// validateBatchExecutionSnapshot 是进入 queued 前的最终边界。
+//
+// 蓝图保存允许草稿节点暂时为空，但生产批次不能冻结一个无法执行的
+// generation_config。校验放在快照解析完成后、INSERT 前，因而失败时不会
+// 写入 batches、events 或 jobs。
+func validateBatchExecutionSnapshot(input model.CreateBatchInput, config model.BatchGenerationConfig) error {
+	if input.BlueprintVersionID <= 0 {
+		return model.FieldErrors{{
+			Field:   "blueprintVersionId",
+			Message: "启动批次前必须选择一个已保存的蓝图版本",
+		}}
+	}
+
+	var errs model.FieldErrors
+	if config.ModelConnectionID <= 0 {
+		errs = append(errs, model.FieldError{
+			Field:   "generationConfig.modelConnectionId",
+			Message: "蓝图的生成步骤必须选择模型连接，请先打开设计页的生成节点",
+		})
+	}
+	if config.Concurrency < model.MinGenerationConcurrency || config.Concurrency > model.MaxGenerationConcurrency {
+		errs = append(errs, model.FieldError{
+			Field:   "generationConfig.concurrency",
+			Message: fmt.Sprintf("必须在 %d–%d 之间", model.MinGenerationConcurrency, model.MaxGenerationConcurrency),
+		})
+	}
+	if config.MaxTokens < 0 || (config.MaxTokens > 0 && config.MaxTokens < model.GenerationMinTokens) {
+		errs = append(errs, model.FieldError{
+			Field:   "generationConfig.maxTokens",
+			Message: fmt.Sprintf("必须为 0（使用连接默认）或不小于 %d", model.GenerationMinTokens),
+		})
+	}
+	return errs
 }
 
 // resolveBatchSnapshotTx 读取被引用版本的 hash，组装快照。

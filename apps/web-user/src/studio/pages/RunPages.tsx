@@ -14,6 +14,7 @@ import type {
   Page,
 } from '../../lib/api/studio'
 import { client } from '../../lib/api'
+import type { ApiError } from '../../lib/api'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
 
@@ -512,6 +513,7 @@ export function BatchDetailPage() {
 
 export function FailuresPage() {
   const scope = useProjectScope()
+  const navigate = useNavigate()
   const params = useParams()
   const { Title, Text } = Typography
   const batchId = params.batchId ?? ''
@@ -619,6 +621,16 @@ export function FailuresPage() {
               <Text size="small" className="block mt-1">
                 建议：{failure.suggestedAction}
               </Text>
+              {failure.errorClass === 'config_error' ? (
+                <Button
+                  size="small"
+                  theme="borderless"
+                  className="mt-2"
+                  onClick={() => navigate(`${scope.href('project.blueprint')}?node=generation`)}
+                >
+                  打开生成设置
+                </Button>
+              ) : null}
               <Text type="tertiary" size="small" className="block mt-1">
                 原始信息：{failure.errorMessage}
               </Text>
@@ -904,6 +916,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   }, [blueprintPayload, blueprintVersionId, budgetLimitMinor, coverageVersionId, maxUnits, purpose, standardVersionId, unitCount, versionOptions.blueprint, versionOptions.coverage, versionOptions.standard])
 
   const ready = checklist.every((item) => item.ok)
+  const blockedItems = checklist.filter((item) => !item.ok)
 
   const submit = useCallback(async () => {
     if (!canRun) {
@@ -952,7 +965,10 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       }
       navigate(projectHref('project.runDetail', scope.projectId, { batchId: `b_${batchId}` }))
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : '创建批次失败')
+      const apiError = submitError as ApiError
+      const fieldErrors = apiError.fieldErrors ?? []
+      const details = fieldErrors.map((item) => `${item.field}：${item.message}`).join('；')
+      setError(details ? `${apiError.message}（${details}）` : apiError.message ?? '创建批次失败')
     } finally {
       setSubmitting(false)
     }
@@ -1111,6 +1127,15 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       ) : null}
 
       <div className="mt-3">
+        {!canRun ? (
+          <Text type="tertiary" size="small" className="block mb-2">
+            当前账号没有启动批次的权限。
+          </Text>
+        ) : !ready ? (
+          <Text type="warning" size="small" className="block mb-2" role="status">
+            还不能启动：请先完成 {blockedItems.length} 项执行前核对（首项：{blockedItems[0]?.label}）。
+          </Text>
+        ) : null}
         <Button
           theme="solid"
           type="primary"

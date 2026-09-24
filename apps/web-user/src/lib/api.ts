@@ -2,6 +2,7 @@ import axios from 'axios'
 
 export type ApiError = Error & {
   statusCode?: number
+  fieldErrors?: Array<{ field: string; message: string }>
   /**
    * 后端返回的**原文**（可能是英文内部文案）。
    *
@@ -800,6 +801,9 @@ client.interceptors.response.use(
     // message，否则发布门槛失败会退化成一句无法定位的通用提示。
     if (Array.isArray(errorPayload?.blockers)) {
       nextError.blockers = errorPayload.blockers
+    }
+    if (Array.isArray(errorPayload?.fieldErrors)) {
+      nextError.fieldErrors = errorPayload.fieldErrors
     }
     // 保留原文供排查：界面上不带它，但 console / 埋点可拿到第一手信息。
     nextError.rawMessage = rawMessage
