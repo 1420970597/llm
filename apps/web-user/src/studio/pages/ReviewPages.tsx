@@ -250,7 +250,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
             }}
           />
           <Button icon={<RefreshCw size={14} />} onClick={() => void load('', false)} disabled={loading}>
-            刷新
+            刷新样本
           </Button>
         </div>
       </div>

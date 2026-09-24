@@ -154,11 +154,6 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
               </button>
             </div>
 
-            {/* 命令搜索（T27）：Esc 关闭、回车打开第一条、关闭后焦点回到触发点。 */}
-            <div className="sidebar-nav-section atelier-command-search-slot" data-command-search-slot="true">
-              <CommandSearch />
-            </div>
-
             {/* 第一层：全局四入口。 */}
             <div className="sidebar-nav-section">
               <div className="sidebar-nav-heading">工作区</div>

@@ -133,7 +133,7 @@ export function RunsPage() {
         </div>
         <div className="flex gap-2">
           <Button icon={<RefreshCw size={14} />} onClick={() => void load()} disabled={loading}>
-            刷新
+            刷新批次
           </Button>
           {canRun ? <Button onClick={() => navigate(projectHref('project.pilot', scope.projectId))}>新建试制</Button> : null}
           {canRun ? (
@@ -546,6 +546,7 @@ export function FailuresPage() {
   }, [load])
 
   const retry = useCallback(async () => {
+    if (!canRetryFailed || !failures.some((failure) => failure.retryable)) return
     setBusy(true)
     try {
       const response = await client.post<{ data?: { resetItems?: number } }>(
@@ -559,7 +560,14 @@ export function FailuresPage() {
     } finally {
       setBusy(false)
     }
-  }, [batchId, load, scope.projectId])
+  }, [batchId, canRetryFailed, failures, load, scope.projectId])
+
+  const retryableFailureCount = failures.filter((failure) => failure.retryable).length
+  const retryDisabledReason = !canRetryFailed
+    ? '当前批次不可自动重试，请先修正配置或新建批次。'
+    : retryableFailureCount === 0
+      ? '当前没有可重试的失败项。'
+      : undefined
 
   return (
     <div className="console-page" data-studio-page="failures">
@@ -572,11 +580,17 @@ export function FailuresPage() {
             只恢复可重试的失败单元；成功内容保留，因此反复点击不会重复产出。
           </Text>
         </div>
-        {canRetryFailed ? (
-          <Button icon={<RotateCcw size={14} />} loading={busy} onClick={() => void retry()}>
-            恢复失败项
-          </Button>
-        ) : null}
+        <Button
+          icon={<RotateCcw size={14} />}
+          loading={busy}
+          disabled={Boolean(retryDisabledReason)}
+          title={retryDisabledReason}
+          aria-label={retryDisabledReason ? `恢复失败项（${retryDisabledReason}）` : '恢复失败项'}
+          onClick={() => void retry()}
+          data-retry-failed="true"
+        >
+          恢复失败项
+        </Button>
       </div>
 
       {/* 「恢复了 0 项」与「点了没反应」必须能区分。 */}
