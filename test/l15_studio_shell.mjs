@@ -113,8 +113,26 @@ record(
   runPageSource.includes('versionOptions') &&
     runPageSource.includes('<Select') &&
     runPageSource.includes('id="plan-blueprint"') &&
-    !runPageSource.includes('<Input\n              id="plan-blueprint"'),
-  '试制/扩量从服务端版本目录选择蓝图、覆盖、标准、质量和映射版本',
+    runPageSource.includes('id="plan-coverage"') &&
+    runPageSource.includes('id="plan-standard"') &&
+    runPageSource.includes('id="plan-quality-policy"') &&
+    runPageSource.includes('id="plan-mapping"') &&
+    runPageSource.includes('disabled={versionOptions.blueprint.length === 0}') &&
+    runPageSource.includes('disabled={versionOptions.coverage.length === 0}') &&
+    runPageSource.includes('disabled={versionOptions.standard.length === 0}') &&
+    runPageSource.includes('disabled={versionOptions.qualityPolicy.length === 0}') &&
+    runPageSource.includes('disabled={versionOptions.mapping.length === 0}') &&
+    !runPageSource.includes('id="plan-blueprint"><Input'),
+  '试制/扩量只从服务端候选选择五类版本；候选为空时禁用并提供创建入口',
+)
+record(
+  '发布准备使用映射候选而不是手填 ID',
+  releasePageSource.includes('id="mapping-version"') &&
+    releasePageSource.includes('mappingState.versions.map') &&
+    releasePageSource.includes('disabled={mappingState.versions.length === 0}') &&
+    releasePageSource.includes('mapping-editor') &&
+    !releasePageSource.includes('id="mapping-version"><Input'),
+  '发布准备只从映射版本目录选择；空目录引导回同页映射编辑器',
 )
 
 // 链接构造器与默认入口只能通过路由元数据解析：项目路由不在 menuRoutes

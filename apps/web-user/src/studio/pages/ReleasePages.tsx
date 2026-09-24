@@ -439,20 +439,22 @@ export function ReleaseNewPage() {
         </div>
       </div>
 
-      <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-mapping-editor="true">
-        <div className="console-page__header document-editor__embedded-header">
-          <div>
-            <Text strong>交付映射</Text>
-            <Text type="tertiary" size="small" className="block">先在这里维护字段对应关系，下面的发布候选会引用你保存的版本。</Text>
+      <div id="mapping-editor">
+        <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-mapping-editor="true">
+          <div className="console-page__header document-editor__embedded-header">
+            <div>
+              <Text strong>交付映射</Text>
+              <Text type="tertiary" size="small" className="block">先在这里维护字段对应关系，下面的发布候选会引用你保存的版本。</Text>
+            </div>
+            <CopyVersionButton state={mappingState} />
           </div>
-          <CopyVersionButton state={mappingState} />
-        </div>
-        {mappingState.loading ? <Spin tip="正在加载映射版本" /> : <>
-          <MappingPayloadEditor payload={mappingState.payload ?? { schemaVersion: 'mapping.v1', format: targetKind === 'grpo' ? 'jsonl' : 'jsonl', fields: [] }} disabled={mappingState.isReadOnly || !mappingState.canEdit} onChange={mappingState.setPayload} />
-          <DocumentSaveBar state={mappingState} label="交付映射" />
-          <DocumentHistory state={mappingState} />
-        </>}
-      </Card>
+          {mappingState.loading ? <Spin tip="正在加载映射版本" /> : <>
+            <MappingPayloadEditor payload={mappingState.payload ?? { schemaVersion: 'mapping.v1', format: targetKind === 'grpo' ? 'jsonl' : 'jsonl', fields: [] }} disabled={mappingState.isReadOnly || !mappingState.canEdit} onChange={mappingState.setPayload} />
+            <DocumentSaveBar state={mappingState} label="交付映射" />
+            <DocumentHistory state={mappingState} />
+          </>}
+        </Card>
+      </div>
 
       {snapshotNotice ? (
         <Card className="console-card mb-3" bodyStyle={{ padding: 12 }} data-selection-restored="true">
@@ -475,10 +477,17 @@ export function ReleaseNewPage() {
             <Select id="mapping-version" value={mappingVersionId || undefined}
               optionList={mappingState.versions.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))}
               onChange={(value) => setMappingVersionId(String(value))}
-              placeholder="请选择已保存的映射版本" disabled={mappingState.versions.length === 0} />
+              placeholder={mappingState.versions.length > 0 ? '请选择已保存的映射版本' : '暂无可用映射版本'}
+              disabled={mappingState.versions.length === 0} />
             <Text type="tertiary" size="small" className="block mt-1">
               发布会冻结这个版本的字段映射；后续修改需要保存为新版本。
             </Text>
+            {mappingState.versions.length === 0 ? (
+              <div className="version-choice-empty" role="status">
+                <Text type="tertiary" size="small">还没有保存映射版本，请先在上方编辑并保存交付映射。</Text>
+                <Button size="small" theme="borderless" onClick={() => document.getElementById('mapping-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>去创建映射版本 →</Button>
+              </div>
+            ) : null}
           </div>
           <div className="wizard-field">
             <label className="wizard-field__label" htmlFor="release-format">交付格式</label>

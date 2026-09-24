@@ -1593,6 +1593,20 @@ select:focus {
   color: var(--accent-strong);
   font-size: 12px;
 }
+.version-choice-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 6px;
+  line-height: 1.45;
+}
+.version-choice-empty .semi-button {
+  min-height: 22px;
+  padding: 0 2px;
+  color: var(--accent-strong);
+  font-size: 12px;
+}
 .planning-configuration-note {
   display: grid;
   gap: 5px;
