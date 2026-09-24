@@ -44,6 +44,8 @@ import { fileURLToPath } from 'node:url'
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const WEB_ROOT = path.join(REPO_ROOT, 'apps', 'web-user')
 const STUDIO_ROOT = path.join(WEB_ROOT, 'src', 'studio')
+const APP_SOURCE_PATH = path.join(WEB_ROOT, 'src', 'App.tsx')
+const ROUTE_STATUS_SOURCE_PATH = path.join(STUDIO_ROOT, 'pages', 'RouteStatusPage.tsx')
 const ROUTES_SOURCE = path.join(STUDIO_ROOT, 'routes.ts')
 const STUDIO_ROUTES_SOURCE = path.join(STUDIO_ROOT, 'StudioRoutes.tsx')
 const STUDIO_LAYOUT_SOURCE = path.join(STUDIO_ROOT, 'StudioLayout.tsx')
@@ -80,6 +82,8 @@ function stripComments(text) {
 }
 
 const routesSourceRaw = readFileSync(ROUTES_SOURCE, 'utf8')
+const appSourceRaw = readFileSync(APP_SOURCE_PATH, 'utf8')
+const routeStatusSource = readFileSync(ROUTE_STATUS_SOURCE_PATH, 'utf8')
 const routesSource = routesSourceRaw
 // StudioRoutes.tsx 的源码也要在这里读取：下面「available 与注册表一致」的
 // 断言用到它，而它原本声明在文件后半段 —— 在其之前引用会抛
@@ -138,6 +142,26 @@ record(
     studioRoutesSource.includes("fillRoutePathByKey('projects', {})") &&
     studioRoutesSource.includes('<Route index element={<Navigate to={studioDefaultPath()} replace />} />'),
   '默认入口为 today，根路径在认证壳内跳转，错误边界回到 projects',
+)
+record(
+  '未知路由显示明确状态而不是静默跳转',
+  appSourceRaw.includes("import { RouteStatusPage } from './studio/pages/RouteStatusPage'") &&
+    appSourceRaw.includes('<Route path="*" element={<RouteStatusPage />} />') &&
+    appSourceRaw.includes('<RouteStatusPage />'),
+  '旧控制台与 Atelier 外层 fallback 都渲染 RouteStatusPage',
+)
+record(
+  '404 页面保留原始路径并提供恢复入口',
+  routeStatusSource.includes('location.pathname') &&
+    routeStatusSource.includes('返回今日工作') &&
+    routeStatusSource.includes('搜索数据项目'),
+  '页面展示 pathname/search/hash，并提供今日工作与项目搜索入口',
+)
+record(
+  '生产 /catalog 明确说明未挂载',
+  routeStatusSource.includes('目录评审未在生产环境挂载') &&
+    routeStatusSource.includes("data-route-status={isCatalog ? 'catalog-unmounted' : 'not-found'}"),
+  '生产 catalog 不再伪装成首页',
 )
 
 /**
