@@ -121,29 +121,6 @@ const { Title, Text } = Typography
 const DEFAULT_STRATEGY_DOMAIN_COUNT = 5
 const DEFAULT_STRATEGY_QUESTIONS_PER_DOMAIN = 10
 
-/**
- * The old /console namespace remains a bookmark-compatible URL surface only.
- * It must never render the retired console shell: every destination below is
- * an Atelier page or a read-only migration bridge.
- */
-function LegacyConsoleRedirect() {
-  const location = useLocation()
-  const pathname = location.pathname
-  if (pathname === '/console' || pathname === '/console/' || pathname === '/console/home' || pathname === '/console/overview') {
-    return <Navigate to="/today" replace />
-  }
-  if (pathname === '/console/tasks' || pathname === '/console/planning') {
-    return <Navigate to={pathname === '/console/planning' ? '/new' : '/projects'} replace />
-  }
-  if (pathname === '/console/results') return <Navigate to="/deliveries" replace />
-  if (pathname === '/console/evaluation' || pathname === '/console/cleaning') return <Navigate to="/projects" replace />
-  if (pathname === '/console/help') return <Navigate to="/help" replace />
-  if (pathname === '/console/operations' || pathname === '/console/admin/audit') return <Navigate to="/activity" replace />
-  if (pathname === '/console/admin/providers' || pathname === '/console/admin/storage') return <Navigate to="/settings/connections" replace />
-  if (pathname === '/console/admin/strategies' || pathname === '/console/admin/prompts') return <Navigate to="/recipes" replace />
-  return <Navigate to="/today" replace />
-}
-
 type ProviderDraft = Partial<Provider> & { apiKey?: string }
 type StorageDraft = Partial<StorageProfile> & { secretAccessKey?: string }
 
@@ -4251,21 +4228,6 @@ export default function App() {
         它们是过渡入口，不是新主线的替代品。
       */}
       {studioRouteTree({ user, onLogout: handleLogout })}
-
-      {/* Legacy URLs are compatibility redirects, never a second product shell. */}
-      <Route path="/console/tasks/:taskId/legacy" element={<LegacyTaskBridgeRoute />} />
-      <Route path="/console/tasks/:taskId" element={<LegacyTaskBridgeRoute />} />
-      <Route path="/console/domains" element={<LegacyStageBridgeRoute target="project.blueprint" />} />
-      <Route path="/console/domains/legacy" element={<LegacyStageBridgeRoute target="project.blueprint" />} />
-      <Route path="/console/questions" element={<LegacyStageBridgeRoute target="project.data" />} />
-      <Route path="/console/questions/legacy" element={<LegacyStageBridgeRoute target="project.data" />} />
-      <Route path="/console/reasoning" element={<LegacyStageBridgeRoute target="project.data" />} />
-      <Route path="/console/reasoning/legacy" element={<LegacyStageBridgeRoute target="project.data" />} />
-      <Route path="/console/rewards" element={<LegacyStageBridgeRoute target="project.quality" />} />
-      <Route path="/console/rewards/legacy" element={<LegacyStageBridgeRoute target="project.quality" />} />
-      <Route path="/console/exports" element={<LegacyStageBridgeRoute target="project.releases" />} />
-      <Route path="/console/exports/legacy" element={<LegacyStageBridgeRoute target="project.releases" />} />
-      <Route path="/console/*" element={<LegacyConsoleRedirect />} />
 
       <Route
         path="/*"
