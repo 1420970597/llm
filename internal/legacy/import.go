@@ -78,6 +78,10 @@ type ImportOptions struct {
 	WorkspaceID int64
 	// ActorID 是执行导入的用户（写进 created_by 与审计）。
 	ActorID int64
+	// OwnerOverrideID 允许管理员为历史数据集补充缺失归属。它不会改写旧
+	// datasets.created_by，只把明确授权的用户作为新项目 owner，并写入台账说明。
+	// 没有 owner 且没有显式 override 时仍然拒绝导入。
+	OwnerOverrideID int64
 	// DryRun 为 true 时**不写任何业务数据**，只产出计划与对账水位。
 	DryRun bool
 	// BatchSize 是每次从 questions 取的条数（小批导入）。
@@ -152,9 +156,19 @@ func ImportDataset(ctx context.Context, deps ImportDeps, options ImportOptions) 
 
 	// 归属：没有可靠 owner 的 dataset 一律拒绝自动导入（T30 的 blocker）。
 	// 理由：导入本身就是一次授权（内容进入某个工作区、某些人有读权）。
-	if dataset.OwnerID == nil {
+	if dataset.OwnerID == nil && options.OwnerOverrideID <= 0 {
 		return summary, errors.New("dataset 没有可靠归属（created_by 为空）：请先由管理员显式分派，" +
 			"再指定目标项目后导入（默认不会给任意用户读权限）")
+	}
+	if dataset.OwnerID == nil {
+		var exists bool
+		if err := deps.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`, options.OwnerOverrideID).Scan(&exists); err != nil {
+			return summary, err
+		}
+		if !exists {
+			return summary, fmt.Errorf("指定的归属用户 %d 不存在", options.OwnerOverrideID)
+		}
+		summary.Notes = append(summary.Notes, fmt.Sprintf("源 dataset 未设置 owner；管理员已将新项目归属显式分派给用户 %d（未改写旧数据）", options.OwnerOverrideID))
 	}
 
 	before, err := reconcileDataset(ctx, deps.Pool, dataset)
@@ -362,7 +376,11 @@ func resolveOrCreateProject(ctx context.Context, deps ImportDeps, options Import
 	if err := input.Validate(); err != nil {
 		return 0, err
 	}
-	project, err := deps.Projects.CreateProject(ctx, options.WorkspaceID, options.ActorID, input)
+	projectOwner := options.ActorID
+	if options.OwnerOverrideID > 0 {
+		projectOwner = options.OwnerOverrideID
+	}
+	project, err := deps.Projects.CreateProject(ctx, options.WorkspaceID, projectOwner, input)
 	if err != nil {
 		return 0, err
 	}
@@ -389,7 +407,11 @@ func ensureSnapshotBatch(ctx context.Context, deps ImportDeps, options ImportOpt
 	if err := input.Validate(); err != nil {
 		return 0, err
 	}
-	batch, _, err := deps.Batches.CreateBatchWithJob(ctx, projectID, options.ActorID, model.TargetKindSFT, input, nil)
+	projectOwner := options.ActorID
+	if options.OwnerOverrideID > 0 {
+		projectOwner = options.OwnerOverrideID
+	}
+	batch, _, err := deps.Batches.CreateBatchWithJob(ctx, projectID, projectOwner, model.TargetKindSFT, input, nil)
 	if err != nil {
 		return 0, fmt.Errorf("创建导入快照批次失败：%w", err)
 	}
@@ -488,7 +510,7 @@ func importQuestions(ctx context.Context, deps ImportDeps, options ImportOptions
 			_, _, appendErr := deps.Batches.AppendSampleVersion(ctx, store.AppendSampleVersionInput{
 				ProjectID: projectID, SampleKey: sampleKey, TargetKind: model.TargetKindSFT,
 				Title: item.Question, Payload: payload, BatchID: &batchID,
-				Attempt: 1, CreatedBy: &options.ActorID,
+				Attempt: 1, CreatedBy: importOwnerID(options),
 			})
 			if appendErr != nil {
 				counts.FailedItems++
@@ -504,6 +526,14 @@ func importQuestions(ctx context.Context, deps ImportDeps, options ImportOptions
 		}
 	}
 	return counts, cursor, failures, nil
+}
+
+func importOwnerID(options ImportOptions) *int64 {
+	owner := options.ActorID
+	if options.OwnerOverrideID > 0 {
+		owner = options.OwnerOverrideID
+	}
+	return &owner
 }
 
 func appendFailure(failures *[]ImportFailure, sourceID int64, err error) {

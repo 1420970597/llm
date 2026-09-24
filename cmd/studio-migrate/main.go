@@ -37,6 +37,7 @@ func main() {
 	targetProject := flag.Int64("target-project", 0, "显式指定目标项目（缺省按 legacy_dataset_id 反查或新建）")
 	workspaceID := flag.Int64("workspace", 0, "目标工作区（缺省用默认工作区）")
 	actorID := flag.Int64("actor", 0, "执行导入的用户 ID（写入 created_by）")
+	ownerID := flag.Int64("owner", 0, "为 created_by 为空的旧 dataset 指定新项目 owner（不改写旧数据）")
 	apply := flag.Bool("apply", false, "真正写入（默认 dry-run）")
 	resume := flag.Bool("resume", true, "从台账游标续跑；false 表示从头走一遍（内容 hash 仍保证不重复）")
 	flag.Parse()
@@ -67,7 +68,7 @@ func main() {
 	if *importDataset > 0 {
 		runImport(ctx, pool, importOptions{
 			DatasetID: *importDataset, WorkspaceID: *workspaceID, TargetProjectID: *targetProject,
-			ActorID: *actorID, Apply: *apply, Resume: *resume,
+			ActorID: *actorID, OwnerID: *ownerID, Apply: *apply, Resume: *resume,
 		})
 		return
 	}
@@ -98,6 +99,7 @@ type importOptions struct {
 	WorkspaceID     int64
 	TargetProjectID int64
 	ActorID         int64
+	OwnerID         int64
 	Apply           bool
 	Resume          bool
 }
@@ -122,6 +124,7 @@ func runImport(ctx context.Context, pool *pgxpool.Pool, options importOptions) {
 		TargetProjectID: options.TargetProjectID,
 		WorkspaceID:     options.WorkspaceID,
 		ActorID:         options.ActorID,
+		OwnerOverrideID: options.OwnerID,
 		DryRun:          !options.Apply,
 		Resume:          options.Resume,
 	})

@@ -155,3 +155,15 @@ go run ./cmd/studio-migrate -import-dataset 12 -actor 1 -workspace 1 -apply -res
    仍属第 5 节的已知未知项。
 4. **旧入口冻结需要手工开启**：`LEGACY_WRITES_FROZEN=true` 是启动期配置，
    迁移流程要求先冻结再导入（runbook 第 3 节的顺序）。
+
+## 7. 本次 Compose 实际执行记录（2026-09-24）
+
+在根入口 `docker compose` 启动的数据库上确认 `schema_migrations` 已应用 39 个迁移。
+管理员账号 `admin@company.com`（user id 1）被显式指定为 owner override；这个动作没有
+改写旧 `datasets.created_by`，只把新建项目的 owner 写入项目与导入台账。
+
+实际执行 `studio-migrate -apply -resume` 的来源为：`1、98、259、260、262、264、266、268、270`。
+台账结果：9 个 `completed`，67 个 `imported_versions`，0 个失败；每个来源都有目标项目、
+快照批次、内容 hash 和前后对账水位。没有 SFT 内容的旧 dataset 没有被创建成空样本，仍保留
+在旧库等待人工处置。这是“可迁移内容已真实写入新模型、不可迁移内容明确留痕”的状态，
+不是用历史页面替代迁移。
