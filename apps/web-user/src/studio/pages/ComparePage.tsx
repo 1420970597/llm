@@ -203,7 +203,7 @@ export function ComparePage() {
             试制对比
           </Title>
           <Text type="tertiary">
-            比较的是**相同输入下**两个方案的输出；不是拿两个任意批次的百分比相减。
+            比较的是<strong>相同输入下</strong>两个方案的输出；不是拿两个任意批次的百分比相减。
           </Text>
         </div>
         <div className="flex flex-wrap items-center gap-2">

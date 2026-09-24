@@ -354,7 +354,7 @@ function CoverageStep({ draft, errors, update }: StepProps) {
       <div className="wizard-hint">
         <Info size={14} aria-hidden />
         <Text type="tertiary" size="small">
-          计划问题数：{planned}（= n × m × x，**计划量**，不是当前已产出）
+          计划问题数：{planned}（= n × m × x，<strong>计划量</strong>，不是当前已产出）
         </Text>
       </div>
 

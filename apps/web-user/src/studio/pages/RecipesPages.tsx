@@ -335,7 +335,7 @@ export function RecipeDetailPage() {
           版本
         </Text>
         <Text type="tertiary" size="small" className="block mb-2">
-          只有**已发布**的版本可以用于创建项目：草稿是作者的工作中间态。方案升级只影响之后复制出的项目，
+          只有<strong>已发布</strong>的版本可以用于创建项目：草稿是作者的工作中间态。方案升级只影响之后复制出的项目，
           已经建好的项目不会跟着变。
         </Text>
         <div className="comparison-table">
@@ -385,7 +385,7 @@ export function RecipeDetailPage() {
           用这个方案创建项目
         </Text>
         <Text type="tertiary" size="small" className="block mb-2">
-          复制的是**选定版本的内容快照**：项目建成后与方案再无写入关系，之后改方案不会影响它。
+          复制的是<strong>选定版本的内容快照</strong>：项目建成后与方案再无写入关系，之后改方案不会影响它。
           {selectedVersion ? `当前选择：v${selectedVersion.version}（版本 ID ${selectedVersion.id}）` : '当前没有已发布版本，暂时不能创建项目。'}
         </Text>
         <div className="wizard-grid">
