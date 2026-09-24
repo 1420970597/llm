@@ -11,9 +11,8 @@ services:
       # 表现为「无法自证」，而不是看起来像当前源码。
       #
       # 为什么不在这里用 $(git rev-parse HEAD) 命令替换：compose 变量插值
-      # 不做命令执行；而用 shell 包装又会把 `docker compose up -d --build`
-      # 这条 README 里的标准命令变得不可移植。因此交给调用方传
-      #（见 scripts/build-with-version.sh 与 README 的部署小节）。
+      # 不做命令执行。标准入口 `make compose-up` 会在调用 compose 前注入
+      # 当前 HEAD 与 UTC 构建时间；CI 也必须显式传入这两个变量。
       args:
         GIT_SHA: ${GIT_SHA:-unknown}
         BUILD_TIME: ${BUILD_TIME:-}

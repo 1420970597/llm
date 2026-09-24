@@ -188,7 +188,7 @@ deployments/
 在项目根目录执行：
 
 ```bash
-docker compose up -d --build
+make compose-up
 ```
 
 > 根目录的 `docker-compose.yml` 通过 `include` 引入 `deployments/compose/docker-compose.yml`。
@@ -196,10 +196,19 @@ docker compose up -d --build
 > 去 `deployments/compose/` 找 `.env`，读不到仓库根的 `.env`，从而静默丢失
 > `APP_BOOTSTRAP_PROVIDER_*` 等配置（详见根 `docker-compose.yml` 注释）。
 
-#### 带版本构建（推荐）
+`make compose-up` 会在构建前自动注入当前 Git HEAD 与 UTC 构建时间，启动后可通过
+`/version.json` 验证页面源码版本。若不使用 Makefile，必须显式传入构建参数：
 
-上面那条命令**不会**注入 git 版本。镜像一旦不带版本，就无法回答
-「我现在跑的是哪一版」 —— 曾经因此把一次「部署的是旧镜像」误判成产品缺陷（issue #88）。
+```bash
+GIT_SHA="$(git rev-parse HEAD)" \
+BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+docker compose up -d --build
+```
+
+#### 带版本构建（按需重建）
+
+`make compose-up` 已经是带版本构建的标准路径。若只想重建前端或需要等待部署
+自检，可使用包装脚本：
 
 知道要重建时，请用包装脚本，它会把 HEAD 注入产物并在结束后自动校验：
 
