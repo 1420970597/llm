@@ -500,6 +500,16 @@ export const auxiliaryRoutes: StudioRouteMeta[] = [
     task: 'T28',
     permission: 'read',
   },
+  {
+    key: 'settings.capabilities',
+    path: '/settings/capabilities',
+    label: '兼容功能',
+    caption: '旧版入口索引与过渡链接',
+    kind: 'auxiliary',
+    moduleStatus: 'available',
+    task: 'T32',
+    permission: 'read',
+  },
 ]
 
 /**
