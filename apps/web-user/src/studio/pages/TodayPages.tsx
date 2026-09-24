@@ -448,6 +448,8 @@ export function CommandSearch() {
         type="tertiary"
         icon={<Search size={14} />}
         data-command-search-trigger="true"
+        aria-label="打开命令搜索"
+        title="打开命令搜索"
         onClick={() => setOpen(true)}
         ref={triggerRef as never}
       >

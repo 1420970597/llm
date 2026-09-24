@@ -116,6 +116,27 @@ record(
   '侧边栏隐藏死实例已移除，顶栏保留唯一搜索入口',
 )
 record(
+  '命令搜索图标化后仍有可访问名称',
+  todayPageSource.includes('data-command-search-trigger="true"') &&
+    todayPageSource.includes('aria-label="打开命令搜索"') &&
+    todayPageSource.includes('title="打开命令搜索"'),
+  '移动端折叠搜索文字时，屏幕阅读器与悬停提示仍能说明按钮用途',
+)
+record(
+  '关闭的移动导航不泄漏键盘焦点',
+  studioLayoutSource.includes('id="studio-main-navigation"') &&
+    studioLayoutSource.includes('aria-controls="studio-main-navigation"') &&
+    studioLayoutSource.includes("aria-label={mobileNavOpen ? '关闭主导航' : '打开主导航'}") &&
+    studioLayoutSource.includes('const openMobileNav = useCallback') &&
+    studioLayoutSource.includes('mobileNavFocusTimer') &&
+    studioLayoutSource.includes('}, 500)') &&
+    studioLayoutSource.includes("document.querySelector<HTMLElement>('#studio-main-navigation a[href]')?.focus()") &&
+    studioLayoutSource.includes("if (event.key !== 'Escape') return") &&
+    /\.atelier-shell \.app-layout__sidebar \{[\s\S]*?visibility: hidden;[\s\S]*?pointer-events: none;/.test(stylesSource) &&
+    /\.atelier-shell \.app-layout__sidebar\[data-mobile-open='true'\] \{[\s\S]*?visibility: visible;[\s\S]*?pointer-events: auto;/.test(stylesSource),
+  '窄屏侧栏关闭时退出可见与 Tab 顺序；打开时焦点进入导航，Escape 可返回菜单',
+)
+record(
   '不可重试时恢复按钮明确禁用',
   runPageSource.includes('data-retry-failed') &&
     runPageSource.includes('disabled={Boolean(retryDisabledReason)}') &&
