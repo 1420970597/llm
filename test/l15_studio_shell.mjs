@@ -47,6 +47,11 @@ const STUDIO_ROOT = path.join(WEB_ROOT, 'src', 'studio')
 const ROUTES_SOURCE = path.join(STUDIO_ROOT, 'routes.ts')
 const STUDIO_ROUTES_SOURCE = path.join(STUDIO_ROOT, 'StudioRoutes.tsx')
 const STUDIO_LAYOUT_SOURCE = path.join(STUDIO_ROOT, 'StudioLayout.tsx')
+const DOCUMENT_EDITORS_SOURCE = path.join(STUDIO_ROOT, 'DocumentEditors.tsx')
+const BLUEPRINT_PAGE_SOURCE = path.join(STUDIO_ROOT, 'pages', 'BlueprintPages.tsx')
+const QUALITY_PAGE_SOURCE = path.join(STUDIO_ROOT, 'pages', 'QualityPages.tsx')
+const RELEASE_PAGE_SOURCE = path.join(STUDIO_ROOT, 'pages', 'ReleasePages.tsx')
+const RUN_PAGE_SOURCE = path.join(STUDIO_ROOT, 'pages', 'RunPages.tsx')
 const NGINX_CONF = path.join(REPO_ROOT, 'deployments', 'docker', 'nginx', 'web-user.conf')
 
 const webRequire = createRequire(path.join(WEB_ROOT, 'package.json'))
@@ -81,6 +86,32 @@ const routesSource = routesSourceRaw
 // ReferenceError（守卫自己当场报出过这个错误）。
 const studioRoutesSource = readFileSync(STUDIO_ROUTES_SOURCE, 'utf8')
 const studioLayoutSource = readFileSync(STUDIO_LAYOUT_SOURCE, 'utf8')
+const documentEditorsSource = readFileSync(DOCUMENT_EDITORS_SOURCE, 'utf8')
+const blueprintPageSource = readFileSync(BLUEPRINT_PAGE_SOURCE, 'utf8')
+const qualityPageSource = readFileSync(QUALITY_PAGE_SOURCE, 'utf8')
+const releasePageSource = readFileSync(RELEASE_PAGE_SOURCE, 'utf8')
+const runPageSource = readFileSync(RUN_PAGE_SOURCE, 'utf8')
+
+record(
+  '蓝图引用配置必须有真实编辑闭环',
+  documentEditorsSource.includes('useVersionedDocument') &&
+    documentEditorsSource.includes('CoveragePayloadEditor') &&
+    documentEditorsSource.includes('StandardPayloadEditor') &&
+    documentEditorsSource.includes('QualityPolicyPayloadEditor') &&
+    documentEditorsSource.includes('MappingPayloadEditor') &&
+    blueprintPageSource.includes('DocumentSaveBar') &&
+    qualityPageSource.includes('QualityPolicyPayloadEditor') &&
+    releasePageSource.includes('MappingPayloadEditor'),
+  '覆盖、标准、规则和映射均使用版本化编辑器与保存栏',
+)
+record(
+  '生产规划使用版本候选而不是手填 ID',
+  runPageSource.includes('versionOptions') &&
+    runPageSource.includes('<Select') &&
+    runPageSource.includes('id="plan-blueprint"') &&
+    !runPageSource.includes('<Input\n              id="plan-blueprint"'),
+  '试制/扩量从服务端版本目录选择蓝图、覆盖、标准、质量和映射版本',
+)
 
 // 链接构造器与默认入口只能通过路由元数据解析：项目路由不在 menuRoutes
 // 中，直接查菜单会把 projectHref('project.overview') 静默降级到错误入口。
@@ -212,8 +243,8 @@ record(
   // 基础契约包含 34 条；评估/清洗两个 Atelier 辅助工作台、兼容索引
   // 与历史资产索引/详情是额外入口。保留精确计数，避免整组路由被误删时「>=」仍然通过，
   // 同时把每个产品级入口的加入明确写进守卫，而不是让它变成隐式漂移。
-  routeBlocks.length === 39 && routeBlocks.every((block) => block.status === 'planned' || block.status === 'available'),
-  `共 ${routeBlocks.length} 条路由（34 基础 + 2 评估/清洗工作台 + 1 兼容索引 + 2 历史资产）；状态缺失：${routeBlocks.filter((block) => !block.status).map((block) => block.key).join(', ') || '无'}`,
+  routeBlocks.length === 38 && routeBlocks.every((block) => block.status === 'planned' || block.status === 'available'),
+  `共 ${routeBlocks.length} 条路由（34 基础 + 2 评估/清洗工作台 + 2 历史资产）；状态缺失：${routeBlocks.filter((block) => !block.status).map((block) => block.key).join(', ') || '无'}`,
 )
 
 /**

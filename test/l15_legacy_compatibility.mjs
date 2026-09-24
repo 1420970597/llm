@@ -89,9 +89,10 @@ record(
 )
 record(
   '兼容功能旧书签重定向到原生设置',
-  studioTree.includes('<Route path="/settings/capabilities" element={<Navigate to="/settings/connections" replace />} />') &&
-    !studioTree.includes("'settings.capabilities': () => <LegacyCapabilitiesPage />"),
-  '保留可达性但不再渲染兼容产品页',
+  app.includes('<Route path="/settings/capabilities" element={<Navigate to="/settings/connections" replace />} />') &&
+    !studioTree.includes("settings.capabilities") &&
+    !studioRoutes.includes("settings.capabilities"),
+  '顶层保留书签重定向，但 Atelier 不再声明兼容产品页',
 )
 record(
   'Atelier 不再暴露旧控制台下钻操作',
@@ -99,6 +100,11 @@ record(
     !capabilityNotice.includes('legacyHref') &&
     !capabilityNotice.includes('旧控制台'),
   '旧 URL 仅由顶层兼容路由重定向或只读桥接，产品页面不提供第二套旧操作入口',
+)
+record(
+  '项目概览不再承载迁移说明矩阵',
+  !projectsPage.includes('LegacyCapabilityWorkbench') && !projectsPage.includes('能力覆盖与迁移边界'),
+  '迁移边界放在 issue/PR 与历史资产入口，项目主流程只呈现当前项目事实',
 )
 record(
   '清洗原生工作台不会把流程按钮送回旧壳',
