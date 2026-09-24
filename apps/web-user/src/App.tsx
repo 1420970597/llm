@@ -4240,6 +4240,8 @@ export default function App() {
           )
         }
       />
+      {/* Historical bookmark only. Compatibility is not a product page. */}
+      <Route path="/settings/capabilities" element={<Navigate to="/settings/connections" replace />} />
       {/*
         Atelier 主线路由（Issue #160 T09）。
         路由本身由 src/studio/routes.ts 的元数据派生，这里不写路径字面量 ——

@@ -258,7 +258,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
       {selected.size > 0 ? (
         <Card className="console-card mb-3" bodyStyle={{ padding: 12 }} data-selection-summary="true">
           <Text size="small">
-            已选 {selected.size} 条（**当前页**）。跨页选择请用下方「按筛选条件冻结范围」——
+            已选 {selected.size} 条（当前页）。跨页选择请用下方「按筛选条件冻结范围」——
             它由服务端解析，因此不会出现「以为选了 40 条、实际提交 12 条」。
           </Text>
           <div className="mt-2 flex gap-2">
@@ -1091,7 +1091,7 @@ export function SampleHistoryPage() {
             版本与来源
           </Title>
           <Text type="tertiary">
-            内容只追加，永不覆盖；每一版都记录它生成时引用的标准与蓝图 hash。
+            内容只追加，永不覆盖；每一版都记录它生成时引用的标准与蓝图指纹。
           </Text>
         </div>
       </div>
@@ -1115,17 +1115,17 @@ export function SampleHistoryPage() {
                 </div>
                 <ul className="review-evidence">
                   <li>
-                    内容 hash：<code>{version.contentHash}</code>
+                    内容指纹：<code>{version.contentHash}</code>
                   </li>
                   <li>
                     来源批次：<code>{version.batchId ?? '（无）'}</code> · 单元{' '}
                     <code>{version.batchItemId ?? '（无）'}</code> · 第 {version.attempt} 次尝试
                   </li>
                   <li>
-                    标准 hash：<code>{version.source.standardContentHash || '（未引用）'}</code>
+                    标准指纹：<code>{version.source.standardContentHash || '（未引用）'}</code>
                   </li>
                   <li>
-                    蓝图 hash：<code>{version.source.blueprintContentHash || '（未引用）'}</code>
+                    蓝图指纹：<code>{version.source.blueprintContentHash || '（未引用）'}</code>
                   </li>
                 </ul>
               </Card>

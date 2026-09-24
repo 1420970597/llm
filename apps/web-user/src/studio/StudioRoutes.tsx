@@ -238,9 +238,6 @@ export function studioRouteTree({ user, onLogout }: StudioRouteTreeProps) {
           <Route key={route.key} path={route.path} element={<ModuleElement route={route} />} />
         ))}
 
-        {/* 旧兼容索引不再是产品页面；保留书签可达性并直接落到真实设置工作区。 */}
-        <Route path="/settings/capabilities" element={<Navigate to="/settings/connections" replace />} />
-
         {/* 目录评审：仅非生产构建挂载（生产不带 /catalog）。 */}
         {isCatalogRouteMounted()
           ? catalogRoutes.map((route) => (

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Button, Card, Empty, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
-import { AlertTriangle, Copy, History, Save } from 'lucide-react'
+import { Button, Card, Empty, Select, Spin, TextArea, Typography } from '@douyinfe/semi-ui'
+import { AlertTriangle, CheckCircle2, Copy, FileCog, History, Save, WandSparkles, XCircle } from 'lucide-react'
 import { client } from '../../lib/api'
 import { newIdempotencyKey, projectPath } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
+import { CopyVersionButton, CoveragePayloadEditor, DocumentHistory, DocumentSaveBar, StandardPayloadEditor, useVersionedDocument } from '../DocumentEditors'
 
 /**
  * 设计区页面（Issue #160 T11）：蓝图节点检查器、覆盖矩阵、标准历史。
@@ -89,6 +90,7 @@ type BlueprintChoice = {
   value: string
   label: string
   meta?: string
+  version?: number
 }
 
 type BlueprintChoices = {
@@ -149,6 +151,7 @@ export function BlueprintPage() {
   const [canEdit, setCanEdit] = useState(false)
   const [choices, setChoices] = useState<BlueprintChoices>({ versions: {}, connections: [] })
   const bootstrapAttempted = useRef(false)
+  const preserveDraftAfterNavigation = useRef(false)
 
   // `?node=` 与 `?version=` 都来自 URL：分享链接要能指向同一个节点与版本。
   const activeNodeKey = searchParams.get('node') ?? ''
@@ -176,8 +179,9 @@ export function BlueprintPage() {
       const versionChoices = (response: VersionsResponse): BlueprintChoice[] =>
         (response.items ?? []).map((item) => ({
           value: String(item.id),
-          label: `v${item.version}${item.changeReason ? ` · ${item.changeReason}` : ''}`,
-          meta: item.contentHash ? item.contentHash.slice(0, 8) : undefined,
+        label: `v${item.version}${item.changeReason ? ` · ${item.changeReason}` : ''}`,
+        meta: item.contentHash ? item.contentHash.slice(0, 8) : undefined,
+        version: item.version,
         }))
       setChoices({
         versions: {
@@ -245,8 +249,12 @@ export function BlueprintPage() {
   }, [scope.projectId, viewingVersion])
 
   useEffect(() => {
+    if (preserveDraftAfterNavigation.current && viewingVersion === null) {
+      preserveDraftAfterNavigation.current = false
+      return
+    }
     void load()
-  }, [load])
+  }, [load, viewingVersion])
 
   const activeSpec = useMemo(
     () => specs.find((spec) => spec.key === activeNodeKey) ?? specs[0],
@@ -259,6 +267,10 @@ export function BlueprintPage() {
 
   const save = useCallback(async () => {
     if (!draft || !activeSpec || !canEdit) return
+    if (containsInvalidJSONMarker(draft)) {
+      setSaveError('请先修正 JSON 格式，再保存蓝图。')
+      return
+    }
     // 提交前清理「非法 JSON 中间态」标记：它是编辑器的临时状态，
     // 不能进入 payload（那会让服务端看到一个不认识的字段）。
     const cleaned = stripInvalidJSONMarkers(draft)
@@ -327,13 +339,30 @@ export function BlueprintPage() {
   }
 
   const nodeValuesForActive = activeSpec ? nodeValues(draft, activeSpec) : {}
+  const nodeHealth = activeSpec ? getNodeHealth(activeSpec, nodeValuesForActive, choices) : null
+  const hasInvalidJSON = draft ? containsInvalidJSONMarker(draft) : false
+  const dirty = draft !== null && (current === null || JSON.stringify(draft) !== JSON.stringify(current.payload))
   const relatedPage = activeSpec?.key === 'coverage'
     ? { route: 'project.coverage', label: '覆盖矩阵' }
     : activeSpec?.key === 'standard'
       ? { route: 'project.standard', label: '思维标准' }
+      : activeSpec?.key === 'generation' || activeSpec?.key === 'evaluation'
+        ? { route: 'settings.connections', label: '模型连接' }
       : activeSpec?.key === 'rules'
         ? { route: 'project.rules', label: '规则策略' }
+        : activeSpec?.key === 'delivery'
+          ? { route: 'project.newRelease', label: '交付映射' }
         : null
+  const relatedVersion = activeSpec
+    ? choices.versions[activeSpec.fields.find((field) => field.kind === 'id')?.name ?? '']?.find(
+      (option) => String(nodeValuesForActive[activeSpec.fields.find((field) => field.kind === 'id')?.name ?? '']) === option.value,
+    )
+    : undefined
+  const selectedConnections = activeSpec?.key === 'generation'
+    ? choices.connections.filter((option) => option.value === String(nodeValuesForActive.modelConnectionId))
+    : activeSpec?.key === 'evaluation'
+      ? choices.connections.filter((option) => Array.isArray(nodeValuesForActive.judgeConnectionIds) && nodeValuesForActive.judgeConnectionIds.map(String).includes(option.value))
+      : []
 
   return (
     <div className="console-page blueprint-page" data-studio-page="blueprint">
@@ -341,7 +370,7 @@ export function BlueprintPage() {
         <div className="blueprint-readonly-banner" data-readonly="true">
           <History size={14} aria-hidden />
           <Text size="small">
-            正在查看历史版本 v{compareVersion}（只读）。复制它或直接保存会产生**新版本**，
+            正在查看历史版本 v{compareVersion}（只读）。复制它或直接保存会产生新版本，
             旧版本永不覆盖。
           </Text>
         </div>
@@ -351,7 +380,7 @@ export function BlueprintPage() {
         <div>
           <div className="eyebrow">DESIGN / BLUEPRINT</div>
           <h1>生产蓝图</h1>
-          <Text type="tertiary">先看清步骤关系，再调整当前步骤。改动保存为新方案，不覆盖已运行批次。</Text>
+          <Text type="tertiary">先确认每一步需要什么，再保存为新的配置版本。已经运行的批次不会被覆盖。</Text>
         </div>
         <Button theme="solid" type="primary" onClick={() => navigate(scope.href('project.pilot'))}>小批试制 →</Button>
       </header>
@@ -377,13 +406,13 @@ export function BlueprintPage() {
                 })
               }}
             >
-              <span className="blueprint-node__icon" aria-hidden>◇</span>
+              <span className={`blueprint-node__icon blueprint-node__icon--${getNodeHealth(spec, nodeValues(draft, spec), choices).state}`} aria-hidden>
+                {getNodeHealth(spec, nodeValues(draft, spec), choices).state === 'ready' ? <CheckCircle2 size={16} /> : getNodeHealth(spec, nodeValues(draft, spec), choices).state === 'blocked' ? <XCircle size={16} /> : <FileCog size={16} />}
+              </span>
               <span className="blueprint-node__copy"><span className="blueprint-node__label">{spec.label}</span><span className="blueprint-node__caption">{spec.caption}</span></span>
-              {spec.availability === 'planned' ? (
-                <span className="blueprint-node__badge" title={`由 ${spec.task} 交付`}>
-                  待交付
-                </span>
-              ) : null}
+              <span className={`blueprint-node__status blueprint-node__status--${getNodeHealth(spec, nodeValues(draft, spec), choices).state}`}>
+                {getNodeHealth(spec, nodeValues(draft, spec), choices).label}
+              </span>
             </button>
           ))}
           </div>
@@ -398,6 +427,16 @@ export function BlueprintPage() {
               <Text type="tertiary" className="block mb-3">
                 {activeSpec.caption}
               </Text>
+
+              {nodeHealth ? (
+                <div className={`blueprint-health blueprint-health--${nodeHealth.state}`} role="status">
+                  {nodeHealth.state === 'ready' ? <CheckCircle2 size={15} aria-hidden /> : nodeHealth.state === 'blocked' ? <XCircle size={15} aria-hidden /> : <FileCog size={15} aria-hidden />}
+                  <div>
+                    <strong>{nodeHealth.label}</strong>
+                    <span>{nodeHealth.detail}</span>
+                  </div>
+                </div>
+              ) : null}
 
               {activeSpec.availability === 'planned' ? (
                 <Card className="console-card mb-3" bodyStyle={{ padding: 16 }}>
@@ -428,9 +467,27 @@ export function BlueprintPage() {
                 />
               )}
 
+              {relatedPage ? (
+                <div className="blueprint-related-config">
+                  <div>
+                    <strong>{selectedConnections.length > 0
+                      ? `当前使用：${selectedConnections.map((connection) => connection.label).join('、')}`
+                      : relatedVersion ? `当前引用配置 ${relatedVersion.label}` : '尚未选择配置'}</strong>
+                    <span>{selectedConnections.length > 0
+                      ? '连接的密钥不会显示在蓝图中；如需新增或启用连接，请到连接设置处理。'
+                      : relatedVersion?.meta ? `内容指纹 ${relatedVersion.meta}` : '可先完成配置，再回到此处选择要固定的版本。'}</span>
+                  </div>
+                  <Button size="small" icon={<FileCog size={14} />} onClick={() => navigate(relatedPage.route === 'settings.connections'
+                    ? '/settings/connections'
+                    : `${scope.href(relatedPage.route)}${relatedVersion?.version ? `?version=${relatedVersion.version}` : ''}`)}>
+                    {selectedConnections.length > 0 || relatedVersion ? `查看${relatedPage.label}` : `去配置${relatedPage.label}`}
+                  </Button>
+                </div>
+              ) : null}
+
               <div className="mt-4">
                 <Text type="tertiary" size="small" className="block mb-1">
-                  变更理由（必填，写入版本历史）
+                  变更理由（必填，方便团队回溯）
                 </Text>
                 <TextArea
                   value={changeReason}
@@ -448,13 +505,20 @@ export function BlueprintPage() {
                 </div>
               ) : null}
 
-              <div className="mt-3 flex gap-2">
+              {hasInvalidJSON ? (
+                <div className="blueprint-validation-error" role="alert">
+                  <XCircle size={14} aria-hidden /> JSON 结构还没有完成，修正后才能保存。
+                </div>
+              ) : null}
+
+              <div className="blueprint-save-bar mt-3">
+                <span className={dirty ? 'blueprint-dirty' : 'blueprint-clean'}>{dirty ? '有未保存修改' : '已保存'}</span>
                 <Button
                   theme="solid"
                   type="primary"
                   icon={<Save size={14} />}
                   loading={saving}
-                  disabled={isReadOnly || !canEdit}
+                  disabled={isReadOnly || !canEdit || hasInvalidJSON}
                   onClick={() => void save()}
                 >
                   保存为新版本
@@ -464,6 +528,7 @@ export function BlueprintPage() {
                     icon={<Copy size={14} />}
                     onClick={() => {
                       // 复制 = 把当前版本内容作为新草稿（仍要填理由、仍会新建版本）。
+                      preserveDraftAfterNavigation.current = viewingVersion !== null
                       setDraft(current.payload)
                       setSearchParams((params) => {
                         params.delete('version')
@@ -508,7 +573,7 @@ export function BlueprintPage() {
                     }}
                   >
                     <span>v{version.version}</span>
-                    <span className="blueprint-history__hash">{version.contentHash.slice(0, 8)}</span>
+                    <span className="blueprint-history__hash">指纹 {version.contentHash.slice(0, 8)}</span>
                     <span className="blueprint-history__reason">{version.changeReason || '（未填写理由）'}</span>
                   </button>
                 </li>
@@ -523,8 +588,8 @@ export function BlueprintPage() {
             </div>
           ) : null}
           {current ? (
-            <Text type="tertiary" size="small" className="block mt-3">
-              当前版本内容 hash：{current.contentHash}
+              <Text type="tertiary" size="small" className="block mt-3">
+              当前版本内容指纹：{current.contentHash}
             </Text>
           ) : null}
         </aside>
@@ -567,7 +632,9 @@ function NodeFields({
         const options = isConnectionField ? choices.connections : (choices.versions[field.name] ?? [])
         const selectValue = field.kind === 'idList'
           ? (Array.isArray(value) ? value.map(String) : [])
-          : value === undefined || value === null || value === '' ? undefined : String(value)
+          : field.kind === 'id'
+            ? Number(value) > 0 ? String(value) : undefined
+            : value === undefined || value === null || value === '' ? undefined : String(value)
         return (
           <div
             key={field.name}
@@ -581,19 +648,12 @@ function NodeFields({
               {field.required ? <span className="wizard-field__required"> *</span> : null}
             </label>
             {isJSONField ? (
-              // JSON 字段用文本域编辑：内容必须是**合法 JSON**，
-              // 非法时保留原值而不是写入坏数据（服务端也会再校验一次）。
-              <textarea
+              <JSONFieldEditor
                 id={`blueprint-${spec.key}-${field.name}`}
-                className="blueprint-input blueprint-input--json"
-                rows={4}
-                value={jsonFieldText(value)}
+                value={value}
                 disabled={disabled}
-                onChange={(event) => {
-                  const parsed = parseJSONField(event.target.value)
-                  if (parsed.ok) onChange(field.name, parsed.value)
-                  else onChange(field.name, { __invalid: event.target.value })
-                }}
+                fieldName={field.name}
+                onChange={(next) => onChange(field.name, next)}
               />
             ) : field.kind === 'id' || field.kind === 'idList' ? (
               <Select
@@ -616,6 +676,16 @@ function NodeFields({
               <RatioMapEditor value={value} disabled={disabled} onChange={(next) => onChange(field.name, next)} />
             ) : field.kind === 'stringList' ? (
               <StringListEditor value={value} disabled={disabled} onChange={(next) => onChange(field.name, next)} />
+            ) : field.kind === 'enum' ? (
+              <Select
+                id={`blueprint-${spec.key}-${field.name}`}
+                className="blueprint-select"
+                value={selectValue as string | undefined}
+                placeholder="请选择"
+                disabled={disabled}
+                optionList={(field.options ?? []).map((option) => ({ value: option, label: enumLabel(field.name, option) }))}
+                onChange={(next) => onChange(field.name, next === undefined || next === '' ? undefined : String(next))}
+              />
             ) : (
               <input
                 id={`blueprint-${spec.key}-${field.name}`}
@@ -635,19 +705,10 @@ function NodeFields({
                     onChange(field.name, raw === '' ? undefined : Number(raw))
                     return
                   }
-                  if (field.kind === 'enum') {
-                    onChange(field.name, raw)
-                    return
-                  }
                   onChange(field.name, raw)
                 }}
               />
             )}
-            {field.kind === 'enum' && field.options ? (
-              <Text type="tertiary" size="small" className="block mt-1">
-                可选：{field.options.join(' / ')}
-              </Text>
-            ) : null}
             {field.help ? (
               <Text type="tertiary" size="small" className="block mt-1">
                 {field.help}
@@ -656,6 +717,127 @@ function NodeFields({
           </div>
         )
       })}
+    </div>
+  )
+}
+
+const ENUM_LABELS: Record<string, Record<string, string>> = {
+  schemaVersion: { 'sft.sample.v1': '指令微调样本（SFT）', 'grpo.sample.v1': '偏好评估样本（GRPO）' },
+  failurePolicy: { retry_then_skip: '重试后跳过', stop_batch: '停止本批次' },
+  missingScorePolicy: { exclude: '排除缺分项', fail_experiment: '实验标记失败' },
+  assignment: { 'risk-based': '按风险分派', all: '全部人工检查', sampled: '按比例抽检' },
+  format: { jsonl: 'JSONL', csv: 'CSV', json: 'JSON' },
+}
+
+function enumLabel(fieldName: string, option: string): string {
+  return ENUM_LABELS[fieldName]?.[option] ?? option
+}
+
+function hasValue(value: unknown): boolean {
+  if (value === undefined || value === null) return false
+  if (typeof value === 'string') return value.trim() !== ''
+  if (Array.isArray(value)) return value.length > 0
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0
+  return true
+}
+
+function hasRequiredFieldValue(field: NodeFieldSpec, value: unknown): boolean {
+  if (field.kind === 'id') return Number(value) > 0
+  if (field.kind === 'idList') return Array.isArray(value) && value.some((item) => Number(item) > 0)
+  return hasValue(value)
+}
+
+type NodeHealth = {
+  state: 'ready' | 'incomplete' | 'blocked' | 'planned'
+  label: string
+  detail: string
+  missing: string[]
+}
+
+function getNodeHealth(spec: NodeSpec, values: Record<string, unknown>, choices: BlueprintChoices): NodeHealth {
+  if (spec.availability === 'planned') {
+    return { state: 'planned', label: '待交付', detail: `该步骤由 ${spec.task} 负责接入，当前不能保存执行配置。`, missing: [] }
+  }
+  const missing = spec.fields.filter((field) => field.required && !hasRequiredFieldValue(field, values[field.name])).map((field) => field.label)
+  if (spec.requiresGeneration) {
+    const connectionID = values.modelConnectionId
+    const connection = choices.connections.find((item) => item.value === String(connectionID))
+    if (!hasValue(connectionID)) {
+      return { state: 'blocked', label: '缺少模型服务', detail: '先在“连接设置”启用模型服务，生成步骤才能执行。', missing: ['模型服务'] }
+    }
+    if (connection?.meta?.includes('已停用')) {
+      return { state: 'blocked', label: '模型服务已停用', detail: '当前引用的模型服务已停用，请换一个可用连接。', missing: [] }
+    }
+  }
+  if (missing.length > 0) {
+    return { state: 'incomplete', label: `待补齐 ${missing.length} 项`, detail: `还需要设置：${missing.join('、')}。`, missing }
+  }
+  return { state: 'ready', label: '可执行', detail: '必填配置已齐全，保存后可用于试制。', missing: [] }
+}
+
+function containsInvalidJSONMarker(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(containsInvalidJSONMarker)
+  if (!value || typeof value !== 'object') return false
+  if (Object.prototype.hasOwnProperty.call(value, '__invalid')) return true
+  return Object.values(value as Record<string, unknown>).some(containsInvalidJSONMarker)
+}
+
+function jsonExample(fieldName: string): string {
+  if (fieldName === 'steps') return JSON.stringify([{ title: '提出问题', checkpoint: '问题已明确且可验证' }], null, 2)
+  if (fieldName === 'jsonSchema') return JSON.stringify({ type: 'object', required: ['question', 'reasoning', 'answer'] }, null, 2)
+  return '{\n  "key": "value"\n}'
+}
+
+function JSONFieldEditor({
+  id,
+  value,
+  disabled,
+  fieldName,
+  onChange,
+}: {
+  id: string
+  value: unknown
+  disabled: boolean
+  fieldName: string
+  onChange: (value: unknown) => void
+}) {
+  const [text, setText] = useState(() => jsonFieldText(value))
+  const invalid = value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, '__invalid')
+  useEffect(() => setText(jsonFieldText(value)), [value])
+  return (
+    <div className="blueprint-json-editor" data-json-state={invalid ? 'invalid' : 'valid'}>
+      <textarea
+        id={id}
+        className="blueprint-input blueprint-input--json"
+        rows={6}
+        value={text}
+        disabled={disabled}
+        aria-invalid={invalid ? 'true' : undefined}
+        onChange={(event) => {
+          const nextText = event.target.value
+          setText(nextText)
+          const parsed = parseJSONField(nextText)
+          onChange(parsed.ok ? parsed.value : { __invalid: nextText })
+        }}
+      />
+      <div className="blueprint-json-editor__toolbar">
+        <Button size="small" icon={<WandSparkles size={13} />} disabled={disabled} onClick={() => {
+          const parsed = parseJSONField(text)
+          if (parsed.ok) {
+            const formatted = parsed.value === undefined ? '' : JSON.stringify(parsed.value, null, 2)
+            setText(formatted)
+            onChange(parsed.value)
+          }
+        }}>格式化</Button>
+        <Button size="small" disabled={disabled} onClick={() => {
+          const example = jsonExample(fieldName)
+          setText(example)
+          onChange(JSON.parse(example))
+        }}>填入示例</Button>
+        <span className={invalid ? 'blueprint-json-editor__status blueprint-json-editor__status--invalid' : 'blueprint-json-editor__status'}>
+          {invalid ? '格式未完成' : text.trim() ? '格式正确' : '可选'}
+        </span>
+      </div>
     </div>
   )
 }
@@ -714,51 +896,28 @@ export function CoveragePage() {
   const scope = useProjectScope()
   const navigate = useNavigate()
   const { Title, Text } = Typography
-  const [payload, setPayload] = useState<Record<string, unknown> | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const response = await client.get<VersionsResponse>(
-          `${projectPath(scope.projectId)}/coverage-versions?limit=1`,
-        )
-        const latest = (response.data.items ?? [])[0]
-        if (!cancelled) setPayload(latest?.payload ?? null)
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : '加载覆盖方案失败')
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [scope.projectId])
-
-  if (loading) {
+  const state = useVersionedDocument(scope.projectId, 'coverage-versions')
+  if (state.loading) {
     return (
       <div className="flex justify-center py-10">
         <Spin tip="正在加载覆盖方案" />
       </div>
     )
   }
-  if (error) {
+  if (state.error) {
     return (
       <Card className="console-card">
         <Text strong className="block">
           加载失败
         </Text>
-        <Text type="tertiary">{error}</Text>
+        <Text type="tertiary">{state.error}</Text>
+        <Button size="small" className="mt-3" onClick={() => void state.reload()}>重试</Button>
       </Card>
     )
   }
 
-  const domains = (payload?.domains as Array<Record<string, unknown>> | undefined) ?? []
+  const payload = state.payload ?? { schemaVersion: 'coverage.v1', domains: [] }
+  const domains = Array.isArray(payload.domains) ? payload.domains as Array<Record<string, unknown>> : []
   const totalQuota = domains.reduce(
     (sum, domain) =>
       sum +
@@ -777,61 +936,24 @@ export function CoveragePage() {
             覆盖矩阵
           </Title>
           <Text type="tertiary">
-            领域与方向使用**稳定 ID**：删除草稿方向不会破坏已引用该版本的批次。
+            领域和方向使用稳定 ID；保存新版本不会改写已经运行的批次。
           </Text>
         </div>
+        <div className="console-page__actions"><CopyVersionButton state={state} /></div>
       </div>
 
-      {domains.length === 0 ? (
-        <Card className="console-card">
-          <Empty description="还没有覆盖方案。先在蓝图的「覆盖范围」节点引用或保存一份覆盖版本。" />
-        </Card>
-      ) : (
-        <>
-          <Card className="console-card mb-3" bodyStyle={{ padding: 16 }}>
-            <Text type="tertiary" size="small">
-              共 {domains.length} 个领域，方向配额合计 {totalQuota}（**计划单元数**，不是已产出）
-            </Text>
-          </Card>
-          <div className="coverage-matrix">
-            {domains.map((domain, domainIndex) => {
-              const directions = (domain.directions as Array<Record<string, unknown>> | undefined) ?? []
-              return (
-                <Card key={String(domain.stableId ?? domainIndex)} className="console-card" bodyStyle={{ padding: 14 }}>
-                  <div className="flex items-center justify-between gap-2">
-                    <Text strong>{String(domain.name ?? '(未命名领域)')}</Text>
-                    <Tag size="small">{directions.length} 个方向</Tag>
-                  </div>
-                  <ul className="coverage-directions">
-                    {directions.map((direction, directionIndex) => (
-                      <li key={String(direction.stableId ?? directionIndex)}>
-                        <span className="coverage-direction__name">{String(direction.name ?? '')}</span>
-                        <span className="coverage-direction__quota">配额 {String(direction.quota ?? 0)}</span>
-                        <button
-                          type="button"
-                          className="coverage-gap"
-                          data-coverage-gap="true"
-                          onClick={() => {
-                            // 只进入**规划**（新批次），不触发任何重生成：
-                            // 重跑已有内容会重复计费，也不会改善覆盖（T11 验收项）。
-                            navigate(
-                              `${projectHref('project.pilot', scope.projectId)}?slice=${encodeURIComponent(
-                                String(direction.stableId ?? ''),
-                              )}`,
-                            )
-                          }}
-                        >
-                          以此方向规划新批次
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              )
-            })}
-          </div>
-        </>
-      )}
+      <Card className="console-card mb-3" bodyStyle={{ padding: 16 }}>
+        <Text type="tertiary" size="small">共 {domains.length} 个领域，方向配额合计 {totalQuota}（计划单元数，不是已产出数量）</Text>
+      </Card>
+      <CoveragePayloadEditor payload={payload} disabled={state.isReadOnly || !state.canEdit} onChange={state.setPayload} />
+      <DocumentSaveBar state={state} label="覆盖方案" />
+      <DocumentHistory state={state} />
+      {domains.length > 0 ? <Card className="console-card mt-3" bodyStyle={{ padding: 14 }}>
+        <Text strong className="block mb-2">从方向开始下一批试制</Text>
+        <div className="coverage-directions coverage-directions--actions">
+          {domains.flatMap((domain) => ((domain.directions as Array<Record<string, unknown>> | undefined) ?? []).map((direction) => <button key={`${String(domain.stableId)}-${String(direction.stableId)}`} type="button" className="coverage-gap" data-coverage-gap="true" onClick={() => navigate(`${projectHref('project.pilot', scope.projectId)}?slice=${encodeURIComponent(String(direction.stableId ?? ''))}`)}>以“{String(direction.name ?? '未命名方向')}”规划新批次</button>))}
+        </div>
+      </Card> : null}
     </div>
   )
 }
@@ -846,49 +968,27 @@ export function CoveragePage() {
 export function StandardPage() {
   const scope = useProjectScope()
   const { Title, Text } = Typography
-  const [payload, setPayload] = useState<Record<string, unknown> | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const response = await client.get<VersionsResponse>(
-          `${projectPath(scope.projectId)}/standard-versions?limit=1`,
-        )
-        const latest = (response.data.items ?? [])[0]
-        if (!cancelled) setPayload(latest?.payload ?? null)
-      } catch (loadError) {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : '加载思维标准失败')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [scope.projectId])
-
-  if (loading) {
+  const state = useVersionedDocument(scope.projectId, 'standard-versions')
+  if (state.loading) {
     return (
       <div className="flex justify-center py-10">
         <Spin tip="正在加载思维标准" />
       </div>
     )
   }
-  if (error) {
+  if (state.error) {
     return (
       <Card className="console-card">
         <Text strong className="block">
           加载失败
         </Text>
-        <Text type="tertiary">{error}</Text>
+        <Text type="tertiary">{state.error}</Text>
+        <Button size="small" className="mt-3" onClick={() => void state.reload()}>重试</Button>
       </Card>
     )
   }
 
-  const steps = (payload?.steps as Array<Record<string, unknown>> | undefined) ?? []
+  const payload = state.payload ?? { schemaVersion: 'standard.v1', steps: [] }
   return (
     <div className="console-page" data-studio-page="standard">
       <div className="console-page__header">
@@ -896,36 +996,13 @@ export function StandardPage() {
           <Title heading={4} className="!mb-1">
             思维标准
           </Title>
-          <Text type="tertiary">步骤顺序即执行顺序；每一步都应有检查点以便自查。</Text>
+          <Text type="tertiary">步骤顺序就是执行顺序；每一步都要有可核对的完成标准。</Text>
         </div>
+        <div className="console-page__actions"><CopyVersionButton state={state} /></div>
       </div>
-      {steps.length === 0 ? (
-        <Card className="console-card">
-          <Empty description="还没有标准步骤。在蓝图的「思维标准」节点编辑并保存为新版本。" />
-        </Card>
-      ) : (
-        <ol className="standard-steps">
-          {steps.map((step, index) => (
-            <li key={String(step.id ?? index)}>
-              <Card className="console-card" bodyStyle={{ padding: 14 }}>
-                <div className="flex items-center gap-2">
-                  <span className="standard-step__index">{index + 1}</span>
-                  <Text strong>{String(step.title ?? step.name ?? '(未命名步骤)')}</Text>
-                </div>
-                {step.checkpoint ? (
-                  <Text type="tertiary" size="small" className="block mt-1">
-                    检查点：{String(step.checkpoint)}
-                  </Text>
-                ) : (
-                  <Text type="warning" size="small" className="block mt-1">
-                    该步骤没有检查点：缺检查点的步骤无法在生成时自查。
-                  </Text>
-                )}
-              </Card>
-            </li>
-          ))}
-        </ol>
-      )}
+      <StandardPayloadEditor payload={payload} disabled={state.isReadOnly || !state.canEdit} onChange={state.setPayload} />
+      <DocumentSaveBar state={state} label="思维标准" />
+      <DocumentHistory state={state} />
     </div>
   )
 }

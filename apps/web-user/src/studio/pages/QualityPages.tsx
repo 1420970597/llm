@@ -8,6 +8,7 @@ import { newIdempotencyKey, projectPath, studioApi } from '../../lib/api/studio'
 import type { BatchSummary, CreateExperimentRequest, Experiment, ExperimentDetail, Page, SampleSummary, RulePreviewResult } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
+import { CopyVersionButton, DocumentHistory, DocumentSaveBar, QualityPolicyPayloadEditor, useVersionedDocument } from '../DocumentEditors'
 
 /**
  * 质量工作区页面（Issue #160 T19）：实验列表、创建页、报告页与规则页。
@@ -316,7 +317,7 @@ export function QualityNewPage() {
             新建质量实验
           </Title>
           <Text type="tertiary">
-            创建即冻结：范围、seed、量表与裁判都会写进实验，此后改配置不影响它。
+            创建即冻结：范围、抽样编号、量表与裁判都会写进实验，此后改配置不影响它。
           </Text>
         </div>
       </div>
@@ -354,7 +355,7 @@ export function QualityNewPage() {
               </Text>
             ))}
             <Text type="tertiary" size="small" className="block mt-1">
-              边界稳定性需要**冻结的边界参考集**；没有参考集时该维度记缺分（缺证据），
+              边界稳定性需要冻结的边界参考集；没有参考集时该维度记缺分（缺证据），
               不会用 0 分凑一个结论。
             </Text>
           </>
@@ -435,12 +436,12 @@ export function QualityNewPage() {
               disabled={!canRun}
             />
             <Text type="tertiary" size="small" className="block mt-1">
-              服务端会**再次**检查独立性与同源别名：与生成来源同一接入点的连接不能自评。
+              服务端会再次检查独立性与同源别名：与生成来源同一接入点的连接不能自评。
             </Text>
           </div>
           <div className="wizard-field" data-field="sampling-seed">
             <label className="wizard-field__label" htmlFor="sampling-seed">
-              抽样 seed
+              可复现抽样编号
             </label>
             <InputNumber
               id="sampling-seed"
@@ -550,7 +551,7 @@ export function QualityReportPage() {
           <div className="flex items-start gap-2">
             <AlertTriangle size={16} className="mt-1 text-amber-500" aria-hidden />
             <Text size="small">
-              实验仍在进行：当前只显示完成覆盖，**不显示均值** ——
+              实验仍在进行：当前只显示完成覆盖，不显示均值 ——
               基于部分样本的均值会被当成结论。本页可刷新查看进度。
             </Text>
           </div>
@@ -635,11 +636,18 @@ export function QualityReportPage() {
 export function RulesPage() {
   const scope = useProjectScope()
   const { Title, Text } = Typography
+  const documentState = useVersionedDocument(scope.projectId, 'quality-policy-versions')
   const [preview, setPreview] = useState<RulePreviewResult | null>(null)
   const [policyVersionID, setPolicyVersionID] = useState('')
   const [sampleVersionIDs, setSampleVersionIDs] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (documentState.current && policyVersionID === '') {
+      setPolicyVersionID(String(documentState.current.id))
+    }
+  }, [documentState.current, policyVersionID])
 
   const runPreview = useCallback(async () => {
     setError(null)
@@ -669,23 +677,27 @@ export function RulesPage() {
             清洗策略与规则预览
           </Title>
           <Text type="tertiary">
-            预览是**纯读**：不改内容、不改处置、不入收费模型队列。非法正则不会入库。
+            先编辑并保存规则版本，再用下方预览检查它会命中哪些内容。预览不会修改内容或处置结果。
           </Text>
         </div>
+        <div className="console-page__actions"><CopyVersionButton state={documentState} /></div>
       </div>
+
+      {documentState.loading ? <Card className="console-card"><Spin tip="正在加载规则版本" /></Card> : null}
+      {documentState.error ? <Card className="console-card"><Text type="danger">{documentState.error}</Text><Button size="small" className="mt-2" onClick={() => void documentState.reload()}>重试</Button></Card> : null}
+      {!documentState.loading && !documentState.error ? <>
+        <QualityPolicyPayloadEditor payload={documentState.payload ?? { schemaVersion: 'quality_policy.v1', rules: [] }} disabled={documentState.isReadOnly || !documentState.canEdit} onChange={documentState.setPayload} />
+        <DocumentSaveBar state={documentState} label="规则策略" />
+        <DocumentHistory state={documentState} />
+      </> : null}
 
       <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-rule-preview-form="true">
         <div className="wizard-fields">
           <div className="wizard-field">
             <label className="wizard-field__label" htmlFor="policy-version">
-              质量策略版本 ID
+              用于预览的规则版本
             </label>
-            <Input
-              id="policy-version"
-              value={policyVersionID}
-              onChange={(value) => setPolicyVersionID(value)}
-              placeholder="例如 12"
-            />
+            <Select id="policy-version" value={policyVersionID || undefined} onChange={(value) => setPolicyVersionID(String(value))} optionList={documentState.versions.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))} placeholder="选择规则版本" disabled={documentState.versions.length === 0} />
           </div>
           <div className="wizard-field">
             <label className="wizard-field__label" htmlFor="preview-versions">

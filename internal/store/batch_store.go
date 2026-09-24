@@ -223,6 +223,39 @@ func resolveBatchSnapshotTx(ctx context.Context, tx pgx.Tx, projectID int64, inp
 	var snapshot model.BatchSnapshot
 	var generationConfig model.BatchGenerationConfig
 
+	// 蓝图是生产配置的组合入口。规划页可以显式覆写某一类版本（例如
+	// 扩量采用同一蓝图但切换映射），但省略的引用必须从蓝图节点补齐，
+	// 否则用户在设计区明明已经配置，生产快照却会丢掉这条关系。
+	if input.BlueprintVersionID > 0 {
+		var rawBlueprint []byte
+		if err := tx.QueryRow(ctx, `
+      SELECT payload FROM document_versions
+      WHERE id = $1 AND project_id = $2 AND kind = 'blueprint'`,
+			input.BlueprintVersionID, projectID).Scan(&rawBlueprint); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return snapshot, generationConfig, model.FieldErrors{{
+					Field: "blueprintVersionId", Message: "引用的蓝图版本不存在或不属于本项目，请重新选择",
+				}}
+			}
+			return snapshot, generationConfig, err
+		}
+		var blueprint model.BlueprintPayload
+		if err := json.Unmarshal(rawBlueprint, &blueprint); err == nil {
+			if input.CoverageVersionID <= 0 {
+				input.CoverageVersionID = blueprint.Nodes.Coverage.CoverageVersionID
+			}
+			if input.StandardVersionID <= 0 {
+				input.StandardVersionID = blueprint.Nodes.Standard.StandardVersionID
+			}
+			if input.QualityPolicyVersionID <= 0 {
+				input.QualityPolicyVersionID = blueprint.Nodes.Rules.QualityPolicyVersionID
+			}
+			if input.MappingVersionID <= 0 {
+				input.MappingVersionID = blueprint.Nodes.Delivery.MappingVersionID
+			}
+		}
+	}
+
 	resolve := func(versionID int64, field string) (string, error) {
 		if versionID <= 0 {
 			return "", nil
@@ -267,8 +300,7 @@ func resolveBatchSnapshotTx(ctx context.Context, tx pgx.Tx, projectID int64, inp
 	snapshot.MappingVersionID = input.MappingVersionID
 
 	// 生成配置从蓝图 payload 的 generation 节点解出（它是「这一批怎么跑」的权威来源）。
-	// 蓝图版本缺省时保持零值：试制允许只给标准（走连接默认），
-	// 真正的「必须配齐」检查在 T13 的执行前核对里。
+	// 蓝图版本缺省时保持零值：真正的「必须配齐」检查在执行前核对里。
 	if input.BlueprintVersionID > 0 {
 		var payload []byte
 		if err := tx.QueryRow(ctx, `
