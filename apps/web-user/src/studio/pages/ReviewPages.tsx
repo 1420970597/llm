@@ -213,7 +213,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
             {title}
           </Title>
           <Text type="tertiary">
-            按审阅状态与关键词在**服务端**筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。
+            按审阅状态与关键词在<strong>服务端</strong>筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。
           </Text>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -665,7 +665,7 @@ export function SampleReviewPage() {
       payload: { body: reason.trim(), action },
     })
     if (result.status === 'pending') {
-      setOfflineNotice('已保存为本机草稿（待同步，**未提交**）：联网后需先登录并确认，系统不会后台自动提交')
+      setOfflineNotice('已保存为本机草稿（待同步，未提交）：联网后需先登录并确认，系统不会后台自动提交')
       refreshPending()
     } else {
       setSubmitError(result.reason)

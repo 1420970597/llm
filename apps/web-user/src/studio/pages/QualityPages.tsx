@@ -126,7 +126,7 @@ export function QualityListPage() {
             质量实验室
           </Title>
           <Text type="tertiary">
-            报告的分母是实验创建时**冻结**的样本版本数；待审阅不算接纳，隔离也不缩小分母。
+            报告的分母是实验创建时<strong>冻结</strong>的样本版本数；待审阅不算接纳，隔离也不缩小分母。
           </Text>
         </div>
         <Button theme="solid" type="primary" disabled={!canRun} onClick={() => navigate(projectHref('project.qualityNew', scope.projectId))}>
