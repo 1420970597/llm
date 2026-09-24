@@ -581,7 +581,7 @@ ${rail('projects')}
       <!-- 左：文档台账 -->
       <div class="card"><div class="card__body card__body--tight"><div class="docs">${docLedger()}</div></div></div>
 
-      <!-- 中：来源清单 + 标签树 -->
+      <!-- 中：来源清单 + 文档大纲 -->
       <div>
         <div class="card">
           <div class="card__head">
@@ -594,21 +594,21 @@ ${rail('projects')}
             <div class="srclist">
               <div class="src">
                 <span class="src__icon src__icon--pdf">PDF</span>
-                <span class="src__name"><b>临床诊疗指南_2026修订版.pdf</b><small>章节感知递归分块 · 1.2–8.4 节</small></span>
+                <span class="src__name"><b>临床诊疗指南_2026修订版.pdf</b><small>章节感知分块 · 1.2–8.4 节</small></span>
                 <span class="src__num">128<small>块</small></span>
                 <span class="src__num src__num--hide">42.1 MB</span>
                 <span><span class="pill pill--ok">${'<span class="pill__dot"></span>'}已完成</span></span>
               </div>
               <div class="src">
                 <span class="src__icon src__icon--docx">DOC</span>
-                <span class="src__name"><b>用药规范_v5.docx</b><small>章节感知递归分块 · 全部</small></span>
+                <span class="src__name"><b>用药规范_v5.docx</b><small>章节感知分块 · 全部</small></span>
                 <span class="src__num">62<small>块</small></span>
                 <span class="src__num src__num--hide">18.4 MB</span>
                 <span><span class="pill pill--ok">${'<span class="pill__dot"></span>'}已完成</span></span>
               </div>
               <div class="src">
                 <span class="src__icon src__icon--md">MD</span>
-                <span class="src__name"><b>典型病例集.md</b><small>固定长度分块 · 800/100</small></span>
+                <span class="src__name"><b>典型病例集.md</b><small>固定长度分块 · chunkSize 1500 / 分隔 \n\n</small></span>
                 <span class="src__num">24<small>块</small></span>
                 <span class="src__num src__num--hide">6.2 MB</span>
                 <span><span class="pill pill--run">${'<span class="pill__dot"></span>'}解析中 60%</span></span>
@@ -625,19 +625,20 @@ ${rail('projects')}
         </div>
 
         <div class="card mt-16">
-          <div class="card__head"><h3>领域标签树</h3><span class="pill pill--mute">自动生成 · 可人工修正</span><div class="spacer"></div><button class="btn btn--sm">重新生成</button></div>
+          <div class="card__head"><h3>文档大纲（章节结构）</h3><span class="pill pill--mute">随来源一起冻结</span><div class="spacer"></div><span class="pill pill--mute">只读</span></div>
           <div class="card__body card__body--tight">
             <div class="tree">
               <div class="tree__row"><span class="tree__caret">▾</span><span class="tree__name"><b>内科</b></span><span class="tree__count">128 块</span></div>
-              <div class="tree__row tree__row--l2"><span class="tree__caret">▾</span><span class="tree__name">心血管</span><span class="tree__count">46 块</span><span class="tree__badge">已关联</span></div>
-              <div class="tree__row tree__row--l3"><span class="tree__caret"></span><span class="tree__name">高血压</span><span class="tree__count">22 块</span><span class="tree__badge">已关联</span></div>
-              <div class="tree__row tree__row--l3"><span class="tree__caret"></span><span class="tree__name">冠心病</span><span class="tree__count">24 块</span><span class="tree__badge">已关联</span></div>
-              <div class="tree__row tree__row--l2"><span class="tree__caret">▾</span><span class="tree__name">呼吸科</span><span class="tree__count">42 块</span><span class="tree__badge">已关联</span></div>
-              <div class="tree__row tree__row--l2"><span class="tree__caret">▸</span><span class="tree__name">消化科</span><span class="tree__count">40 块</span><span class="pill pill--warn">未关联</span></div>
+              <div class="tree__row tree__row--l2"><span class="tree__caret">▾</span><span class="tree__name">心血管</span><span class="tree__count">46 块</span></div>
+              <div class="tree__row tree__row--l3"><span class="tree__caret"></span><span class="tree__name">高血压</span><span class="tree__count">22 块</span></div>
+              <div class="tree__row tree__row--l3"><span class="tree__caret"></span><span class="tree__name">冠心病</span><span class="tree__count">24 块</span></div>
+              <div class="tree__row tree__row--l2"><span class="tree__caret">▾</span><span class="tree__name">呼吸科</span><span class="tree__count">42 块</span></div>
+              <div class="tree__row tree__row--l2"><span class="tree__caret">▸</span><span class="tree__name">消化科</span><span class="tree__count">40 块</span></div>
               <div class="tree__row"><span class="tree__caret">▾</span><span class="tree__name"><b>外科</b></span><span class="tree__count">62 块</span></div>
-              <div class="tree__row tree__row--l2"><span class="tree__caret">▸</span><span class="tree__name">普外</span><span class="tree__count">38 块</span><span class="tree__badge">已关联</span></div>
+              <div class="tree__row tree__row--l2"><span class="tree__caret">▸</span><span class="tree__name">普外</span><span class="tree__count">38 块</span></div>
               <div class="tree__row"><span class="tree__caret">▾</span><span class="tree__name"><b>影像科</b></span><span class="tree__count">24 块</span></div>
             </div>
+            <p class="field__hint" style="margin-top:10px">大纲来自来源文档的标题层级（块 name + summary），随来源版本冻结。它<b>只是章节结构</b>，不决定问题属于哪个领域 —— 领域/方向由覆盖矩阵定义。</p>
           </div>
         </div>
       </div>
@@ -648,8 +649,8 @@ ${rail('projects')}
         <div class="card__body">
           <div class="field">
             <label class="field__label">分块算法<em>*</em></label>
-            <div class="select"><span>章节感知递归分块</span><span>▾</span></div>
-            <p class="field__hint">按 Markdown 标题层级切分，保证单块语义完整。可选：递归分隔符 / 固定长度 / 代码感知。</p>
+            <div class="select"><span>章节感知（recursive）</span><span>▾</span></div>
+            <p class="field__hint">与外部工具的词表对齐：<code>text</code> / <code>token</code> / <code>code</code> / <code>recursive</code> / <code>custom</code>。</p>
           </div>
           <div class="field">
             <div class="field-row">
@@ -659,10 +660,10 @@ ${rail('projects')}
               </div>
               <div>
                 <label class="field__label">最大长度<em>*</em></label>
-                <div class="input input--num">1200</div>
+                <div class="input input--num">2000</div>
               </div>
             </div>
-            <p class="field__hint">超长块会被二次切分；过短块与相邻块合并。</p>
+            <p class="field__hint">默认 <code>chunkSize</code> 1500 / <code>textSplitMaxLength</code> 2000（与外部工具默认值对齐）。</p>
           </div>
           <div class="field">
             <label class="field__label">处理选项</label>
@@ -695,7 +696,7 @@ ${rail('projects')}
   ${topbar(['数据项目', '医疗问答知识库', '设计', '导入外部产物'])}
   <div class="content">
     ${projectHead()}
-    ${pageHead('DESIGN / SOURCE / IMPORT', '导入外部产物', '把外部工具产出的中间产物接进来。只接收素材（切分块与标签），不接收成品问答对 —— 问题仍由本项目按覆盖与标准生成。')}
+    ${pageHead('DESIGN / SOURCE / IMPORT', '导入外部产物', '把外部工具产出的中间产物接进来。只接收素材（切分块），不接收成品问答对 —— 问题仍由本项目按覆盖与标准生成。')}
 
     <div class="steps">
       <div class="step is-done"><span class="step__num">✓</span><span class="step__label">选择来源</span></div>
@@ -710,18 +711,20 @@ ${rail('projects')}
     <div class="cols--2" style="display:grid;gap:16px">
       <div>
         <div class="card">
-          <div class="card__head"><h3>产物字段 → 本项目字段</h3><div class="spacer"></div><span class="pill pill--ok">${'<span class="pill__dot"></span>'}5/5 已映射</span></div>
+          <div class="card__head"><h3>产物字段 → 本项目字段</h3><div class="spacer"></div><span class="pill pill--ok">${'<span class="pill__dot"></span>'}6/6 已映射</span></div>
           <div class="card__body card__body--tight">
             <table class="grid">
               <thead><tr><th>产物字段</th><th>类型</th><th>→ 本项目字段</th><th>说明</th></tr></thead>
               <tbody>
-                <tr><td class="mono">chunks[].content</td><td>string</td><td class="mono">source_chunks.content</td><td>块正文（必填）</td></tr>
-                <tr><td class="mono">chunks[].hash</td><td>string</td><td class="mono">source_chunks.content_hash</td><td>幂等去重依据</td></tr>
-                <tr><td class="mono">chunks[].tagPath</td><td>string[]</td><td class="mono">source_chunks.tag_path</td><td>领域标签路径</td></tr>
-                <tr><td class="mono">chunks[].summary</td><td>string</td><td class="mono">source_chunks.summary</td><td>可空</td></tr>
-                <tr><td class="mono">tags[]</td><td>tree</td><td class="mono">source_chunks.tag_tree</td><td>一级/二级标签树</td></tr>
+                <tr><td class="mono">name</td><td>string</td><td class="mono">source_chunks.name</td><td>块名（含章节路径）</td></tr>
+                <tr><td class="mono">content</td><td>string</td><td class="mono">source_chunks.content</td><td>块正文（必填）</td></tr>
+                <tr><td class="mono">summary</td><td>string</td><td class="mono">source_chunks.summary</td><td>章节摘要（可空）</td></tr>
+                <tr><td class="mono">fileName</td><td>string</td><td class="mono">source_chunks.file_name</td><td>归属文件</td></tr>
+                <tr><td class="mono">size</td><td>int</td><td class="mono">source_chunks.size</td><td>字符数</td></tr>
+                <tr><td class="mono">projectId</td><td>string</td><td class="mono">source_chunks.external_project</td><td>只作追溯，不作为归属</td></tr>
               </tbody>
             </table>
+            <p class="field__hint" style="margin-top:12px">上游产物<b>不包含</b>块级 hash 与标签路径 —— 已核实其 chunk 导出只有上述字段。因此 <code>content_hash</code> 由本项目在导入时<b>自行计算</b>（幂等依据），标签关联也由本项目建立。</p>
           </div>
         </div>
 
@@ -730,19 +733,19 @@ ${rail('projects')}
           <div class="card__body card__body--tight">
             <div class="src">
               <span class="src__icon src__icon--md">OK</span>
-              <span class="src__name"><b>214 块结构完整</b><small>content / hash / tagPath 均非空</small></span>
+              <span class="src__name"><b>214 块结构完整</b><small>name / content / summary 均非空</small></span>
               <span class="src__num">214<small>条</small></span><span class="src__num src__num--hide"></span>
               <span><span class="pill pill--ok">通过</span></span>
             </div>
             <div class="src">
               <span class="src__icon src__icon--zip">!</span>
-              <span class="src__name"><b>3 块缺 tagPath</b><small>chunk#47, chunk#112, chunk#198</small></span>
+              <span class="src__name"><b>3 块 content 为空</b><small>chunk#47, chunk#112, chunk#198</small></span>
               <span class="src__num">3<small>条</small></span><span class="src__num src__num--hide"></span>
               <span><span class="pill pill--warn">待人工</span></span>
             </div>
             <div class="src">
               <span class="src__icon src__icon--zip">!</span>
-              <span class="src__name"><b>2 块 hash 与既有版本重复</b><small>将跳过，不产生新块（内容 hash 幂等）</small></span>
+              <span class="src__name"><b>2 块内容 hash 与既有版本重复</b><small>本项目自行计算 hash 后判定；将跳过，不产生新块</small></span>
               <span class="src__num">2<small>条</small></span><span class="src__num src__num--hide"></span>
               <span><span class="pill pill--warn">跳过</span></span>
             </div>
@@ -765,8 +768,8 @@ ${rail('projects')}
           </div>
           <div class="field">
             <label class="field__label">关联方向</label>
-            <div class="select"><span>按 tagPath 自动匹配</span><span>▾</span></div>
-            <p class="field__hint">匹配不到的方向会在覆盖矩阵中标记为缺口，需人工处理。</p>
+            <div class="select"><span>人工指定（无自动匹配）</span><span>▾</span></div>
+            <p class="field__hint">上游产物<b>不携带领域标签</b>（其标签挂在问题上，不挂在块上）。因此方向关联在导入后于覆盖矩阵中人工建立。</p>
           </div>
           <div class="note note--info">本次导入只写 <b>source 文档版本 + source_chunks</b>。不生成任何问答对，不消耗模型预算。</div>
         </div>

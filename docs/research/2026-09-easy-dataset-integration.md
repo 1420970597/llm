@@ -8,6 +8,113 @@
 > ⚠️ **2026-09-23 修正（第二轮调研）**：本文 §3.3、§5.3、§7 的「路径 C」定义已修正为 **C2（导入中间产物）**。
 > 原 C1（导入最终 JSONL）会绕过 Atelier 的问题生成、使覆盖矩阵与思维标准降级为装饰品，与 #159 的产品语义冲突。
 > 修正依据见 §5.3.1「第二轮发现：`question` 是模板占位符」。
+>
+> 🔴 **2026-09-24 重大勘误（第三轮调研）**：第二轮把 C2 当作**可行**的推荐方案，但**从未验证上游是否真的能导出 chunks + tags**。
+> 核实后：**C2 按原设计不可行**，且本文与原型中**包含两个凭空捏造的上游字段**。详见 §0.1。
+> 结论修正为：**路径 C 应降级为「不推荐」；推荐路径改为 C2-lite（完全自建）或 D。**
+
+---
+
+## 0.1 重大勘误（2026-09-24）：我写错了什么
+
+第二轮调研有两类错误：**未验证的假设**与**凭空捏造的字段**。逐条列出，并给出核实证据。
+
+### 错误 1（最严重）：捏造上游字段 `chunks[].hash` 与 `chunks[].tagPath`
+
+我在原型 S02 的「产物字段 → 本项目字段」表里写了 5 个上游字段，其中**两个不存在**：
+
+| 我写的 | 实际情况 |
+|---|---|
+| `chunks[].hash` → `source_chunks.content_hash` | ❌ **上游没有这个字段** |
+| `chunks[].tagPath` → `source_chunks.tag_path` | ❌ **上游没有这个字段** |
+
+**上游 chunk 导出的真实字段**（`components/text-split/ChunkListHeader.js:175-183`，客户端权威实现）：
+
+```js
+const exportData = chunks.map(chunk => ({
+  name: chunk.name,
+  projectId: chunk.projectId,
+  fileName: chunk.fileName,
+  content: chunk.content,
+  summary: chunk.summary,
+  size: chunk.size
+}));
+```
+
+只有 6 个字段，**无 hash、无标签路径**。且 `Chunks` 表结构（`prisma/schema.prisma:55-71`）也确认无此字段：
+
+```prisma
+model Chunks {
+  id String @id  name String  projectId String  fileId String
+  fileName String  content String  summary String  size Int
+  createAt DateTime  updateAt DateTime
+  Questions Questions[]  EvalDatasets EvalDatasets[]
+  // ← 无 hash，无 tag/label
+}
+```
+
+**正确做法**：`content_hash` 由**本项目在导入时自行计算**（这正是幂等的依据，不该依赖上游）；方向关联由本项目在导入后**人工建立**。
+
+### 错误 2：声称「素材块 ↔ 标签」存在关联，实际不存在
+
+我声称上游的领域标签树可以「为每个 QA 对绑定精准标签」，并把它当成素材属性。核实后：
+
+- 上游的 `Tags` 表（`schema.prisma:73-84`）只有 `label` / `parentId`，**没有任何 chunk 外键**。
+- 标签挂在 **`Questions.label`** 上（`schema.prisma:95`）—— 即**标签属于问题，不属于素材块**。
+- 因此 `chunk ↔ tag` 的唯一关联路径是**经 `Questions` 表间接成立**：`Chunks ← Questions.label → Tags`。
+- **素材块本身没有领域标签。** 我的原型里「已关联 / 未关联」徽标建立在一个不存在的耦合上。
+
+### 错误 3：标签树的输入是 TOC，不是 chunks
+
+我画的数据流是「分块 → 领域标签树」。核实后（`lib/util/domain-tree.js:44,52`）：
+
+```js
+allToc = await getProjectTocs(projectId);
+prompt = await getLabelPrompt(language, { text: allToc.slice(0, 100000) }, projectId);
+```
+
+标签树的输入是 **`getProjectTocs`（文档大纲/标题结构）**，不是 chunks。且 TOC 存在**文件系统**（`<project>/toc/*-toc.json`，`lib/file/text-splitter.js:276-300`），**没有 API 端点**。
+
+### 错误 4：C2 的核心前提不成立（上游不导出 chunks+tags）
+
+C2 的整个设计是「只导入 chunks + tags，问题仍由 Atelier 生成」。核实后：
+
+| 我声称 | 实际 |
+|---|---|
+| 可导出 chunks + tags 中间产物 | ❌ **没有任何服务端导出端点**。`app/api/**/chunks/*` 下 **0 个 export 路由**；`app/api/**/tags/*` 下也**0 个 export** |
+| 唯一的 chunks 导出是**客户端**的 | `ChunkListHeader.js` 里 `new Blob(...)` + `a.download` —— 前端按钮，非 API |
+| 标签树导出 | ❌ **不存在**。`GET /tags` 返回标签树，但没有任何「导出为文件」的端点 |
+| TOC 导出 | ❌ **不存在**，且存在文件系统而非数据库 |
+
+**上游真正能导出的只有「成品」**：`questions/export`（question + chunkName + questionLabel）与 `datasets/export`（成品 QA，支持 json/alpaca/sharegpt/csv）。
+
+> **这反过来削弱了 C1 之外的所有「中间产物」路径**：上游的产品定位就是「产出成品数据集」，它没有为「中间产物交接」设计过导出面。
+
+**可行的替代方案**（若仍要用上游的解析能力）：
+
+| 方案 | 说明 | 代价 |
+|---|---|---|
+| C2-API | 自己调 `POST /chunks`（传 fileIds）+ `POST /chunks/batch-content`（传 chunkNames）拼出块内容 | 需先知道 fileIds/chunkNames；无鉴权的多轮爬取；上游改 API 即断 |
+| C2-FS | 直接读它的 SQLite（`prisma/db.sqlite`）+ 文件系统 `toc/` | 耦合内部 schema；绕过所有业务校验；违反 AGPL 风险最低但工程最脏 |
+| **C2-lite（推荐）** | **完全不依赖上游**：自建 Markdown/TXT 解析 + 分块 | 不支持 PDF/DOCX/EPUB（可后续补） |
+
+### 错误 5：分块算法数量与名称不准
+
+我写「4 种切分算法（章节感知递归分块 / 递归分隔符 / 固定长度 / 代码感知）」。实际有 **5 种**（`lib/file/text-splitter.js:41-126`）：
+
+`text` / `token` / `code` / `recursive` / `custom`
+
+且上游**没有**「章节感知递归分块」这个叫法 —— 那是我把「章节感知」与「recursive」两个概念合并后自创的名字。默认值也不是我写的 200/1200，而是 `chunkSize` 1500 / `textSplitMaxLength` 2000 / `separator` `\n\n`。
+
+### 错误 6：未核实就引用的二手数据
+
+第一轮我在竞品矩阵中引用了「`Data-Juicer` 等 6 个竞品」的对比数据，但其中若干来自搜索结果的二手转述。本轮已用 GitHub API 逐个核实（见 §2 的矩阵注记）。
+
+### 这些错误的方法论教训
+
+1. **「能力存在」不等于「能力可交付」**。上游有 chunks 表、有标签树、有分块算法，我就推断「可以导出」—— 但**导出面是产品决策，不是技术蕴含**。
+2. **原型不能先于契约**。我在确认字段之前就画了字段映射表，于是原型反过来「固化」了捏造的字段。**正确顺序：先验证导出契约，再画映射表。**
+3. **对「推荐方案」必须验证其前提**。C2 被我标为推荐，但它的前提（中间产物可导出）**从未被检查**。这是本轮最严重的流程失误。
 
 ---
 
@@ -19,9 +126,13 @@
 
 1. **技术架构上不是"能不能"的问题，而是"以什么边界"的问题。** 两个系统在运行时（Go+Postgres+Redis+MinIO vs Node+SQLite+进程内任务）、任务模型（DB 租约 + fencing token vs `processTask()` 火忘调用）、领域语义（版本化不可变样本 vs 可变问答对）三个层面**同构度极低**。合并代码库等于同时维护两套运行时。
 2. **前端设计上"嵌入"代价高于"借鉴"。** easy-dataset 是 MUI v5 + Next.js App Router 的 **无鉴权单租户工作台**；Atelier 是 Semi UI + Vite 的**多租户、带项目上下文与权限位**的控制台。把 MUI 组件树塞进 Semi 外壳，会同时破坏两边的设计系统、i18n 与路由语义。
-3. **真正的集成价值点只有一处，而且当前系统正好缺这块拼图：** Atelier 的生产蓝图（`blueprint` 文档）有 `coverage → standard → generation → evaluation → rules → human_review → delivery` 七个节点，**但没有任何"原始素材从哪来"的输入**。系统没有文档实体、没有分块实体、没有任何 `multipart` 上传端点（全仓库 0 处）。easy-dataset 恰好补的是这个洞：**文档 → 章节感知分块 → 领域标签树 → 问题**。
+3. **真正的集成价值点只有一处，而且当前系统正好缺这块拼图：** Atelier 的生产蓝图（`blueprint` 文档）有 `coverage → standard → generation → evaluation → rules → human_review → delivery` 七个节点，**但没有任何"原始素材从哪来"的输入**。系统没有文档实体、没有分块实体、没有任何 `multipart` 上传端点（全仓库 0 处）。easy-dataset 恰好补的是这个洞：**文档 → 分块 → 摘要 → 问题**（注：上游标签树挂在问题上、且输入是 TOC，不是"分块→标签树"，详见 §0.1）。
 
-**推荐路径：近期采用「路径 C2 中间产物级桥接」（easy-dataset 独立部署 + 导入 chunks/标签树，问题生成仍由 Atelier 负责），中期采用「路径 D 能力原生移植」；明确否决「路径 B 反代嵌 UI」与「路径 E 服务化调用」。**
+**推荐路径（2026-09-24 修正）：近期采用「路径 C2-lite：完全自建 Markdown/TXT 解析 + 接通 `GenerateQuestionsV2`」，中期视需要扩展 PDF/DOCX 或走「路径 D」；路径 C（消费 easy-dataset 中间产物）因上游无导出面而降级为「需自建提取器，不推荐」；明确否决「路径 B 反代嵌 UI」与「路径 E 服务化调用」。**
+
+> 前两轮把 C2 当作可行推荐，但**未验证上游是否能导出中间产物**。核实后 C2 的前提不成立（详见 §0.1 错误 4）。
+> **核心结论未变且更强了**：Atelier 缺的是「素材输入 + 真实问题生成」这条链路；但**这条链路不能靠消费上游中间产物实现**，因为上游没有为中间产物交接设计导出面。
+> 自建解析 + 接通 `GenerateQuestionsV2`（C2-lite）反而是成本最低、耦合最小的路径。
 
 | 决策 | 结论 | 决定性理由 |
 |---|---|---|
@@ -68,7 +179,7 @@
 | 多租户 | 工作区 → 项目 → 批次/样本，服务端授权为最终边界 | 单实例单用户，无租户概念 |
 | 领域核心 | **不可变样本版本**（`sample_versions` 只追加）+ 冻结发布清单 | 可变问答对（`Datasets` 可编辑、可 AI 优化、可批量删） |
 | 版本化文档 | 5 类（`blueprint`/`coverage`/`standard`/`quality_policy`/`mapping`），内容 hash + 乐观锁 | 项目级 Prompt 覆盖（`CustomPrompts`），无版本 |
-| 文档摄入 | **完全缺失**（0 处 `multipart`/`FormFile`，无 PDF/DOCX 解析，无分块实体） | **核心能力**：PDF/MD/DOCX/TXT/EPUB + 4 种切分算法 + 章节感知递归分块 |
+| 文档摄入 | **完全缺失**（0 处 `multipart`/`FormFile`，无 PDF/DOCX 解析，无分块实体） | **核心能力**：PDF/MD/DOCX/TXT/EPUB + 5 种切分算法（`text`/`token`/`code`/`recursive`/`custom`） |
 | 导出 | `jsonl`/`csv`/`parquet`/`alpaca`/`sharegpt`（`internal/exporter`） | Alpaca / ShareGPT / Multilingual-Thinking，JSON+JSONL，LLaMA-Factory 配置，HF 上传 |
 | 模型接入 | `model_providers` 表 + 加密 API Key + 连通性测试 + 推理强度档位 | `LlmProviders`/`LlmModels`/`ModelConfig` 三表，OpenAI 兼容 + Ollama + 智谱/百炼/MiniMax/OpenRouter |
 | 测试 | 101 个 `_test.go`，CI 含 `ci.yml` + `cd.yml` | **0 测试**，`package.json` 无 test 脚本，CI 仅 tag 时构建镜像 |
@@ -167,13 +278,17 @@ stateDiagram-v2
 
 **这是"能不能合库"的第一否决项。** easy-dataset 的任务模型在单用户桌面场景下是合理的（甚至优雅：无依赖、零运维）；但它的崩溃语义是"可能重复消费"，而 Atelier 的发布链路上有 `release_manifests` 冻结清单与内容 hash 对账 —— **重复消费会直接污染可交付制品的可复现性**。
 
-### 3.3 若走"路径 C2"的完整时序
+### 3.3 若走"路径 C2"的完整时序（已修正：上游无导出面）
+
+> ⚠️ **本节已按第三轮核实修正**。原时序图假设「用户从上游导出 chunks + tags」，该步骤**不存在**。
+> 修正后：要么自己实现提取器（见 §0.1 错误 4 的 C2-API / C2-FS），要么改为 C2-lite（完全不依赖上游，见 §5.3.2）。
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant U as 用户
     participant ED as easy-dataset (1717)
+    participant EXT as 提取器（本项目自建，非上游提供）
     participant FS as 共享卷 / 对象存储
     participant API as Go API
     participant ST as internal/store
@@ -182,16 +297,17 @@ sequenceDiagram
 
     U->>ED: 上传 PDF/DOCX/EPUB/MD
     ED->>FS: 落盘原始文件
-    ED->>LLM: 章节感知递归分块 + 块摘要
-    ED->>LLM: 领域标签树（一级/二级）
-    U->>ED: 人工修正切分与标签
-    Note over U,ED: 到此为止。**不生成问题，不导出成品 QA**
-    U->>ED: 导出 chunks + tags 中间产物
-    ED->>FS: 写出 chunks.jsonl / tags.json
+    ED->>LLM: 分块（recursive / text / token / code / custom）+ 块摘要
+    ED->>LLM: 文档大纲（TOC）→ 标签树（挂在问题上）
+    U->>ED: 人工修正切分
+    Note over U,ED: 到此为止。上游到此就结束了
 
-    Note over U,FS: ↑ 以上完全在 Atelier 之外，零耦合
+    Note over EXT: ❌ 上游无导出端点。<br/>必须自建提取器：<br/>POST /chunks {fileIds} +<br/>POST /chunks/batch-content {chunkNames}<br/>或直读 SQLite + toc/ 目录
+    EXT->>ED: 拉取 chunk 内容（无鉴权、多轮）
+    EXT->>FS: 写出 chunks.json（6 字段）
+    Note over EXT,FS: 提取器是净新增工程，<br/>不是"用一下上游导出"
 
-    U->>API: POST /projects/{id}/source-imports（含 sourceKey + contentHash）
+    U->>API: POST /projects/{id}/source-imports（含 sourceKey）
     API->>ST: 查 source_imports 唯一键 (source_kind, source_key)
     alt 已 completed
         ST-->>API: 命中台账
@@ -199,12 +315,13 @@ sequenceDiagram
     else 首次或断点续跑
         API->>ST: 写台账 + 游标（pending）
         API->>ST: 写 source 文档版本（冻结切分参数）+ source_chunks
-        API->>ST: 创建 batch（purpose=pilot，provenance=external_source）
+        Note over API,ST: content_hash 由本项目计算<br/>（上游产物无 hash 字段）
+        API->>ST: 创建 batch（purpose=pilot）
         API->>ST: 入 outbox → Redis
         WK->>ST: 抢占 job（租约 + fencing token）
         WK->>ST: 读 coverage 文档 → AllocateUnits
-        WK->>ST: 按 direction 取关联的 source_chunks
-        WK->>LLM: **GenerateQuestionsV2**（方向 + 标准步骤 + 难度配比 + 源材料块）
+        Note over WK,ST: 方向↔素材块关联需<b>人工建立</b><br/>（上游标签挂在问题上，不挂在块上）
+        WK->>LLM: GenerateQuestionsV2（方向 + 标准步骤 + 难度配比 + 素材块）
         WK->>LLM: GenerateSft / GenerateGrpoPrompt（基于真问题）
         WK->>ST: 写 sample_versions + batch_steps 进度
         WK->>ST: 标记台账 completed + 对账水位
@@ -212,9 +329,11 @@ sequenceDiagram
     end
 ```
 
-**与 C1 的关键差异**：`GenerateQuestionsV2` 出现在 Atelier 侧（`WK->>LLM` 的第四步），而不是被 easy-dataset 取代。easy-dataset 的产物是 `chunks + tags`，**不是成品 QA**。
+**与 C1 的关键差异**：`GenerateQuestionsV2` 出现在 Atelier 侧，而不是被 easy-dataset 取代。
 
-**关键设计约束**：这条路径**必须**复用 `internal/legacy` 已有的三层幂等（台账唯一键 → 内容 hash → 确定性 `sample_key`）。该包已实现"结构上不可能覆盖已迁移后产生的新版本"（写入路径只有 `AppendSampleVersion`，无 UPDATE），这正是外部导入需要的性质。
+**但成本已改变**：C2 需要**自建提取器**（上游不提供中间产物导出），这使它相对于 C2-lite 的优势大幅下降 —— 多了一个脆弱的爬取组件，却只换来 PDF/DOCX/EPUB 解析。
+
+**关键设计约束**：这条路径**必须**复用 `internal/legacy` 已有的三层幂等（台账唯一键 → 内容 hash → 确定性 `sample_key`）。该包已实现"结构上不可能覆盖已迁移后产生的新版本"（写入路径只有 `AppendSampleVersion`，无 UPDATE）。
 
 ### 3.4 领域语义鸿沟（最容易被低估的一处）
 
@@ -228,7 +347,7 @@ sequenceDiagram
 | 任务 | `Task`（status 0/1/2/3） | `jobs` + `batch_steps` + `job_attempts` | 需重写 |
 | 评估 | `EvalDatasets` + `EvalResults`（盲测 arena） | `eval_dimensions` + `eval_runs` + `eval_items` + `eval_run_judges` | 语义不同：easy-dataset 评"模型"，Atelier 评"样本" |
 
-**注意 `domains` 的表结构**：`domains.dataset_id → datasets(id)`，而 Atelier 的版本化文档挂在 `project_id` 上。也就是说，仓库里**同时存在两代数据模型**：旧的 `datasets → domains → questions → reasoning_records`（迁移 0001–0021）与新的 `projects → versioned_documents → batches → samples → sample_versions`（迁移 0022–0038）。easy-dataset 的标签树更接近**旧模型**。因此集成时若误接旧模型，会与新主线（Atelier）产生长期漂移。
+> **注意**：这里的「标签树更接近旧模型」指的是**概念上的相似性**（都是「挂在数据对象上的自引用树」）。但上游的标签实际挂在 **`Questions.label`**（问题），而 Atelier 旧模型的 `domains` 挂在 `datasets` 上 —— 两者的挂载点不同，**不能直接类比映射**（见 §0.1 错误 2）。
 
 ```mermaid
 flowchart LR
@@ -291,7 +410,7 @@ Discussion #159 的核心论证是"**不要按后端模块分菜单**"，而 eas
 
 以下四项**建议借鉴设计思路，用 Semi UI 原生重写**，而不是移植代码：
 
-1. **章节感知递归分块的可视化编辑**（`ChunkCard.js` 449 行 / `ChunkList.js` 413 行 / `MarkdownViewDialog.js` 434 行）：左侧文件树 + 中部 Markdown 预览 + 右侧分块参数，允许手动合并/拆分。这是 Atelier"设计"工作区缺失的一块。
+1. **分块可视化编辑**（`ChunkCard.js` 449 行 / `ChunkList.js` 413 行 / `MarkdownViewDialog.js` 434 行）：左侧文件树 + 中部 Markdown 预览 + 右侧分块参数，允许手动合并/拆分。这是 Atelier"设计"工作区缺失的一块。
 2. **标签树双视图**（`QuestionTreeView.js` 565 行 / `DistillTreeView.js` 535 行）：树 + 列表联动、支持按标签平衡导出。
 3. **模型试验场**（`playground/` 页面 + `lib/llm/core/providers/` 7 个适配器）：最多 3 模型并排对比。Atelier 目前只有 `providerConnectivityTest`（连通性），没有**效果对比**。
 4. **任务中心的可中断进度**：`Task.completedCount/totalCount` + `tasks/` 页面。Atelier 的 `batch_steps` 数据更丰富，但前端展示可以更直观。
@@ -317,7 +436,7 @@ Discussion #159 的核心论证是"**不要按后端模块分菜单**"，而 eas
 │            │               │  │ ✗ 附件.zip        0MB  不支持   │  │  ☑ 保留标题层级       │
 │ ────────── │  [＋ 添加来源] │  └────────────────────────────────┘  │  ☑ 生成块摘要         │
 │ ⚙ 设置     │  [📥 导入外部  │                                      │                       │
-│ ❓ 帮助     │   数据集产物]  │  标签树（可编辑）                     │  [保存为新版本]       │
+│ ❓ 帮助     │   数据集产物]  │  文档大纲（章节结构，只读）         │  [保存为新版本]       │
 │            │               │  医疗                                       │  [试切 10 块]  │
 │            │               │   ├─ 内科  (128 块)                  │                       │
 │            │               │   ├─ 外科  (96 块)                   │  ⚠ 影响：            │
@@ -335,7 +454,7 @@ Discussion #159 的核心论证是"**不要按后端模块分菜单**"，而 eas
 
 | 状态 | 触发 | 界面表现 | 行动倡导 |
 |---|---|---|---|
-| **Default** | 有来源且至少一个已解析 | 来源清单显示状态徽标（已完成/解析中/不支持）+ 块数统计；标签树展开；右侧检查器可编辑 | 主按钮「保存为新版本」；次按钮「试切 10 块」 |
+| **Default** | 有来源且至少一个已解析 | 来源清单显示状态徽标（已完成/解析中/不支持）+ 块数统计；文档大纲展开；右侧检查器可编辑 | 主按钮「保存为新版本」；次按钮「试切 10 块」 |
 | **Loading** | 首次加载文档版本 | 左栏 5 个骨架条；中栏来源清单 3 行骨架；右栏表单禁用并显示半透明遮罩；页签保持可点 | 无按钮，展示「正在读取版本 v3…」 |
 | **Empty** | 新项目无任何来源 | 中栏居中插画 + 文案「还没有素材来源。上传文档，或从 easy-dataset 导入已生成的数据集产物。」 | 主按钮「＋ 添加来源」；次按钮「📥 导入外部产物」（直达导入向导） |
 | **Error** | 解析失败 / 版本冲突 / 上传超限 | 顶部 Banner（红色）：`解析失败：附件.zip 格式不支持（支持 PDF/MD/DOCX/TXT/EPUB）`；来源行显示 ✗ + 「查看原因」；保存冲突时返回 `409` 并提示「版本已被 李工 更新，请刷新后重试」 | Banner 内「重试」「移除该来源」「查看支持格式」；409 时「刷新」 |
@@ -418,7 +537,10 @@ func questionFor(request studio.UnitRequest) string {
 
 **C1 会摧毁 Atelier 的核心卖点。** #159 的整个论证是"数据版本要有可复核的设计依据"。若 question 由外部工具生成，那"覆盖矩阵""思维标准"就只是在给别人的数据贴标签 —— 用户无法回答"这个方向为什么产出这 3 个问题"，而这恰好是 #159 开头点名要消除的三个持续问题之一。
 
-**分界线**：格式解析（PDF/DOCX/EPUB 是一堆坑，自研不划算）交给 easy-dataset；**"问题该问什么"留在 Atelier**（这是产品语义，也是 `standard` / `evaluation` 节点的输入）。
+**分界线**：格式解析（PDF/DOCX/EPUB 是一堆坑）原则上可外包；**"问题该问什么"必须留在 Atelier**（这是产品语义，也是 `standard` / `evaluation` 节点的输入）。
+
+> ⚠️ **但外包的前提是上游愿意交接中间产物**。核实后：上游**没有中间产物导出面**（见 §0.1 错误 4）。
+> 因此这个"分界线"在工程上不能直接落地 —— 要么自建提取器（多一个脆弱组件），要么自建解析（C2-lite）。
 
 #### 收益
 
@@ -430,14 +552,28 @@ func questionFor(request studio.UnitRequest) string {
 #### 代价与必须新建的东西
 
 - **必须新增上传端点**：全仓库当前 **0 处** `multipart`/`FormFile`（`grep` 验证），`apps/api` 与 `internal/storage` 都没有接收文件的路径。这是净新增能力，不是接线。
-- **必须新增块级存储**：`source_chunks`（含内容 hash 与标签路径）—— 这是当前**完全不存在**的实体。
+- **必须新增块级存储**：`source_chunks`（含内容 hash）—— 这是当前**完全不存在**的实体。
+  - `content_hash` 由本项目在导入时**自行计算**（上游产物无 hash 字段）；**没有标签路径**（上游标签挂在问题上，不挂在块上）。
 - **必须新增导入台账表**：`source_imports(source_kind, source_key, cursor, content_hash, status)`，或复用 `legacy_imports` 并扩展 `source_kind` 的 CHECK 约束（迁移 0034 已有 `LegacyImportSourceKindDataset`，需评估是否扩展语义）。
 - **必须接通问题生成**：`questionFor()` / `grpoQuestionFor()` 改为调用 `GenerateQuestionsV2`。**这是替换，不是新增平行函数**（AGENTS.md §3.1 红线），且两个副本必须**同时**消除。
-- **产物格式必须冻结为契约**：easy-dataset 的 chunks/tags 中间产物字段需落成 `docs/plans/` 下的导入契约文档，并写契约测试（仓库已有 `routes_studio_contract_test.go` 先例）。
+- **产物格式必须冻结为契约**：**若**走 C2-API/C2-FS（自建提取器），需把上游 chunk 的 **6 个真实字段**（`name`/`projectId`/`fileName`/`content`/`summary`/`size`）落成 `docs/plans/` 下的导入契约文档，并写契约测试（仓库已有 `routes_studio_contract_test.go` 先例）。
+  - 注意：`content_hash` 与方向关联**不在产物里**，必须由本项目产生（详见 §0.1 错误 1、错误 2）。
 
-#### C2-lite：连 easy-dataset 都不需要的起步动作
+#### C2-lite：连 easy-dataset 都不需要的起步动作（现已升为推荐）
 
-先只做 **原生 Markdown / TXT 上传 + `GenerateQuestionsV2` 接线**。这一步**单独就修掉了占位问题**，且不引入任何外部依赖与 AGPL 风险。easy-dataset 随后只在"它真正贵的那一段"（PDF/DOCX/EPUB 解析 + 章节感知分块）才值得引入。
+先只做 **原生 Markdown / TXT 上传 + `GenerateQuestionsV2` 接线**。这一步**单独就修掉了占位问题**，且不引入任何外部依赖与 AGPL 风险。
+
+**为何从"起步动作"升为"推荐路径"**：第二轮把它定位为过渡步骤，默认后续会切到 C2（消费上游中间产物）。但核实发现 C2 需要**自建提取器**（上游无导出面），于是：
+
+| 方案 | 新增组件 | 获得的能力 | 风险 |
+|---|---|---|---|
+| **C2-lite** | Markdown/TXT 解析 + 分块（Go 侧，可控） | 素材接地 + 真实问题生成 | 无外部依赖、无 AGPL、无爬取脆弱性 |
+| C2-API | 提取器 + 多轮爬取 + 无鉴权调用 | 额外获得 PDF/DOCX/EPUB | 上游改 API 即断；无鉴权；AGPL |
+| C2-FS | 提取器 + 直读上游 SQLite/文件系统 | 同上 | 耦合内部 schema；绕过校验 |
+
+**结论**：C2-lite 以最低成本拿到核心价值（**让 `question` 从素材里长出来**）。PDF/DOCX 可以后续在 Go 侧补（成熟库如 `pdfcpu`/`unioffice`），那时仍不需要上游。
+
+**真正值得从上游借鉴的是设计，不是产物**：分块可视化编辑、标签树双视图、模型试验场（见 §4.3）—— 这些用 Semi UI 原生重写。
 
 ### 5.4 路径 B 为何被否决（具体机制）
 
@@ -498,13 +634,14 @@ func questionFor(request studio.UnitRequest) string {
 
 1. 新增导入台账：`source_imports(source_kind, source_key, cursor, content_hash, status)`，或扩展 `legacy_imports.source_kind` 的 CHECK 约束（迁移 0034 已有 `LegacyImportSourceKindDataset`，需评估是否扩展语义）。
 2. 新增 `apps/worker/job_source_import.go`：注册为新的 job kind，走既有租约 + fencing + 退避。
-3. 新增 `internal/import/`（或在 `internal/legacy` 内扩展）：实现"easy-dataset **chunks + tags 中间产物** → `source_chunks` + `AppendSampleVersion`"的映射，含字段缺失/类型不符的逐条失败明细（复用 `ImportFailure` 形状）。
+3. 新增 `internal/import/`（或在 `internal/legacy` 内扩展）：实现"**自建提取器产出的 chunks.json（6 字段）** → `source_chunks`"的映射，含字段缺失/类型不符的逐条失败明细（复用 `ImportFailure` 形状）。
+   - **前置条件**：需先实现提取器（C2-API 或 C2-FS）。若选 C2-lite，则本项不适用。
 4. 契约测试：`internal/import/*_test.go` 覆盖①正常导入、②重复执行回放（`replay=true` 且零副作用）、③内容 hash 命中不追加版本、④断点续跑、⑤失败明细精确到源对象。
 5. `blueprint` 的 `generation` 节点加 `sourceVersionId`（`internal/model/blueprint_nodes.go` 加一行元数据，前端检查器自动出现）。
 6. 新增 Go 侧原生文档解析：至少 Markdown + TXT（PDF/DOCX/EPUB 仍交 easy-dataset），分块算法按 `source` 文档版本化参数执行。
 7. 前端：在「设计」工作区新增「素材来源」文档面板（见 §4.4 线框），使用 Semi UI 原生组件，含五态定义。
 8. 守卫：扩展 `test/` 下的 UI 守卫脚本，覆盖新面板的 Default/Empty/Error 三态渲染。
-9. 文档：`docs/plans/external-source-import-contract.md`（含 easy-dataset chunks/tags 产物的冻结定义 + Mermaid 时序图）；同步修正 `docs/plans/atelier-implementation.md` —— 补一项承担"真实问题生成"，或明确它是 #160 之后的独立 Issue（R11）。
+9. 文档：`docs/plans/external-source-import-contract.md`（含上游 chunk 6 字段的冻结定义 + 提取器行为 + Mermaid 时序图）；同步修正 `docs/plans/atelier-implementation.md` —— 补一项承担"真实问题生成"，或明确它是 #160 之后的独立 Issue（R11）。
 
 #### 必须同时满足的约束
 
@@ -531,8 +668,28 @@ func questionFor(request studio.UnitRequest) string {
 | `internal/llm/question_generator_v2.go:105`、`apps/worker/job_questions_v2.go:77` | **第二轮核心发现**：`GenerateQuestionsV2` 存在且被测试，但唯一调用点是旧路径 |
 | `internal/llm/sft_generator.go:15-22, 92-94` | **第二轮核心发现**：`SftInput` 结构上无源材料字段 |
 | `internal/model/studio_docs.go:236` | **第二轮核心发现**：`CoverageDirection.Source` 是从未被读取的死字段 |
+| `components/text-split/ChunkListHeader.js:175-183` | **第三轮核心证据**：上游 chunk 导出的**真实 6 字段**（无 hash、无 tagPath）—— 推翻我捏造的两个字段 |
+| `prisma/schema.prisma:55-71`（`Chunks`）、`:73-84`（`Tags`）、`:86-107`（`Questions`） | **第三轮核心证据**：`Chunks` 无 hash/无标签；标签挂在 `Questions.label`，不挂在块上 |
+| `lib/util/domain-tree.js:44,52`、`lib/file/text-splitter.js:276-300` | **第三轮核心证据**：标签树输入是 TOC（非 chunks）；TOC 存在文件系统且无 API 端点 |
+| `app/api/**/chunks/*`、`app/api/**/tags/*`（`find` 穷举） | **第三轮核心证据**：**0 个 export 路由** —— 上游无中间产物导出面（推翻 C2 前提） |
+| `lib/file/text-splitter.js:41-126` | **第三轮核心证据**：5 种切分算法 `text`/`token`/`code`/`recursive`/`custom`，默认 `chunkSize` 1500 / `textSplitMaxLength` 2000 |
 | `docs.easy-dataset.com`、arXiv 2507.04009、EMNLP 2025 demo | 产品定位与学术出处（用于竞品矩阵，非代码事实） |
 
 **未验证项**：easy-dataset 在 10 万级文档下的实际吞吐、其 SQLite 在多用户并发写入下的行为、426 MB 镜像在目标宿主机上的冷启动时间。以上三项需实测才能写入结论。
 
 **第二轮未验证项**：R10 的存量规模（有多少历史样本的 `question` 是模板形态）需要**实际查库**才能确定；本文只证明了"占位模板存在于生产路径代码中"，未证明"已有数据被污染"。两者是不同的断言，不应混用。
+
+**第三轮已补充验证的项**（前两轮缺失，现已查实）：
+
+- ✅ 上游 chunk 导出的真实字段清单（含客户端与服务端两侧）
+- ✅ 上游是否存在 chunks/tags 的导出端点（穷举 `app/api`）
+- ✅ 标签与块的关联路径（确认必须经 `Questions`）
+- ✅ 标签树的真实输入（TOC）与其存储位置（文件系统）
+- ✅ 切分算法种类与默认参数
+- ✅ 引用的论文 URL 可达性（arXiv / ACL Anthology 均 200）
+
+**第三轮仍未验证项**：
+
+- ❌ **未实际运行上游**，因此「`POST /chunks` + `POST /chunks/batch-content` 能否完整拼出全部块」是**源码推断**。理论上需要先枚举 `fileIds` 再按 `chunkNames` 批量取，但未实测端到端。
+- ❌ 未实测上游 SQLite 的 schema 与 `prisma/schema.prisma` 是否完全一致（迁移漂移）。
+- ❌ 未核实社区是否有第三方 fork 提供了中间产物导出（只核实了官方 `main` 分支）。
