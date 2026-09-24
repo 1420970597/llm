@@ -1,4 +1,4 @@
-# 蓝图工作流化改造 TODO（#165 × #197）
+# 蓝图工作流化改造 TODO（讨论 #165 × Issue #197）
 
 > **这是什么**：把讨论 [#165](https://github.com/1420970597/llm/discussions/165) 的集成结论与 Issue [#197](https://github.com/1420970597/llm/issues/197) 的 17 条用户测试反馈，落成**可逐项勾选、可验收、带代码落点**的实施清单。
 > **代码基线**：`main` @ [`0b18145`](https://github.com/1420970597/llm/commit/0b18145)
