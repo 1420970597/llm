@@ -74,6 +74,24 @@ func registerDocumentRoutes(mux *http.ServeMux, app *application) {
 	// `blueprint-versions/nodes`）：它不是某个版本的子资源，而是节点集合的
 	// 定义，与具体版本无关。放进版本子路径会让 `?version=` 看起来能影响它。
 	mux.HandleFunc("GET "+projectPrefix+"/{projectId}/blueprint-nodes", app.listBlueprintNodes)
+	mux.HandleFunc("POST "+projectPrefix+"/{projectId}/documents/bootstrap", app.bootstrapProjectDocuments)
+}
+
+// bootstrapProjectDocuments repairs projects created before native document
+// bootstrapping was introduced. It is idempotent and never overwrites an
+// existing version.
+func (app *application) bootstrapProjectDocuments(w http.ResponseWriter, r *http.Request) {
+	project, _, ok := app.requireProject(w, r, store.AuthzDesign)
+	if !ok {
+		return
+	}
+	user, _ := requestUser(r)
+	if err := app.documents.BootstrapProjectDocuments(r.Context(), project.ID, user.ID,
+		project.TargetKind, project.Name, project.Goal); err != nil {
+		app.writeDocumentError(w, r, err)
+		return
+	}
+	app.writeJSON(w, http.StatusOK, map[string]any{"status": "bootstrapped", "projectId": project.ID})
 }
 
 // listBlueprintNodes 返回蓝图节点元数据（T11）。

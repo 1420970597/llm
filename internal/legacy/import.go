@@ -49,19 +49,21 @@ const (
 
 // ImportDeps 是导入需要的依赖。
 type ImportDeps struct {
-	Pool     *pgxpool.Pool
-	Projects *store.ProjectStore
-	Batches  *store.BatchStore
-	Imports  *store.LegacyImportStore
+	Pool      *pgxpool.Pool
+	Projects  *store.ProjectStore
+	Batches   *store.BatchStore
+	Imports   *store.LegacyImportStore
+	Documents *store.DocumentStore
 }
 
 // NewImportDeps 构造依赖。
 func NewImportDeps(pool *pgxpool.Pool) ImportDeps {
 	return ImportDeps{
-		Pool:     pool,
-		Projects: store.NewProjectStore(pool),
-		Batches:  store.NewBatchStore(pool),
-		Imports:  store.NewLegacyImportStore(pool),
+		Pool:      pool,
+		Projects:  store.NewProjectStore(pool),
+		Batches:   store.NewBatchStore(pool),
+		Imports:   store.NewLegacyImportStore(pool),
+		Documents: store.NewDocumentStore(pool),
 	}
 }
 
@@ -99,11 +101,15 @@ type ImportFailure struct {
 
 // Reconciliation 是一侧的对账数据。
 type Reconciliation struct {
-	Questions   int64  `json:"questions"`
-	SFTRecords  int64  `json:"sftRecords"`
-	Samples     int64  `json:"samples"`
-	Versions    int64  `json:"versions"`
-	ContentHash string `json:"contentHash,omitempty"`
+	Questions        int64  `json:"questions"`
+	SFTRecords       int64  `json:"sftRecords"`
+	ReasoningRecords int64  `json:"reasoningRecords"`
+	GRPOPrompts      int64  `json:"grpoPrompts"`
+	RewardRecords    int64  `json:"rewardRecords"`
+	Artifacts        int64  `json:"artifacts"`
+	Samples          int64  `json:"samples"`
+	Versions         int64  `json:"versions"`
+	ContentHash      string `json:"contentHash,omitempty"`
 }
 
 // ImportSummary 是一次导入的结果（写报告与日志用）。
@@ -133,6 +139,7 @@ type legacyDatasetRow struct {
 	Name        string
 	RootKeyword string
 	Status      string
+	TargetKind  string
 	OwnerID     *int64
 }
 
@@ -237,12 +244,16 @@ func ImportDataset(ctx context.Context, deps ImportDeps, options ImportOptions) 
 			fmt.Sprintf("新建 legacy-origin 项目 %d（legacy_dataset_id=%d）", projectID, dataset.ID))
 	}
 	summary.ProjectID = projectID
-
 	if options.DryRun {
 		summary.Status = "dry_run"
 		summary.Notes = append(summary.Notes,
 			"dry-run：未写入任何业务数据，也未创建导入台账；上面的对账水位是导入前的快照")
 		return summary, nil
+	}
+	if deps.Documents != nil {
+		if err := deps.Documents.BootstrapProjectDocuments(ctx, projectID, options.ActorID, dataset.TargetKind, dataset.Name, dataset.RootKeyword); err != nil {
+			return summary, fmt.Errorf("初始化迁移项目配置失败：%w", err)
+		}
 	}
 
 	importRow, replay, err := deps.Imports.BeginImport(ctx, LegacyImportSourceKindDataset, DatasetSourceKey(dataset.ID))
@@ -286,6 +297,9 @@ func ImportDataset(ctx context.Context, deps ImportDeps, options ImportOptions) 
 	counts, cursor, failures, err := importQuestions(ctx, deps, options, dataset, projectID, summary.BatchID, importRow)
 	summary.Counts = counts
 	summary.Failures = failures
+	if markErr := deps.Imports.MarkImportedBatchCompleted(ctx, summary.BatchID); markErr != nil && err == nil {
+		return summary, markErr
+	}
 
 	after, reconcileErr := reconcileDataset(ctx, deps.Pool, dataset)
 	if reconcileErr != nil {
@@ -331,8 +345,8 @@ func ImportDataset(ctx context.Context, deps ImportDeps, options ImportOptions) 
 func loadLegacyDataset(ctx context.Context, pool *pgxpool.Pool, datasetID int64) (legacyDatasetRow, error) {
 	var row legacyDatasetRow
 	err := pool.QueryRow(ctx, `
-    SELECT id, name, root_keyword, status, created_by FROM datasets WHERE id = $1`, datasetID).
-		Scan(&row.ID, &row.Name, &row.RootKeyword, &row.Status, &row.OwnerID)
+    SELECT id, name, root_keyword, status, target_kind, created_by FROM datasets WHERE id = $1`, datasetID).
+		Scan(&row.ID, &row.Name, &row.RootKeyword, &row.Status, &row.TargetKind, &row.OwnerID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return row, fmt.Errorf("dataset %d 不存在", datasetID)
 	}
@@ -368,8 +382,12 @@ func resolveOrCreateProject(ctx context.Context, deps ImportDeps, options Import
 			"工作区里已存在同名项目 %q：请先重命名其一，或用 -target-project 显式指定目标项目后重试"+
 				"（自动改名会让旧数据与项目的对应关系变得不可解释）", dataset.Name)
 	}
+	targetKind := dataset.TargetKind
+	if targetKind != model.TargetKindGRPO {
+		targetKind = model.TargetKindSFT
+	}
 	input := model.CreateProjectInput{
-		Name: dataset.Name, Goal: dataset.RootKeyword, TargetKind: model.TargetKindSFT,
+		Name: dataset.Name, Goal: dataset.RootKeyword, TargetKind: targetKind,
 		LegacyDatasetID: &dataset.ID,
 	}
 	input.Normalize()
@@ -402,6 +420,10 @@ func ensureSnapshotBatch(ctx context.Context, deps ImportDeps, options ImportOpt
 	if itemCount <= 0 {
 		itemCount = 1
 	}
+	targetKind := dataset.TargetKind
+	if targetKind != model.TargetKindGRPO {
+		targetKind = model.TargetKindSFT
+	}
 	input := model.CreateBatchInput{Purpose: model.BatchPurposeScale, UnitCount: itemCount}
 	input.Normalize()
 	if err := input.Validate(); err != nil {
@@ -411,12 +433,9 @@ func ensureSnapshotBatch(ctx context.Context, deps ImportDeps, options ImportOpt
 	if options.OwnerOverrideID > 0 {
 		projectOwner = options.OwnerOverrideID
 	}
-	batch, _, err := deps.Batches.CreateBatchWithJob(ctx, projectID, projectOwner, model.TargetKindSFT, input, nil)
+	batch, _, err := deps.Batches.CreateBatchWithJob(ctx, projectID, projectOwner, targetKind, input, nil)
 	if err != nil {
 		return 0, fmt.Errorf("创建导入快照批次失败：%w", err)
-	}
-	if err := deps.Imports.MarkImportedBatchCompleted(ctx, batch.ID); err != nil {
-		return 0, err
 	}
 	return batch.ID, nil
 }
@@ -436,13 +455,32 @@ func importQuestions(ctx context.Context, deps ImportDeps, options ImportOptions
 	for {
 		rows, err := deps.Pool.Query(ctx, `
       SELECT q.id, q.content,
-             COALESCE(sr.chain_of_thought, ''), COALESCE(sr.answer, '')
+             COALESCE(sr.chain_of_thought, ''), COALESCE(sr.answer, ''),
+             COALESCE(rr.reasoning, ''), COALESCE(rr.answer_summary, ''),
+             COALESCE(gp.levels, '[]'::jsonb), COALESCE(gp.judge_prompt, ''),
+             COALESCE(gp.level_rubrics, '[]'::jsonb), COALESCE(gp.framework_ref, ''),
+             COALESCE(rw.score, 0), COALESCE(rw.status, ''), COALESCE(rw.object_key, '')
       FROM questions q
       LEFT JOIN LATERAL (
         SELECT chain_of_thought, answer FROM sft_records
         WHERE dataset_id = q.dataset_id AND question_id = q.id
         ORDER BY id DESC LIMIT 1
       ) sr ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT reasoning, answer_summary FROM reasoning_records
+        WHERE dataset_id = q.dataset_id AND question_id = q.id
+        ORDER BY id DESC LIMIT 1
+      ) rr ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT levels, judge_prompt, level_rubrics, framework_ref FROM grpo_prompts
+        WHERE dataset_id = q.dataset_id AND question_id = q.id
+        ORDER BY id DESC LIMIT 1
+      ) gp ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT score, status, object_key FROM reward_records
+        WHERE dataset_id = q.dataset_id AND question_id = q.id
+        ORDER BY id DESC LIMIT 1
+      ) rw ON TRUE
       WHERE q.dataset_id = $1 AND q.id > $2
       ORDER BY q.id
       LIMIT $3`, dataset.ID, cursor, options.BatchSize)
@@ -450,15 +488,26 @@ func importQuestions(ctx context.Context, deps ImportDeps, options ImportOptions
 			return counts, cursor, failures, err
 		}
 		type sourceItem struct {
-			ID        int64
-			Question  string
-			Reasoning string
-			Answer    string
+			ID           int64
+			Question     string
+			Reasoning    string
+			Answer       string
+			GRPOReason   string
+			GRPOAnswer   string
+			LevelsJSON   []byte
+			JudgePrompt  string
+			RubricsJSON  []byte
+			Framework    string
+			RewardScore  float64
+			RewardStatus string
+			RewardObject string
 		}
 		items := []sourceItem{}
 		for rows.Next() {
 			var item sourceItem
-			if err := rows.Scan(&item.ID, &item.Question, &item.Reasoning, &item.Answer); err != nil {
+			if err := rows.Scan(&item.ID, &item.Question, &item.Reasoning, &item.Answer,
+				&item.GRPOReason, &item.GRPOAnswer, &item.LevelsJSON, &item.JudgePrompt,
+				&item.RubricsJSON, &item.Framework, &item.RewardScore, &item.RewardStatus, &item.RewardObject); err != nil {
 				rows.Close()
 				return counts, cursor, failures, err
 			}
@@ -473,31 +522,97 @@ func importQuestions(ctx context.Context, deps ImportDeps, options ImportOptions
 		}
 
 		for _, item := range items {
-			// 逐条处理，每条最多 2 次往返（内容 hash 去重查询 + 追加版本）。
+			// Every source question gets a native batch item, including records that
+			// cannot become a sample. This preserves the migration fact without
+			// fabricating training content.
 			// 为什么不做批量：追加版本必须是一条独立事务（它要维护
 			// samples.latest_version 与只追加语义），批量化需要一个新的
 			// 批量追加 store API。已记录为已知限制：导入 10 万条会明显慢，
 			// 但本轮的验收项是「幂等 + 可续跑 + 可对账」，而不是吞吐。
 			counts.SourceItems++
 			cursor = item.ID
-			if strings.TrimSpace(item.Reasoning) == "" && strings.TrimSpace(item.Answer) == "" {
-				// 没有 SFT 内容的问题**不能**编一份内容出来：
-				// 伪造的推理/答案会进入训练数据，而它看起来完全正常。
-				counts.SkippedNoContent++
+			targetKind := dataset.TargetKind
+			if targetKind != model.TargetKindGRPO {
+				targetKind = model.TargetKindSFT
+			}
+			sampleKey := fmt.Sprintf("legacy-%d-%d", dataset.ID, item.ID)
+			batchItem, _, ensureErr := deps.Batches.EnsureBatchItem(ctx, batchID, projectID, sampleKey, nil)
+			if ensureErr != nil {
+				return counts, cursor, failures, ensureErr
+			}
+			if batchItem.Status == model.ItemStatusSucceeded || batchItem.Status == model.ItemStatusSkipped {
+				counts.SkippedExisting++
 				continue
 			}
-			payload := map[string]any{
-				"question":  item.Question,
-				"reasoning": item.Reasoning,
-				"answer":    item.Answer,
+			var payload map[string]any
+			if targetKind == model.TargetKindGRPO {
+				var levels []string
+				var rubrics []model.GrpoLevelRubric
+				if err := json.Unmarshal(item.LevelsJSON, &levels); err != nil {
+					counts.FailedItems++
+					failure := fmt.Errorf("GRPO levels 无法解析：%w", err)
+					_, _ = deps.Batches.CommitBatchItemFailure(ctx, batchID, batchItem.ID, model.ErrorClassInvalidJSON, failure.Error(), false)
+					appendFailure(&failures, item.ID, failure)
+					continue
+				}
+				if err := json.Unmarshal(item.RubricsJSON, &rubrics); err != nil {
+					counts.FailedItems++
+					failure := fmt.Errorf("GRPO level_rubrics 无法解析：%w", err)
+					_, _ = deps.Batches.CommitBatchItemFailure(ctx, batchID, batchItem.ID, model.ErrorClassInvalidJSON, failure.Error(), false)
+					appendFailure(&failures, item.ID, failure)
+					continue
+				}
+				if err := model.ValidateGRPOSamplePayload(levels, rubrics); err != nil || strings.TrimSpace(item.JudgePrompt) == "" {
+					counts.SkippedNoContent++
+					message := "旧 GRPO 题目缺少可迁移的评分提示或量表内容"
+					if err != nil {
+						message = "旧 GRPO 题目内容不满足新样本约束：" + err.Error()
+					}
+					if _, skipErr := deps.Batches.MarkBatchItemSkipped(ctx, batchID, batchItem.ID, message); skipErr != nil {
+						return counts, cursor, failures, skipErr
+					}
+					continue
+				}
+				payload = map[string]any{
+					"question": item.Question, "judgePrompt": item.JudgePrompt,
+					"levels": levels, "levelRubrics": rubrics, "frameworkRef": item.Framework,
+					"legacySource": DatasetSourceKey(dataset.ID), "legacyQuestionId": item.ID,
+				}
+			} else {
+				reasoning := item.Reasoning
+				answer := item.Answer
+				// Older datasets often stored only the reasoning table. Preserve it
+				// as the new SFT reasoning/answer fields instead of discarding it.
+				if strings.TrimSpace(reasoning) == "" {
+					reasoning = item.GRPOReason
+				}
+				if strings.TrimSpace(answer) == "" {
+					answer = item.GRPOAnswer
+				}
+				if strings.TrimSpace(reasoning) == "" && strings.TrimSpace(answer) == "" {
+					counts.SkippedNoContent++
+					if _, skipErr := deps.Batches.MarkBatchItemSkipped(ctx, batchID, batchItem.ID, "旧 SFT 题目没有 reasoning 或 answer，未伪造训练内容"); skipErr != nil {
+						return counts, cursor, failures, skipErr
+					}
+					continue
+				}
+				payload = map[string]any{
+					"question": item.Question, "reasoning": reasoning, "answer": answer,
+					"legacySource": DatasetSourceKey(dataset.ID), "legacyQuestionId": item.ID,
+				}
+			}
+			if item.RewardStatus != "" {
+				payload["legacyReward"] = map[string]any{
+					"score": item.RewardScore, "status": item.RewardStatus, "objectKey": item.RewardObject,
+				}
 			}
 			contentHash, hashErr := model.ContentHash(payload)
 			if hashErr != nil {
 				counts.FailedItems++
+				_, _ = deps.Batches.CommitBatchItemFailure(ctx, batchID, batchItem.ID, model.ErrorClassSchema, hashErr.Error(), false)
 				appendFailure(&failures, item.ID, hashErr)
 				continue
 			}
-			sampleKey := fmt.Sprintf("legacy-%d-%d", dataset.ID, item.ID)
 			exists, existsErr := deps.Imports.SampleVersionContentHashExists(ctx, projectID, sampleKey, contentHash)
 			if existsErr != nil {
 				return counts, cursor, failures, existsErr
@@ -505,19 +620,27 @@ func importQuestions(ctx context.Context, deps ImportDeps, options ImportOptions
 			if exists {
 				// 同一份内容已经在项目里：跳过（重复执行零重复导入的落点）。
 				counts.SkippedExisting++
+				if _, skipErr := deps.Batches.MarkBatchItemSkipped(ctx, batchID, batchItem.ID, "相同内容 hash 已存在，未重复追加版本"); skipErr != nil {
+					return counts, cursor, failures, skipErr
+				}
 				continue
 			}
-			_, _, appendErr := deps.Batches.AppendSampleVersion(ctx, store.AppendSampleVersionInput{
-				ProjectID: projectID, SampleKey: sampleKey, TargetKind: model.TargetKindSFT,
+			_, committed, appendErr := deps.Batches.CommitBatchItemSuccess(ctx, batchID, projectID, batchItem.ID, store.AppendSampleVersionInput{
+				ProjectID: projectID, SampleKey: sampleKey, TargetKind: targetKind,
 				Title: item.Question, Payload: payload, BatchID: &batchID,
 				Attempt: 1, CreatedBy: importOwnerID(options),
 			})
 			if appendErr != nil {
 				counts.FailedItems++
+				_, _ = deps.Batches.CommitBatchItemFailure(ctx, batchID, batchItem.ID, model.ErrorClassSchema, appendErr.Error(), false)
 				appendFailure(&failures, item.ID, appendErr)
 				continue
 			}
-			counts.ImportedVersions++
+			if committed {
+				counts.ImportedVersions++
+			} else {
+				counts.SkippedExisting++
+			}
 		}
 
 		// 每批保存进度：中途崩溃时续跑不必从头开始（也从侧面记录了一致性水位）。
@@ -553,6 +676,16 @@ func reconcileDataset(ctx context.Context, pool *pgxpool.Pool, dataset legacyDat
 	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM sft_records WHERE dataset_id = $1`, dataset.ID).
 		Scan(&result.SFTRecords); err != nil {
 		return result, err
+	}
+	for query, target := range map[string]*int64{
+		`SELECT COUNT(*) FROM reasoning_records WHERE dataset_id = $1`: &result.ReasoningRecords,
+		`SELECT COUNT(*) FROM grpo_prompts WHERE dataset_id = $1`:      &result.GRPOPrompts,
+		`SELECT COUNT(*) FROM reward_records WHERE dataset_id = $1`:    &result.RewardRecords,
+		`SELECT COUNT(*) FROM artifacts WHERE dataset_id = $1`:         &result.Artifacts,
+	} {
+		if err := pool.QueryRow(ctx, query, dataset.ID).Scan(target); err != nil {
+			return result, err
+		}
 	}
 	// 项目侧数量按**确定性 sample_key 前缀**统计：项目里可能还有用户后来自己生成的
 	// 内容，把它们算进「导入结果」会让对账数字对不上。

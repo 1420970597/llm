@@ -1,8 +1,8 @@
 # LLM Data Factory · Atelier 数据项目工作室
 
-一个面向企业级使用场景的 LLM 数据项目工作室，目标是把目标、版本化设计、独立试制、质量判断和固定发布串成可复核、可恢复、可交付的完整旅程。当前代码已落地主线壳、项目 API 和兼容入口；真实 provider、灰度回退和真实用户验收仍按 Issue #160 保持未完成，见[当前验收边界](#81-当前验收边界)。
+一个面向企业级使用场景的 LLM 数据项目工作室，目标是把目标、版本化设计、独立试制、质量判断和固定发布串成可复核、可恢复、可交付的完整旅程。
 
-本仓库当前产品主线是 **Atelier 数据项目工作室**，按 [Issue #160](https://github.com/1420970597/llm/issues/160) 与 [Discussion #159](https://github.com/1420970597/llm/discussions/159) 的契约推进。旧版控制台仍保留兼容入口，但不再作为新产品的信息架构标准；实现状态和未完成验收项以 `docs/plans/atelier-implementation.md` 为准。
+本仓库当前产品是 **Atelier 数据项目工作室**，按 [Issue #160](https://github.com/1420970597/llm/issues/160) 与 [Discussion #159](https://github.com/1420970597/llm/discussions/159) 的契约推进。旧 URL 仅作为书签兼容重定向，不再渲染第二套产品界面；实现边界和迁移审计以 `docs/plans/atelier-implementation.md` 与 `docs/plans/legacy-migration-report.md` 为准。
 
 ## Atelier 重设计实拍
 
@@ -38,8 +38,7 @@
 | 导出映射编辑器 | 字段增删、表达式、JSON 选项校验和复制内置映射 | ![映射编辑器](docs/screenshots/atelier-redesign/admin-mapping-editor-3210-desktop.png) |
 | 普通用户移动端 | 390px 抽屉导航与角色隔离 | ![普通用户移动端](docs/screenshots/atelier-redesign/capabilities-user-3210-mobile.png) |
 
-登录、旧控制台兼容页和设计图册仍保留在 `docs/screenshots/` 与
-`docs/design/2026-09-21-data-studio/`，但不作为 Atelier 的视觉验收证据。
+设计图册保留在 `docs/design/2026-09-21-data-studio/`；运行截图只使用 3210 的 Atelier 页面。
 
 系统支持：
 - 用户输入目标数据集规模与关键词
@@ -349,7 +348,7 @@ curl http://127.0.0.1:3210/api/v1/admin/generation-strategies
 6. 在“发布”冻结候选范围，逐项处理 blocker，再构建带 manifest、hash 和数据卡的 release。
 7. 从“交付库”按具体 `releaseId` 下载不可变制品；后续项目修改不会改变历史下载。
 
-SFT 与 GRPO 共用项目壳和批次生命周期，但 GRPO 的档位、逐档判据、质量维度和 JSONL 字段保持独立；不会用 SFT 的 `answer/reasoning` 或固定统计填充 GRPO。旧 Dataset/Console 链路只作为兼容读写边界，迁移状态与未等价能力见[兼容入口与迁移边界](#辅助工作台与旧能力迁移边界)。
+SFT 与 GRPO 共用项目壳和批次生命周期，但 GRPO 的档位、逐档判据、质量维度和 JSONL 字段保持独立；不会用 SFT 的 `answer/reasoning` 或固定统计填充 GRPO。旧数据通过可审计导入台账进入原生项目、批次、batch item 和 sample version；无法生成合法样本的来源对象会保留为 skipped/failed 事实，不伪造训练内容。
 
 ### 6.2 系统治理流程
 管理员在连接、存储、成员与角色、预算和帮助页面维护工作区；管理员身份不自动绕过项目成员授权。
@@ -447,12 +446,12 @@ SFT 与 GRPO 共用项目壳和批次生命周期，但 GRPO 的档位、逐档�
 - API 镜像构建
 - Worker 镜像构建
 - 前端镜像构建
-- PostgreSQL + Redis + MinIO + API + Worker 的 Compose 健康状态与旧版兼容链路烟雾验证（不等同于 Atelier 的真实 provider 全旅程）
+- PostgreSQL + Redis + MinIO + API + Worker 的 Compose 健康状态与 3210 Atelier 真实浏览器链路烟雾验证
 - 通过 `http://127.0.0.1:3210/api/...` 的同源代理验证
 - 登录鉴权：`/api/v1/auth/login`、`/api/v1/auth/me`、`/api/v1/auth/logout`
 - 统一控制台真实链路脚本：`python3 scripts/frontend_same_origin_smoke.py http://127.0.0.1:3210`
 
-已验证的旧版兼容业务链路包括：
+已验证的原生 Atelier 业务链路包括：
 - 管理员角色配置模型提供方
 - 管理员角色配置存储配置
 - 管理员角色配置生成策略
@@ -503,10 +502,10 @@ Atelier 不是旧控制台换一组菜单名称，而是按用户决策重新组
 | 项目 | 数据/质量 | 内容只读，判断追加记录，实验范围冻结 |
 | 项目 | 发布 | 阻塞带证据链接，发布后 manifest/hash 固定 |
 
-登录、旧任务阶段和管理员治理页仍作为兼容入口存在，但不改变 Atelier 的主信息架构。
+旧任务阶段 URL 只做只读映射或重定向，不提供第二套可写工作台。
 
-### 9.2 兼容入口与角色策略
-- 旧版兼容入口仍保留，Atelier 主壳按项目成员能力显示页面
+### 9.2 URL 兼容与角色策略
+- 旧 URL 仅用于书签迁移；Atelier 主壳按项目成员能力显示页面
 - 管理员可以进入系统治理页，但项目内容仍由服务端项目授权决定
 - 两种角色共用同一个前端应用；能力位只辅助 UI，API 授权是最终边界
 - 默认不预置 Atelier 样本或发布数据，空状态显示真实 API 结果

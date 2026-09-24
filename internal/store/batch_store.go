@@ -954,8 +954,15 @@ func validateSamplePayload(targetKind string, payload any) error {
 
 	var errs model.FieldErrors
 	required := model.RequiredSampleFields(targetKind)
+	aliases := map[string]string{
+		"judge_prompt":  "judgePrompt",
+		"level_rubrics": "levelRubrics",
+	}
 	for _, field := range required {
 		value, ok := decoded[field]
+		if !ok {
+			value, ok = decoded[aliases[field]]
+		}
 		if !ok || len(value) == 0 || string(value) == "null" {
 			errs = append(errs, model.FieldError{Field: field, Message: "必填"})
 		}
@@ -982,8 +989,12 @@ func validateSamplePayload(targetKind string, payload any) error {
 			}
 		}
 		var rubrics []model.GrpoLevelRubric
-		if raw, ok := decoded["level_rubrics"]; ok {
-			if err := json.Unmarshal(raw, &rubrics); err != nil {
+		rubricRaw, rubricOK := decoded["level_rubrics"]
+		if !rubricOK {
+			rubricRaw, rubricOK = decoded["levelRubrics"]
+		}
+		if rubricOK {
+			if err := json.Unmarshal(rubricRaw, &rubrics); err != nil {
 				errs = append(errs, model.FieldError{
 					Field:   "level_rubrics",
 					Message: "必须是对象数组（每档含判据与边界例）",
@@ -1230,9 +1241,9 @@ func (s *BatchStore) CommitBatchItemSuccess(ctx context.Context, batchID, projec
 	// 单元置为成功并指向产出（同一事务）。
 	if _, err := tx.Exec(ctx, `
     UPDATE batch_items
-    SET status = 'succeeded', sample_version_id = $2, error_class = '', error_message = '',
+    SET status = 'succeeded', sample_id = $3, sample_version_id = $2, error_class = '', error_message = '',
         finished_at = NOW(), updated_at = NOW()
-    WHERE id = $1`, itemID, version.ID); err != nil {
+    WHERE id = $1`, itemID, version.ID, version.SampleID); err != nil {
 		return model.SampleVersion{}, false, err
 	}
 
@@ -1335,6 +1346,26 @@ func (s *BatchStore) CommitBatchItemFailure(ctx context.Context, batchID, itemID
         finished_at = NOW(), updated_at = NOW()
     WHERE id = $1 AND batch_id = $2 AND status <> 'succeeded'`,
 		itemID, batchID, errorClass, message, retryable)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// MarkBatchItemSkipped records a source unit that cannot produce a sample
+// without inventing content (for example a legacy question with no answer).
+// Skipped is a terminal, auditable state and is intentionally distinct from a
+// provider failure: it must not be retried or counted as a generated sample.
+func (s *BatchStore) MarkBatchItemSkipped(ctx context.Context, batchID, itemID int64, message string) (bool, error) {
+	if len([]rune(message)) > 1000 {
+		message = string([]rune(message)[:1000])
+	}
+	tag, err := s.db.Exec(ctx, `
+    UPDATE batch_items
+    SET status = 'skipped', error_class = 'schema_violation', error_message = $3,
+        retryable = FALSE, finished_at = NOW(), updated_at = NOW()
+    WHERE id = $1 AND batch_id = $2 AND status NOT IN ('succeeded', 'skipped')`,
+		itemID, batchID, message)
 	if err != nil {
 		return false, err
 	}

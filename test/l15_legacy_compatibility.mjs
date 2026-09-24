@@ -16,6 +16,7 @@ const app = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'App.tsx'), 
 const routes = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'legacyCapabilities.ts'), 'utf8')
 const studioRoutes = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'routes.ts'), 'utf8')
 const studioTree = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'StudioRoutes.tsx'), 'utf8')
+const capabilityNotice = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'CapabilityNotice.tsx'), 'utf8')
 const cleaningView = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'views', 'CleaningView.tsx'), 'utf8')
 const toolPages = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'pages', 'LegacyToolPages.tsx'), 'utf8')
 const projectsPage = readFileSync(path.join(root, 'apps', 'web-user', 'src', 'studio', 'pages', 'ProjectsPages.tsx'), 'utf8')
@@ -93,15 +94,11 @@ record(
   '保留可达性但不再渲染兼容产品页',
 )
 record(
-  'Atelier 下钻旧阶段时保留任务上下文',
-  studioTree.includes('const withProject = (next: string) => `/projects?next=') &&
-    projectsPage.includes('const requestedProjectId = parseProjectResourceId(searchParams.get(\'projectId\'))') &&
-    projectsPage.includes('studioApi.getProject(requestedProjectId)') &&
-    projectsPage.includes('const target = projectHref(projectTarget, response.id)') &&
-    projectsPage.includes('context.delete(\'next\')') &&
-    projectsPage.includes('context.delete(\'projectId\')') &&
-    projectsPage.includes('navigate(query ? `${target}?${query}` : target)'),
-  '兼容链接按项目 ID 直查，不依赖列表请求；目标跳转保留非路由控制参数，避免丢失旧数据集上下文',
+  'Atelier 不再暴露旧控制台下钻操作',
+  !studioTree.includes('const withProject = (next: string) => `/projects?next=') &&
+    !capabilityNotice.includes('legacyHref') &&
+    !capabilityNotice.includes('旧控制台'),
+  '旧 URL 仅由顶层兼容路由重定向或只读桥接，产品页面不提供第二套旧操作入口',
 )
 record(
   '清洗原生工作台不会把流程按钮送回旧壳',
@@ -169,8 +166,7 @@ record(
 record(
   '旧详情仍可显式打开兼容视图',
     app.includes('path="/console/tasks/:taskId/legacy" element={renderTaskDetail()}') &&
-    app.includes('navigate(`/console/tasks/${dataset.id}/legacy`)') &&
-    app.includes('>旧版操作</Button>') &&
+    !app.includes('>旧版操作</Button>') &&
     app.includes("const legacyRoute = `${route.replace(/\\/$/, '')}/legacy`") &&
     app.includes('path="/console/domains/legacy" element={renderDomains()}') &&
     app.includes('path="/console/exports/legacy" element={renderExportStage()}'),

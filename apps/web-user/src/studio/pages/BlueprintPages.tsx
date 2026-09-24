@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button, Card, Empty, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, Copy, History, Save } from 'lucide-react'
@@ -148,6 +148,7 @@ export function BlueprintPage() {
   const [compareVersion, setCompareVersion] = useState<number | null>(null)
   const [canEdit, setCanEdit] = useState(false)
   const [choices, setChoices] = useState<BlueprintChoices>({ versions: {}, connections: [] })
+  const bootstrapAttempted = useRef(false)
 
   // `?node=` 与 `?version=` 都来自 URL：分享链接要能指向同一个节点与版本。
   const activeNodeKey = searchParams.get('node') ?? ''
@@ -170,7 +171,8 @@ export function BlueprintPage() {
       const list = versionsResponse.data.items ?? []
       setVersions(list)
       setHeadRevision(versionsResponse.data.document?.revision ?? 0)
-      setCanEdit(versionsResponse.data.canEdit === true)
+      const editable = versionsResponse.data.canEdit === true
+      setCanEdit(editable)
       const versionChoices = (response: VersionsResponse): BlueprintChoice[] =>
         (response.items ?? []).map((item) => ({
           value: String(item.id),
@@ -192,6 +194,21 @@ export function BlueprintPage() {
           meta: `${item.model}${item.isActive ? '' : ' · 已停用'}`,
         })),
       })
+
+      // Projects created before native document bootstrap may have an empty
+      // blueprint catalogue. Repair that state through the real API once,
+      // then load the resulting version IDs into the selectors.
+      if (list.length === 0 && editable && !bootstrapAttempted.current) {
+        bootstrapAttempted.current = true
+        try {
+          await client.post(`${projectPath(scope.projectId)}/documents/bootstrap`)
+          await load(versionOverride)
+          return
+        } catch {
+          // Keep the honest empty state if the project is archived or the
+          // server cannot bootstrap; the page remains retryable.
+        }
+      }
 
       // 保存后调用 load(null) 时不能依赖仍捕获着旧 URL 的 viewingVersion。
       const requestedVersion = versionOverride === undefined ? viewingVersion : versionOverride
