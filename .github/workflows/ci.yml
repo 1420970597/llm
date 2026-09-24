@@ -96,7 +96,7 @@ jobs:
         run: |
           set -uo pipefail
           failed=0
-          for t in stage_routes silent_guards capability_entries legacy_compatibility capability_coverage markdown_ui detail_context auth_redirect nmx_params \
+          for t in stage_routes silent_guards capability_entries legacy_compatibility capability_coverage markdown_ui recipes_empty_state detail_context auth_redirect nmx_params \
                    artifact_download dataset_status app_ux cleaning_ux studio_shell studio_entrypoint studio_wizard \
                    studio_review studio_browser_router offline_queue team_permissions; do
             f="test/l15_${t}.mjs"

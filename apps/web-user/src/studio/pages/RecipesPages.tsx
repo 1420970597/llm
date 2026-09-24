@@ -98,8 +98,20 @@ export function RecipesListPage() {
           <Spin tip="正在加载方案" />
         </div>
       ) : recipes.length === 0 ? (
-        <Card className="console-card" bodyStyle={{ padding: 24 }}>
-          <Empty description="还没有方案。方案由已经跑通的项目保存而来（设计页 → 保存为方案）。" />
+        <Card className="console-card" bodyStyle={{ padding: 24 }} data-recipes-empty-state="true">
+          <Empty
+            description={(
+              <div className="flex flex-col items-center gap-2">
+                <Text>方案库暂时没有可用方案</Text>
+                <Text type="tertiary" size="small">
+                  从既有项目另存为方案尚未开放；当前可以先在数据项目中维护蓝图与版本。
+                </Text>
+                <Button size="small" theme="solid" type="primary" onClick={() => navigate('/projects')} data-recipes-empty-cta="true">
+                  打开数据项目
+                </Button>
+              </div>
+            )}
+          />
         </Card>
       ) : (
         <div className="comparison-table" data-recipe-table="true">
