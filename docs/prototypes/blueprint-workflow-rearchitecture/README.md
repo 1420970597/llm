@@ -43,7 +43,7 @@ Issue #190（批次「已完成」却只产出 1/12）与本次改造**是同一
 
 ### 1.1 蓝图不是工作流：可测量的证据
 
-![当前蓝图画布（纵向卡片列表，无连线、无缩放）](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/screenshots/issue-165-197-current/11-current-blueprint-canvas-desktop.png)
+![当前蓝图画布（纵向卡片列表，无连线、无缩放）](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/screenshots/issue-165-197-current/11-current-blueprint-canvas-desktop.png)
 
 `baseline.json` 中的实测值（不是印象）：
 
@@ -56,14 +56,14 @@ Issue #190（批次「已完成」却只产出 1/12）与本次改造**是同一
 | `hasCanvasZoom` | **false** | 无缩放/适应控件 |
 | 生成节点页 `docHeight` | **2437px**（视口 1000px） | 单节点配置把一个页面撑成 2.4 屏 |
 
-![生成节点：单页 2437px](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/screenshots/issue-165-197-current/12-current-blueprint-generation-node-desktop.png)
+![生成节点：单页 2437px](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/screenshots/issue-165-197-current/12-current-blueprint-generation-node-desktop.png)
 
 **判据**：#197 第 11 条说「改为模仿 dify 的工作流界面设计，把蓝图画布拉宽，左侧展示蓝图流程，点击某个节点在右侧（同一张画布里）展示这个工作流信息」。
 上表六项里有五项为「否」——这不是审美判断，是结构事实。
 
 ### 1.2 目标结构（m×n×z）没有自己的载体
 
-![当前覆盖矩阵](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/screenshots/issue-165-197-current/13-current-coverage-matrix-desktop.png)
+![当前覆盖矩阵](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/screenshots/issue-165-197-current/13-current-coverage-matrix-desktop.png)
 
 覆盖矩阵能看到「领域 / 方向 / 配额」，但：
 
@@ -73,7 +73,7 @@ Issue #190（批次「已完成」却只产出 1/12）与本次改造**是同一
 
 ### 1.3 「数据」与「审阅」渲染同一页面
 
-![/p/p_1/data](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/screenshots/issue-165-197-current/14a-current-project-data-desktop.png)
+![/p/p_1/data](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/screenshots/issue-165-197-current/14a-current-project-data-desktop.png)
 
 `baseline.json` 中两条路由的 `bodyFingerprint` 前 400 字**逐字相同**，标题同为「样本工作区 / 样本内容、版本来源与审阅队列」。
 这是 #194 与 #197 第 12 条共同指向的事实：用户无法预期点进去看到什么。
@@ -108,7 +108,7 @@ Issue #190（批次「已完成」却只产出 1/12）与本次改造**是同一
 
 ### 2.1 S01 目标结构：让 m×n×z 成为主体
 
-![S01 目标结构树（桌面）](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/prototypes/blueprint-workflow-rearchitecture/shots/s01-target-structure-desktop.png)
+![S01 目标结构树（桌面）](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/prototypes/blueprint-workflow-rearchitecture/shots/s01-target-structure-desktop.png)
 
 **设计要点**：
 
@@ -116,11 +116,11 @@ Issue #190（批次「已完成」却只产出 1/12）与本次改造**是同一
 - 缺口方向（`source = none` 或 `quota = 0`）用琥珀色行 + 徽标显式标出，**默认策略是拒绝生成**，不是静默退回模板；
 - 计划量只有一处定义，向导 / 蓝图 / 批次 / 数据统计都读它（消除 #190 的"两个互不校验的输入"）。
 
-![S01 移动端](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/prototypes/blueprint-workflow-rearchitecture/shots/s01-target-structure-mobile.png)
+![S01 移动端](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/prototypes/blueprint-workflow-rearchitecture/shots/s01-target-structure-mobile.png)
 
 ### 2.2 S02 图工作流：Dify 式左流程 + 右检查器 + 画布内小步骤
 
-![S02 图工作流画布（桌面）](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/prototypes/blueprint-workflow-rearchitecture/shots/s02-workflow-canvas-desktop.png)
+![S02 图工作流画布（桌面）](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/prototypes/blueprint-workflow-rearchitecture/shots/s02-workflow-canvas-desktop.png)
 
 **这一屏直接回应 #197 第 11 条的四项要求**：
 
@@ -141,11 +141,11 @@ Issue #190（批次「已完成」却只产出 1/12）与本次改造**是同一
 | 切分算法、块长度 | 文档级（② 素材来源） | 第六类版本化文档 | 只影响之后导入与生成的批次 |
 | 并发数、预算上限、批次大小 | 运行级 | 批次记录（**不属于蓝图**） | 只影响该次执行 |
 
-![S02 移动端（画布纵向堆叠、检查器下移）](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/prototypes/blueprint-workflow-rearchitecture/shots/s02-workflow-canvas-mobile.png)
+![S02 移动端（画布纵向堆叠、检查器下移）](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/prototypes/blueprint-workflow-rearchitecture/shots/s02-workflow-canvas-mobile.png)
 
 ### 2.3 S03 素材来源：第六类版本化文档
 
-![S03 素材来源（桌面）](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/prototypes/blueprint-workflow-rearchitecture/shots/s03-source-documents-desktop.png)
+![S03 素材来源（桌面）](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/prototypes/blueprint-workflow-rearchitecture/shots/s03-source-documents-desktop.png)
 
 **严格按第三轮勘误修正的三点**：
 
@@ -155,7 +155,7 @@ Issue #190（批次「已完成」却只产出 1/12）与本次改造**是同一
 
 ### 2.4 S04 生产：数据集预览 + 自动分析（#197 第 3、13 条）
 
-![S04 数据集预览与分析（桌面）](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/prototypes/blueprint-workflow-rearchitecture/shots/s04-dataset-preview-desktop.png)
+![S04 数据集预览与分析（桌面）](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/prototypes/blueprint-workflow-rearchitecture/shots/s04-dataset-preview-desktop.png)
 
 - **结构预览**：领域 › 方向 → 计划 z / 已产出 / 接地素材 / 状态；
 - **内容预览**：样本的问题 / 推理 / 答案 + 来源（素材块、版本、模型）；
@@ -164,7 +164,7 @@ Issue #190（批次「已完成」却只产出 1/12）与本次改造**是同一
 
 ### 2.5 S05 数据 / 审阅拆分（#197 第 12 条）
 
-![S05 数据与审阅](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/prototypes/blueprint-workflow-rearchitecture/shots/s05-data-review-desktop.png)
+![S05 数据与审阅](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/prototypes/blueprint-workflow-rearchitecture/shots/s05-data-review-desktop.png)
 
 | 入口 | 回答的问题 | 默认排序 | 批量动作 |
 |---|---|---|---|
@@ -173,7 +173,7 @@ Issue #190（批次「已完成」却只产出 1/12）与本次改造**是同一
 
 ### 2.6 S06 质量实验室（#197 第 9、14 条）
 
-![S06 质量实验](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/prototypes/blueprint-workflow-rearchitecture/shots/s06-quality-experiment-desktop.png)
+![S06 质量实验](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/prototypes/blueprint-workflow-rearchitecture/shots/s06-quality-experiment-desktop.png)
 
 - 「分子 / 分母」→「**被评测数据集：68 条**（41 通过 / 18 需修改 / 9 隔离）」；
 - 新建实验时生成者与裁判模型都从**连接目录下拉**选，停用的连接不出现；
@@ -181,11 +181,11 @@ Issue #190（批次「已完成」却只产出 1/12）与本次改造**是同一
 
 ### 2.7 S07 其余体验修正（#197 第 7、8、10、15、16、17 条）
 
-![S07 体验修正五组](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/prototypes/blueprint-workflow-rearchitecture/shots/s07-ux-fixes-desktop.png)
+![S07 体验修正五组](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/prototypes/blueprint-workflow-rearchitecture/shots/s07-ux-fixes-desktop.png)
 
 ### 2.8 S09 问题生成对比：整套改造的收口处
 
-![S09 问题生成对比](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/prototypes/blueprint-workflow-rearchitecture/shots/s09-grounded-questions-desktop.png)
+![S09 问题生成对比](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/prototypes/blueprint-workflow-rearchitecture/shots/s09-grounded-questions-desktop.png)
 
 | 现状（`questionFor` 模板） | 目标（素材接地生成） |
 |---|---|
@@ -247,7 +247,7 @@ Issue #190（批次「已完成」却只产出 1/12）与本次改造**是同一
 
 ## 4. 五大界面状态定义（#197 第 3、4、10、16、17 条的结构性回应）
 
-![S08 五大界面状态](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/prototypes/blueprint-workflow-rearchitecture/shots/s08-five-states-desktop.png)
+![S08 五大界面状态](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/prototypes/blueprint-workflow-rearchitecture/shots/s08-five-states-desktop.png)
 
 | 状态 | 触发条件 | 界面表现 | 行动出口 | 禁止 |
 |---|---|---|---|---|
@@ -257,7 +257,7 @@ Issue #190（批次「已完成」却只产出 1/12）与本次改造**是同一
 | **Error** | 解析失败 / 409 版本冲突 / 校验 422 | 红色 Banner 给**可操作原因**（含支持格式清单）；409 提示「已被某某更新为 v5，你的草稿已保留」 | 「重试」「移除该来源」「刷新并比较」 | 部分失败阻断整体；乐观锁冲突丢草稿 |
 | **Edge-Case** | 超长名 / 超大文件 / 巨量块 / 深层级 / 390px 窄屏 | 文件名中段省略 + 悬停全名；>200MB 后台解析可离开；块数 >10 万显示「约 12.4 万」；来源 >50 条虚拟滚动 | 「后台解析，可离开页面」「搜索来源」 | 任何被控件边缘遮盖的文字；整页横向滚动（移动端必须 `overflowX = 0`） |
 
-![S08 移动端](https://raw.githubusercontent.com/1420970597/llm/BRANCH/docs/prototypes/blueprint-workflow-rearchitecture/shots/s08-five-states-mobile.png)
+![S08 移动端](https://raw.githubusercontent.com/1420970597/llm/docs/TASK-165-197-blueprint-workflow-rearchitecture/docs/prototypes/blueprint-workflow-rearchitecture/shots/s08-five-states-mobile.png)
 
 ---
 
