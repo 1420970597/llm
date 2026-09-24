@@ -100,7 +100,7 @@ func ErrorClassAction(errorClass string) string {
 	case ErrorClassSchema:
 		return "内容结构不符合要求，请检查输出 schema 与标准步骤"
 	case ErrorClassConfig:
-		return "生成配置有问题（例如缺少连接），请到连接设置补齐后新建批次"
+		return "生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次"
 	case ErrorClassProvider:
 		return "供应商返回错误，恢复失败项可重试；持续失败请联系管理员检查连接"
 	case ErrorClassInternal:

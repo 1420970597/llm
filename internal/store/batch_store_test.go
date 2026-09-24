@@ -93,6 +93,9 @@ func newBatchFixture(t *testing.T) batchFixture {
 
 	// 蓝图放在最后：它引用上面几个版本。
 	blueprintPayload := blueprintPayload(coverageVersionID, standardVersionID)
+	// 普通批次现在要求在入队前冻结一个可执行的生成配置；这里使用
+	// 非秘密的测试连接标识即可，真实凭证解析属于 worker/连接 store。
+	blueprintPayload.Nodes.Generation.ModelConnectionID = 1
 	blueprintPayload.Nodes.Rules.QualityPolicyVersionID = policyVersionID
 	blueprintPayload.Nodes.Delivery.MappingVersionID = mappingVersionID
 	blueprintPayload.Nodes.Delivery.Format = model.ExportFormatJSONL
@@ -104,6 +107,61 @@ func newBatchFixture(t *testing.T) batchFixture {
 		blueprintID: blueprintVersionID, standardID: standardVersionID,
 		coverageID: coverageVersionID, mappingID: mappingVersionID, policyID: policyVersionID,
 	}
+}
+
+// TestBatchRejectsIncompleteExecutionSnapshot verifies that an incomplete
+// production request fails before batches/jobs can be persisted.
+func TestBatchRejectsIncompleteExecutionSnapshot(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+
+	_, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		model.CreateBatchInput{Purpose: model.BatchPurposePilot, UnitCount: 2})
+	if err == nil {
+		t.Fatal("缺少蓝图版本的生产批次必须在入队前被拒绝")
+	}
+	fieldErrors, ok := model.HasFieldErrors(err)
+	if !ok || len(fieldErrors) == 0 || fieldErrors[0].Field != "blueprintVersionId" {
+		t.Fatalf("缺少蓝图必须返回 blueprintVersionId 字段错误，实际 %v", err)
+	}
+
+	invalidBlueprint := blueprintPayload(fixture.coverageID, fixture.standardID)
+	invalidBlueprint.Nodes.Generation.ModelConnectionID = 0
+	invalidBlueprint.Nodes.Rules.QualityPolicyVersionID = fixture.policyID
+	invalidBlueprint.Nodes.Delivery.MappingVersionID = fixture.mappingID
+	invalidBlueprint.Nodes.Delivery.Format = model.ExportFormatJSONL
+	_, invalidVersion, err := fixture.documents.SaveVersion(ctx, fixture.projectID, model.KindBlueprint, fixture.editorID,
+		SaveDocumentVersionInput{ExpectedRevision: 2, ChangeReason: "缺少连接", Payload: invalidBlueprint})
+	if err != nil {
+		t.Fatalf("save invalid blueprint: %v", err)
+	}
+	_, err = fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		model.CreateBatchInput{Purpose: model.BatchPurposePilot, BlueprintVersionID: invalidVersion.ID, UnitCount: 2})
+	if err == nil {
+		t.Fatal("缺少模型连接的生产批次必须在入队前被拒绝")
+	}
+	fieldErrors, ok = model.HasFieldErrors(err)
+	if !ok || !hasFieldError(fieldErrors, "generationConfig.modelConnectionId") {
+		t.Fatalf("缺少模型连接必须返回字段错误，实际 %v", err)
+	}
+
+	var count int
+	if err := fixture.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM batches WHERE project_id = $1`, fixture.projectID).Scan(&count); err != nil {
+		t.Fatalf("count batches: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("被拒请求不得写入 queued 批次，实际已有 %d 条", count)
+	}
+}
+
+func hasFieldError(errs model.FieldErrors, field string) bool {
+	for _, err := range errs {
+		if err.Field == field {
+			return true
+		}
+	}
+	return false
 }
 
 // createBatchInput 组装一份引用完整快照的创建请求。
@@ -200,6 +258,7 @@ func TestBatchSnapshotIsFrozenAgainstNewBlueprint(t *testing.T) {
 
 	// 保存一个新蓝图版本，把并发从 8 改成 16。
 	newBlueprint := blueprintPayload(fixture.coverageID, fixture.standardID)
+	newBlueprint.Nodes.Generation.ModelConnectionID = 1
 	newBlueprint.Nodes.Rules.QualityPolicyVersionID = fixture.policyID
 	newBlueprint.Nodes.Delivery.MappingVersionID = fixture.mappingID
 	newBlueprint.Nodes.Delivery.Format = model.ExportFormatJSONL
@@ -850,6 +909,7 @@ func TestConcurrentBatchCreationDoesNotShareState(t *testing.T) {
 
 	// 两份蓝图，并发数不同 —— 若扫描缓冲被共享，配置会串。
 	other := blueprintPayload(fixture.coverageID, fixture.standardID)
+	other.Nodes.Generation.ModelConnectionID = 1
 	other.Nodes.Rules.QualityPolicyVersionID = fixture.policyID
 	other.Nodes.Delivery.MappingVersionID = fixture.mappingID
 	other.Nodes.Delivery.Format = model.ExportFormatJSONL

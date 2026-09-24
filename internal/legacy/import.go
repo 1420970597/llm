@@ -433,7 +433,7 @@ func ensureSnapshotBatch(ctx context.Context, deps ImportDeps, options ImportOpt
 	if options.OwnerOverrideID > 0 {
 		projectOwner = options.OwnerOverrideID
 	}
-	batch, _, err := deps.Batches.CreateBatchWithJob(ctx, projectID, projectOwner, targetKind, input, nil)
+	batch, err := deps.Batches.CreateImportedSnapshotBatch(ctx, projectID, projectOwner, targetKind, input)
 	if err != nil {
 		return 0, fmt.Errorf("创建导入快照批次失败：%w", err)
 	}

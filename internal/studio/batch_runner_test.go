@@ -109,11 +109,12 @@ func pointer(value int64) *int64 { return &value }
 // ---------------------------------------------------------------------------
 
 type runnerFixture struct {
-	pool      *pgxpool.Pool
-	projectID int64
-	userID    int64
-	runner    *BatchRunner
-	batches   *store.BatchStore
+	pool        *pgxpool.Pool
+	projectID   int64
+	userID      int64
+	blueprintID int64
+	runner      *BatchRunner
+	batches     *store.BatchStore
 }
 
 // newRunnerFixture 建工作区/用户/项目/三类文档版本，返回可用的 runner。
@@ -169,9 +170,21 @@ func newRunnerFixture(t *testing.T, generator UnitGenerator) runnerFixture {
 			},
 		},
 	}
-	if _, _, err := documents.SaveVersion(ctx, project.ID, model.KindCoverage, userID,
-		store.SaveDocumentVersionInput{ChangeReason: "初版覆盖", Payload: coveragePayload}); err != nil {
+	_, coverageVersion, err := documents.SaveVersion(ctx, project.ID, model.KindCoverage, userID,
+		store.SaveDocumentVersionInput{ChangeReason: "初版覆盖", Payload: coveragePayload})
+	if err != nil {
 		t.Fatalf("save coverage: %v", err)
+	}
+	blueprintPayload := model.BlueprintPayload{SchemaVersion: model.SchemaVersionFor(model.KindBlueprint)}
+	blueprintPayload.Nodes.Coverage.CoverageVersionID = coverageVersion.ID
+	blueprintPayload.Nodes.Generation.ModelConnectionID = 1
+	blueprintPayload.Nodes.Generation.SchemaVersion = model.SampleSchemaSFT
+	blueprintPayload.Nodes.Generation.Concurrency = 2
+	blueprintPayload.Nodes.Generation.MaxTokens = 1024
+	_, blueprintVersion, err := documents.SaveVersion(ctx, project.ID, model.KindBlueprint, userID,
+		store.SaveDocumentVersionInput{ChangeReason: "生成测试蓝图", Payload: blueprintPayload})
+	if err != nil {
+		t.Fatalf("save blueprint: %v", err)
 	}
 
 	t.Cleanup(func() {
@@ -182,7 +195,7 @@ func newRunnerFixture(t *testing.T, generator UnitGenerator) runnerFixture {
 
 	batches := store.NewBatchStore(pool)
 	return runnerFixture{
-		pool: pool, projectID: project.ID, userID: userID, batches: batches,
+		pool: pool, projectID: project.ID, userID: userID, blueprintID: blueprintVersion.ID, batches: batches,
 		runner: &BatchRunner{
 			Batches: batches, Documents: documents, Usage: store.NewUsageStore(pool),
 			Generator: generator,
@@ -195,14 +208,14 @@ func (fixture runnerFixture) createBatch(t *testing.T, units int) model.Batch {
 	t.Helper()
 	ctx := context.Background()
 	versions, err := store.NewDocumentStore(fixture.pool).ListVersions(ctx, fixture.projectID,
-		model.KindCoverage, store.DefaultLogicalID, 5)
+		model.KindBlueprint, store.DefaultLogicalID, 5)
 	if err != nil || len(versions) == 0 {
 		t.Fatalf("read coverage versions: %v", err)
 	}
 	input := model.CreateBatchInput{
-		Purpose:           model.BatchPurposePilot,
-		CoverageVersionID: versions[0].ID,
-		UnitCount:         units,
+		Purpose:            model.BatchPurposePilot,
+		BlueprintVersionID: fixture.blueprintID,
+		UnitCount:          units,
 	}
 	input.Normalize()
 	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.userID, model.TargetKindSFT, input)
