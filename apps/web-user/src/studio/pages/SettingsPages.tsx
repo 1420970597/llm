@@ -663,6 +663,7 @@ export function HelpPage() {
   const highRiskActions = [
     '启动运行、评估或发布前确认目标项目、输入版本与预算。',
     '超时但可能已计费的请求显示为未知费用；先核对运行记录，不要盲目重跑。',
+    '旧版兼容操作是否允许提交，以服务端 LEGACY_WRITES_FROZEN 配置为准；历史资产页默认只读。',
   ]
   return (
     <div className="console-page" data-studio-page="help">

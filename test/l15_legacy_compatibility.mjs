@@ -179,12 +179,11 @@ record(
   '原旧页面作为显式兼容子路由保留，默认深链则执行 T31 桥接',
 )
 record(
-  '历史资产页只承载迁移对象浏览',
-  !historyPage.includes('Modal.confirm({') &&
-    !historyPage.includes('打开兼容操作') &&
-    historyPage.includes('onDatasetChange?.(next)') &&
-    historyPage.includes('client.get<LegacyProjectMapping>'),
-  '旧版写操作不再从产品页暴露，历史对象通过真实 GET 与项目映射查看',
+  '历史资产页将可写兼容操作与只读浏览明确分离',
+  historyPage.includes('Modal.confirm({') && historyPage.includes('LEGACY_WRITES_FROZEN 配置') &&
+    historyPage.includes("okText: '打开兼容操作'") && historyPage.includes("cancelText: '留在历史页'") &&
+    historyPage.includes('onDatasetChange?.(next)') && historyPage.includes('兼容操作</Button>'),
+  '旧版操作必须二次确认，切换历史数据集同步 URL，浏览/下载仍是只读 GET',
 )
 record(
   '管理员旧入口可直达治理标签',

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
-import { Button, Card, Empty, Select, Spin, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Button, Card, Empty, Modal, Select, Spin, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui'
 import {
   AlertTriangle,
   Archive,
@@ -633,6 +633,7 @@ const EMPTY_HISTORY: HistoryData = {
 }
 
 export function LegacyHistoryPage({ datasetId: requestedDatasetId, onDatasetChange, initialTab }: LegacyHistoryPageProps) {
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | null>(validDatasetId(requestedDatasetId))
@@ -788,6 +789,20 @@ export function LegacyHistoryPage({ datasetId: requestedDatasetId, onDatasetChan
     if (selectedDatasetId) void loadHistory(selectedDatasetId)
   }
 
+  // 历史资产默认是只读的；任何旧版写操作都必须由用户显式确认，且始终
+  // 带着当前 dataset id 进入兼容工作台，避免把历史对象误当成项目数据。
+  const openLegacyOperations = () => {
+    if (!selectedDatasetId) return
+    const id = selectedDatasetId
+    Modal.confirm({
+      title: '打开旧版兼容操作？',
+      content: `你将离开历史资产只读页并打开数据集 #${id} 的兼容工作台。旧版操作可能创建或修改旧数据，是否能提交由服务端 LEGACY_WRITES_FROZEN 配置决定。`,
+      okText: '打开兼容操作',
+      cancelText: '留在历史页',
+      onOk: () => navigate(`/console/tasks/${id}/legacy?taskId=${id}`),
+    })
+  }
+
 
   const datasetOptions = useMemo(() => {
     if (!selectedDatasetId || datasets.some((dataset) => dataset.id === selectedDatasetId)) {
@@ -824,6 +839,7 @@ export function LegacyHistoryPage({ datasetId: requestedDatasetId, onDatasetChan
             optionList={datasetOptions}
             onChange={selectDataset}
           />
+          <Button size="small" onClick={openLegacyOperations} disabled={!selectedDatasetId}>兼容操作</Button>
           <Button icon={<RefreshCw size={14} />} loading={historyLoading || datasetLoading} onClick={reload}>刷新</Button>
         </div>
       </div>
