@@ -11,47 +11,56 @@ import (
 // 判错的后果不对称 ——
 //   - 迁移没完成却报告「已完成」→ 管理员删掉菜单，旧资产就再也找不到入口；
 //   - 迁移完成却报告「未完成」→ 只是菜单多留一会儿，无害。
-// 因此这里对两类边界都做断言：空库、以及有旧数据但未绑定。
-
-// TestLegacyMigrationStatusEmptyDatabase 覆盖没有旧数据时的结论。
 //
-// 语义要点：空库的 `migrationComplete` 是 **true**（可以移除菜单），
-// 但 `Note` 必须说明「没有可迁移的历史资产」而不是「迁移成功」——
-// 把「从未有过旧数据」说成一件工作成果是在汇报里撒谎。
-func TestLegacyMigrationStatusEmptyDatabase(t *testing.T) {
+// 为什么全部断言都基于**增量**而不是绝对值：本包的测试共用同一个临时 Postgres
+// （`newStudioTestPool` 把 DSN 指向同一个库），因此「库里有 0 条旧数据」这种
+// 假设在整套测试里不成立 —— 实测过：单独跑通过、全量跑失败（另两个用例先插了数据）。
+// 断言增量才能同时满足「单跑」与「全量跑」。
+func TestLegacyMigrationStatusIsSelfConsistent(t *testing.T) {
 	pool := newStudioTestPool(t)
-	store := NewLegacyImportStore(pool)
-
-	status, err := store.LegacyMigrationStatus(context.Background())
+	status, err := NewLegacyImportStore(pool).LegacyMigrationStatus(context.Background())
 	if err != nil {
 		t.Fatalf("LegacyMigrationStatus: %v", err)
 	}
-	if status.LegacyDatasets != 0 {
-		t.Fatalf("全新测试库不应有旧数据集，实际 %d", status.LegacyDatasets)
+
+	// 不变式 1：结论必须与读数一致。这是界面拿来决定「能不能删菜单」的字段，
+	// 不允许出现 `migrationComplete=true` 但 `pendingDatasets>0` 的自相矛盾。
+	if status.MigrationComplete != (status.PendingDatasets == 0) {
+		t.Fatalf("结论与读数矛盾：migrationComplete=%v pending=%d",
+			status.MigrationComplete, status.PendingDatasets)
 	}
-	if !status.MigrationComplete {
-		t.Fatal("没有旧数据时，移除菜单是安全的：migrationComplete 必须为 true")
+	// 不变式 2：未迁移数不可能超过旧数据集总数。
+	if status.PendingDatasets > status.LegacyDatasets {
+		t.Fatalf("未迁移数(%d) 不可能超过旧数据集总数(%d)",
+			status.PendingDatasets, status.LegacyDatasets)
 	}
+	// 不变式 3：无旧数据时未迁移数必须为 0（而不是一个负数或脏值）。
+	if status.LegacyDatasets == 0 && status.PendingDatasets != 0 {
+		t.Fatalf("没有旧数据集时未迁移数必须为 0，实际 %d", status.PendingDatasets)
+	}
+	// 不变式 4：必须给出可读结论文案（前端只渲染，不自己拼）。
 	if status.Note == "" {
 		t.Fatal("必须给出可读结论，而不是让界面自己拼文案")
 	}
-	if status.PendingDatasets != 0 {
-		t.Fatalf("无旧数据时未迁移数必须为 0，实际 %d", status.PendingDatasets)
-	}
 }
 
-// TestLegacyMigrationStatusWithUnmigratedDatasets 覆盖「有旧数据且未绑定项目」。
+// TestLegacyMigrationStatusCountsUnmigratedDatasets 覆盖「有旧数据且未绑定项目」。
 //
 // 这正是本部署实测的形态（58 个旧数据集、0 条导入台账、0 个绑定项目），
 // 因此必须报告「未完成」并保留菜单。
-func TestLegacyMigrationStatusWithUnmigratedDatasets(t *testing.T) {
+func TestLegacyMigrationStatusCountsUnmigratedDatasets(t *testing.T) {
 	pool := newStudioTestPool(t)
 	ctx := context.Background()
 	store := NewLegacyImportStore(pool)
-	// `datasets.created_by` 有外键，因此先建一个真实用户（不能用写死的 1：
-	// 全新测试库里 id=1 还不存在，这正是本用例第一次失败的原因）。
-	ownerID := seedStudioUser(t, pool, "legacy-owner")
 
+	before, err := store.LegacyMigrationStatus(ctx)
+	if err != nil {
+		t.Fatalf("baseline LegacyMigrationStatus: %v", err)
+	}
+
+	// `datasets.created_by` 有外键，因此先建一个真实用户（不能用写死的 1：
+	// 全新测试库里 id=1 还不存在）。
+	ownerID := seedStudioUser(t, pool, "legacy-owner")
 	// 直接插入两条最小可用的旧数据集（模拟迁移前的历史资产）。
 	// 只填 NOT NULL 列：这条读数只做 COUNT，不读其它字段。
 	for _, name := range []string{"legacy-a", "legacy-b"} {
@@ -62,21 +71,22 @@ func TestLegacyMigrationStatusWithUnmigratedDatasets(t *testing.T) {
 		}
 	}
 
-	status, err := store.LegacyMigrationStatus(ctx)
+	after, err := store.LegacyMigrationStatus(ctx)
 	if err != nil {
 		t.Fatalf("LegacyMigrationStatus: %v", err)
 	}
-	if status.LegacyDatasets < 2 {
-		t.Fatalf("必须统计到刚插入的旧数据集，实际 %d", status.LegacyDatasets)
+	if after.LegacyDatasets != before.LegacyDatasets+2 {
+		t.Fatalf("旧数据集总数必须增加 2：%d -> %d", before.LegacyDatasets, after.LegacyDatasets)
 	}
-	if status.MigrationComplete {
+	// 新插入的两条没有任何项目绑定，因此必然计入「未迁移」。
+	if after.PendingDatasets != before.PendingDatasets+2 {
+		t.Fatalf("未迁移数必须增加 2（两条新数据都没有绑定项目）：%d -> %d",
+			before.PendingDatasets, after.PendingDatasets)
+	}
+	if after.MigrationComplete {
 		t.Fatal("还有未绑定的旧数据集时不得报告迁移完成（会导致菜单被误删）")
 	}
-	if status.PendingDatasets == 0 {
-		t.Fatal("未迁移数必须为正：这些数据集没有任何项目绑定")
-	}
-	if status.PendingDatasets != status.LegacyDatasets {
-		t.Fatalf("本用例没有任何绑定，未迁移数应等于旧数据集总数：%d vs %d",
-			status.PendingDatasets, status.LegacyDatasets)
+	if after.Note == "" {
+		t.Fatal("未完成时也必须给出可读结论")
 	}
 }
