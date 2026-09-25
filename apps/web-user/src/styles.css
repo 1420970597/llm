@@ -1269,6 +1269,40 @@ select:focus {
 }
 
 /*
+ * m × n × z 结构树（issue #197 第 11 条）。
+ *
+ * 「数据集结构不清晰」的根因是三个数字分散、且没有「可产出量」这个口径。
+ * 因此这里把公式与树放在编辑器的**最前面**：先让用户看清「要什么」，
+ * 再往下才是逐字段编辑。
+ * 树用嵌套 ul（语义上就是层级），不用 ASCII 缩进线 —— 后者无法被
+ * 屏幕阅读器朗读出层级。
+ */
+.coverage-tree {
+  margin: 14px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.coverage-tree__formula {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.coverage-tree__formula strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.coverage-tree__list,
+.coverage-tree__directions { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.coverage-tree__directions {
+  margin: 6px 0 2px 20px;
+  padding-left: 14px;
+  border-left: 1px solid var(--panel-border);
+}
+.coverage-tree__domain { font-weight: 600; }
+.coverage-tree__directions li { font-size: 13px; color: var(--text); }
+
+/*
  * 节点「会做什么」与「执行顺序」（issue #197 第 5 条）。
  *
  * 这两个区块存在的唯一目的，是让下面的参数字段有上下文：甲方对独立评估
@@ -1332,6 +1366,48 @@ select:focus {
 .blueprint-history[open] .blueprint-history__summary::before { content: '▾'; }
 .blueprint-history__summary { position: relative; }
 .blueprint-history__body { grid-column: 1 / -1; min-width: 0; }
+
+/*
+ * 横向流程里的节点卡片与依赖箭头（issue #197 第 11 条）。
+ *
+ * 每个节点固定宽度（不是 min(360px, 86%)）：固定宽度才能让 7 个节点
+ * 在画布内形成稳定的横向流程，窄屏时由画布自己滚动。
+ * 箭头用 `::after` 而不是额外的 DOM 元素：它是**装饰**，不该进入
+ * 可访问性树（否则屏幕阅读器会朗读一串「→」，而依赖关系已经由
+ * 节点顺序与 aria 属性表达）。
+ */
+.blueprint-page .blueprint-nodes .blueprint-node {
+  flex: 0 0 236px;
+  width: 236px;
+  min-height: 104px;
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  grid-template-rows: auto auto;
+  align-content: start;
+  gap: 8px 10px;
+  text-align: left;
+}
+/* 状态标签独占一行，避免在 236px 宽度下与标题挤在一起。 */
+.blueprint-page .blueprint-nodes .blueprint-node__status { grid-column: 1 / -1; justify-self: start; }
+/* 节点副标题允许换行 —— 以前是 nowrap + ellipsis，实测 8 处被截断。 */
+.blueprint-page .blueprint-nodes .blueprint-node__caption {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.4;
+}
+/* 依赖箭头：只在节点之间，最后一个节点后面不画。 */
+.blueprint-page .blueprint-nodes .blueprint-node + .blueprint-node::before {
+  content: '→';
+  position: absolute;
+  margin-left: -30px;
+  align-self: center;
+  color: var(--text-muted);
+  font-size: 16px;
+  pointer-events: none;
+}
+.blueprint-page .blueprint-nodes .blueprint-node { position: relative; }
+.blueprint-page .blueprint-nodes .blueprint-node + .blueprint-node { margin-left: 34px; }
 
 /* Blueprint interaction contract: status, dependencies and editor feedback. */
 .blueprint-page .blueprint-node__status {
@@ -3325,7 +3401,10 @@ a {
   min-width: 0;
   min-height: 680px;
   position: relative;
-  overflow: hidden;
+  /* issue #197 第 11 条：横向流程带在窄屏上必须**在画布内部**滚动，
+     而不是把整页推出横向滚动条（#197 第 17 条明确禁止整页横向溢出）。 */
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: 30px;
   border: 1px solid var(--panel-border);
   border-radius: 8px;
@@ -3333,6 +3412,28 @@ a {
   background-image: radial-gradient(var(--canvas-grid) 1px, transparent 1px);
   background-size: 16px 16px;
 }
+
+/*
+ * 横向工作流（issue #197 第 11 条）。
+ *
+ * 旧形态是 `flex-direction: column` 的纵向卡片堆叠（890×791 实测），
+ * 画布内没有任何连线，因此「步骤之间是什么关系」只能靠读文字。
+ * 现在：
+ *   - 节点横向排列，按数据流顺序（覆盖 → 标准 → 生成 → 评估 → 规则 → 人工 → 交付）；
+ *   - 节点之间用 `::after` 画箭头，明确「依赖方向」；
+ *   - Tab 顺序天然等于视觉顺序（DOM 顺序即渲染顺序），键盘可访问性不退化。
+ */
+.blueprint-page .blueprint-nodes {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  margin-top: 18px;
+  min-height: 0;
+}
+/* 连接线的旧实现（绝对定位的竖线）在横向布局下没有意义，必须关掉。 */
+.blueprint-page .blueprint-nodes::before { display: none; }
 
 .blueprint-page .blueprint-inspector {
   grid-area: inspector;

@@ -41,6 +41,21 @@ import './LegacyHistoryPage.css'
 /**
  * 历史数据集到 Atelier 项目的映射，只用于显示对象关联与安全项目链接。
  */
+/**
+ * 旧资产迁移对账读数（issue #197 第 16 条）。
+ *
+ * 结论（`migrationComplete` / `note`）由服务端给出：前端看不到导入台账与
+ * `projects.legacy_dataset_id` 绑定数，因此不能在页面里硬编码「尚未迁移」。
+ */
+type LegacyMigrationStatus = {
+  legacyDatasets: number
+  importedRecords: number
+  boundProjects: number
+  migrationComplete: boolean
+  pendingDatasets: number
+  note: string
+}
+
 type LegacyProjectMapping = {
   datasetId: number
   projectId?: number
@@ -648,7 +663,29 @@ export function LegacyHistoryPage({ datasetId: requestedDatasetId, onDatasetChan
   const [errors, setErrors] = useState<ResourceErrorMap>({})
   const [activeTab, setActiveTab] = useState(() => normalizeHistoryTab(searchParams.get('tab') ?? initialTab))
   const [historyDatasetId, setHistoryDatasetId] = useState<number | null>(null)
+  // 迁移对账读数（issue #197 第 16 条）：结论由服务端给出，前端只渲染。
+  const [migrationStatus, setMigrationStatus] = useState<LegacyMigrationStatus | null>(null)
+  const [migrationStatusError, setMigrationStatusError] = useState<string | null>(null)
   const historyRequestId = useRef(0)
+
+  useEffect(() => {
+    let cancelled = false
+    void client
+      .get<LegacyMigrationStatus>('/v1/legacy/migration-status')
+      .then((response) => {
+        if (!cancelled) setMigrationStatus(response.data)
+      })
+      .catch((error: unknown) => {
+        // 读不到对账读数不影响本页主功能（历史浏览与映射查询独立可用），
+        // 因此降级为一行提示，而不是把整页变成错误态。
+        if (!cancelled) {
+          setMigrationStatusError(error instanceof Error ? error.message : '读取迁移状态失败')
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const loadDatasets = useCallback(async () => {
     setDatasetLoading(true)
@@ -828,8 +865,32 @@ export function LegacyHistoryPage({ datasetId: requestedDatasetId, onDatasetChan
       <div className="console-page__header legacy-history-page__header">
         <div>
           <div className="eyebrow"><History size={14} aria-hidden /> LEGACY / TRACE</div>
-          <Title heading={4} className="!mb-1">历史资产</Title>
+          <Title heading={4} className="!mb-1">历史资产（只读）</Title>
           <Text type="tertiary">查阅历史数据集、生成记录与导出制品。</Text>
+          {/*
+            issue #197 第 16 条：用户问「历史资产是否已全部迁移成功？如果成功则删除这个菜单」。
+            这个结论**必须来自服务端**：前端看不到导入台账，也看不到
+            `projects.legacy_dataset_id` 的绑定数。硬编码结论等于撒谎 ——
+            真的迁移完成后页面仍会写着「尚未迁移」。
+          */}
+          {migrationStatus ? (
+            <Text
+              type={migrationStatus.migrationComplete ? 'success' : 'tertiary'}
+              size="small"
+              className="block mt-1"
+              data-legacy-migration-status={migrationStatus.migrationComplete ? 'complete' : 'pending'}
+            >
+              迁移状态：{migrationStatus.note}（旧数据集 {migrationStatus.legacyDatasets} ·
+              已导入 {migrationStatus.importedRecords} · 已绑定项目 {migrationStatus.boundProjects} ·
+              未迁移 {migrationStatus.pendingDatasets}）
+            </Text>
+          ) : migrationStatusError ? (
+            <Text type="tertiary" size="small" className="block mt-1">
+              迁移状态读取失败：{migrationStatusError}
+            </Text>
+          ) : (
+            <Text type="tertiary" size="small" className="block mt-1">正在读取迁移状态…</Text>
+          )}
         </div>
         <div className="legacy-history-toolbar">
           <Select

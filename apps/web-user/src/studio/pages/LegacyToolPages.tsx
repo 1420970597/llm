@@ -81,7 +81,7 @@ function LegacyToolFrame({
           这个工作台处理的是什么
         </Text>
         <Text type="tertiary" size="small" className="block mt-1">
-          本页以**旧数据集**为单位（迁移前的历史资产），不读取项目的蓝图快照。
+          本页以<strong>旧数据集</strong>为单位（迁移前的历史资产），不读取项目的蓝图快照。
           新项目的质量结论请用项目内的「质量」页 —— 那里的实验会冻结蓝图、
           覆盖、标准与素材的版本，因此结论可复现。
         </Text>

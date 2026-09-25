@@ -223,9 +223,77 @@ function addButton(label: string, onClick: () => void, disabled: boolean) {
 export function CoveragePayloadEditor({ payload, disabled, onChange }: { payload: Record<string, unknown>; disabled: boolean; onChange: (payload: Record<string, unknown>) => void }) {
   const domains = asArray(payload.domains)
   const updateDomains = (next: Array<Record<string, unknown>>) => onChange({ ...payload, schemaVersion: 'coverage.v1', domains: next })
+  /*
+   * m × n × z 结构树（issue #197 第 11 条）。
+   *
+   * 甲方原话：「数据集结构不清晰（m*n*z），应当以树状图展示（可编辑）」。
+   * 旧界面的问题不是没有数字，而是**三个数字分散在不同位置**，用户要自己
+   * 心算 m×n×z；而且「计划量」与「可产出量」从不并列，于是 #190 的
+   * 「计划 12、实际只能产 1」在界面上完全看不出来。
+   *
+   * 这里把三者（领域数 m / 每领域方向 n / 每方向题数 z）与乘积、
+   * **以及本版本的最大可产出量**并列显示。可产出量由
+   * `sum(direction.quota)` 得出 —— 与后端 `model.CoverageCapacity`
+   * 是同一个口径（后端在启动批次时用它做拒绝校验）。
+   */
+  const directionCount = domains.reduce((total, domain) => total + asArray(domain.directions).length, 0)
+  const capacity = domains.reduce(
+    (total, domain) =>
+      total +
+      asArray(domain.directions).reduce((subtotal, direction) => {
+        const quota = Number(direction.quota)
+        return subtotal + (Number.isFinite(quota) && quota > 0 ? quota : 1)
+      }, 0),
+    0,
+  )
   return (
     <div className="document-editor document-editor--coverage">
       <div className="document-editor__intro"><Text strong>覆盖范围编辑器</Text><Text type="tertiary" size="small">把领域拆成可执行方向，并为每个方向设置计划数量。稳定 ID 用于让历史批次继续指向原版本。</Text></div>
+      <div className="coverage-tree" data-coverage-tree="true">
+        <div className="coverage-tree__formula">
+          <span className="eyebrow">数据集结构</span>
+          <strong data-coverage-formula="true">
+            m {domains.length} × n {directionCount} × z {capacity} = {capacity}
+          </strong>
+          <Text type="tertiary" size="small" className="block">
+            领域数 × 方向数 × 每个方向的题数。公式里的结果就是<strong>本版本最多能产出的单元数</strong>；
+            启动批次时填的计划量不能超过它（否则会被拒绝，避免静默少交付）。
+          </Text>
+        </div>
+        <ul className="coverage-tree__list">
+          {domains.map((domain, domainIndex) => {
+            const directions = asArray(domain.directions)
+            const domainQuota = directions.reduce((total, direction) => {
+              const quota = Number(direction.quota)
+              return total + (Number.isFinite(quota) && quota > 0 ? quota : 1)
+            }, 0)
+            return (
+              <li key={`${String(domain.stableId)}-${domainIndex}`} data-coverage-domain={String(domain.stableId ?? domainIndex)}>
+                <span className="coverage-tree__domain">
+                  {String(domain.name ?? '') || '（未命名领域）'}
+                  <Text type="tertiary" size="small">
+                    {' '}
+                    合计 {domainQuota}
+                  </Text>
+                </span>
+                <ul className="coverage-tree__directions">
+                  {directions.map((direction, directionIndex) => (
+                    <li key={`${String(direction.stableId)}-${directionIndex}`}>
+                      {String(direction.name ?? '') || '（未命名方向）'}
+                      <Text type="tertiary" size="small">
+                        {' '}
+                        × {Number(direction.quota) > 0 ? Number(direction.quota) : 1}
+                        {' · '}
+                        {String(direction.source ?? '') || '未标注来源'}
+                      </Text>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
       {domains.length === 0 ? <Empty description="还没有领域，点击下方按钮开始配置。" /> : domains.map((domain, domainIndex) => {
         const directions = asArray(domain.directions)
         return <Card className="document-editor__section" key={`${String(domain.stableId)}-${domainIndex}`} bodyStyle={{ padding: 14 }}>

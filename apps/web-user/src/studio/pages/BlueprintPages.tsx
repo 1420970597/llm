@@ -392,8 +392,19 @@ export function BlueprintPage() {
       <div className="blueprint-layout">
         <section className="blueprint-canvas" aria-label="生产流程画布">
           <div className="blueprint-canvas__eyebrow">ATELIER / PRODUCTION BLUEPRINT / v{current?.version ?? '—'}</div>
-          <div className="blueprint-canvas__hint">先看清步骤关系，再调整当前步骤。每个节点都是可键盘访问的按钮。</div>
-          <div className="blueprint-nodes">
+          {/*
+            issue #197 第 11 条：蓝图的定位是**工作流**，应当横向展示流程，
+            点击某个节点在右侧（同一页）看它的配置。
+            这里把纵向卡片堆叠改为横向流程带：节点按数据流左→右排列，
+            节点之间用 CSS 箭头表示依赖方向。
+            拖拽**刻意不做**：设计文档 R2 明确要求「拖拽是增强不是唯一路径」，
+            而现状的键盘可访问性（每个节点是可聚焦按钮、Tab 顺序 = 视觉顺序）
+            必须保留 —— 横向 flex 布局天然满足这一点，不需要引入拖拽库。
+          */}
+          <div className="blueprint-canvas__hint">
+            流程从左到右：先定范围与标准，再生成，最后评估与交付。点任一节点在右侧配置它。
+          </div>
+          <div className="blueprint-nodes" role="list">
           {specs.map((spec) => (
             <button
               key={spec.key}
