@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowLeftRight, Pause, Play, RefreshCw, RotateCcw } from
 import { newIdempotencyKey, projectPath, studioApi } from '../../lib/api/studio'
 import type {
   BatchDetail,
+  DatasetAnalysis,
   BatchCapabilities,
   BatchFailure,
   BatchSnapshot,
@@ -62,6 +63,30 @@ function honestStatusLabel(batch: Pick<BatchSummary, 'status' | 'plannedUnits' |
     return `部分完成 ${batch.completedUnits}/${batch.plannedUnits}`
   }
   return STATUS_LABEL[batch.status] ?? batch.status
+}
+
+/**
+ * 统计卡片（本地实现，与 Compare/Quality/Release 页的同名组件同构）。
+ *
+ * 为什么不抽成共享组件：三个页面的卡片在**语义**上不同（这里的每个数字
+ * 都对应一条可从服务端点开的事实）。抽早了会把「无结论」与「0」的区分
+ * 混成一种渲染方式，而那正是 #197 第 14 条要消除的。
+ */
+function StatTile({ label, value, hint }: { label: string; value: string; hint: string }) {
+  const { Text } = Typography
+  return (
+    <div className="console-stat-tile" data-stat-tile={label}>
+      <Text type="tertiary" size="small" className="block">
+        {label}
+      </Text>
+      <Text strong className="block console-stat-tile__value">
+        {value}
+      </Text>
+      <Text type="tertiary" size="small" className="block">
+        {hint}
+      </Text>
+    </div>
+  )
 }
 
 function statusTone(status: string): BatchStatusTone {
@@ -281,6 +306,9 @@ export function BatchDetailPage() {
     canRetryFailed: false,
   })
   const [events, setEvents] = useState<BatchEvent[]>([])
+  /** 数据集结构与内容分析（issue #197 第 13 条）：打开即算，不需要点按钮。 */
+  const [analysis, setAnalysis] = useState<DatasetAnalysis | null>(null)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -299,6 +327,17 @@ export function BatchDetailPage() {
       setDetail(detailResponse.data)
       setCapabilities(detailResponse.capabilities)
       setEvents(eventsResponse.data.items ?? [])
+      // 分析单独取：分析失败不应让整个详情页打不开（详情是运行状态，
+      // 分析是数据结论，两者可用性互不依赖）。
+      try {
+        setAnalysis(await studioApi.batchAnalysis(scope.projectId, batchId))
+        setAnalysisError(null)
+      } catch (analysisLoadError) {
+        setAnalysis(null)
+        setAnalysisError(
+          analysisLoadError instanceof Error ? analysisLoadError.message : '加载数据集分析失败',
+        )
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载批次详情失败')
     } finally {
@@ -418,6 +457,151 @@ export function BatchDetailPage() {
           </div>
         </Card>
       ) : null}
+
+      {/*
+        issue #197 第 13 条：生产工作区必须能预览数据集结构与内容，并自动分析。
+        「自动」是硬要求：这里**没有**「分析」按钮 —— 打开页面就已经算好。
+      */}
+      <Card className="console-card mb-3" bodyStyle={{ padding: 14 }} data-batch-analysis="true">
+        <Text strong className="block mb-2">
+          数据集结构与内容分析
+        </Text>
+        {analysisError ? (
+          <Text type="danger" size="small" className="block" data-analysis-error="true">
+            {analysisError}
+          </Text>
+        ) : !analysis ? (
+          <Text type="tertiary" size="small">正在分析本批产出…</Text>
+        ) : analysis.sampleCount === 0 ? (
+          /* 空数据集不是「0 分」而是「无结论」：把 0 当结论会让用户以为
+             「内容长度是 0」「重复率 0%」，而事实是一条都没产出。 */
+          <Text type="tertiary" size="small" data-analysis-empty="true">
+            本批还没有产出内容，因此没有任何可分析的结论。
+            {analysis.shortfallNote ? ` ${analysis.shortfallNote}` : ''}
+          </Text>
+        ) : (
+          <>
+            <div className="console-stat-grid mb-3">
+              <StatTile label="已产出内容" value={String(analysis.sampleCount)} hint="参与以下统计的样本版本数" />
+              <StatTile
+                label="长度中位 / P90"
+                value={analysis.length ? `${analysis.length.p50} / ${analysis.length.p90}` : '—'}
+                hint={analysis.length ? `最短 ${analysis.length.shortest} · 最长 ${analysis.length.longest} · 均值 ${analysis.length.meanChars}（字符数）` : '无数据'}
+              />
+              <StatTile
+                label="素材接地率"
+                value={analysis.groundedRate === null ? '—' : `${Math.round(analysis.groundedRate * 100)}%`}
+                hint="生成输入里带素材块的比例；无素材项目恒为 0"
+              />
+              <StatTile
+                label="重复率"
+                value={analysis.duplicateRate === null ? '—' : `${Math.round(analysis.duplicateRate * 100)}%`}
+                hint="内容指纹完全相同的比例（不代表语义重复）"
+              />
+              <StatTile
+                label="待人工判断"
+                value={analysis.pendingReviewRate === null ? '—' : `${Math.round(analysis.pendingReviewRate * 100)}%`}
+                hint="仍需你判断的比例；去「审阅」处理"
+              />
+            </div>
+
+            <Text strong size="small" className="block mb-1">
+              结构预览（领域 › 方向 → 计划 / 已产出）
+            </Text>
+            <div className="comparison-table mb-3" data-analysis-structure="true">
+              <div className="comparison-row comparison-row--head">
+                <span>领域</span>
+                <span>方向</span>
+                <span>计划</span>
+                <span>已产出</span>
+                <span>缺口</span>
+              </div>
+              {analysis.structure.map((group) => {
+                const gap = Math.max(group.planned - group.produced, 0)
+                return (
+                  <div
+                    key={`${group.domainStableId}/${group.directionStableId}`}
+                    className="comparison-row"
+                    data-analysis-direction={group.directionStableId}
+                  >
+                    <span data-label="领域">{group.domainName || group.domainStableId || '未命名领域'}</span>
+                    <span data-label="方向">{group.directionName || group.directionStableId || '未命名方向'}</span>
+                    <span data-label="计划">{group.planned}</span>
+                    <span data-label="已产出">{group.produced}</span>
+                    <span data-label="缺口">
+                      {gap > 0 ? (
+                        <Tag size="small" color="amber">{`缺 ${gap}`}</Tag>
+                      ) : (
+                        <Text type="tertiary" size="small">—</Text>
+                      )}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+
+            {analysis.difficulty.length > 0 ? (
+              <>
+                <Text strong size="small" className="block mb-1">
+                  难度占比（与覆盖配比对照）
+                </Text>
+                <div className="comparison-table mb-3" data-analysis-difficulty="true">
+                  <div className="comparison-row comparison-row--head">
+                    <span>难度</span>
+                    <span>数量</span>
+                    <span>实际占比</span>
+                    <span>计划配比</span>
+                  </div>
+                  {analysis.difficulty.map((item) => (
+                    <div key={item.key} className="comparison-row">
+                      <span data-label="难度">{item.label}</span>
+                      <span data-label="数量">{item.count}</span>
+                      <span data-label="实际占比">{(item.share * 100).toFixed(1)}%</span>
+                      <span data-label="计划配比">
+                        {item.expected === undefined || item.expected === null
+                          ? '未配置'
+                          : `${(item.expected * 100).toFixed(0)}%`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null}
+
+            {analysis.reviewStatus.length > 0 ? (
+              <>
+                <Text strong size="small" className="block mb-1">
+                  审阅状态占比
+                </Text>
+                <div className="comparison-table" data-analysis-review="true">
+                  <div className="comparison-row comparison-row--head">
+                    <span>状态</span>
+                    <span>数量</span>
+                    <span>占比</span>
+                  </div>
+                  {analysis.reviewStatus.map((item) => (
+                    <div key={item.key} className="comparison-row">
+                      <span data-label="状态">{item.label}</span>
+                      <span data-label="数量">{item.count}</span>
+                      <span data-label="占比">{(item.share * 100).toFixed(1)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null}
+
+            {analysis.notes.length > 0 ? (
+              <div className="mt-3">
+                {analysis.notes.map((note) => (
+                  <Text key={note} type="tertiary" size="small" className="block">
+                    口径说明：{note}
+                  </Text>
+                ))}
+              </div>
+            ) : null}
+          </>
+        )}
+      </Card>
 
       {/* issue #190：缺口必须显式可见，且不能等用户点开某个面板才看得到。 */}
       {(detail.batch.shortfallNote || (detail.batch.shortfallUnits ?? 0) > 0) ? (

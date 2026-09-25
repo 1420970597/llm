@@ -1167,8 +1167,9 @@ select:focus {
 .blueprint-node__caption { overflow: hidden; color: var(--text-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .blueprint-inspector { border: 1px solid var(--panel-border); border-radius: 8px; background: var(--panel-strong); padding: 24px; }
 .blueprint-inspector h5 { font-size: 20px; }
-.blueprint-history { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr; align-items: start; gap: 18px; padding: 16px 20px; border-top: 1px solid var(--panel-border); }
-.blueprint-history__list { flex-direction: row; overflow-x: auto; }
+/* 折叠后的版本历史：整行一块，内部自己纵向排列（issue #197 第 4、6 条）。 */
+.blueprint-history { grid-column: 1 / -1; display: block; padding: 16px 20px; border-top: 1px solid var(--panel-border); }
+.blueprint-history__list { display: flex; flex-wrap: wrap; gap: 8px; overflow-x: auto; padding: 0; margin: 10px 0 0; list-style: none; }
 .blueprint-history__item { min-width: 160px; }
 
 /* D02/L03 shared flat surfaces. */
@@ -1266,6 +1267,71 @@ select:focus {
   .review-pane__column:last-child { border-bottom: 0; }
   [data-studio-page="release-card"] .console-stat-grid { grid-template-columns: 1fr; }
 }
+
+/*
+ * 节点「会做什么」与「执行顺序」（issue #197 第 5 条）。
+ *
+ * 这两个区块存在的唯一目的，是让下面的参数字段有上下文：甲方对独立评估
+ * 节点的原话是「页面晦涩难懂」，其实现状是术语同屏堆叠而没有一句
+ * 「它会做什么」。样式上刻意做得克制（浅底、无边框），避免它比参数本身更抢眼。
+ */
+.blueprint-node-purpose {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  border: 1px solid var(--panel-border);
+}
+.blueprint-node-steps { margin-bottom: 14px; }
+.blueprint-node-steps__summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-muted);
+}
+.blueprint-node-steps__summary::-webkit-details-marker { display: none; }
+.blueprint-node-steps__summary::before {
+  content: '▸ ';
+  color: var(--text-muted);
+}
+.blueprint-node-steps[open] .blueprint-node-steps__summary::before { content: '▾ '; }
+.blueprint-node-steps__list {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+/*
+ * 版本历史折叠块（issue #197 第 4、6 条）。
+ *
+ * 以前它是常驻的整行区块（历史项横排 + 指纹 + 理由），在单节点配置页上
+ * 把页面撑到 1.56 屏。改成 `<details>` 后：
+ *   - 默认折叠，页面高度由「画布 + 检查器」决定；
+ *   - 键盘可用（原生 summary 可聚焦、可回车展开），不需要额外 JS；
+ *   - 展开后仍然是横向可滚动的列表，行为与原来一致。
+ */
+.blueprint-history__summary {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+  list-style: none;
+  padding: 2px 0;
+}
+/* 去掉浏览器默认三角以外的第二套指示符；用自绘的 caret 保持一致外观。 */
+.blueprint-history__summary::-webkit-details-marker { display: none; }
+.blueprint-history__summary::before {
+  content: '▸';
+  position: absolute;
+  margin-left: -14px;
+  color: var(--text-muted);
+}
+.blueprint-history[open] .blueprint-history__summary::before { content: '▾'; }
+.blueprint-history__summary { position: relative; }
+.blueprint-history__body { grid-column: 1 / -1; min-width: 0; }
 
 /* Blueprint interaction contract: status, dependencies and editor feedback. */
 .blueprint-page .blueprint-node__status {
@@ -2389,6 +2455,41 @@ select:focus {
 }
 
 
+/*
+ * 工作台总览磁贴（issue #197 第 10 条）。
+ *
+ * 甲方原话是「今日工作展示的数据不对，应当是一个工作台总览的效果」，
+ * 而现状是全页只有一个数字（7 条未读动态）。这里用六个可点的磁贴
+ * 回答「我的工作区现在是什么状态」。
+ *
+ * 响应式：`auto-fit` + `minmax(150px, 1fr)` 让 390px 窄屏自动降成两列，
+ * 而不是把每格压成一条竖线（#197 第 17 条的同类缺陷）。
+ */
+.atelier-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.atelier-overview-tile {
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  color: var(--text);
+  text-decoration: none;
+}
+.atelier-overview-tile:hover,
+.atelier-overview-tile:focus-visible { border-color: var(--accent); }
+.atelier-overview-tile strong { font-size: 26px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.atelier-overview-tile small { color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+/* 需要处理的数字用警示色：缺口与待判断都是「不做就会出问题」的量。 */
+.atelier-overview-tile--alert { color: var(--warning); }
+/* 总览磁贴里的 eyebrow 是次要标签，避免与 h1/h2 抢层级。 */
+.atelier-overview-tile .eyebrow { font-size: 10px; letter-spacing: .14em; }
+
 .atelier-today-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(260px, .7fr);
@@ -3203,10 +3304,15 @@ a {
  * release data-card hierarchy even when a legacy selector has equal weight.
  * --------------------------------------------------------------------------- */
 
-/* P02: canvas + inspector, with history spanning the full workspace. */
+/* P02: canvas + inspector, with history spanning the full workspace.
+ *
+ * issue #197 第 4、17 条：右栏从 320px 提到 420px。320px 下长文案（版本名、
+ * 连接名、检查点）会被压成两行并与按钮重叠（截图里的真实形态），
+ * 而检查器是**配置输入区**，宽度不足会直接导致填错。
+ * 画布列用 minmax(0, 1fr) 保证它自己收缩而不是把整页推出横向滚动。 */
 .blueprint-page .blueprint-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
   grid-template-areas:
     'canvas inspector'
     'history history';

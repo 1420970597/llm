@@ -62,12 +62,22 @@ func (app *application) getTodayWork(w http.ResponseWriter, r *http.Request) {
 		app.writeStudioError(w, r, err)
 		return
 	}
+	// issue #197 第 10 条：今日工作以前只有一个「7 条未读动态」的数字，
+	// 甲方原话是「展示的数据不对，应当是一个工作台总览的效果」。
+	// 这里的每个数字都来自真实对象，且都能点进对应列表（口径与列表页一致）。
+	overview, err := activity.LoadWorkspaceOverview(r.Context(), user.ID, workspaceID)
+	if err != nil {
+		app.writeStudioError(w, r, err)
+		return
+	}
 	app.writeJSON(w, http.StatusOK, map[string]any{
 		"todos": todos,
 		// 水位的语义是「我看到哪了」，不是「哪些事处理完了」。
 		"watermark": watermark,
+		"overview":  overview,
 		"notes": []string{
 			"未读只影响红点：待办由事实派生（待判断/失败恢复/候选阻塞），不会因为点了「全部已读」而消失",
+			"总览里的每个数字都是计数，不是推算出来的比率；点进去看到的是同一份事实。",
 		},
 	})
 }

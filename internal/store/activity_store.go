@@ -179,6 +179,95 @@ func (s *ActivityStore) LoadTodos(ctx context.Context, userID, workspaceID int64
 	return todos, nil
 }
 
+// WorkspaceOverview 是「今日工作」的总览数字（issue #197 第 10 条）。
+//
+// 为什么必须由服务端算：这些数字要能点进对应的列表，因此它们与列表页
+// 用的是**同一份事实**（项目、批次、样本版本、发布候选）。前端自己拼装
+// 多个端点再做换算，会让「工作台说 7、列表里有 9」这种漂移无法被发现。
+//
+// 每个字段都带「它是什么」的语义（注释里写明来源表与过滤条件），
+// 而不是一个没有口径的数字。
+type WorkspaceOverview struct {
+	// ProjectCount 是当前用户可见的项目数（工作区作用域）。
+	ProjectCount int `json:"projectCount"`
+	// RunningBatches 是仍在推进的批次（queued/running/pause_requested）。
+	RunningBatches int `json:"runningBatches"`
+	// BatchesWithShortfall 是**已定稿但有产出缺口**的批次（issue #190）。
+	// 单独一个数字：它最容易在「已完成」的绿色标签下被忽略。
+	BatchesWithShortfall int `json:"batchesWithShortfall"`
+	// TotalPlannedUnits / TotalCompletedUnits 是本工作区的单元进度合计。
+	// 两者分列而不是给一个百分比：多批次合并百分比没有真实含义。
+	TotalPlannedUnits   int `json:"totalPlannedUnits"`
+	TotalCompletedUnits int `json:"totalCompletedUnits"`
+	// PendingReview 是等待人工判断的样本数。
+	PendingReview int `json:"pendingReview"`
+	// ProducedLast7Days 是近 7 天产出的样本版本数（按 created_at）。
+	ProducedLast7Days int `json:"producedLast7Days"`
+	// PublishedReleases 是已发布的交付版本数。
+	PublishedReleases int `json:"publishedReleases"`
+	// BlockedReleases 是被门槛挡住的发布候选数（需要用户处理）。
+	BlockedReleases int `json:"blockedReleases"`
+}
+
+// LoadWorkspaceOverview 汇总「今日工作」需要的总览数字。
+//
+// 设计取舍：所有数字都是**计数**，没有一个是推导出来的比率。
+// 比率（例如「完成度 62%」）在跨批次、跨项目聚合时没有可解释的分母，
+// 而契约 §3.1 明确禁止不同口径相互冒充。
+func (s *ActivityStore) LoadWorkspaceOverview(ctx context.Context, userID, workspaceID int64) (WorkspaceOverview, error) {
+	var overview WorkspaceOverview
+	projectIDs, err := s.projects.ProjectIDsForUser(ctx, userID)
+	if err != nil {
+		return overview, err
+	}
+	scoped, err := s.filterWorkspaceProjects(ctx, workspaceID, projectIDs)
+	if err != nil {
+		return overview, err
+	}
+	overview.ProjectCount = len(scoped)
+	if len(scoped) == 0 {
+		return overview, nil
+	}
+
+	// 批次：一次聚合算完运行中、缺口与单元合计，避免三个查询在大项目上三次全表扫。
+	if err := s.db.QueryRow(ctx, `
+    SELECT
+      COUNT(*) FILTER (WHERE status IN ('queued', 'running', 'pause_requested')),
+      COUNT(*) FILTER (WHERE status IN ('completed', 'partial_failed', 'failed')
+                         AND planned_units > completed_units),
+      COALESCE(SUM(planned_units), 0),
+      COALESCE(SUM(completed_units), 0)
+    FROM batches WHERE project_id = ANY($1::bigint[])`, scoped).
+		Scan(&overview.RunningBatches, &overview.BatchesWithShortfall,
+			&overview.TotalPlannedUnits, &overview.TotalCompletedUnits); err != nil {
+		return overview, err
+	}
+
+	if err := s.db.QueryRow(ctx, `
+    SELECT COUNT(*) FROM review_projections
+    WHERE project_id = ANY($1::bigint[]) AND effective_action = $2`,
+		scoped, model.EffectivePending).Scan(&overview.PendingReview); err != nil {
+		return overview, err
+	}
+
+	if err := s.db.QueryRow(ctx, `
+    SELECT COUNT(*) FROM sample_versions
+    WHERE project_id = ANY($1::bigint[]) AND created_at >= NOW() - INTERVAL '7 days'`,
+		scoped).Scan(&overview.ProducedLast7Days); err != nil {
+		return overview, err
+	}
+
+	if err := s.db.QueryRow(ctx, `
+    SELECT COUNT(*) FILTER (WHERE status = $2),
+           COUNT(*) FILTER (WHERE status = $3)
+    FROM releases WHERE project_id = ANY($1::bigint[])`,
+		scoped, model.ReleaseStatusPublished, model.ReleaseStatusBlocked).
+		Scan(&overview.PublishedReleases, &overview.BlockedReleases); err != nil {
+		return overview, err
+	}
+	return overview, nil
+}
+
 // filterWorkspaceProjects 只保留属于该工作区的项目。
 func (s *ActivityStore) filterWorkspaceProjects(ctx context.Context, workspaceID int64, projectIDs []int64) ([]int64, error) {
 	if len(projectIDs) == 0 {
