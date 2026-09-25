@@ -37,6 +37,9 @@ func registerStudioSettingsRoutes(mux *http.ServeMux, app *application) {
 	mux.HandleFunc("GET /api/v1/workspace/members", app.listWorkspaceMembers)
 	mux.HandleFunc("POST /api/v1/workspace/members", app.upsertWorkspaceMember)
 	mux.HandleFunc("DELETE /api/v1/workspace/members/{userId}", app.removeWorkspaceMember)
+	// issue #197 第 15 条：本部署没有出站邮件，「邮件邀请」这条路永远走不通。
+	// 因此新增账号改为「管理员直接设初始密码」：一次命令同时创建账号与成员关系。
+	mux.HandleFunc("POST /api/v1/workspace/members/direct", app.createWorkspaceMemberDirect)
 	mux.HandleFunc("GET /api/v1/settings/connection-options", app.listConnectionOptions)
 	mux.HandleFunc("GET "+projectPrefix+"/{projectId}/budget", app.getProjectBudget)
 }
@@ -126,6 +129,97 @@ func (app *application) upsertWorkspaceMember(w http.ResponseWriter, r *http.Req
 		return
 	}
 	app.writeJSON(w, http.StatusOK, member)
+}
+
+// createWorkspaceMemberRequest 是「直接建号」的请求体（issue #197 第 15 条）。
+type createWorkspaceMemberRequest struct {
+	// Email 同时是**登录用户名**（本系统的 users.email 就是登录标识）。
+	Email string `json:"email"`
+	// Password 是管理员设的初始密码。它只在这次请求里出现，绝不回显。
+	Password string `json:"password"`
+	// Role 是**工作区角色**（admin / member）。
+	Role string `json:"role"`
+	// UserRole 是该账号的**系统角色**（admin / user）：决定它能否进入兼容控制台。
+	UserRole    string `json:"userRole"`
+	WorkspaceID int64  `json:"workspaceId"`
+}
+
+// CreateWorkspaceMemberDirect 的参数集合（避免 handler 里堆 6 个位置参数）。
+type createMemberInput struct {
+	WorkspaceID int64
+	ActorID     int64
+	Email       string
+	Password    string
+	Role        string
+	UserRole    string
+}
+
+// toStoreInput 转成 store 层入参。
+//
+// 两个同名字段集合并存是为了让 handler 只依赖本文件的请求结构，
+// 而 store 不反向依赖 API 层的命名；转换点只有这一处，不会漂移。
+func (input createMemberInput) toStoreInput() store.CreateWorkspaceMemberWithAccountInput {
+	return store.CreateWorkspaceMemberWithAccountInput{
+		WorkspaceID: input.WorkspaceID,
+		ActorID:     input.ActorID,
+		Email:       input.Email,
+		Password:    input.Password,
+		Role:        input.Role,
+		UserRole:    input.UserRole,
+	}
+}
+
+// createWorkspaceMemberDirect 创建账号并加入工作区（需要工作区管理员）。
+//
+// 顺序与失败语义（刻意这样设计）：
+//  1. 先授权、再校验、最后写库 —— 未授权的请求不能通过「邮箱已存在」这种
+//     差异化错误探知系统里有哪些账号；
+//  2. 先建账号、再建成员关系。第二步失败只会留下一个**没有工作区**的账号，
+//     这是可恢复的（再次提交会走「已存在 → 直接加成员」分支），
+//     而反过来会留下「成员指向不存在的用户」的脏关系。
+func (app *application) createWorkspaceMemberDirect(w http.ResponseWriter, r *http.Request) {
+	user, ok := requestUser(r)
+	if !ok {
+		app.writeStudioError(w, r, studio.NewError(studio.CodeUnauthorized, msgAuthRequired))
+		return
+	}
+
+	var request createWorkspaceMemberRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		app.writeStudioError(w, r, studio.NewValidationError("请求格式有误，请检查填写的内容后重试", nil))
+		return
+	}
+	workspaceID, ok := app.authorizeWorkspaceForUser(w, r, user.ID, request.WorkspaceID, store.AuthzManageMembers)
+	if !ok {
+		return
+	}
+
+	input := createMemberInput{
+		WorkspaceID: workspaceID,
+		ActorID:     user.ID,
+		Email:       request.Email,
+		Password:    request.Password,
+		Role:        strings.TrimSpace(request.Role),
+		UserRole:    strings.TrimSpace(request.UserRole),
+	}
+	if input.Role == "" {
+		input.Role = model.WorkspaceRoleMember
+	}
+	if input.UserRole == "" {
+		input.UserRole = "user"
+	}
+	created, member, err := app.studio.CreateWorkspaceMemberWithAccount(r.Context(), input.toStoreInput())
+	if err != nil {
+		app.writeWorkspaceMemberError(w, r, err)
+		return
+	}
+	// 响应里**不含密码与哈希**：初始密码只在此次请求的请求体里存在。
+	app.writeJSON(w, http.StatusCreated, map[string]any{
+		"user":   created,
+		"member": member,
+		// 《首次登录须改密码》目前没有独立的强制机制，因此如实标注为建议。
+		"note": "请通过安全渠道把初始密码转交本人，并提示其首次登录后修改密码。",
+	})
 }
 
 // removeWorkspaceMember 移除成员（需要工作区管理员）。

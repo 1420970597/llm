@@ -9,6 +9,7 @@ import (
 	"github.com/1420970597/llm/internal/model"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // 本文件实现工作区成员的读写（Issue #160 T28）。
@@ -101,6 +102,9 @@ func (s *WorkspaceMemberStore) ListWorkspaceMembers(ctx context.Context, workspa
 }
 
 // UpsertWorkspaceMember 添加成员或变更其工作区角色。
+//
+// 只处理**已有账号**（与 `ResolveUserIDByEmail` 配对）。如果管理员需要直接建号，
+// 用 `CreateWorkspaceMemberWithAccount`（issue #197 第 15 条：本部署没有出站邮件）。
 func (s *WorkspaceMemberStore) UpsertWorkspaceMember(ctx context.Context, workspaceID, actorID, targetUserID int64, role string) (WorkspaceMember, error) {
 	if role != model.WorkspaceRoleAdmin && role != model.WorkspaceRoleMember {
 		return WorkspaceMember{}, model.FieldErrors{{Field: "role",
@@ -109,12 +113,38 @@ func (s *WorkspaceMemberStore) UpsertWorkspaceMember(ctx context.Context, worksp
 	if targetUserID <= 0 {
 		return WorkspaceMember{}, model.FieldErrors{{Field: "userId", Message: "必填"}}
 	}
+
+	// 授权与成员写入必须在**同一个事务**里完成。
+	//
+	// 这里曾经先 `SELECT ... FOR UPDATE` 数管理员（在 UpsertWorkspaceMember 里），
+	// 再由 `getWorkspaceMember` 打开**另一个连接**读结果 —— 两个连接各自看到
+	// 不同的快照，读者可能读到自己写入之前的状态（表现为「添加成功但列表里没有」）。
+	// 同一个事务内完成写入与回读，语义才是「写成功了才返回成功」。
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return WorkspaceMember{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	if err := upsertWorkspaceMemberTx(ctx, tx, workspaceID, actorID, targetUserID, role); err != nil {
+		return WorkspaceMember{}, err
+	}
+
+	member, err := readWorkspaceMemberTx(ctx, tx, workspaceID, targetUserID)
+	if err != nil {
+		return WorkspaceMember{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return WorkspaceMember{}, err
+	}
+	return member, nil
+}
+
+// upsertWorkspaceMemberTx 是成员写入的单一实现（事务内）。
+//
+// 由「按 userID 添加」与「直接建号并添加」两条命令共用：两份实现会让
+// 「降级最后一名管理员」这类守卫在其中一条路径上被漏掉。
+func upsertWorkspaceMemberTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID, targetUserID int64, role string) error {
 	// 锁住工作区公共行，确保「管理员资格」与后面的成员写入针对同一个
 	// workspace 且不会在并发撤权时出现 write-skew。仅允许一个空工作区由
 	// actor 把自己初始化为第一名 admin；正常 API 路径仍要求已有 admin。
@@ -123,29 +153,29 @@ func (s *WorkspaceMemberStore) UpsertWorkspaceMember(ctx context.Context, worksp
 		if errors.Is(err, ErrWorkspaceMemberManageDenied) && role == model.WorkspaceRoleAdmin && actorID == targetUserID {
 			if countErr := tx.QueryRow(ctx, `
         SELECT COUNT(*) FROM workspace_members WHERE workspace_id = $1`, workspaceID).Scan(&memberCount); countErr != nil {
-				return WorkspaceMember{}, countErr
+				return countErr
 			}
 			if memberCount != 0 {
-				return WorkspaceMember{}, err
+				return err
 			}
 		} else {
-			return WorkspaceMember{}, err
+			return err
 		}
 	}
 
 	// 目标用户必须存在：否则会写出一个指向不存在用户的关系行。
 	var exists bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`, targetUserID).Scan(&exists); err != nil {
-		return WorkspaceMember{}, err
+		return err
 	}
 	if !exists {
-		return WorkspaceMember{}, model.FieldErrors{{Field: "userId", Message: "用户不存在"}}
+		return model.FieldErrors{{Field: "userId", Message: "用户不存在"}}
 	}
 
 	// 降级最后一名管理员同样是不可逆状态：先数一下现有管理员。
 	if role == model.WorkspaceRoleMember {
 		if err := ensureNotLastWorkspaceAdminTx(ctx, tx, workspaceID, targetUserID); err != nil {
-			return WorkspaceMember{}, err
+			return err
 		}
 	}
 
@@ -154,19 +184,24 @@ func (s *WorkspaceMemberStore) UpsertWorkspaceMember(ctx context.Context, worksp
     VALUES ($1, $2, $3, $4)
     ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
 		workspaceID, targetUserID, role, actorID); err != nil {
-		return WorkspaceMember{}, err
+		return err
 	}
-	if err := writeStudioAuditTx(ctx, tx, StudioAudit{
+	return writeStudioAuditTx(ctx, tx, StudioAudit{
 		ActorID: actorID, Action: "workspace_member_upsert", Resource: "workspace_member",
 		ResourceID: fmt.Sprint(targetUserID), WorkspaceID: workspaceID,
 		Reason: fmt.Sprintf("role=%s", role),
-	}); err != nil {
-		return WorkspaceMember{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return WorkspaceMember{}, err
-	}
-	return s.getWorkspaceMember(ctx, workspaceID, targetUserID)
+	})
+}
+
+// readWorkspaceMemberTx 在事务内读回成员（保证读到的就是刚写入的那一版）。
+func readWorkspaceMemberTx(ctx context.Context, tx pgx.Tx, workspaceID, userID int64) (WorkspaceMember, error) {
+	var member WorkspaceMember
+	err := tx.QueryRow(ctx, `
+    SELECT m.user_id, u.email, m.role, u.role, to_char(m.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+    FROM workspace_members m JOIN users u ON u.id = m.user_id
+    WHERE m.workspace_id = $1 AND m.user_id = $2`, workspaceID, userID).
+		Scan(&member.UserID, &member.Email, &member.Role, &member.UserRole, &member.CreatedAt)
+	return member, err
 }
 
 // RemoveWorkspaceMember 移除成员（并清理他在本工作区的项目成员关系）。
@@ -296,23 +331,6 @@ func blockingProjectsTx(ctx context.Context, tx pgx.Tx, workspaceID, userID int6
 	return blocking, rows.Err()
 }
 
-// getWorkspaceMember 读取单个成员（返回给调用方做响应）。
-func (s *WorkspaceMemberStore) getWorkspaceMember(ctx context.Context, workspaceID, userID int64) (WorkspaceMember, error) {
-	var member WorkspaceMember
-	err := s.db.QueryRow(ctx, `
-    SELECT m.user_id, u.email, m.role, u.role, to_char(m.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
-    FROM workspace_members m JOIN users u ON u.id = m.user_id
-    WHERE m.workspace_id = $1 AND m.user_id = $2`, workspaceID, userID).
-		Scan(&member.UserID, &member.Email, &member.Role, &member.UserRole, &member.CreatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return WorkspaceMember{}, ErrWorkspaceMemberNotBlocked
-	}
-	if err != nil {
-		return WorkspaceMember{}, err
-	}
-	return member, nil
-}
-
 // ResolveUserIDByEmail 按邮箱解析用户（T28「首版可选择已有账号」）。
 func (s *WorkspaceMemberStore) ResolveUserIDByEmail(ctx context.Context, email string) (int64, error) {
 	trimmed := strings.ToLower(strings.TrimSpace(email))
@@ -329,4 +347,129 @@ func (s *WorkspaceMemberStore) ResolveUserIDByEmail(ctx context.Context, email s
 		return 0, err
 	}
 	return userID, nil
+}
+
+// CreateWorkspaceMemberWithAccountInput 是「直接建号并加入工作区」的输入。
+type CreateWorkspaceMemberWithAccountInput struct {
+	WorkspaceID int64
+	ActorID     int64
+	Email       string
+	Password    string
+	Role        string
+	UserRole    string
+}
+
+// CreateWorkspaceMemberWithAccount 创建账号并把它加入工作区（issue #197 第 15 条）。
+//
+// 为什么需要它：原来的两条路径都不可用 ——
+//   - `UpsertWorkspaceMember` 只能添加**已有账号**（`ResolveUserIDByEmail` 在
+//     账号不存在时明确回 422「邮件邀请尚未接入」）；
+//   - 而本部署没有出站邮件，邀请链接永远发不出去。
+//
+// 于是「新建用户」在甲方那里就是死功能。
+//
+// 语义：
+//   - 邮箱已存在 → **不报错**，直接把它加入工作区（管理员意图是「让他能用」，
+//     而不是「必须是新账号」）；返回值里 `created` 标明这次是否真的建了账号。
+//   - 邮箱不存在 → 按初始密码建账号，再写入成员关系。
+//
+// 授权由调用方（handler）在进入本函数前完成；这里只做「目标用户存在性」与
+// 「角色合法性」校验，并把两者放在**同一个事务**里，避免出现
+// 「账号建好了、成员关系没写成」的半成品。
+func (s *WorkspaceMemberStore) CreateWorkspaceMemberWithAccount(
+	ctx context.Context, input CreateWorkspaceMemberWithAccountInput,
+) (int64, WorkspaceMember, error) {
+	if input.Role != model.WorkspaceRoleAdmin && input.Role != model.WorkspaceRoleMember {
+		return 0, WorkspaceMember{}, model.FieldErrors{{Field: "role",
+			Message: "只能是 admin 或 member"}}
+	}
+	if input.UserRole != "" && input.UserRole != "admin" && input.UserRole != "user" {
+		return 0, WorkspaceMember{}, model.FieldErrors{{Field: "userRole",
+			Message: "只能是 admin 或 user"}}
+	}
+	userRole := input.UserRole
+	if userRole == "" {
+		userRole = "user"
+	}
+	normalized := normalizingEmail(input.Email)
+	if normalized == "" {
+		return 0, WorkspaceMember{}, model.FieldErrors{{Field: "email", Message: "必填"}}
+	}
+
+	// 先建账号（幂等）。放在同一个事务里：账号与成员关系要么都成立，要么都不成立。
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return 0, WorkspaceMember{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var targetUserID int64
+	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE email = $1`, normalized).Scan(&targetUserID)
+	switch {
+	case err == nil:
+		// 账号已存在：不再要求密码（管理员此时只是想把这个人加进工作区）。
+	case errors.Is(err, pgx.ErrNoRows):
+		if err := ValidateInitialPassword(normalized, input.Password); err != nil {
+			return 0, WorkspaceMember{}, model.FieldErrors{{Field: "password",
+				Message: "初始密码至少 8 位，且不能与邮箱相同"}}
+		}
+		hashed, hashErr := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+		if hashErr != nil {
+			return 0, WorkspaceMember{}, hashErr
+		}
+		if err := tx.QueryRow(ctx, `
+      INSERT INTO users (email, hashed_password, role)
+      VALUES ($1, $2, $3)
+      RETURNING id`, normalized, string(hashed), userRole).Scan(&targetUserID); err != nil {
+			if IsUniqueViolation(err) {
+				// 并发下另一个请求刚建了同一账号：退回到「已存在」分支。
+				if scanErr := tx.QueryRow(ctx, `SELECT id FROM users WHERE email = $1`, normalized).
+					Scan(&targetUserID); scanErr != nil {
+					return 0, WorkspaceMember{}, scanErr
+				}
+			} else {
+				return 0, WorkspaceMember{}, err
+			}
+		}
+	default:
+		return 0, WorkspaceMember{}, err
+	}
+
+	// 成员写入复用同样的约束：降级最后一名管理员由 ensureNotLastWorkspaceAdminTx 拦住。
+	// 这里**不再调用** ensureWorkspaceAdminTx —— 授权已经在 handler 层按
+	// workspace 作用域完成，而该函数是为「空工作区自举」设计的另一条路径。
+	if input.Role == model.WorkspaceRoleMember {
+		if err := ensureNotLastWorkspaceAdminTx(ctx, tx, input.WorkspaceID, targetUserID); err != nil {
+			return 0, WorkspaceMember{}, err
+		}
+	}
+	if _, err := tx.Exec(ctx, `
+    INSERT INTO workspace_members (workspace_id, user_id, role, created_by)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+		input.WorkspaceID, targetUserID, input.Role, input.ActorID); err != nil {
+		return 0, WorkspaceMember{}, err
+	}
+	if err := writeStudioAuditTx(ctx, tx, StudioAudit{
+		ActorID: input.ActorID, Action: "user_created_with_password", Resource: "workspace_member",
+		ResourceID: fmt.Sprint(targetUserID), WorkspaceID: input.WorkspaceID,
+		// 审计只记录角色，**绝不记录密码**（含哈希）。
+		Reason: fmt.Sprintf("email=%s role=%s userRole=%s", normalized, input.Role, userRole),
+	}); err != nil {
+		return 0, WorkspaceMember{}, err
+	}
+
+	var member WorkspaceMember
+	if err := tx.QueryRow(ctx, `
+    SELECT m.user_id, u.email, m.role, u.role, to_char(m.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+    FROM workspace_members m JOIN users u ON u.id = m.user_id
+    WHERE m.workspace_id = $1 AND m.user_id = $2`, input.WorkspaceID, targetUserID).
+		Scan(&member.UserID, &member.Email, &member.Role, &member.UserRole, &member.CreatedAt); err != nil {
+		return 0, WorkspaceMember{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, WorkspaceMember{}, err
+	}
+	return targetUserID, member, nil
 }

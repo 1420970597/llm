@@ -712,8 +712,8 @@ func (s *ActivityStore) Search(ctx context.Context, userID, workspaceID int64, k
 			return nil, err
 		}
 		hit.Kind = "batch"
-		hit.Label = fmt.Sprintf("批次 %d（%s）", hit.ObjectID, purpose)
-		hit.Caption = status
+		hit.Label = fmt.Sprintf("批次 %d（%s）", hit.ObjectID, purposeLabel(purpose))
+		hit.Caption = describeBatchStatus(status)
 		hit.PagePath = projectPageLink(hit.ProjectID, "runs") + "/" + fmt.Sprint(hit.ObjectID)
 		hits = append(hits, hit)
 	}
@@ -763,8 +763,9 @@ func nullableWatermark(watermark model.ReadWatermark) *time.Time {
 
 // activitySummary 把事件翻译成面向用户的一句话。
 //
-// 未知事件**显示原始 kind**而不是一个猜的标签：猜错会让用户以为系统做了
-// 一件它没做的事，而显示代码至少可以被搜索到。
+// issue #191：未知事件也必须给人话，而不是回传原始 kind。
+// 完整的审计动作表（auditActionLabels）与该表之外的派生兜底
+// （auditActionFallback）共同保证「中文界面里不出现内部英文 code」。
 func activitySummary(source, kind string, objectID, aggregateCount, aggregateTotal int64) string {
 	if source == model.ActivitySourceBatch {
 		if kind == model.BatchEventPartialFailed && aggregateCount > 0 && objectID > 0 {
@@ -779,12 +780,12 @@ func activitySummary(source, kind string, objectID, aggregateCount, aggregateTot
 			}
 			return label
 		}
-		return fmt.Sprintf("批次事件 %s", kind)
+		return fmt.Sprintf("批次事件：%s", auditActionFallback(kind))
 	}
 	if label, found := auditActionLabels[kind]; found {
 		return label
 	}
-	return fmt.Sprintf("操作 %s", kind)
+	return auditActionFallback(kind)
 }
 
 // activityLinks 给出可跳转的链接。
@@ -811,21 +812,132 @@ var batchEventLabels = map[string]string{
 	model.BatchEventRetryRequested: "批次请求重试",
 }
 
-// auditActionLabels 是常见的项目级审计动作文案。
+// batchStatusLabels 是批次状态的中文文案（覆盖 model.BatchStatus* 的全部取值）。
 //
-// 未列出的动作显示原始 code（见 activitySummary 的说明）。
+// 为什么会出现在**动态**里：`Search` 的命中项 caption 以前直接回传
+// `batches.status`，于是“搜索”面板里出现 `partial_failed` 这样的内部枚举。
+// 与事件文案放在同一个文件，是因为两者都是「同一条动态/搜索行怎么读」的问题，
+// 分开写会让同一个状态在两个地方出现两种译法。
+var batchStatusLabels = map[string]string{
+	model.BatchStatusQueued:         "排队中",
+	model.BatchStatusRunning:        "运行中",
+	model.BatchStatusPauseRequested: "暂停请求中",
+	model.BatchStatusPaused:         "已暂停",
+	model.BatchStatusPartialFailed:  "部分完成（有缺口或失败项）",
+	model.BatchStatusCompleted:      "已完成",
+	model.BatchStatusFailed:         "失败",
+}
+
+// purposeLabel 把批次用途 code 翻成中文（issue #191：搜索行不得出现 `pilot`）。
+func purposeLabel(purpose string) string {
+	switch purpose {
+	case model.BatchPurposePilot:
+		return "试制"
+	case model.BatchPurposeScale:
+		return "扩量"
+	default:
+		return "未知用途"
+	}
+}
+
+// describeBatchStatus 返回批次状态的中文文案。
+//
+// 未知取值返回“状态未知”而不是原始串：搜索行的 caption 是**面向用户**的，
+// 把内部状态机取值直接写在那里正是 issue #191 要消除的形态。
+func describeBatchStatus(status string) string {
+	if label, found := batchStatusLabels[status]; found {
+		return label
+	}
+	return "状态未知"
+}
+
+// auditActionLabels 是审计动作的中文文案。
+//
+// 与 activitySummary 共用同一张表（issue #191）：同一个 `action` 在
+// 「动态」里被翻译、在「操作记录/审计」里却漏出英文 code，是同一缺陷的两个面。
+//
+// 未列出的动作**仍然**有兜底（见 auditActionFallback），因为
+// 「显示内部 code」对非技术用户没有任何信息量。
 var auditActionLabels = map[string]string{
-	"batch_create":                "创建批次",
-	"batch_pause":                 "暂停批次",
-	"batch_resume":                "恢复批次",
-	"batch_retry_failed":          "重试失败项",
-	"experiment_create":           "创建质量实验",
-	"release_candidate_created":   "创建发布候选",
-	"release_published":           "发布版本",
-	"review_decision":             "提交人工判断",
-	"recipe_create":               "创建方案",
-	"project_created_from_recipe": "用方案创建项目",
-	"comment_created":             "发表评论",
+	// 项目与工作区
+	"project_created_from_recipe":    "用方案创建项目",
+	"recipe_create":                  "创建方案",
+	"recipe_version_created":         "保存方案新版本",
+	"recipe_version_published":       "发布方案版本",
+	"document_version_created":       "保存文档新版本",
+	"blueprint_version_created":      "保存蓝图新版本",
+	"coverage_version_created":       "保存覆盖方案新版本",
+	"standard_version_created":       "保存思维标准新版本",
+	"quality_policy_version_created": "保存质量策略新版本",
+	"mapping_version_created":        "保存交付映射新版本",
+	"member_upsert":                  "添加项目成员",
+	"member_remove":                  "移除项目成员",
+	"workspace_member_upsert":        "添加工作区成员",
+	"workspace_member_removed":       "移除工作区成员",
+
+	// 批次与生产
+	"batch_create":       "创建批次",
+	"batch_pause":        "暂停批次",
+	"batch_resume":       "恢复批次",
+	"batch_retry_failed": "重试失败项",
+
+	// 数据、审阅与质量
+	"review_decision":          "提交人工判断",
+	"review_conflict_resolved": "处理审阅冲突",
+	"comparison_adopt":         "采纳比较结论",
+	"experiment_create":        "创建质量实验",
+	"rule_evidence_recorded":   "记录规则命中证据",
+	"comment_created":          "发表评论",
+
+	// 发布
+	"release_candidate_create": "创建发布候选",
+	"release_freeze":           "冻结发布候选",
+	"release_published":        "发布版本",
+}
+
+// auditActionFallback 把未登记的动作 code 展开成可读的中文。
+//
+// 为什么不能直接回退为原始 code：审计页的读者是甲方，`rule_evidence_recorded`
+// 对他们没有意义（issue #191）。这里保留足够的信息量（动词 + 资源），
+// 同时把「资源」翻成中文名词。
+func auditActionFallback(action string) string {
+	verb, resource := "", ""
+	for _, pair := range []struct{ code, label string }{
+		{"_version_created", "保存新版本"}, {"_version_published", "发布版本"},
+		{"_version_deleted", "删除版本"}, {"_created", "创建"}, {"_updated", "更新"},
+		{"_deleted", "删除"}, {"_removed", "移除"}, {"_upsert", "添加"},
+		{"_recorded", "记录"}, {"_published", "发布"}, {"_resolved", "处理"},
+		{"_requested", "请求"}, {"_paused", "暂停"}, {"_resumed", "恢复"},
+	} {
+		if strings.HasSuffix(action, pair.code) {
+			verb = pair.label
+			resource = strings.TrimSuffix(action, pair.code)
+			break
+		}
+	}
+	if verb == "" {
+		return "配置变更"
+	}
+	if label, found := auditResourceLabels[resource]; found {
+		return label + verb
+	}
+	return "配置" + verb
+}
+
+// auditResourceLabels 把审计动作前缀翻成中文资源名。
+var auditResourceLabels = map[string]string{
+	"batch":            "批次",
+	"project":          "项目",
+	"recipe":           "方案",
+	"blueprint":        "蓝图",
+	"coverage":         "覆盖方案",
+	"standard":         "思维标准",
+	"quality_policy":   "质量策略",
+	"mapping":          "交付映射",
+	"experiment":       "质量实验",
+	"release":          "发布候选",
+	"member":           "项目成员",
+	"workspace_member": "工作区成员",
 }
 
 // decodeMentionIDs 解析 mentions JSONB。

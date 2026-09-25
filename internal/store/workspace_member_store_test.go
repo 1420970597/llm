@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -216,5 +217,122 @@ func TestResolveUserIDByEmail(t *testing.T) {
 		t.Fatal("不存在的账号必须被拒绝")
 	} else if _, ok := model.HasFieldErrors(err); !ok {
 		t.Fatalf("不存在账号应返回字段级错误（界面按字段提示），实际 %v", err)
+	}
+}
+
+// TestCreateWorkspaceMemberWithAccount 覆盖 issue #197 第 15 条：
+// 管理员用「用户名 + 初始密码」直接建号，不必走永远发不出邮件的邀请流程。
+func TestCreateWorkspaceMemberWithAccount(t *testing.T) {
+	pool := newStudioTestPool(t)
+	ctx := context.Background()
+	suffix := fmt.Sprintf("%d-%s", os.Getpid(), t.Name())
+	workspaceID := seedAuthzWorkspace(t, pool, suffix)
+	adminID := seedStudioUser(t, pool, "direct-admin-"+suffix)
+	if _, err := NewWorkspaceMemberStore(pool).UpsertWorkspaceMember(
+		ctx, workspaceID, adminID, adminID, model.WorkspaceRoleAdmin); err != nil {
+		t.Fatalf("seed admin member: %v", err)
+	}
+	store := NewWorkspaceMemberStore(pool)
+	email := "direct-user-" + suffix + "@company.com"
+
+	// 正常路径：建号 + 加成员，并且新账号**可以立即登录**。
+	userID, member, err := store.CreateWorkspaceMemberWithAccount(ctx, CreateWorkspaceMemberWithAccountInput{
+		WorkspaceID: workspaceID, ActorID: adminID,
+		Email: email, Password: "initial-pass-123", Role: model.WorkspaceRoleMember, UserRole: "user",
+	})
+	if err != nil {
+		t.Fatalf("create member with account: %v", err)
+	}
+	if userID <= 0 || member.Email != strings.ToLower(email) || member.Role != model.WorkspaceRoleMember {
+		t.Fatalf("返回值不完整：userID=%d member=%+v", userID, member)
+	}
+	authenticated, err := NewAuthStore(pool).Authenticate(ctx, email, "initial-pass-123")
+	if err != nil {
+		t.Fatalf("凭初始密码必须能立即登录: %v", err)
+	}
+	if authenticated.ID != userID {
+		t.Fatalf("登录返回的账号 ID 必须与创建的一致：%d vs %d", authenticated.ID, userID)
+	}
+	// 错误密码必须拒绝（证明哈希真的生效，而不是明文存储/空校验）。
+	if _, err := NewAuthStore(pool).Authenticate(ctx, email, "wrong-pass-123"); err == nil {
+		t.Fatal("错误密码必须被拒绝")
+	}
+
+	// 幂等：同一邮箱再次提交不报错，也不重复建号（管理员意图是「让他能用」）。
+	againID, _, err := store.CreateWorkspaceMemberWithAccount(ctx, CreateWorkspaceMemberWithAccountInput{
+		WorkspaceID: workspaceID, ActorID: adminID,
+		Email: email, Password: "", Role: model.WorkspaceRoleAdmin, UserRole: "user",
+	})
+	if err != nil {
+		t.Fatalf("同一邮箱再次提交必须成功（只调整角色）: %v", err)
+	}
+	if againID != userID {
+		t.Fatalf("不得创建第二个账号：%d vs %d", againID, userID)
+	}
+	// 邮箱大小写与空白归一化后仍应命中同一账号。
+	normalizedID, _, err := store.CreateWorkspaceMemberWithAccount(ctx, CreateWorkspaceMemberWithAccountInput{
+		WorkspaceID: workspaceID, ActorID: adminID,
+		Email: "  " + strings.ToUpper(email) + "  ", Password: "", Role: model.WorkspaceRoleMember, UserRole: "user",
+	})
+	if err != nil {
+		t.Fatalf("大小写/空白变体必须命中同一账号: %v", err)
+	}
+	if normalizedID != userID {
+		t.Fatalf("归一化后必须命中同一账号：%d vs %d", normalizedID, userID)
+	}
+}
+
+// TestCreateWorkspaceMemberWithAccountRejectsWeakInput 覆盖异常路径：
+// 弱密码、非法角色、非法用户角色都必须被拒绝，并且**不留下账号**。
+func TestCreateWorkspaceMemberWithAccountRejectsWeakInput(t *testing.T) {
+	pool := newStudioTestPool(t)
+	ctx := context.Background()
+	suffix := fmt.Sprintf("%d-%s", os.Getpid(), t.Name())
+	workspaceID := seedAuthzWorkspace(t, pool, suffix)
+	adminID := seedStudioUser(t, pool, "weak-admin-"+suffix)
+	if _, err := NewWorkspaceMemberStore(pool).UpsertWorkspaceMember(
+		ctx, workspaceID, adminID, adminID, model.WorkspaceRoleAdmin); err != nil {
+		t.Fatalf("seed admin member: %v", err)
+	}
+	store := NewWorkspaceMemberStore(pool)
+
+	cases := []struct {
+		name     string
+		email    string
+		password string
+		role     string
+		userRole string
+		field    string
+	}{
+		{"密码太短", "short-" + suffix + "@company.com", "1234567", model.WorkspaceRoleMember, "user", "password"},
+		{"密码等于邮箱", "same-" + suffix + "@company.com", "same-" + suffix + "@company.com", model.WorkspaceRoleMember, "user", "password"},
+		{"非法工作区角色", "badrole-" + suffix + "@company.com", "initial-pass-123", "owner", "user", "role"},
+		{"非法系统角色", "baduserrole-" + suffix + "@company.com", "initial-pass-123", model.WorkspaceRoleMember, "superuser", "userRole"},
+		{"邮箱为空", "   ", "initial-pass-123", model.WorkspaceRoleMember, "user", "email"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := store.CreateWorkspaceMemberWithAccount(ctx, CreateWorkspaceMemberWithAccountInput{
+				WorkspaceID: workspaceID, ActorID: adminID,
+				Email: tc.email, Password: tc.password, Role: tc.role, UserRole: tc.userRole,
+			})
+			if err == nil {
+				t.Fatal("非法输入必须被拒绝")
+			}
+			fieldErrors, ok := model.HasFieldErrors(err)
+			if !ok || !hasFieldError(fieldErrors, tc.field) {
+				t.Fatalf("必须是字段级错误且指向 %s，实际 %v", tc.field, err)
+			}
+		})
+	}
+
+	// 被拒绝的邮箱不得留下账号（否则「密码不合规」的失败会变成一次静默建号）。
+	var count int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM users WHERE email LIKE $1`, "%"+suffix+"@company.com").Scan(&count); err != nil {
+		t.Fatalf("count users: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("被拒请求不得建号，实际已有 %d 个", count)
 	}
 }

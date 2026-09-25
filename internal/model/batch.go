@@ -188,6 +188,36 @@ type Batch struct {
 	UpdatedAt  time.Time  `json:"updatedAt"`
 }
 
+// BatchShortfall 返回「计划量 − 完成量」的缺口。
+//
+// issue #190：这个数字必须由服务端给出，而不是让前端拿两个字段相减 ——
+// 界面上少一处算术，就少一处口径漂移。
+func (batch Batch) Shortfall() int {
+	shortfall := batch.PlannedUnits - batch.CompletedUnits
+	if shortfall < 0 {
+		return 0
+	}
+	return shortfall
+}
+
+// ShortfallNote 给出缺口的中文原因（无缺口时为空串）。
+//
+// 只有**已定稿**的批次才允许宣称缺口：把还在跑的批次标成「缺口」会让用户
+// 以为已经跑完了。
+func (batch Batch) ShortfallNote() string {
+	shortfall := batch.Shortfall()
+	if shortfall == 0 {
+		return ""
+	}
+	terminal := batch.Status == BatchStatusCompleted || batch.Status == BatchStatusFailed ||
+		batch.Status == BatchStatusPartialFailed
+	if !terminal {
+		return ""
+	}
+	return fmt.Sprintf("计划 %d，实际产出 %d，缺口 %d：覆盖率不足或无素材接地，请补充方向配额/素材后重跑",
+		batch.PlannedUnits, batch.CompletedUnits, shortfall)
+}
+
 // BatchStep 是一个阶段的进度。
 type BatchStep struct {
 	ID           int64      `json:"id"`

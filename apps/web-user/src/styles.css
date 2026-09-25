@@ -1305,6 +1305,13 @@ select:focus {
 .blueprint-health--planned { color: var(--text-muted); }
 .blueprint-related-config {
   display: flex;
+  /*
+   * `flex-wrap` 是必需的，不是样式偏好（issue #194）：右栏最窄时
+   * 「当前引用配置 v1 · 项目创建：初始化 Atelier 配置」会换行成两行，
+   * 而按钮仍然被压在同一个 flex 行里 → 文字与按钮**视觉重叠**（审计截图）。
+   * 允许换行后，按钮在放不下时自然落到下一行。
+   */
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -1314,8 +1321,15 @@ select:focus {
   border-radius: 8px;
   background: var(--panel);
 }
-.blueprint-related-config > div { display: grid; gap: 3px; min-width: 0; }
-.blueprint-related-config span { color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 文字块必须能收缩（min-width:0）且占满剩余宽度：否则长版本名会把按钮
+   挤出容器，而不是自己换行。 */
+.blueprint-related-config > div { display: grid; gap: 3px; min-width: 0; flex: 1 1 220px; }
+/* 长版本名允许换到第二行（原来是 nowrap + ellipsis，等于把信息藏起来）；
+   真正的超长文本由下方 `overflow-wrap: anywhere` 在行内打断。 */
+.blueprint-related-config strong { overflow-wrap: anywhere; line-height: 1.4; }
+.blueprint-related-config span { color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+/* 按钮不被压缩：它比文字优先级高，放不下时应当让文字换行。 */
+.blueprint-related-config > .semi-button { flex: 0 0 auto; }
 .blueprint-validation-error {
   display: flex;
   align-items: center;
@@ -1570,6 +1584,26 @@ select:focus {
 }
 
 .document-editor__row--mapping { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 92px 36px; }
+/*
+ * 列头（issue #193）：与下方行使用**同一套 grid 列宽**，因此表头与输入框
+ * 严格对齐。以前这两个表单没有任何列头，用户看到的是两列相同的值
+ * （交付映射）和一个无标签的数字 + `project-default`（覆盖矩阵）。
+ */
+.document-editor__header-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 110px minmax(0, 1fr) 36px;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.document-editor__header-row--mapping { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 92px 36px; }
+.document-editor__header-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 操作列的表头不写「操作」两个字以外的内容，居中与图标按钮对齐。 */
+.document-editor__header-row--actions { text-align: center; }
 .document-editor__row:last-child { border-bottom: 0; }
 .document-editor__actions { display: flex; justify-content: flex-start; }
 .document-editor__icon-actions { display: flex; align-items: center; gap: 2px; }
@@ -2953,6 +2987,62 @@ a {
   box-shadow: 0 8px 24px rgba(27, 35, 31, .04);
 }
 
+/*
+ * 设置页内部的表单分组分隔线（issue #197 第 15、17 条）。
+ *
+ * 团队页现在有两组表单（新建账号 / 添加已有账号），没有分隔线时它们看起来
+ * 是一组连续字段，用户会把「初始密码」当成「已有账号」的输入。
+ * 用 `<hr>` 而不是空 div：它在语义上就是分组边界，屏幕阅读器会朗读出来。
+ */
+/*
+ * 样本内容预览（issue #197 第 3 条：「数据应当可以预览」）。
+ *
+ * 以前审阅页的内容区是 `JSON.stringify(payload, null, 2)`，用户看到的是
+ * 转义过的原始 JSON。这里按字段分块渲染，并且：
+ *   - `white-space: pre-wrap`：保留模型输出里的真实换行；
+ *   - `overflow-wrap: anywhere`：超长无空格串（URL、代码）不撑破容器；
+ *   - `max-height` + `overflow-y: auto`：长推理不会把右栏拉成几屏。
+ */
+.payload-preview {
+  display: grid;
+  gap: 12px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+.payload-preview__field {
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--panel);
+}
+.payload-preview__body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  font-size: 13px;
+  color: var(--text);
+}
+
+/*
+ * 项目列表的分页状态行（issue #197 第 1 条）。
+ *
+ * 这一行**始终渲染**：只在 `nextCursor` 非空时才出现的分页控件，会让
+ * 「项目少到一页装得下」的用户以为系统没有分页（这正是甲方的原话）。
+ * 用一条上边框把它与卡片列表分开，避免看起来像列表的最后一行。
+ */
+.project-list-footer {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.settings-divider {
+  height: 1px;
+  margin: 18px 0 0;
+  border: 0;
+  background: var(--panel-border);
+}
+
 .atelier-shell [data-studio-page="settings-connections"] > .console-card,
 .atelier-shell [data-studio-page="settings-team"] > .console-card {
   padding: 20px;
@@ -3055,14 +3145,35 @@ a {
   .atelier-shell [data-studio-page="deliveries"] .console-page__header h4 { font-size: 25px; }
   .blueprint-ratio-editor__row { grid-template-columns: minmax(0, 1fr) 88px auto; }
   .atelier-shell [data-studio-page="settings-connections"] .comparison-table { overflow-x: visible; }
+  /*
+   * 窄屏（≤560px）连接与存储改成**卡片式列表**（issue #194）。
+   *
+   * 旧行为：表格变成两列，5 个单元格依次倒进两列，于是「名称 / 模型 / 类型 /
+   * 密钥标识 / 状态」的表头与数据行**错位混合**（审计截图里的真实形态）。
+   * 现在：
+   *   - 表头整行隐藏（不再有需要对齐的表头）；
+   *   - 每行变成单列卡片，每个单元格左侧显示自己的字段名（data-label）；
+   *   - 值仍可能很长（bucket / 掩码密钥），因此保留 `overflow-wrap: anywhere`。
+   */
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-row--head { display: none; }
   .atelier-shell [data-studio-page="settings-connections"] .comparison-row {
     min-width: 0;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 8px 12px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 12px 14px;
   }
-  .atelier-shell [data-studio-page="settings-connections"] .comparison-row--head { font-size: 10px; }
-  .atelier-shell [data-studio-page="settings-connections"] .comparison-row:not(.comparison-row--head) > span:nth-child(n+3) {
-    grid-column: span 2;
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-row:not(.comparison-row--head) > span {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 10px;
+    align-items: baseline;
+    grid-column: auto;
+  }
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-row:not(.comparison-row--head) > span::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
   }
   .atelier-shell [data-studio-page="settings-team"] .comparison-table { overflow-x: visible; }
   .atelier-shell [data-studio-page="settings-team"] .comparison-row {
@@ -3254,6 +3365,41 @@ a {
   display: grid;
   place-items: center;
   color: var(--text-muted);
+}
+
+/*
+ * 加载态文字不得竖排（issue #193）。
+ *
+ * 真实成因（读 Semi 源码得到，不是猜的）：`.semi-spin` 基础样式是
+ * `display:inline-block; width:20px; height:20px`，提示文字放在**绝对定位**的
+ * `.semi-spin-wrapper` 里（`width:100%`）。当 spinner 是 grid/flex 的居中项时，
+ * 20px 就是它的最终宽度 → wrapper 只有 20px 宽，而中文每个字都是断行点，
+ * 于是文案被压成**逐字竖排**（截图里那条竖线）。
+ *
+ * 修复必须同时满足两件事：
+ *   1. 给 spinner 一个可用的宽度（min-width），否则文字永远只有 20px 可用；
+ *   2. 给高度一个下限，否则绝对居中的 wrapper（top:50% + translateY(-50%)）
+ *      会因为自身高度为 0 而溢出容器。
+ *
+ * 作用域限定在**页面级加载容器**（`.atelier-inline-state` 与 console 页面的
+ * 直接子级 spinner），不碰 `<Spin>{内容}</Spin>` 的遮罩用法 —— 后者的绝对
+ * 定位遮罩是 Semi 的设计意图，改写会破坏已有布局。
+ */
+.atelier-inline-state .semi-spin,
+.console-page > .semi-spin,
+.console-page > div > .semi-spin {
+  width: auto;
+  min-width: min(320px, 100%);
+  height: auto;
+  min-height: 64px;
+  writing-mode: horizontal-tb;
+}
+.atelier-inline-state .semi-spin-wrapper,
+.console-page > .semi-spin .semi-spin-wrapper,
+.console-page > div > .semi-spin .semi-spin-wrapper {
+  line-height: 1.5;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .atelier-project-mini-grid button:disabled {

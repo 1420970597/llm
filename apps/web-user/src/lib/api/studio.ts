@@ -306,6 +306,13 @@ export type BatchSummary = {
   budgetLimitMinor: number
   createdAt: string
   updatedAt: string
+  /**
+   * issue #190 的缺口读数：`shortfallUnits = plannedUnits - completedUnits`。
+   * 缺口 > 0 时状态不可能是「已完成」，界面显示「部分完成（1/12）」与原因，
+   * 而不是让用户自己拿两个数字相减。
+   */
+  shortfallUnits: number
+  shortfallNote: string
   /** 服务端按当前用户与状态计算的 UI 操作能力；命令端点仍会重新鉴权。 */
   capabilities: BatchCapabilities
 }
@@ -1547,6 +1554,27 @@ export const settingsApi = {
 
   upsertWorkspaceMember: (payload: { email?: string; userId?: number; role: string; workspaceId?: number }) =>
     client.post<WorkspaceMemberRecord>('/v1/workspace/members', payload).then((response) => response.data),
+
+  /**
+   * 创建账号并加入工作区（issue #197 第 15 条）。
+   *
+   * 与 `upsertWorkspaceMember` 的区别：后者只能添加**已有账号**，
+   * 因为本部署没有出站邮件，「邮件邀请」那条路永远走不通。
+   * 这里由管理员直接设定初始密码，账号可立即登录。
+   */
+  createWorkspaceMemberDirect: (payload: {
+    email: string
+    password: string
+    role: string
+    userRole?: string
+    workspaceId?: number
+  }) =>
+    client
+      .post<{ user: { id: number; email: string; role: string }; member: WorkspaceMemberRecord; note: string }>(
+        '/v1/workspace/members/direct',
+        payload,
+      )
+      .then((response) => response.data),
 
   removeWorkspaceMember: (userId: number, workspaceId?: number) =>
     client

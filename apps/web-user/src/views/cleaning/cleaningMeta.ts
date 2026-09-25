@@ -1,4 +1,5 @@
 import type { CleaningFinding, CleaningKeyword, CleaningReport, CleaningRule, CleaningRun } from '../../lib/api'
+import { describeDatasetStatus } from '../../lib/datasetStatus'
 
 /**
  * 清洗模块的展示元数据与派生计算（L14 独占）。
@@ -68,21 +69,25 @@ export function severityLabel(severity: string): string {
 }
 
 export function matchModeLabel(mode: string): string {
-  return MATCH_MODE_LABELS[mode] ?? (mode || '包含（contains）')
+  return MATCH_MODE_LABELS[mode] ?? '包含（contains）'
 }
 
 export function actionLabel(action: string): string {
-  return ACTION_LABELS[action] ?? action
+  return ACTION_LABELS[action] ?? '未知动作'
 }
 
 export function runStatusLabel(status: string): string {
-  return RUN_STATUS_LABELS[status] ?? status
+  return RUN_STATUS_LABELS[status] ?? '状态未知'
 }
 
 /** 任务（datasets.status）的中文文案，取值与 App.tsx 的 statusLabel 保持一致。 */
 const DATASET_STATUS_LABELS: Record<string, string> = {
   draft: '待确认主题结构',
   domains_confirmed: '结构已确认，待生成问题',
+  directions_queued: '方向生成排队中',
+  directions_completed: '方向已生成，待生成问题',
+  directions_partial_failed: '方向部分失败，需复核',
+  chain_standards_queued: '长链标准步骤生成排队中',
   questions_queued: '问题生成排队中',
   questions_generated: '问题已就绪，待生成答案',
   questions_failed: '问题生成失败',
@@ -99,8 +104,20 @@ const DATASET_STATUS_LABELS: Record<string, string> = {
   export_failed: '导出失败',
 }
 
+/**
+ * 任务状态 → 用户可见文案。
+ *
+ * issue #191：旧实现的兑底是 `?? status`，于是**清洗工作台与历史资产页**会把
+ * `directions_completed` 这样的内部枚举直接当成「任务状态 / 状态」展示给用户。
+ * 这里改走与「今日 / 工作台」同一个 `describeDatasetStatus`，
+ * 未知状态给中性中文，**永不返回原始英文串**。
+ */
 export function datasetStatusLabel(status: string): string {
-  return DATASET_STATUS_LABELS[status] ?? status
+  if (!status) return '状态未知'
+  if (status in DATASET_STATUS_LABELS) {
+    return DATASET_STATUS_LABELS[status]
+  }
+  return describeDatasetStatus(status).label
 }
 
 export function stageLabel(stage: string): string {

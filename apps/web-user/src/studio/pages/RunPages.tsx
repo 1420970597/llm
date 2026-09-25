@@ -48,6 +48,22 @@ const STATUS_LABEL: Record<string, string> = {
   failed: '失败',
 }
 
+/**
+ * 批次状态的**诚实**标签（issue #190）。
+ *
+ * 为什么不能直接用 STATUS_LABEL：服务端在 `completed_units < planned_units` 时
+ * 不再置 completed，但它也可能对**历史批次**保留旧的 completed 状态。
+ * 只改后端会让旧批次继续显示绿色「已完成」，所以标签由两个字段共同推导：
+ * 有缺口就不允许出现「已完成」字样。
+ */
+function honestStatusLabel(batch: Pick<BatchSummary, 'status' | 'plannedUnits' | 'completedUnits' | 'shortfallUnits'>): string {
+  const shortfall = batch.shortfallUnits ?? Math.max(batch.plannedUnits - batch.completedUnits, 0)
+  if (shortfall > 0 && (batch.status === 'completed' || batch.status === 'partial_failed')) {
+    return `部分完成 ${batch.completedUnits}/${batch.plannedUnits}`
+  }
+  return STATUS_LABEL[batch.status] ?? batch.status
+}
+
 function statusTone(status: string): BatchStatusTone {
   switch (status) {
     case 'running':
@@ -193,7 +209,7 @@ export function RunsPage() {
               </button>
               <span>{batch.purpose === 'pilot' ? '试制' : '扩量'}</span>
               <span className={`batch-status batch-status--${statusTone(batch.status)}`}>
-                {STATUS_LABEL[batch.status] ?? batch.status}
+                {honestStatusLabel(batch)}
               </span>
               {/* 四个数字分列：计划量是意图，完成/失败/在途是事实。 */}
               <span data-count="planned">{batch.plannedUnits}</span>
@@ -345,7 +361,7 @@ export function BatchDetailPage() {
             批次 {detail.batch.resourceId}（{detail.batch.purpose === 'pilot' ? '试制' : '扩量'}）
           </Title>
           <Text type="tertiary">
-            {STATUS_LABEL[status] ?? status} · 计划 {detail.batch.plannedUnits} · 完成{' '}
+            {honestStatusLabel(detail.batch)} · 计划 {detail.batch.plannedUnits} · 完成{' '}
             {detail.batch.completedUnits} · 失败 {detail.batch.failedUnits} · 在途{' '}
             {detail.batch.inFlightUnits}
           </Text>
@@ -403,8 +419,26 @@ export function BatchDetailPage() {
         </Card>
       ) : null}
 
+      {/* issue #190：缺口必须显式可见，且不能等用户点开某个面板才看得到。 */}
+      {(detail.batch.shortfallNote || (detail.batch.shortfallUnits ?? 0) > 0) ? (
+        <Card
+          className="console-card mb-3"
+          bodyStyle={{ padding: 14 }}
+          data-batch-shortfall="true"
+        >
+          <Text strong className="block">
+            产出缺口：计划 {detail.batch.plannedUnits}，实际产出 {detail.batch.completedUnits}，缺口{' '}
+            {detail.batch.shortfallUnits ?? detail.batch.plannedUnits - detail.batch.completedUnits}
+          </Text>
+          <Text type="tertiary" size="small">
+            {detail.batch.shortfallNote ||
+              '覆盖矩阵的方向配额或素材接地不足；补齐后再启动下一批，不要把它当作已完成。'}
+          </Text>
+        </Card>
+      ) : null}
+
       {/* 完成后的下一步提示：T13 验收项「批次完成后提示质量实验或比较」。 */}
-      {status === 'completed' ? (
+      {status === 'completed' && !((detail.batch.shortfallUnits ?? 0) > 0) ? (
         <Card className="console-card mb-3" bodyStyle={{ padding: 14 }} data-next-step="true">
           <Text strong className="block">
             本批已完成
@@ -809,6 +843,9 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
     ).then((response) => {
       if (cancelled) return
       const body = response.data
+      // SAFETY: 该端点的响应体有三种历史形态（新版包在 `data` 里、旧版包在 `version` 里、
+      // 更旧版直接返回 payload）。上面两个分支已经排除了前两种；走到这里的 body
+      // 已经**结构上**就是 PlanningBlueprintVersion，但 TS 无法从联合类型里推导出来。
       const version = body?.data
         ?? (body?.version && typeof body.version === 'object'
           ? body.version

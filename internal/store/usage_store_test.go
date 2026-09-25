@@ -47,7 +47,7 @@ func newUsageFixture(t *testing.T) usageFixture {
 	ctx := context.Background()
 
 	batch, err := batchFixture.batches.CreateBatch(ctx, batchFixture.projectID, batchFixture.editorID,
-		model.TargetKindSFT, batchFixture.createBatchInput(model.BatchPurposePilot, 5))
+		model.TargetKindSFT, batchFixture.createBatchInput(t, model.BatchPurposePilot, 5))
 	if err != nil {
 		t.Fatalf("create batch: %v", err)
 	}

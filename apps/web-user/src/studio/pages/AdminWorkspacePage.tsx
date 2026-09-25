@@ -46,6 +46,7 @@ import {
   type StorageProfile,
   type Strategy,
 } from '../../lib/api'
+import { describeDatasetStatus } from '../../lib/datasetStatus'
 
 const { Title, Text } = Typography
 
@@ -470,7 +471,7 @@ export function AdminWorkspacePage() {
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <Text strong className="block">{dataset.name}</Text>
-                          <Text type="tertiary" size="small">#{dataset.id} · {dataset.status} · {new Date(dataset.updatedAt).toLocaleString('zh-CN', { hour12: false })}</Text>
+                          <Text type="tertiary" size="small">#{dataset.id} · {describeDatasetStatus(dataset.status).label} · {new Date(dataset.updatedAt).toLocaleString('zh-CN', { hour12: false })}</Text>
                         </div>
                         <Button size="small" onClick={() => navigate(`/console/tasks/${dataset.id}`)}>查看任务</Button>
                       </div>

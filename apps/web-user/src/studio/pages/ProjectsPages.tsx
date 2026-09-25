@@ -42,6 +42,29 @@ type PageEnvelope<T> = {
   sortKey: string
 }
 
+/**
+ * 项目状态 → 用户可见文案（issue #191）。
+ *
+ * 后端取值来自 `internal/model/project.go` 的 `ProjectStatus*`。以前这里直接
+ * 渲染 `project.status`，于是项目列表上显示 `pilot_running` 这类内部枚举。
+ * 未知取值给「状态未知」，**不回传原始串**。
+ */
+const PROJECT_STATUS_LABEL: Record<string, string> = {
+  draft: '草稿',
+  designed: '设计完成',
+  pilot_running: '试制进行中',
+  pilot_ready: '试制已就绪',
+  scaling: '扩量中',
+  review: '审阅中',
+  candidate: '待发布',
+  published: '已发布',
+  archived: '已归档',
+}
+
+function projectStatusLabel(status: string): string {
+  return PROJECT_STATUS_LABEL[status] ?? '状态未知'
+}
+
 export function ProjectsPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -258,7 +281,7 @@ export function ProjectsPage() {
                 </Text>
               </div>
               <div className="mt-2 flex items-center gap-2">
-                <Tag size="small">{project.status}</Tag>
+                <Tag size="small">{projectStatusLabel(project.status)}</Tag>
                 {!project.capabilities.canRun ? (
                   <Tag size="small" color="grey">
                     只读
@@ -270,21 +293,40 @@ export function ProjectsPage() {
         </div>
       )}
 
-      {nextCursor !== '' ? (
-        <div className="mt-3 flex justify-center">
-          <Button
-            onClick={() => {
-              // 游标分页：只追加，不重新拉第一页 —— 那会在并发写入下
-              // 重复显示同一批项目（契约 §1.5 的「翻页无重复无遗漏」）。
-              setPageIndex((index) => index + 1)
-              void load(search, nextCursor, true)
-            }}
-            loading={loading}
-          >
-            加载更多（第 {pageIndex + 1} 页）
-          </Button>
-        </div>
-      ) : null}
+      {/*
+        issue #197 第 1 条：分页控件以前**只在 nextCursor 非空时出现**，
+        于是「一个项目、单页装得下」时页面上完全没有分页痕迹，用户无法回答
+        「一共几个项目」「我是不是已经翻到底了」。
+        现在**常显一行状态**（已显示 N 条 · 本页第 M 页 · 是否还有下一页），
+        并且显式声明翻页方式（游标 / 只往后追加），而不是让用户猜。
+        服务端返回的是游标分页且不提供总数，因此这里说的是「已显示 N 条」
+        而不是编造一个「共 M 条」。
+      */}
+      <div className="project-list-footer" data-projects-pagination="true">
+        <Text type="tertiary" size="small">
+          已显示 {projects.length} 个项目 · 这是第 {pageIndex} 页
+          {nextCursor !== '' ? ' · 还有更多' : ' · 已到底'}
+        </Text>
+        <Text type="tertiary" size="small" className="block">
+          翻页方式：游标分页（只往后追加，不会重复显示同一条）。
+        </Text>
+        {nextCursor !== '' ? (
+          <div className="mt-2 flex justify-center">
+            <Button
+              onClick={() => {
+                // 游标分页：只追加，不重新拉第一页 —— 那会在并发写入下
+                // 重复显示同一批项目（契约 §1.5 的「翻页无重复无遗漏」）。
+                setPageIndex((index) => index + 1)
+                void load(search, nextCursor, true)
+              }}
+              loading={loading}
+              data-projects-load-more="true"
+            >
+              加载更多（第 {pageIndex + 1} 页）
+            </Button>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }

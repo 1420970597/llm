@@ -249,6 +249,76 @@ type CoveragePayload struct {
 	Domains       []CoverageDomain `json:"domains"`
 }
 
+// CoverageUnit 是覆盖版本展开出的一个**确定性**单元。
+//
+// 它属于 model 包而不是 studio 包（issue #190 的根因修复）：
+// 「一个覆盖方案最多能产出多少单元」必须在**保存/启动前**就能算出并拒绝，
+// 而不是等 runner 跑到最后才发现只产出了计划量的一小部分。
+// 计算放在这里，studio 的单元分配与批次的容量校验共用同一份实现 ——
+// 两份实现会让「界面说能产 12、实际产 1」重新变成可能。
+type CoverageUnit struct {
+	DomainStableID    string
+	DirectionStableID string
+	DomainName        string
+	DirectionName     string
+	// Ordinal 是该方向内的第几个单元（从 1 开始）。
+	Ordinal int
+	// Quota 是该方向的配额（用于进度分列展示，不用于编造总体百分比）。
+	Quota int
+}
+
+// CoverageCapacity 返回该覆盖版本最多能产出的单元数。
+//
+// 这是 issue #190 的权威口径：`plannedUnits` 与它比较，而不是与用户填的数字比较。
+// quota ≤ 0 视为 1，与 AllocateCoverageUnits 保持一致（否则「有名字但永远不产出」
+// 的方向在容量里消失，而界面上它还在）。
+func CoverageCapacity(coverage CoveragePayload) int {
+	total := 0
+	for _, domain := range coverage.Domains {
+		for _, direction := range domain.Directions {
+			quota := direction.Quota
+			if quota <= 0 {
+				quota = 1
+			}
+			total += quota
+		}
+	}
+	return total
+}
+
+// AllocateCoverageUnits 按覆盖配额展开单元，最多 limit 个。
+//
+// 顺序：先按领域顺序，再按方向顺序，再按方向内 ordinal。刻意是**纯函数**：
+// 批次的 item_key 必须稳定，否则「恢复失败项」会算出另一批键并重跑已完成的工作。
+func AllocateCoverageUnits(coverage CoveragePayload, limit int) []CoverageUnit {
+	if limit <= 0 {
+		return nil
+	}
+	units := make([]CoverageUnit, 0, limit)
+	for _, domain := range coverage.Domains {
+		for _, direction := range domain.Directions {
+			quota := direction.Quota
+			if quota <= 0 {
+				quota = 1
+			}
+			for ordinal := 1; ordinal <= quota; ordinal++ {
+				if len(units) >= limit {
+					return units
+				}
+				units = append(units, CoverageUnit{
+					DomainStableID:    domain.StableID,
+					DirectionStableID: direction.StableID,
+					DomainName:        domain.Name,
+					DirectionName:     direction.Name,
+					Ordinal:           ordinal,
+					Quota:             quota,
+				})
+			}
+		}
+	}
+	return units
+}
+
 // ---------------------------------------------------------------------------
 // 思维标准（standard.v1）
 // ---------------------------------------------------------------------------

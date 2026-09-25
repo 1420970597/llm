@@ -165,17 +165,90 @@ func hasFieldError(errs model.FieldErrors, field string) bool {
 }
 
 // createBatchInput 组装一份引用完整快照的创建请求。
-func (fixture batchFixture) createBatchInput(purpose string, units int) model.CreateBatchInput {
+//
+// 配额**大于等于**计划量时必须扩大覆盖矩阵：issue #190 之后
+// `plannedUnits > 覆盖可产出量` 会被拒绝，因此这里让覆盖容量始终不少于
+// 计划量，使各用例仍能测到它真正关心的性质（计费、事件、并发、幂等…），
+// 而不是被容量校验挡住。
+func (fixture batchFixture) createBatchInput(t *testing.T, purpose string, units int) model.CreateBatchInput {
+	t.Helper()
+	return fixture.createBatchInputWithCoverage(purpose, units, func(coverage *model.CoveragePayload) {
+		if len(coverage.Domains) == 0 || len(coverage.Domains[0].Directions) == 0 {
+			return
+		}
+		granted := model.CoverageCapacity(*coverage)
+		if units > granted {
+			coverage.Domains[0].Directions[0].Quota += units - granted
+		}
+	})
+}
+
+// createBatchInputWithCoverage 允许用例自定义覆盖矩阵，用于**刻意**构造
+// 「计划量超过可产出量」的场景（issue #190 的回归用例）。
+func (fixture batchFixture) createBatchInputWithCoverage(purpose string, units int,
+	mutate func(coverage *model.CoveragePayload)) model.CreateBatchInput {
+	coverage := coveragePayload()
+	mutate(&coverage)
+	coverageID := fixture.saveCoverage(coverage)
 	input := model.CreateBatchInput{
 		Purpose:                purpose,
-		BlueprintVersionID:     fixture.blueprintID,
-		CoverageVersionID:      fixture.coverageID,
+		BlueprintVersionID:     fixture.blueprintVersionReferencing(coverageID),
+		CoverageVersionID:      coverageID,
 		StandardVersionID:      fixture.standardID,
 		QualityPolicyVersionID: fixture.policyID,
 		MappingVersionID:       fixture.mappingID,
 		UnitCount:              units,
 	}
 	return input
+}
+
+// saveCoverage 保存一份覆盖版本并返回版本行 ID。
+//
+// 保存失败直接 panic：这些是**测试夹具**，调用方没有 `*testing.T`
+// （`createBatchInput` 的签名要兼容既有 20 处调用）。夹具失败本身就是测试
+// 环境的错误，静默返回 0 会变成「版本不存在」的误导性失败。
+func (fixture batchFixture) saveCoverage(coverage model.CoveragePayload) int64 {
+	return fixture.saveVersionForCase(model.KindCoverage, coverage, "批次用例覆盖")
+}
+
+// saveVersionForCase 保存一版用例文档，容忍乐观锁冲突。
+//
+// 为什么需要「容忍」：夹具会在**同一个测试**里多次保存同一类文档（每个用例
+// 要一份容量不同的覆盖矩阵），而 `row_version` 已经被上一次保存推进过。
+// 注入一个假的 revision 会让夹具失败与产品行为混淆；重读头记录再重试
+// 才是真实编辑者的行为（前端也是先拉头记录再保存）。
+func (fixture batchFixture) saveVersionForCase(kind model.DocumentKind, payload any, reason string) int64 {
+	for attempt := 0; attempt < 3; attempt++ {
+		document, err := fixture.documents.GetDocument(context.Background(), fixture.projectID, kind, DefaultLogicalID)
+		revision := int64(0)
+		if err == nil {
+			revision = document.RowVersion
+		}
+		_, version, saveErr := fixture.documents.SaveVersion(context.Background(), fixture.projectID,
+			kind, fixture.editorID,
+			SaveDocumentVersionInput{ExpectedRevision: revision, ChangeReason: reason, Payload: payload})
+		if saveErr == nil {
+			return version.ID
+		}
+		if !errors.Is(saveErr, ErrRevisionConflict) {
+			panic("batch fixture: save " + string(kind) + ": " + saveErr.Error())
+		}
+	}
+	panic("batch fixture: save " + string(kind) + ": 乐观锁冲突重试 3 次仍然失败")
+}
+
+// blueprintVersionReferencing 保存一份「覆盖节点指向给定版本」的蓝图，返回蓝图版本行 ID。
+//
+// 为什么要重新保存蓝图：批次快照的覆盖版本来自**蓝图节点的引用**（未显式
+// 传入 coverageVersionId 时由 resolveBatchSnapshotTx 补齐）。不更新蓝图就会
+// 出现「传入的覆盖版本与蓝图引用的覆盖版本是两个」的不一致。
+func (fixture batchFixture) blueprintVersionReferencing(coverageVersionID int64) int64 {
+	payload := blueprintPayload(coverageVersionID, fixture.standardID)
+	payload.Nodes.Generation.ModelConnectionID = 1
+	payload.Nodes.Rules.QualityPolicyVersionID = fixture.policyID
+	payload.Nodes.Delivery.MappingVersionID = fixture.mappingID
+	payload.Nodes.Delivery.Format = model.ExportFormatJSONL
+	return fixture.saveVersionForCase(model.KindBlueprint, payload, "批次用例蓝图")
 }
 
 // sftPayload 返回一份通过校验的 SFT 样本内容。
@@ -197,17 +270,17 @@ func TestBatchCreatesIndependentIDs(t *testing.T) {
 	ctx := context.Background()
 
 	pilotA, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 5))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 5))
 	if err != nil {
 		t.Fatalf("create pilot A: %v", err)
 	}
 	pilotB, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 8))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 8))
 	if err != nil {
 		t.Fatalf("create pilot B: %v", err)
 	}
 	scale, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposeScale, 500))
+		fixture.createBatchInput(t, model.BatchPurposeScale, 12))
 	if err != nil {
 		t.Fatalf("create scale: %v", err)
 	}
@@ -218,7 +291,7 @@ func TestBatchCreatesIndependentIDs(t *testing.T) {
 	if pilotA.Purpose != model.BatchPurposePilot || scale.Purpose != model.BatchPurposeScale {
 		t.Fatalf("用途必须被保留：%s / %s", pilotA.Purpose, scale.Purpose)
 	}
-	if pilotA.PlannedUnits != 5 || pilotB.PlannedUnits != 8 || scale.PlannedUnits != 500 {
+	if pilotA.PlannedUnits != 5 || pilotB.PlannedUnits != 8 || scale.PlannedUnits != 12 {
 		t.Fatalf("计划单元数必须独立：%d / %d / %d",
 			pilotA.PlannedUnits, pilotB.PlannedUnits, scale.PlannedUnits)
 	}
@@ -243,7 +316,7 @@ func TestBatchSnapshotIsFrozenAgainstNewBlueprint(t *testing.T) {
 	ctx := context.Background()
 
 	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 3))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 3))
 	if err != nil {
 		t.Fatalf("create batch: %v", err)
 	}
@@ -264,10 +337,12 @@ func TestBatchSnapshotIsFrozenAgainstNewBlueprint(t *testing.T) {
 	newBlueprint.Nodes.Delivery.Format = model.ExportFormatJSONL
 	newBlueprint.Nodes.Generation.Concurrency = 16
 	newBlueprint.Nodes.Generation.MaxTokens = 8192
-	_, newVersion, err := fixture.documents.SaveVersion(ctx, fixture.projectID, model.KindBlueprint, fixture.editorID,
-		SaveDocumentVersionInput{ExpectedRevision: 2, ChangeReason: "提高并发", Payload: newBlueprint})
+	// 用夹具的容错保存（重读头记录的 row_version 后重试）而不是写死
+	// ExpectedRevision：写死会让「夹具在别处多存了一版」变成这里的假失败。
+	newVersionID := fixture.saveVersionForCase(model.KindBlueprint, newBlueprint, "提高并发")
+	newVersion, err := fixture.documents.GetVersionByID(ctx, newVersionID)
 	if err != nil {
-		t.Fatalf("save new blueprint: %v", err)
+		t.Fatalf("read new blueprint version: %v", err)
 	}
 
 	reloaded, err := fixture.batches.GetBatch(ctx, batch.ID)
@@ -278,9 +353,12 @@ func TestBatchSnapshotIsFrozenAgainstNewBlueprint(t *testing.T) {
 		t.Fatalf("保存新蓝图不得改变旧快照：期望 %s，实际 %s",
 			originalHash, reloaded.Snapshot.BlueprintContentHash)
 	}
-	if reloaded.Snapshot.BlueprintVersionID != fixture.blueprintID {
-		t.Fatalf("快照必须仍指向原版本行 %d，实际 %d",
-			fixture.blueprintID, reloaded.Snapshot.BlueprintVersionID)
+	// 快照必须仍指向**创建批次时**那一版蓝图行，而不是夹具最初的版本：
+	// issue #190 之后夹具会为每个用例保存一份容量匹配的覆盖版本，
+	// 也就顺带保存了一版引用它的蓝图。
+	if reloaded.Snapshot.BlueprintVersionID != batch.Snapshot.BlueprintVersionID {
+		t.Fatalf("快照必须仍指向创建时的版本行 %d，实际 %d",
+			batch.Snapshot.BlueprintVersionID, reloaded.Snapshot.BlueprintVersionID)
 	}
 	if reloaded.GenerationConfig.Concurrency != 8 || reloaded.GenerationConfig.MaxTokens != 4096 {
 		t.Fatalf("批次的生成配置快照不得被新蓝图改写，实际 %+v", reloaded.GenerationConfig)
@@ -369,7 +447,7 @@ func TestBatchRejectsCrossProjectSnapshot(t *testing.T) {
 		t.Fatalf("save foreign blueprint: %v", err)
 	}
 
-	input := fixture.createBatchInput(model.BatchPurposePilot, 2)
+	input := fixture.createBatchInput(t, model.BatchPurposePilot, 2)
 	input.BlueprintVersionID = foreignBlueprint.ID
 	_, err = fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT, input)
 	if err == nil {
@@ -404,7 +482,7 @@ func TestSampleVersionsAreAppendOnlyAndIndependent(t *testing.T) {
 
 	// 第一次产出（批次 A）。
 	batchA, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 1))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1))
 	if err != nil {
 		t.Fatalf("create batch A: %v", err)
 	}
@@ -448,7 +526,7 @@ func TestSampleVersionsAreAppendOnlyAndIndependent(t *testing.T) {
 
 	// 另一个批次产出**同一道题** → 同一个 sample 的新版本，但来源批次不同。
 	batchB, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 1))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1))
 	if err != nil {
 		t.Fatalf("create batch B: %v", err)
 	}
@@ -504,7 +582,7 @@ func TestReplayingSuccessfulItemDoesNotDuplicateSample(t *testing.T) {
 	ctx := context.Background()
 
 	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 1))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1))
 	if err != nil {
 		t.Fatalf("create batch: %v", err)
 	}
@@ -577,7 +655,7 @@ func TestClaimBatchItemPreventsDoubleExecution(t *testing.T) {
 	ctx := context.Background()
 
 	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 1))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1))
 	if err != nil {
 		t.Fatalf("create batch: %v", err)
 	}
@@ -634,7 +712,7 @@ func TestCommitFailureDoesNotOverwriteSuccess(t *testing.T) {
 	ctx := context.Background()
 
 	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 1))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1))
 	if err != nil {
 		t.Fatalf("create batch: %v", err)
 	}
@@ -673,7 +751,7 @@ func TestRetryFailedResetsOnlyRetryableItems(t *testing.T) {
 	ctx := context.Background()
 
 	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 3))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 3))
 	if err != nil {
 		t.Fatalf("create batch: %v", err)
 	}
@@ -732,7 +810,7 @@ func TestBatchControlStateMachine(t *testing.T) {
 	ctx := context.Background()
 
 	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 2))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 2))
 	if err != nil {
 		t.Fatalf("create batch: %v", err)
 	}
@@ -802,7 +880,7 @@ func TestCompletedBatchCannotBeControlled(t *testing.T) {
 	ctx := context.Background()
 
 	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 1))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1))
 	if err != nil {
 		t.Fatalf("create batch: %v", err)
 	}
@@ -840,7 +918,7 @@ func TestPartialFailureAggregation(t *testing.T) {
 	ctx := context.Background()
 
 	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 2))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 2))
 	if err != nil {
 		t.Fatalf("create batch: %v", err)
 	}
@@ -1127,7 +1205,7 @@ func TestBatchUnitCountLimits(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			input := fixture.createBatchInput(testCase.purpose, testCase.units)
+			input := fixture.createBatchInput(t, testCase.purpose, testCase.units)
 			_, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT, input)
 			if testCase.wantErr {
 				if err == nil {
@@ -1153,7 +1231,7 @@ func TestBatchEventSequenceIsMonotonic(t *testing.T) {
 	ctx := context.Background()
 
 	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 1))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1))
 	if err != nil {
 		t.Fatalf("create batch: %v", err)
 	}
@@ -1200,7 +1278,7 @@ func TestBatchCountsMatchItemFacts(t *testing.T) {
 	ctx := context.Background()
 
 	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
-		fixture.createBatchInput(model.BatchPurposePilot, 4))
+		fixture.createBatchInput(t, model.BatchPurposePilot, 4))
 	if err != nil {
 		t.Fatalf("create batch: %v", err)
 	}
@@ -1327,4 +1405,133 @@ func selectColumnsOf(t *testing.T, statement string) []string {
 		columns = append(columns, column)
 	}
 	return columns
+}
+
+// TestBatchRejectsPlanBeyondCoverageCapacity 覆盖 issue #190 的入口校验。
+//
+// 这是「静默少交付」的第一道闸门：计划量超过覆盖矩阵的可产出量时，
+// 批次必须在写入 batches/jobs **之前**被拒绝，并给出可操作的字段错误。
+// 如果没有这道校验，批次会入队、只跑出覆盖允许的那几个单元，然后被
+// 宣告「已完成」—— 用户据此以为整批方案已验证。
+func TestBatchRejectsPlanBeyondCoverageCapacity(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+
+	// 刻意把覆盖矩阵收敛成 1 领域 × 1 方向 × 配额 1，构造真实场景：
+	// 用户填了 3 个单元，而矩阵最多只能产出 1 个（#190 的实测形态）。
+	overCapacity := fixture.createBatchInputWithCoverage(model.BatchPurposePilot, 3,
+		func(coverage *model.CoveragePayload) {
+			coverage.Domains = coverage.Domains[:1]
+			coverage.Domains[0].Directions = coverage.Domains[0].Directions[:1]
+			coverage.Domains[0].Directions[0].Quota = 1
+		})
+	_, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT, overCapacity)
+	if err == nil {
+		t.Fatal("计划量超过覆盖可产出量时必须拒绝，而不是静默少交付")
+	}
+	fieldErrors, ok := model.HasFieldErrors(err)
+	if !ok || !hasFieldError(fieldErrors, "unitCount") {
+		t.Fatalf("必须返回 unitCount 字段错误，实际 %v", err)
+	}
+
+	var count int
+	if err := fixture.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM batches WHERE project_id = $1`, fixture.projectID).Scan(&count); err != nil {
+		t.Fatalf("count batches: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("被拒请求不得写入批次，实际已有 %d 条", count)
+	}
+
+	// 边界内的计划量必须照常通过（正常路径）：计划量正好等于容量 1。
+	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInputWithCoverage(model.BatchPurposePilot, 1,
+			func(coverage *model.CoveragePayload) {
+				coverage.Domains = coverage.Domains[:1]
+				coverage.Domains[0].Directions = coverage.Domains[0].Directions[:1]
+				coverage.Domains[0].Directions[0].Quota = 1
+			}))
+	if err != nil {
+		t.Fatalf("恰好等于容量时必须允许，实际 %v", err)
+	}
+	if batch.PlannedUnits != 1 {
+		t.Fatalf("计划量必须被保留为 1，实际 %d", batch.PlannedUnits)
+	}
+}
+
+// TestRefreshBatchCountsNeverClaimsCompletedWithShortfall 覆盖 issue #190 的
+// 状态机修复：定稿的单元数少于计划量时，不得聚合为 completed。
+//
+// 这里刻意断言「剩下的计划单元从未被写入 batch_items」这一真实形态
+// （覆盖配额小于计划量时 runner 就是这样），而不是伪造失败项。
+func TestRefreshBatchCountsNeverClaimsCompletedWithShortfall(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+
+	// 计划 3、覆盖容量 3：四个数字都是真的，唯一变量是「只产出了 1 个」。
+	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInputWithCoverage(model.BatchPurposePilot, 3,
+			func(coverage *model.CoveragePayload) {
+				coverage.Domains = coverage.Domains[:1]
+				coverage.Domains[0].Directions = coverage.Domains[0].Directions[:1]
+				coverage.Domains[0].Directions[0].Quota = 3
+			}))
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+
+	item, _, _ := fixture.batches.EnsureBatchItem(ctx, batch.ID, fixture.projectID, "d/d#1", nil)
+	if _, _, err := fixture.batches.CommitBatchItemSuccess(ctx, batch.ID, fixture.projectID, item.ID, AppendSampleVersionInput{
+		SampleKey: "d/d#1", TargetKind: model.TargetKindSFT, Payload: sftPayload("唯一产出"),
+	}); err != nil {
+		t.Fatalf("commit success: %v", err)
+	}
+
+	refreshed, err := fixture.batches.RefreshBatchCounts(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("RefreshBatchCounts: %v", err)
+	}
+	if refreshed.Status == model.BatchStatusCompleted {
+		t.Fatalf("产出 1/3 时不得聚合为 completed（这正是 #190 的静默少交付）")
+	}
+	if refreshed.Status != model.BatchStatusPartialFailed {
+		t.Fatalf("产出少于计划量必须聚合为 partial_failed，实际 %s", refreshed.Status)
+	}
+	if got := refreshed.Shortfall(); got != 2 {
+		t.Fatalf("缺口必须是 3-1=2，实际 %d", got)
+	}
+	if note := refreshed.ShortfallNote(); note == "" {
+		t.Fatal("定稿批次有缺口时必须给出中文原因")
+	}
+	if refreshed.FinishedAt == nil {
+		t.Fatal("部分完成也是终态，必须写 finished_at，否则界面会显示永远在跑")
+	}
+
+	// 计划量必须保留为用户意图，而不是被已落库单元数覆盖。
+	if refreshed.PlannedUnits != 3 {
+		t.Fatalf("计划量必须保持 3（用户意图），实际 %d", refreshed.PlannedUnits)
+	}
+
+	// 补跑缺口后（把剩余两个单元写成功）才能变成 completed。
+	for _, key := range []string{"d/d#2", "d/d#3"} {
+		extra, _, err := fixture.batches.EnsureBatchItem(ctx, batch.ID, fixture.projectID, key, nil)
+		if err != nil {
+			t.Fatalf("ensure %s: %v", key, err)
+		}
+		if _, _, err := fixture.batches.CommitBatchItemSuccess(ctx, batch.ID, fixture.projectID, extra.ID, AppendSampleVersionInput{
+			SampleKey: key, TargetKind: model.TargetKindSFT, Payload: sftPayload(key),
+		}); err != nil {
+			t.Fatalf("commit %s: %v", key, err)
+		}
+	}
+	final, err := fixture.batches.RefreshBatchCounts(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("RefreshBatchCounts: %v", err)
+	}
+	if final.Status != model.BatchStatusCompleted {
+		t.Fatalf("计划量全部产出后才允许 completed，实际 %s", final.Status)
+	}
+	if final.Shortfall() != 0 || final.ShortfallNote() != "" {
+		t.Fatalf("无缺口时不得报告缺口：%d / %q", final.Shortfall(), final.ShortfallNote())
+	}
 }

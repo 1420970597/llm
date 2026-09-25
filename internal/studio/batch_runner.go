@@ -236,14 +236,27 @@ func (runner *BatchRunner) RunBatch(ctx context.Context, batchID int64) (BatchRu
 	result.PlannedUnits = refreshed.PlannedUnits
 
 	// 终态事件：让批次详情的时间线能解释「为什么结束了」。
+	//
+	// issue #190：只有「计划量与完成量相等」才算完成。两者不等时发
+	// BatchPartialFailed 并在载荷里带上缺口，这样详情页能直接回答
+	// 「为什么不是已完成」——而不是让用户自己拿两个数字相减。
 	if !result.Superseded {
+		shortfall := refreshed.PlannedUnits - refreshed.CompletedUnits
+		eventType := model.BatchEventCompleted
+		detail := map[string]any{
+			"projectId": batch.ProjectID,
+			"batchId":   batch.ID,
+			"completed": refreshed.CompletedUnits,
+			"failed":    refreshed.FailedUnits,
+		}
+		if shortfall > 0 {
+			eventType = model.BatchEventPartialFailed
+			detail["planned"] = refreshed.PlannedUnits
+			detail["shortfall"] = shortfall
+			detail["reason"] = "产出少于计划量，已终止为部分完成，缺口必须显式处理"
+		}
 		if err := runner.Batches.AppendBatchEvent(ctx, batch.ID, batch.ProjectID,
-			model.BatchEventCompleted, 0, map[string]any{
-				"projectId": batch.ProjectID,
-				"batchId":   batch.ID,
-				"completed": refreshed.CompletedUnits,
-				"failed":    refreshed.FailedUnits,
-			}); err != nil {
+			eventType, 0, detail); err != nil {
 			return result, err
 		}
 	}
@@ -424,35 +437,35 @@ func (runner *BatchRunner) PlanUnits(ctx context.Context, batch model.Batch) ([]
 
 // AllocateUnits 是 PlanUnits 的**纯函数**部分（可测试、无 IO）。
 //
+// 分配本身由 model.AllocateCoverageUnits 完成（#190 之后它同时服务于
+// 「保存/启动前的容量校验」与「运行期的实际分配」），本函数只负责补上
+// 展示用的难度档。
+//
 // 顺序：先按领域顺序，再按方向顺序，再按方向内 ordinal。
 // 每个方向的单元数取其 quota；quota ≤ 0 时视为 1（否则该方向在矩阵上
 // 有名字但永远不产出，而用户无法从界面看出原因）。
 func AllocateUnits(coverage model.CoveragePayload, plannedUnits int) []PlannedUnit {
-	if plannedUnits <= 0 {
+	covered := model.AllocateCoverageUnits(coverage, plannedUnits)
+	if len(covered) == 0 {
 		return nil
 	}
-	units := make([]PlannedUnit, 0, plannedUnits)
+	ratioByDirection := make(map[string][]model.DifficultyRatio)
 	for _, domain := range coverage.Domains {
 		for _, direction := range domain.Directions {
-			quota := direction.Quota
-			if quota <= 0 {
-				quota = 1
-			}
-			for ordinal := 1; ordinal <= quota; ordinal++ {
-				if len(units) >= plannedUnits {
-					return units
-				}
-				units = append(units, PlannedUnit{
-					DomainStableID:    domain.StableID,
-					DirectionStableID: direction.StableID,
-					DomainName:        domain.Name,
-					DirectionName:     direction.Name,
-					Ordinal:           ordinal,
-					Quota:             quota,
-					Difficulty:        difficultyFor(direction.DifficultyRatios, ordinal, quota),
-				})
-			}
+			ratioByDirection[domain.StableID+"/"+direction.StableID] = direction.DifficultyRatios
 		}
+	}
+	units := make([]PlannedUnit, 0, len(covered))
+	for _, unit := range covered {
+		units = append(units, PlannedUnit{
+			DomainStableID:    unit.DomainStableID,
+			DirectionStableID: unit.DirectionStableID,
+			DomainName:        unit.DomainName,
+			DirectionName:     unit.DirectionName,
+			Ordinal:           unit.Ordinal,
+			Quota:             unit.Quota,
+			Difficulty:        difficultyFor(ratioByDirection[unit.DomainStableID+"/"+unit.DirectionStableID], unit.Ordinal, unit.Quota),
+		})
 	}
 	return units
 }

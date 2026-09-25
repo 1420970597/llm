@@ -17,22 +17,23 @@ import {
   ShieldCheck,
   TableProperties,
 } from 'lucide-react'
-import {
-  client,
-  consoleApi,
-  type Artifact,
-  type ChainStandard,
-  type ChainStandardVersion,
-  type Dataset,
-  type DatasetGraph,
-  type Domain,
-  type GenerationRun,
-  type GrpoPrompt,
-  type Question,
-  type ReasoningRecord,
-  type RewardRecord,
-  type SftRecord,
+import { client, consoleApi } from '../../lib/api'
+import type {
+  Artifact,
+  ChainStandard,
+  ChainStandardVersion,
+  Dataset,
+  DatasetGraph,
+  Domain,
+  GenerationRun,
+  GrpoPrompt,
+  Question,
+  ReasoningRecord,
+  RewardRecord,
+  SftRecord,
 } from '../../lib/api'
+import { describeDatasetStatus } from '../../lib/datasetStatus'
+import { describeDomainReviewStatus } from '../../lib/enumLabels'
 import './LegacyHistoryPage.css'
 
   const { Title, Text } = Typography
@@ -336,7 +337,7 @@ function OverviewPanel({
           <Tag color="grey">{(dataset?.targetKind ?? graph?.dataset.targetKind ?? 'unknown').toUpperCase()}</Tag>
         </div>
         <div className="legacy-history-meta-grid">
-          <div><span>状态</span><strong>{dataset?.status ?? graph?.dataset.status ?? '未知'}</strong></div>
+          <div><span>状态</span><strong>{describeDatasetStatus(dataset?.status ?? graph?.dataset.status ?? '').label}</strong></div>
           <div><span>根关键词</span><strong>{dataset?.rootKeyword || '未记录'}</strong></div>
           <div><span>目标规模</span><strong>{dataset?.targetSize ?? '未记录'}</strong></div>
           <div><span>创建时间</span><strong>{formatDate(dataset?.createdAt ?? graph?.dataset.createdAt)}</strong></div>
@@ -416,7 +417,7 @@ function StructurePanel({
                   <td>{domain.level === 1 ? '领域' : '方向'}</td>
                   <td>{domain.name || domain.canonicalName || '未命名'}</td>
                   <td>{domain.source || '未记录'}</td>
-                  <td><Tag size="small">{domain.reviewStatus || '未记录'}</Tag></td>
+                  <td><Tag size="small">{describeDomainReviewStatus(domain.reviewStatus ?? '')}</Tag></td>
                   <td>#{domain.id}</td>
                 </tr>
               ))}
