@@ -3457,26 +3457,13 @@ a {
   background: var(--panel-strong);
 }
 
-.blueprint-page .blueprint-nodes {
-  min-height: 560px;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 26px;
-  margin-top: 10px;
-}
-
-.blueprint-page .blueprint-nodes::before {
-  content: '';
-  position: absolute;
-  top: 72px;
-  bottom: 74px;
-  left: 50%;
-  width: 1px;
-  background: var(--panel-border-strong);
-}
+/*
+ * 已删除：这里曾有一条 `.blueprint-page .blueprint-nodes { flex-direction: column }`。
+ * 它与上方「横向工作流」规则**重复**，而且因为位置更靠后，实际生效的是竖向堆叠 ——
+ * 也就是说横向改造上线后肉眼仍是旧形态（实测 `computedStyle.flexDirection === "column"`）。
+ * 这类「同一个选择器在两个地方各写一套，后写的赢」正是 #197 第 17 条
+ * 「配色/布局不一致」的成因之一，因此直接删掉，只保留一份实现。
+ */
 
 .blueprint-page .blueprint-node {
   z-index: 1;

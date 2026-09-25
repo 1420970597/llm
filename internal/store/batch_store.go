@@ -1761,7 +1761,9 @@ func (s *BatchStore) ListSampleVersionFacts(ctx context.Context, projectID, batc
     FROM sample_versions sv
     JOIN samples s ON s.id = sv.sample_id
     LEFT JOIN batch_items bi ON bi.id = sv.batch_item_id
-    LEFT JOIN review_projections rp ON rp.sample_id = sv.sample_id
+    -- review_projections 以**样本版本**为主键（不是样本）：一个样本可以有多版，
+    -- 每版的审阅状态各自独立。用 sample_id 关联会得到 SQLSTATE 42703。
+    LEFT JOIN review_projections rp ON rp.sample_version_id = sv.id
     WHERE sv.project_id = $1 AND sv.batch_id = $2
     ORDER BY sv.id
     LIMIT $3`, projectID, batchID, limit)
