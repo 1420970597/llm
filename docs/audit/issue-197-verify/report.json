@@ -1,0 +1,218 @@
+{
+  "base": "http://127.0.0.1:3210",
+  "project": "p_1",
+  "startedAt": "2026-09-26T06:10:10.863Z",
+  "checks": [
+    {
+      "issue": "auth",
+      "title": "管理员可登录进入今日工作",
+      "pass": true,
+      "action": "填写邮箱密码并点击「进入今日工作」",
+      "observed": "落地 URL = http://127.0.0.1:3210/today"
+    },
+    {
+      "issue": "197-10",
+      "title": "今日工作提供可点总览磁贴",
+      "pass": true,
+      "action": "统计磁贴数量并点击第一个磁贴",
+      "observed": "6 个磁贴：数据项目 1 你可见的项目 / 进行中批次 1 排队 / 运行 / 暂停请求中 / 产出缺口 1 计划 20 · 完成 5 / 待人工判断 0 进入项目「审阅」处理 / 近 7 天产出 5 新增样本版本数 / 交付 0 已发布 · 被挡住 0；点击后跳转 http://127.0.0.1:3210/today → http://127.0.0.1:3210/projects",
+      "screenshot": "docs/audit/issue-197-verify/01-today-overview.png"
+    },
+    {
+      "issue": "197-1",
+      "title": "项目列表常显分页状态且搜索真实生效",
+      "pass": true,
+      "action": "检查分页状态行；在搜索框输入无结果关键词后清空",
+      "observed": "分页状态行可见=true「已显示 1 个项目 · 这是第 1 页 · 已到底 翻页方式：游标分页（只往后追加，不会重复显示同一条）。」；行数 输入前=1 无结果词=0 清空后=1；空结果文案「今日工作 数据项目 方案库 交付库 评估工作台 清洗工作台 历史资产 动态 连接设置 成员与角色 帮助 数据项目 搜索 A 已进入数据项目 数据项目 按项目组织设计、运行与发布；一个项目可以有多个并行」",
+      "screenshot": "docs/audit/issue-197-verify/02-projects-pagination.png"
+    },
+    {
+      "issue": "197-2",
+      "title": "思维步骤默认是自然语言分步表单，且可直接编辑（JSON 降为可选视图）",
+      "pass": true,
+      "action": "打开设计页标准节点 → 点「添加步骤」→ 在「做什么」输入框里填中文并回读",
+      "observed": "分步编辑器=1；点击添加后出现步骤 1=true；表单字段标签=[步骤 1：做什么 / 怎么算完成（检查点） / 具体做法（可选）]；输入回读「人机点击复核：先确认题目约束」；默认视图含原始 JSON=false；「看 JSON」可切换=true",
+      "screenshot": "docs/audit/issue-197-verify/03-blueprint-standard-steps.png"
+    },
+    {
+      "issue": "197-5",
+      "title": "独立评估节点先给「会做什么」与执行顺序",
+      "pass": true,
+      "action": "打开设计页独立评估节点，检查 purpose 与执行步骤是否在字段之前呈现",
+      "observed": "purpose=1 处「这个节点会做什么 用另一个模型当裁判，按你定的量表给这一批内容打分；分数用来回答「这批数据能不能交付」，不直接改写内容。」；执行步骤=1 处「执行顺序（4 步）…」",
+      "screenshot": "docs/audit/issue-197-verify/04-blueprint-evaluation.png"
+    },
+    {
+      "issue": "197-6",
+      "title": "版本历史折叠、不强制用户先理解版本",
+      "pass": true,
+      "action": "检查版本历史是否为可折叠区块",
+      "observed": "details.blueprint-history 元素数 = 1"
+    },
+    {
+      "issue": "197-4",
+      "title": "设计页不再被单个节点撑成超长页面",
+      "pass": true,
+      "action": "解除滚动容器高度锁后测量页面真实内容高度",
+      "observed": "内容高度 = 1900px（视口 1000px，约 1.90 屏）"
+    },
+    {
+      "issue": "197-11",
+      "title": "蓝图改为横向工作流带",
+      "pass": true,
+      "action": "读取 .blueprint-nodes 的 flex-direction 并比较节点 y 坐标",
+      "observed": "flex-direction=row；画布宽=790px；节点 y 坐标前两个=556,556,556（同排=true）",
+      "screenshot": "docs/audit/issue-197-verify/05-blueprint-horizontal.png"
+    },
+    {
+      "issue": "197-11",
+      "title": "覆盖页提供 m×n×z 结构树，且公式读数自洽",
+      "pass": false,
+      "action": "打开覆盖矩阵，读回结构树公式并自己重算 m×n×z 是否等于结果值",
+      "observed": "结构树元素=1；公式文本「m 1 × n 2 × z 4 = 4」；读回数字=[1,2,4,4]；自洽（1×2×4=8，页面结果=4）=false；结构树文本「数据集结构 | m 1 × n 2 × z 4 = 4 | 领域数 × 方向数 × 每个方向的题数。公式里的结果就是本版本最多能产出的单元数； 启动批次时填的计划量不能超过它（否则会被拒绝，避免静默少交付）。 | 冷链领域 合计 4 | 方向一 × 2 · manual | 方向二 × 2 · manual」",
+      "screenshot": "docs/audit/issue-197-verify/06-coverage-tree.png",
+      "defect": "m×n×z 的三个因子不是乘积关系：z 显示的是 sum(quota) 总量，而文案宣称「每个方向的题数」"
+    },
+    {
+      "issue": "197-3",
+      "title": "样本内容默认以人话分字段预览（JSON 为可切换视图）",
+      "pass": true,
+      "action": "在数据页点第一条样本的「查看内容」进入详情，检查默认视图是否为分字段中文而非原始 JSON",
+      "observed": "4 行样本；URL=http://127.0.0.1:3210/p/p_1/data/s_5；含中文字段标签=true；原始 JSON 切换控件=1；正文「今日工作 数据项目 方案库 交付库 评估工作台 清洗工作台 历史资产 动态 连接设置 成员与角色 帮助 数据项目 甲方验收-冷链问答 数据 三栏审阅 搜索 A 已进入数据 甲方验收-冷链问答 浏览这一版里的全部样本与版本来源 概览 设计 生产 数据 质量 发布 方向二（难度 normal）：第 2 题 s_5 · v1 · 内容 hash bd10e7a0684c 待判断 上一条 下一条 版本与来源 专注内容 队列 4 条 方向二（难度 normal）：第 2 题 待判断 s_5 · v1 方向二（难度 normal）：第 1 题 待判断 s_4 · v1 方向一（难度 normal）：第 2…」；点击切换后页面含 {\\\"question\\\" = true",
+      "screenshot": "docs/audit/issue-197-verify/07-sample-preview.png"
+    },
+    {
+      "issue": "197-12",
+      "title": "「数据」与「审阅」职责可区分（标题/说明/筛选/CTA）",
+      "pass": true,
+      "action": "分别打开 /data 与 /review，逐项比对标题、说明、默认筛选与主操作",
+      "observed": "标题「数据」vs「审阅队列」；默认筛选「全部」vs「待判断」；说明相同=false；数据页按钮=搜索/A/刷新样本/按当前筛选冻结并准备发布（服务端解析）/查看内容/来源；审阅页按钮=搜索/A/刷新样本/审阅/来源",
+      "screenshot": "docs/audit/issue-197-verify/08-data-page.png",
+      "screenshot2": "docs/audit/issue-197-verify/09-review-page.png"
+    },
+    {
+      "issue": "197-13",
+      "title": "批次详情打开即给出数据集结构与自动分析",
+      "pass": true,
+      "action": "打开已完成批次 b_2 的详情，检查是否出现结构/长度/占比分析（无按钮触发）",
+      "observed": "分析区块=1；缺口横幅=1；内容「数据集结构与内容分析 | 已产出内容 | 1 | 参与以下统计的样本版本数 | 长度中位 / P90 | 1233 / 1233 | 最短 1233 · 最长 1233 · 均值 1233（字符数） | 素材接地率 | 0% | 生成输入里带素材块的比例；无素材项目恒为 0 | 重复率 | 0% | 内容指纹完全相同的比例（不代表语义重复） | 待人工判断 | 100% | 仍需你判断的比例；去「审阅」处理 | 结构预览（领域 › 方向 → 计划 / 已产出） | 领域方向计划已产出缺口 | 交付可用于 SFT 的冷链领域问答数据核心方向11— | 难度占比（与覆盖配比对照） | 难度数量实际占比计划配比 | 未标注难度1100.0%未配置 | 审阅状态占比 | 状态数量占比 | 待判断1100.0% | 口径说明：长度按字符数统计（中文 1 字 = 1 字符），分位用最近秩法。 | 口径说明：重复率按内容指纹统计，只说明「内容完全相同」，不代表语义重复。 | 口径说明：接地率是「这条内容的生成输入里有素材块」的比例；无素材来源的项目恒为 0。」",
+      "screenshot": "docs/audit/issue-197-verify/11-run-detail-analysis.png"
+    },
+    {
+      "issue": "190",
+      "title": "批次列表暴露「缺口/少交付」读数",
+      "pass": true,
+      "action": "打开生产页批次列表，检查是否有缺口口径",
+      "observed": "页面含缺口字样=true",
+      "screenshot": "docs/audit/issue-197-verify/10-runs-list.png"
+    },
+    {
+      "issue": "190",
+      "title": "计划量超过覆盖可产出量时被拦截（真实点击 + 真实 422）",
+      "pass": true,
+      "action": "在小批试制页把计划量改为 12 并点击「启动试制批次」",
+      "observed": "填入 12（覆盖可产出量=1）并点提交 → HTTP 422；URL=http://127.0.0.1:3210/p/p_1/pilot；界面告警「unitCount计划单元数 12 超过当前覆盖矩阵的可产出量 4；请把计划量改为不超过 4，或在覆盖矩阵里增加方向/配额（unitCount：计划单元数 12 超过当前覆盖矩阵的可产出量 4；请把计划量改为不超过 4，或在覆盖矩阵里增加方向/配额）」",
+      "screenshot": "docs/audit/issue-197-verify/12-pilot-capacity-gate.png",
+      "response": "{\"error\":{\"code\":\"VALIDATION_FAILED\",\"message\":\"unitCount计划单元数 12 超过当前覆盖矩阵的可产出量 4；请把计划量改为不超过 4，或在覆盖矩阵里增加方向/配额\",\"fieldErrors\":[{\"field\":\"unitCount\",\"message\":\"计划单元数 12 超过当前覆盖矩阵的可产出量 4；请把计划量改为不超过 4，或在覆盖矩阵里增加方向/配额\"}],\"requestId\":\"req_5306fe451a8ebf883ef5e159\",\"retryable\":false}}\n"
+    },
+    {
+      "issue": "197-14",
+      "title": "质量页不再使用「分母/分子」，改用被评测数据集表述",
+      "pass": true,
+      "action": "打开质量列表与新建实验页，全文检索「分子/分母」",
+      "observed": "质量列表含分子/分母=false；新建实验含分子/分母=false；列表页头「被评测数据集」（当时的样本版本数）；之后的审阅、隔离都不会改变这份数据集。」",
+      "screenshot": "docs/audit/issue-197-verify/13-quality-list.png"
+    },
+    {
+      "issue": "197-14",
+      "title": "新建实验的裁判改为已启用连接下拉（含真实选项）",
+      "pass": true,
+      "action": "点击裁判模型下拉，读取真实选项列表",
+      "observed": "下拉控件=1；点击后选项数=7；选项「自动服务-192538（） / （） / 自动服务-506335（） / （） / hy3-judge（global:hy3） / gpt-5.6-sol-judge（global:hy4-preview）」",
+      "screenshot": "docs/audit/issue-197-verify/14-quality-new-judge.png"
+    },
+    {
+      "issue": "197-7",
+      "title": "新增/编辑连接在页内完成，不再跳旧控制台",
+      "pass": true,
+      "action": "点击连接设置页顶部「新增」按钮，观察 URL 与是否出现页内表单",
+      "observed": "点击前 http://127.0.0.1:3210/settings/connections → 点击后 http://127.0.0.1:3210/settings/connections；页内表单=1；跳旧控制台=false",
+      "screenshot": "docs/audit/issue-197-verify/15-connections-page.png"
+    },
+    {
+      "issue": "197-8",
+      "title": "每个连接行有元素级编辑按钮且带该行数据",
+      "pass": true,
+      "action": "统计行内编辑按钮数量，并点击第一行的编辑按钮检查表单是否预填该行数据",
+      "observed": "11 行连接、11 个行内编辑按钮；点击行 20 的编辑 → URL=http://127.0.0.1:3210/settings/connections；表单=1；名称字段预填「自动服务-192538」；表单「名称 | 接入地址（Base URL） | 模型 | 类型 | 最大并发 | 密钥（留空表示不修改） | 状态 | 启用（可被蓝图与实验选择） | 密钥只写不回显：保存后这里只会显示掩码标识，服务端不会把明文传回浏览器。 | 测试连通性」",
+      "screenshot": "docs/audit/issue-197-verify/16-connections-row-edit.png"
+    },
+    {
+      "issue": "197-15",
+      "title": "用户名+密码直接建号可用（含弱密码边界拦截）",
+      "pass": true,
+      "action": "在成员与角色页填写邮箱与密码：先用 3 位弱密码提交，再用合法密码提交",
+      "observed": "弱密码提交后提示「 初始密码至少 8 位。」；合法密码提交后新账号出现在列表=true；提示「 已创建账号 verify197-1790403085036@company.com 并加入工作区。」",
+      "screenshot": "docs/audit/issue-197-verify/17-team-create-form.png"
+    },
+    {
+      "issue": "197-16",
+      "title": "历史资产页给出服务端迁移结论（可判定是否可删菜单）",
+      "pass": true,
+      "action": "打开历史资产页，读取迁移状态区块与结论",
+      "observed": "状态区块=1；data 属性=pending；内容「迁移状态：尚未全部迁移：仍有未绑定项目的旧数据集，本菜单保留为只读盘点页。（旧数据集 58 · 已导入 0 · 已绑定项目 0 · 未迁移 58）」",
+      "screenshot": "docs/audit/issue-197-verify/18-legacy-migration-status.png"
+    },
+    {
+      "issue": "197-9",
+      "title": "辅助工作台说明自身作用域与项目入口（消除信息孤岛）",
+      "pass": true,
+      "action": "分别打开评估工作台与清洗工作台，读取作用域说明区块",
+      "observed": "评估工作台作用域区块=1「这个工作台处理的是什么 | 本页以旧数据集为单位（迁移前的历史资产），不读取项目的蓝图快照。 新项目的质量结论请用项目内的「质量」页 —— 那里的实验会冻结蓝图、 覆盖、标准与素材的版本，因此结论可复现。 | 还没有项目绑定过旧数据集。迁移旧资产后，这里会列出对应的项目。…」；清洗工作台作用域区块=1",
+      "screenshot": "docs/audit/issue-197-verify/19-tools-evaluation-scope.png",
+      "screenshot2": "docs/audit/issue-197-verify/20-tools-cleaning-scope.png"
+    },
+    {
+      "issue": "191",
+      "title": "中文界面不再漏出内部英文枚举键",
+      "pass": true,
+      "action": "逐页全文正则匹配 snake_case 内部键（排除模型名/格式名等技术串）",
+      "observed": "动态/数据/生产/历史资产四页均未匹配到内部 snake_case 键"
+    },
+    {
+      "issue": "192",
+      "title": "页面不再裸露 Markdown 星号",
+      "pass": true,
+      "action": "遍历 8 个页面，正则匹配 **加粗** 字面量",
+      "observed": "8 个页面均未见 ** 字面量"
+    },
+    {
+      "issue": "194",
+      "title": "移动端无横向溢出 / 蓝图右栏文字不再压按钮",
+      "pass": true,
+      "action": "用 390×844 移动视口访问连接/质量/项目页测溢出；桌面测量右栏元素两两相交面积",
+      "observed": "移动端：连接 横向溢出=0px；质量 横向溢出=0px；项目 横向溢出=0px；桌面右栏：宽=420px 最大重叠面积=0px²",
+      "screenshot": "docs/audit/issue-197-verify/21-blueprint-no-overlap.png"
+    },
+    {
+      "issue": "193",
+      "title": "覆盖矩阵输入框有可见标签 / 列头与数据对齐 / 交付映射有列头",
+      "pass": true,
+      "action": "统计覆盖矩阵可见标签（label + 列头）、无任何标签的输入框数、列头与数据行的列宽差；并检查交付映射列头",
+      "observed": "覆盖矩阵 label 数=2，列头「方向名称 | 稳定 ID | 每个方向计划数量 | 来源（manual / document / ai） | 操作」；完全无标签的输入框=0；列宽 [头]=[473,394,110,394,36] vs [行]=[473,394,110,394,32]，对齐=true；交付映射列头行=1；加载指示={\"present\":false}",
+      "screenshot": "docs/audit/issue-197-verify/22-coverage-labels.png",
+      "screenshot2": "docs/audit/issue-197-verify/23-mapping-header.png"
+    },
+    {
+      "issue": "195",
+      "title": "部署版本可自证（/version.json 与帮助页）",
+      "pass": true,
+      "action": "请求 /version.json 并打开帮助页检查构建信息",
+      "observed": "/version.json = {\"version\":\"daebc32923e9c37b869b5ac55f470cffc3686a81\",\"buildTime\":\"2026-09-26T05:52:28Z\",\"source\":\"apps/web-user\"}；帮助页含完整 SHA 或不含 unknown = true",
+      "screenshot": "docs/audit/issue-197-verify/24-help-version.png"
+    }
+  ],
+  "httpErrors": [],
+  "pageErrors": [],
+  "finishedAt": "2026-09-26T06:12:43.620Z"
+}
