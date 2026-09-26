@@ -4,8 +4,8 @@ import { Button, Card, Empty, Input, InputNumber, Select, Spin, Tag, TextArea, T
 // AlertTriangle 来自 lucide-react（图标库），不是 semi-ui 的组件。
 import { AlertTriangle } from 'lucide-react'
 import { client } from '../../lib/api'
-import { newIdempotencyKey, projectPath, studioApi } from '../../lib/api/studio'
-import type { BatchSummary, CreateExperimentRequest, Experiment, ExperimentDetail, Page, SampleSummary, RulePreviewResult } from '../../lib/api/studio'
+import { newIdempotencyKey, projectPath, settingsApi, studioApi } from '../../lib/api/studio'
+import type { BatchSummary, ConnectionProviderOption, CreateExperimentRequest, Experiment, ExperimentDetail, Page, SampleSummary, RulePreviewResult } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
 import { CopyVersionButton, DocumentHistory, DocumentSaveBar, QualityPolicyPayloadEditor, useVersionedDocument } from '../DocumentEditors'
@@ -22,7 +22,7 @@ import { CopyVersionButton, DocumentHistory, DocumentSaveBar, QualityPolicyPaylo
  *     不显示均值 —— 提前显示一个基于部分样本的均值会被当成结论。
  *  2. **刷新/分享能恢复同一实验**：实验 ID 来自**路由参数**，页面所有数据由
  *     它取；不依赖内存里的 selectedRunId/tabKey。
- *  3. **风险计数与筛选列表一致**：分母/缺失/出错都来自报告的同一份统计，
+ *  3. **风险计数与筛选列表一致**：被评测数据集/缺失/出错都来自报告的同一份统计，
  *     页面上不另算一套。
  */
 
@@ -125,8 +125,11 @@ export function QualityListPage() {
           <Title heading={4} className="!mb-1">
             质量实验室
           </Title>
+          {/* issue #197 第 14 条：不用「分母/分子」，改用「被评测数据集」表达。
+              统计口径**没有变**（依旧是实验创建时冻结的样本版本数），
+              变的是说法：甲方看到「分母」不知道它在说什么。 */}
           <Text type="tertiary">
-            报告的分母是实验创建时<strong>冻结</strong>的样本版本数；待审阅不算接纳，隔离也不缩小分母。
+            实验创建时会<strong>冻结</strong>一份「被评测数据集」（当时的样本版本数）；之后的审阅、隔离都不会改变这份数据集。
           </Text>
         </div>
         <Button theme="solid" type="primary" disabled={!canRun} onClick={() => navigate(projectHref('project.qualityNew', scope.projectId))}>
@@ -143,7 +146,7 @@ export function QualityListPage() {
           <div className="batch-row batch-row--head">
             <span>实验</span>
             <span>状态</span>
-            <span>分母</span>
+            <span>被评测数据集</span>
             <span>已评分</span>
             <span>缺分</span>
             <span>出错</span>
@@ -193,6 +196,36 @@ export function QualityNewPage() {
   const [batchID, setBatchID] = useState('')
   const [selected, setSelected] = useState<number[]>([])
   const [judgeID, setJudgeID] = useState('')
+  /**
+   * 裁判模型候选（issue #197 第 14 条）。
+   *
+   * 缺陷形态：这里是**手填数字 ID** 的文本框（placeholder「例如 5」），
+   * 甲方既不知道有哪些模型，也不知道该填哪个数字；填错只会在提交时
+   * 得到一句服务端错误。改为从连接目录（只含**已启用**连接）下拉选择。
+   */
+  const [judgeOptions, setJudgeOptions] = useState<ConnectionProviderOption[]>([])
+  const [judgeOptionsLoading, setJudgeOptionsLoading] = useState(true)
+  const [judgeOptionsError, setJudgeOptionsError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const response = await settingsApi.connectionOptions()
+        if (cancelled) return
+        setJudgeOptions((response.providers ?? []).filter((provider) => provider.isActive))
+      } catch (loadError) {
+        if (!cancelled) {
+          setJudgeOptionsError(loadError instanceof Error ? loadError.message : '加载模型连接失败')
+        }
+      } finally {
+        if (!cancelled) setJudgeOptionsLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const [seed, setSeed] = useState('42')
   const [teacherPromptVersion, setTeacherPromptVersion] = useState('')
   const [baselineAnswerVersion, setBaselineAnswerVersion] = useState('')
@@ -255,7 +288,7 @@ export function QualityNewPage() {
       return
     }
     if (selected.length === 0) {
-      setError('实验范围不能为空：请至少选择一个样本版本（空范围的分母为 0，无法得出结论）')
+      setError('实验范围不能为空：请至少选择一个样本版本（空数据集无法得出任何结论）')
       return
     }
     if (judgeID.trim() === '') {
@@ -382,7 +415,7 @@ export function QualityNewPage() {
 
       <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-scope-picker="true">
         <Text strong className="block mb-2">
-          检查范围（冻结为分母）
+          检查范围（冻结为「被评测数据集」）
         </Text>
         <Text type="tertiary" size="small" className="block mb-2">
           已选 {selected.length} 个内容版本。
@@ -426,15 +459,38 @@ export function QualityNewPage() {
         <div className="wizard-fields">
           <div className="wizard-field" data-field="judge-connection">
             <label className="wizard-field__label" htmlFor="judge-connection">
-              裁判连接 ID
+              裁判模型
             </label>
-            <Input
+            {/* 只列**已启用**的连接：停用的连接选了也跑不起来。 */}
+            <Select
               id="judge-connection"
-              value={judgeID}
-              onChange={(value) => setJudgeID(value)}
-              placeholder="例如 5"
-              disabled={!canRun}
+              value={judgeID || undefined}
+              style={{ width: '100%' }}
+              placeholder={
+                judgeOptionsLoading
+                  ? '正在加载模型连接…'
+                  : judgeOptions.length > 0
+                    ? '选择一个已启用的模型连接'
+                    : '没有可用的模型连接'
+              }
+              disabled={!canRun || judgeOptionsLoading || judgeOptions.length === 0}
+              optionList={judgeOptions.map((provider) => ({
+                value: String(provider.id),
+                label: `${provider.name}（${provider.model}）`,
+              }))}
+              onChange={(value) => setJudgeID(String(value ?? ''))}
+              data-judge-connection-select="true"
             />
+            {judgeOptionsError ? (
+              <Text type="danger" size="small" className="block mt-1" data-judge-options-error="true">
+                {judgeOptionsError}
+              </Text>
+            ) : null}
+            {!judgeOptionsLoading && judgeOptions.length === 0 ? (
+              <Text type="tertiary" size="small" className="block mt-1" data-judge-options-empty="true">
+                还没有已启用的模型连接。请先在「设置 › 连接与存储」里启用一个连接，再回来创建实验。
+              </Text>
+            ) : null}
             <Text type="tertiary" size="small" className="block mt-1">
               服务端会再次检查独立性与同源别名：与生成来源同一接入点的连接不能自评。
             </Text>
@@ -538,10 +594,10 @@ export function QualityReportPage() {
         <Tag color={statusColor(experiment.status)}>{STATUS_LABEL[experiment.status] ?? experiment.status}</Tag>
       </div>
 
-      {/* 固定范围与分母：报告的可解释性来自这里。 */}
+      {/* 固定范围：报告的可解释性来自这里。用「被评测数据集」而不是「分母」（#197 第 14 条）。 */}
       <div className="console-stat-grid">
-        <StatTile label="分母（冻结范围）" value={String(report.stats.inspected)} hint="不随筛选/隔离变化" />
-        <StatTile label="已评分" value={String(report.stats.scored)} hint="覆盖的分子" />
+        <StatTile label="被评测数据集" value={String(report.stats.inspected)} hint="实验创建时冻结的样本版本数，不随筛选/隔离变化" />
+        <StatTile label="已评分" value={String(report.stats.scored)} hint="被评测数据集里已得出分数的部分" />
         <StatTile label="缺分" value={String(report.stats.missing)} hint="缺分不是 0 分，不参与均值" />
         <StatTile label="出错" value={String(report.stats.error)} hint="需要重跑，不等于评得差" />
       </div>

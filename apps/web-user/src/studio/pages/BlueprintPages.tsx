@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Button, Card, Empty, Select, Spin, TextArea, Typography } from '@douyinfe/semi-ui'
-import { AlertTriangle, CheckCircle2, Copy, FileCog, History, Save, WandSparkles, XCircle } from 'lucide-react'
+import { Button, Card, Empty, Input, Select, Spin, TextArea, Typography } from '@douyinfe/semi-ui'
+import { AlertTriangle, CheckCircle2, Copy, FileCog, History, Plus, Save, Trash2, WandSparkles, XCircle } from 'lucide-react'
 import { client } from '../../lib/api'
 import { newIdempotencyKey, projectPath } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
@@ -46,6 +46,10 @@ type NodeSpec = {
   task: string
   requiresGeneration: boolean
   fields: NodeFieldSpec[]
+  /** 一句人话回答「这个节点会做什么」（issue #197 第 5 条）。 */
+  purpose?: string
+  /** 该节点按执行顺序列出的小步骤（同样是人话）。 */
+  steps?: string[]
 }
 
 type BlueprintNodesResponse = {
@@ -388,8 +392,19 @@ export function BlueprintPage() {
       <div className="blueprint-layout">
         <section className="blueprint-canvas" aria-label="生产流程画布">
           <div className="blueprint-canvas__eyebrow">ATELIER / PRODUCTION BLUEPRINT / v{current?.version ?? '—'}</div>
-          <div className="blueprint-canvas__hint">先看清步骤关系，再调整当前步骤。每个节点都是可键盘访问的按钮。</div>
-          <div className="blueprint-nodes">
+          {/*
+            issue #197 第 11 条：蓝图的定位是**工作流**，应当横向展示流程，
+            点击某个节点在右侧（同一页）看它的配置。
+            这里把纵向卡片堆叠改为横向流程带：节点按数据流左→右排列，
+            节点之间用 CSS 箭头表示依赖方向。
+            拖拽**刻意不做**：设计文档 R2 明确要求「拖拽是增强不是唯一路径」，
+            而现状的键盘可访问性（每个节点是可聚焦按钮、Tab 顺序 = 视觉顺序）
+            必须保留 —— 横向 flex 布局天然满足这一点，不需要引入拖拽库。
+          */}
+          <div className="blueprint-canvas__hint">
+            流程从左到右：先定范围与标准，再生成，最后评估与交付。点任一节点在右侧配置它。
+          </div>
+          <div className="blueprint-nodes" role="list">
           {specs.map((spec) => (
             <button
               key={spec.key}
@@ -427,6 +442,38 @@ export function BlueprintPage() {
               <Text type="tertiary" className="block mb-3">
                 {activeSpec.caption}
               </Text>
+
+              {/*
+                issue #197 第 5 条：术语（量表版本 / 维度权重 / 缺分策略 /
+                抽样编号）本身没错，错的是它们**同屏出现且没有一句上下文**。
+                这里在字段之前先给出「它会做什么」与「执行顺序」，让下面的
+                参数有地方挂靠。
+              */}
+              {activeSpec.purpose ? (
+                <div className="blueprint-node-purpose" data-node-purpose="true">
+                  <Text strong size="small" className="block mb-1">
+                    这个节点会做什么
+                  </Text>
+                  <Text size="small" className="block">
+                    {activeSpec.purpose}
+                  </Text>
+                </div>
+              ) : null}
+
+              {activeSpec.steps && activeSpec.steps.length > 0 ? (
+                <details className="blueprint-node-steps" data-node-steps="true">
+                  <summary className="blueprint-node-steps__summary">
+                    <Text strong size="small">
+                      执行顺序（{activeSpec.steps.length} 步）
+                    </Text>
+                  </summary>
+                  <ol className="blueprint-node-steps__list">
+                    {activeSpec.steps.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ol>
+                </details>
+              ) : null}
 
               {nodeHealth ? (
                 <div className={`blueprint-health blueprint-health--${nodeHealth.state}`} role="status">
@@ -546,10 +593,25 @@ export function BlueprintPage() {
           )}
         </section>
 
-        <aside className="blueprint-history" aria-label="版本历史">
-          <Text strong size="small" className="block mb-2">
-            版本历史（只读）
-          </Text>
+        {/*
+          issue #197 第 4、6 条：版本历史以前是**常驻**的整行区块，把一个
+          单节点配置页撑到 1561px（1.56 屏），而且用户一进来就被要求理解
+          「历史版本」与「强制关联」。
+          现在：
+            - 默认折叠（`details`，键盘可用、不需要额外的 JS 状态）；
+            - 标题直接说明「改配置不需要先理解版本」；
+            - 展开后仍是只读浏览（编辑走「复制当前版本为草稿」，已有入口）。
+        */}
+        <details className="blueprint-history" aria-label="版本历史（只读，可折叠）">
+          <summary className="blueprint-history__summary">
+            <Text strong size="small">
+              版本历史（只读）· 共 {versions.length} 版
+            </Text>
+            <Text type="tertiary" size="small">
+              改配置不需要先理解版本：直接编辑并保存就是新版本，历史只用于回看与排查。
+            </Text>
+          </summary>
+          <div className="blueprint-history__body">
           {versions.length === 0 ? (
             <Text type="tertiary" size="small">
               还没有保存过任何版本。
@@ -588,11 +650,12 @@ export function BlueprintPage() {
             </div>
           ) : null}
           {current ? (
-              <Text type="tertiary" size="small" className="block mt-3">
+            <Text type="tertiary" size="small" className="block mt-3">
               当前版本内容指纹：{current.contentHash}
             </Text>
           ) : null}
-        </aside>
+          </div>
+        </details>
       </div>
     </div>
   )
@@ -648,13 +711,28 @@ function NodeFields({
               {field.required ? <span className="wizard-field__required"> *</span> : null}
             </label>
             {isJSONField ? (
-              <JSONFieldEditor
-                id={`blueprint-${spec.key}-${field.name}`}
-                value={value}
-                disabled={disabled}
-                fieldName={field.name}
-                onChange={(next) => onChange(field.name, next)}
-              />
+              field.name === 'steps' ? (
+                /* issue #197 第 2 条：思考步骤是**给模型看的中文提示词模板**，
+                   而 JSON 只是存储表示。让用户在蓝图里手写
+                   `{"id":…,"title":…,"checkpoint":…}` 等于把序列化格式当界面 ——
+                   而同一个实体在「思维标准」页早就有自然语言分步编辑器。
+                   这里复用同一套分步表单（默认表单视图，JSON 作为可切换视图），
+                   保证「同一实体只有一套编辑体验」。 */
+                <StandardStepsEditor
+                  id={`blueprint-${spec.key}-${field.name}`}
+                  value={value}
+                  disabled={disabled}
+                  onChange={(next) => onChange(field.name, next)}
+                />
+              ) : (
+                <JSONFieldEditor
+                  id={`blueprint-${spec.key}-${field.name}`}
+                  value={value}
+                  disabled={disabled}
+                  fieldName={field.name}
+                  onChange={(next) => onChange(field.name, next)}
+                />
+              )
             ) : field.kind === 'id' || field.kind === 'idList' ? (
               <Select
                 id={`blueprint-${spec.key}-${field.name}`}
@@ -786,6 +864,162 @@ function jsonExample(fieldName: string): string {
   if (fieldName === 'steps') return JSON.stringify([{ title: '提出问题', checkpoint: '问题已明确且可验证' }], null, 2)
   if (fieldName === 'jsonSchema') return JSON.stringify({ type: 'object', required: ['question', 'reasoning', 'answer'] }, null, 2)
   return '{\n  "key": "value"\n}'
+}
+
+/**
+ * 分步表单里的一个思考步骤（issue #197 第 2 条）。
+ *
+ * 字段与「思维标准」页保持一致（步骤 ID / 步骤名称 / 具体做法 / 完成检查点），
+ * 因为它们是**同一个实体**的两处入口。
+ */
+type StepDraft = { id: string; title: string; detail: string; checkpoint: string }
+
+/** 把任意来源的 steps 值规整成可编辑的步骤列表。 */
+function toStepDrafts(value: unknown): StepDraft[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item, index) => {
+    if (item === null || item === undefined) return []
+    if (typeof item === 'string') {
+      // 历史数据里 steps 可能是纯字符串数组；转成「标题」而不是丢弃。
+      return [{ id: `step-${index + 1}`, title: item, detail: '', checkpoint: '' }]
+    }
+    if (typeof item !== 'object') return []
+    const record = item as Record<string, unknown>
+    const asText = (key: string) => (typeof record[key] === 'string' ? String(record[key]) : '')
+    return [{
+      id: asText('id') || `step-${index + 1}`,
+      title: asText('title'),
+      detail: asText('detail'),
+      checkpoint: asText('checkpoint'),
+    }]
+  })
+}
+
+/** 步骤列表 → 落库形状。 */
+function fromStepDrafts(steps: StepDraft[]): Array<Record<string, string>> {
+  return steps.map((step, index) => ({
+    id: step.id.trim() || `step-${index + 1}`,
+    title: step.title.trim(),
+    detail: step.detail.trim(),
+    checkpoint: step.checkpoint.trim(),
+  }))
+}
+
+/**
+ * 自然语言分步编辑器（issue #197 第 2 条）。
+ *
+ * 默认**表单视图**：写「做什么」与「怎么算完成」的中文，而不是 JSON。
+ * JSON 仍可切换查看/编辑（排查与批量粘贴时必需），但它是次要视图 ——
+ * 反过来就等于「默认把存储表示给用户看」，而那正是这条缺陷的定义。
+ *
+ * 校验与「思维标准」页一致：标题与检查点必填。**没有检查点的步骤无法被验证**，
+ * 因此这里对空检查点给出内联提示，而不是静默保存一个不可验证的步骤。
+ */
+function StandardStepsEditor({
+  id,
+  value,
+  disabled,
+  onChange,
+}: {
+  id: string
+  value: unknown
+  disabled: boolean
+  onChange: (value: unknown) => void
+}) {
+  const { Text } = Typography
+  const steps = useMemo(() => toStepDrafts(value), [value])
+  const [raw, setRaw] = useState(false)
+  const update = (next: StepDraft[]) => onChange(fromStepDrafts(next))
+  const patch = (index: number, changes: Partial<StepDraft>) =>
+    update(steps.map((step, position) => (position === index ? { ...step, ...changes } : step)))
+  const missingCheckpoint = steps.filter((step) => step.title.trim() !== '' && step.checkpoint.trim() === '').length
+  return (
+    <div className="blueprint-steps-editor" data-steps-editor="true">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <Button
+          size="small"
+          icon={<Plus size={13} />}
+          disabled={disabled}
+          onClick={() => update([...steps, { id: `step-${steps.length + 1}`, title: '', detail: '', checkpoint: '' }])}
+          data-steps-add="true"
+        >
+          添加步骤
+        </Button>
+        <Button size="small" theme="borderless" onClick={() => setRaw((current) => !current)} data-steps-raw-toggle="true">
+          {raw ? '用表单编辑' : '看 JSON'}
+        </Button>
+        <Text type="tertiary" size="small">
+          共 {steps.length} 步 · 每步都要有「完成检查点」，没有检查点的步骤无法被验证
+        </Text>
+      </div>
+      {raw ? (
+        <JSONFieldEditor id={id} value={value} disabled={disabled} fieldName="steps" onChange={onChange} />
+      ) : steps.length === 0 ? (
+        <Text type="tertiary" size="small" data-steps-empty="true">
+          还没有思考步骤。用「添加步骤」写下模型应当怎么做，以及每步怎么算完成。
+        </Text>
+      ) : (
+        <div className="blueprint-steps-editor__list">
+          {steps.map((step, index) => (
+            <div className="blueprint-steps-editor__row" key={`${step.id}-${index}`} data-step-index={index}>
+              <div className="wizard-field">
+                <label className="wizard-field__label" htmlFor={`${id}-title-${index}`}>
+                  步骤 {index + 1}：做什么
+                </label>
+                <Input
+                  id={`${id}-title-${index}`}
+                  value={step.title}
+                  disabled={disabled}
+                  placeholder="例如 识别题目里的约束条件"
+                  onChange={(next) => patch(index, { title: next })}
+                />
+              </div>
+              <div className="wizard-field">
+                <label className="wizard-field__label" htmlFor={`${id}-checkpoint-${index}`}>
+                  怎么算完成（检查点）
+                </label>
+                <Input
+                  id={`${id}-checkpoint-${index}`}
+                  value={step.checkpoint}
+                  disabled={disabled}
+                  aria-invalid={step.title.trim() !== '' && step.checkpoint.trim() === '' ? 'true' : undefined}
+                  placeholder="例如 已列出全部约束且标注了来源"
+                  onChange={(next) => patch(index, { checkpoint: next })}
+                />
+              </div>
+              <div className="wizard-field">
+                <label className="wizard-field__label" htmlFor={`${id}-detail-${index}`}>
+                  具体做法（可选）
+                </label>
+                <Input
+                  id={`${id}-detail-${index}`}
+                  value={step.detail}
+                  disabled={disabled}
+                  placeholder="补充提示词细节"
+                  onChange={(next) => patch(index, { detail: next })}
+                />
+              </div>
+              <div className="blueprint-steps-editor__actions">
+                <Button
+                  size="small"
+                  type="tertiary"
+                  icon={<Trash2 size={13} />}
+                  aria-label={`删除步骤 ${index + 1}`}
+                  disabled={disabled || steps.length <= 1}
+                  onClick={() => update(steps.filter((_, position) => position !== index))}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {missingCheckpoint > 0 ? (
+        <Text type="warning" size="small" className="block mt-2" data-steps-missing-checkpoint="true">
+          有 {missingCheckpoint} 步只写了「做什么」而没有「怎么算完成」。保存后这些步骤无法被验证。
+        </Text>
+      ) : null}
+    </div>
+  )
 }
 
 function JSONFieldEditor({

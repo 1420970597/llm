@@ -149,3 +149,109 @@ export function describeArtifactContentType(raw: string): string {
   const subtype = raw.includes('/') ? raw.split('/').pop() ?? '' : raw
   return subtype ? `未知类型（${subtype}）` : '未知类型'
 }
+
+// ---------------------------------------------------------------------------
+// audit.action（issue #191）
+// ---------------------------------------------------------------------------
+
+/**
+ * 审计动作 code → 中文文案。
+ *
+ * 与后端 `internal/store/activity_store.go` 的 `auditActionLabels` **同源**：
+ * 同一个 `action` 在「动态」里被翻译、在「操作记录 / 审计」里却漏出英文 code，
+ * 是同一缺陷的两个面（issue #191 的实测形态就是
+ * `操作 blueprint_version_created`）。
+ *
+ * 两处都需要一份映射是因为它们的渲染路径不同（Go 侧拼 summary 字符串，
+ * 前端渲染表格单元格），但**取值域必须一致**；新增动作时两处都要补，
+ * 一致性由 `test/l15_activity_labels.mjs` 的源码级断言守住。
+ */
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  // 项目与工作区
+  project_created_from_recipe: '用方案创建项目',
+  recipe_create: '创建方案',
+  recipe_version_created: '保存方案新版本',
+  recipe_version_published: '发布方案版本',
+  document_version_created: '保存文档新版本',
+  blueprint_version_created: '保存蓝图新版本',
+  coverage_version_created: '保存覆盖方案新版本',
+  standard_version_created: '保存思维标准新版本',
+  quality_policy_version_created: '保存质量策略新版本',
+  mapping_version_created: '保存交付映射新版本',
+  member_upsert: '添加项目成员',
+  member_remove: '移除项目成员',
+  workspace_member_upsert: '添加工作区成员',
+  workspace_member_removed: '移除工作区成员',
+  // 批次与生产
+  batch_create: '创建批次',
+  batch_pause: '暂停批次',
+  batch_resume: '恢复批次',
+  batch_retry_failed: '重试失败项',
+  // 数据、审阅与质量
+  review_decision: '提交人工判断',
+  review_conflict_resolved: '处理审阅冲突',
+  comparison_adopt: '采纳比较结论',
+  experiment_create: '创建质量实验',
+  rule_evidence_recorded: '记录规则命中证据',
+  comment_created: '发表评论',
+  // 发布
+  release_candidate_create: '创建发布候选',
+  release_freeze: '冻结发布候选',
+  release_published: '发布版本',
+}
+
+/** 动作前缀 → 中文资源名（用于未登记动作的派生兜底）。 */
+const AUDIT_RESOURCE_LABELS: Record<string, string> = {
+  batch: '批次',
+  project: '项目',
+  recipe: '方案',
+  blueprint: '蓝图',
+  coverage: '覆盖方案',
+  standard: '思维标准',
+  quality_policy: '质量策略',
+  mapping: '交付映射',
+  experiment: '质量实验',
+  release: '发布候选',
+  member: '项目成员',
+  workspace_member: '工作区成员',
+}
+
+/** 后缀 → 中文动词，顺序即优先级（`_version_created` 必须先于 `_created`）。 */
+const AUDIT_ACTION_SUFFIXES: Array<{ code: string; label: string }> = [
+  { code: '_version_created', label: '保存新版本' },
+  { code: '_version_published', label: '发布版本' },
+  { code: '_version_deleted', label: '删除版本' },
+  { code: '_created', label: '创建' },
+  { code: '_updated', label: '更新' },
+  { code: '_deleted', label: '删除' },
+  { code: '_removed', label: '移除' },
+  { code: '_upsert', label: '添加' },
+  { code: '_recorded', label: '记录' },
+  { code: '_published', label: '发布' },
+  { code: '_resolved', label: '处理' },
+  { code: '_requested', label: '请求' },
+  { code: '_paused', label: '暂停' },
+  { code: '_resumed', label: '恢复' },
+]
+
+/**
+ * 审计动作 → 用户可见文案。
+ *
+ * 契约：**永不返回原始 action code**。
+ * 未登记的动作按「资源 + 动词」派生中文；连后缀都不认识时给中性的「配置变更」。
+ * 这与 `describeDomainReviewStatus` 的处理方式一致：兜底文案可以损失信息量，
+ * 但不能把内部 code 当成界面文案。
+ */
+export function describeAuditAction(raw: string): string {
+  if (!raw) return '未知操作'
+  if (raw in AUDIT_ACTION_LABELS) {
+    return AUDIT_ACTION_LABELS[raw]
+  }
+  for (const rule of AUDIT_ACTION_SUFFIXES) {
+    if (!raw.endsWith(rule.code)) continue
+    const resource = raw.slice(0, raw.length - rule.code.length)
+    const resourceLabel = AUDIT_RESOURCE_LABELS[resource]
+    return resourceLabel ? `${resourceLabel}${rule.label}` : `配置${rule.label}`
+  }
+  return '配置变更'
+}

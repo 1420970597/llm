@@ -43,6 +43,10 @@ func registerStudioBatchRoutes(mux *http.ServeMux, app *application) {
 	mux.HandleFunc("GET "+projectPrefix+"/{projectId}/batches/{batchId}/items", app.listBatchItems)
 	mux.HandleFunc("GET "+projectPrefix+"/{projectId}/batches/{batchId}/events", app.listBatchEvents)
 	mux.HandleFunc("GET "+projectPrefix+"/{projectId}/batches/{batchId}/failures", app.listBatchFailures)
+	// issue #197 第 13 条：生产工作区必须有数据集结构与内容分析。
+	// 打开即算（不需要点按钮），且全部由服务端计算 —— 前端拉全量样本自己算
+	// 分位与占比会让 10 万单元的批次把整表拖进浏览器。
+	mux.HandleFunc("GET "+projectPrefix+"/{projectId}/batches/{batchId}/analysis", app.getBatchAnalysis)
 	mux.HandleFunc("POST "+projectPrefix+"/{projectId}/batches/{batchId}/pause", app.controlBatch("pause"))
 	mux.HandleFunc("POST "+projectPrefix+"/{projectId}/batches/{batchId}/resume", app.controlBatch("resume"))
 	mux.HandleFunc("POST "+projectPrefix+"/{projectId}/batches/{batchId}/retry-failed", app.controlBatch("retry-failed"))
@@ -392,6 +396,12 @@ func batchWarnings(batch model.Batch) []string {
 	if batch.Status == model.BatchStatusPartialFailed {
 		warnings = append(warnings, "部分单元失败：成功内容已保留，恢复只会重跑失败与未完成项")
 	}
+	// issue #190：缺口必须与「失败」分开表述。
+	// 一个 0 失败的「部分完成」批次最容易被误读成「已完成」，所以这里给出
+	// 计划量、实际产出与缺口三个数字，而不是只说「部分失败」。
+	if note := batch.ShortfallNote(); note != "" && batch.FailedUnits == 0 {
+		warnings = append(warnings, note)
+	}
 	if batch.Budget.LimitMinor > 0 && batch.BudgetReservedMinor+batch.BudgetSettledMinor+batch.BudgetUncertainMinor >= batch.Budget.LimitMinor {
 		warnings = append(warnings, "本批预算已用尽，新的外部调用会被阻止；请提高上限或等待结算")
 	}
@@ -678,4 +688,55 @@ func parseAPITime(raw string) (parsed time.Time) {
 // context.WithoutCancel 保留值（例如租户信息）而去掉取消。
 func contextWithoutCancel() context.Context {
 	return context.WithoutCancel(context.Background())
+}
+
+// ---------------------------------------------------------------------------
+// GET P/batches/{batchId}/analysis（issue #197 第 13 条）
+// ---------------------------------------------------------------------------
+
+// getBatchAnalysis 返回批次产出的数据集结构与内容分析。
+//
+// 为什么是独立端点而不是塞进批次详情：
+//
+//	详情页是「运行状态」（每几秒要刷新），而分析是「数据结论」（每次产出变化才变）。
+//	把统计塞进详情会让打开详情的每个请求都跑一遍分位与分组聚合 ——
+//	在 10 万单元的批次上这是可感知的开销，而结论并不会因此更新得更快。
+//
+// 失败语义：覆盖版本无法解析时返回 422（可操作的原因），而不是 500。
+func (app *application) getBatchAnalysis(w http.ResponseWriter, r *http.Request) {
+	user, ok := requestUser(r)
+	if !ok {
+		app.writeStudioError(w, r, studio.NewError(studio.CodeUnauthorized, msgAuthRequired))
+		return
+	}
+	_, batch, ok := app.resolveBatchPath(w, r, user.ID)
+	if !ok {
+		return
+	}
+
+	analysis, err := studio.AnalyzeDataset(r.Context(), app.studio.Batches, app.studio.Documents, batch, 2000)
+	if err != nil {
+		app.writeStudioError(w, r, err)
+		return
+	}
+	// 难度占比的「预期值」来自覆盖版本的配比：界面上要能回答
+	// 「计划 70% 简单，实际产出是多少」这个问题。
+	if batch.Snapshot.CoverageVersionID > 0 {
+		if version, err := app.studio.Documents.GetVersionByID(r.Context(), batch.Snapshot.CoverageVersionID); err == nil {
+			if targets, err := studio.DifficultyTargetsFromCoverage(version.Payload); err == nil {
+				for index := range analysis.Difficulty {
+					if expected, found := targets[analysis.Difficulty[index].Key]; found {
+						value := expected
+						analysis.Difficulty[index].Expected = &value
+					}
+				}
+			}
+		}
+	}
+	app.writeStudioEnvelope(w, http.StatusOK, studio.Envelope{
+		ID:        studio.BatchResourceID(batch.ID),
+		Status:    batch.Status,
+		UpdatedAt: studio.FormatTime(batch.UpdatedAt),
+		Data:      analysis,
+	})
 }

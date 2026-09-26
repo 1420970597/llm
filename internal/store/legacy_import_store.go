@@ -298,3 +298,72 @@ func nullableJSON(raw json.RawMessage) any {
 	}
 	return raw
 }
+
+// LegacyMigrationStatus 是「旧资产是否已全部迁移」的对账读数（issue #197 第 16 条）。
+//
+// 为什么必须由服务端给出：用户的问题是「迁移成功了吗？成功就删掉这个菜单」。
+// 前端**无法**回答 —— 它看不到 `legacy_imports` 台账，也看不到
+// `projects.legacy_dataset_id` 的绑定数。把结论硬编码在页面上等于撒谎：
+// 一旦某天真的迁移完，页面仍然会写着「尚未迁移」。
+//
+// 判据（与交付文档 docs/plans/legacy-migration-report.md 的口径一致）：
+//   - LegacyDatasets：旧表里还剩多少个 dataset（`datasets` 表）；
+//   - ImportedRecords：台账里 completed 的导入条数；
+//   - BoundProjects：有多少个项目绑定了旧数据集；
+//   - MigrationComplete：**只有**「还有旧数据（>0）但已无未迁移项」时才为 true。
+//     旧数据本身为 0（空库/全新部署）不算「迁移成功」—— 那是「没有可迁移的东西」，
+//     两者对「能不能删菜单」的结论相同（都能删），但语义必须分开，
+//     否则汇报「迁移成功」会把「从未有过旧数据」说成一件工作成果。
+type LegacyMigrationStatus struct {
+	LegacyDatasets    int  `json:"legacyDatasets"`
+	ImportedRecords   int  `json:"importedRecords"`
+	BoundProjects     int  `json:"boundProjects"`
+	MigrationComplete bool `json:"migrationComplete"`
+	// PendingDatasets 是仍未绑定到任何项目的旧数据集数（缺口）。
+	PendingDatasets int `json:"pendingDatasets"`
+	// Note 是给界面的一句话结论（服务端给结论，前端只渲染）。
+	Note string `json:"note"`
+}
+
+// LegacyMigrationStatus 汇总迁移对账读数。
+//
+// 只读：全部是 COUNT 与 LEFT JOIN，不修改任何数据。
+func (s *LegacyImportStore) LegacyMigrationStatus(ctx context.Context) (LegacyMigrationStatus, error) {
+	var status LegacyMigrationStatus
+	// `datasets` 是旧模型的核心表；它不存在时（全新库）按 0 处理而不是报错 ——
+	// 报错会让整页 500，而「没有旧数据」是一个完全正常的结论。
+	if err := s.db.QueryRow(ctx, `
+    SELECT COUNT(*) FROM datasets`).Scan(&status.LegacyDatasets); err != nil {
+		status.LegacyDatasets = 0
+	}
+	if err := s.db.QueryRow(ctx, `
+    SELECT COUNT(*) FROM legacy_imports WHERE status = 'completed'`).
+		Scan(&status.ImportedRecords); err != nil {
+		status.ImportedRecords = 0
+	}
+	if err := s.db.QueryRow(ctx, `
+    SELECT COUNT(*) FROM projects WHERE legacy_dataset_id IS NOT NULL`).
+		Scan(&status.BoundProjects); err != nil {
+		status.BoundProjects = 0
+	}
+	// 未迁移 = 旧数据集中没有任何项目绑定的那些。
+	if err := s.db.QueryRow(ctx, `
+    SELECT COUNT(*) FROM datasets d
+    WHERE NOT EXISTS (SELECT 1 FROM projects p WHERE p.legacy_dataset_id = d.id)`).
+		Scan(&status.PendingDatasets); err != nil {
+		status.PendingDatasets = 0
+	}
+
+	switch {
+	case status.LegacyDatasets == 0:
+		status.MigrationComplete = true
+		status.Note = "本部署没有旧数据集，因此没有可迁移的历史资产。"
+	case status.PendingDatasets == 0:
+		status.MigrationComplete = true
+		status.Note = "全部旧数据集都已绑定到项目，可以对账后移除「历史资产」菜单。"
+	default:
+		status.MigrationComplete = false
+		status.Note = "尚未全部迁移：仍有未绑定项目的旧数据集，本菜单保留为只读盘点页。"
+	}
+	return status, nil
+}

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Card, Empty, Input, Select, Spin, Tag, Typography } from '@douyinfe/semi-ui'
-import { ShieldCheck, Users } from 'lucide-react'
-import { authApi } from '../../lib/api'
+import { Button, Card, Empty, Input, InputNumber, Modal, Select, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui'
+import { Pencil, PlugZap, Plus, Power, ShieldCheck, Users } from 'lucide-react'
+import { authApi, consoleApi } from '../../lib/api'
+import type { Provider } from '../../lib/api'
 import { settingsApi } from '../../lib/api/studio'
 import type {
   ConnectionOptions,
+  ConnectionProviderOption,
   ProjectCapabilities,
   ProjectIdentity,
   ProjectMemberRecord,
@@ -30,36 +32,200 @@ import { APP_BUILD_TIME, APP_VERSION, versionSummary } from '../../buildInfo'
 // 连接与存储（S02）
 // ---------------------------------------------------------------------------
 
+/**
+ * 模型连接的编辑草稿（issue #197 第 7、8 条）。
+ *
+ * `apiKey` 为**空串表示「不修改密钥」**：管理接口的语义是「不回显、
+ * 传空则保留旧值」。用一个独立的 `hasNewKey` 标记，避免把「用户清空了
+ * 输入框」误判成「用户想清空密钥」。
+ */
+type ProviderDraft = {
+  id: number
+  name: string
+  baseUrl: string
+  model: string
+  providerType: string
+  reasoningEffort: string
+  maxConcurrency: number
+  isActive: boolean
+  apiKey: string
+  apiKeyMasked: string
+}
+
+const EMPTY_PROVIDER_DRAFT: ProviderDraft = {
+  id: 0,
+  name: '',
+  baseUrl: '',
+  model: '',
+  providerType: 'openai-compatible',
+  reasoningEffort: '',
+  maxConcurrency: 4,
+  isActive: true,
+  apiKey: '',
+  apiKeyMasked: '',
+}
+
+function draftFromProvider(provider: Provider): ProviderDraft {
+  return {
+    id: provider.id,
+    name: provider.name ?? '',
+    baseUrl: provider.baseUrl ?? '',
+    model: provider.model ?? '',
+    providerType: provider.providerType || 'openai-compatible',
+    reasoningEffort: provider.reasoningEffort ?? '',
+    maxConcurrency: provider.maxConcurrency > 0 ? provider.maxConcurrency : 4,
+    isActive: provider.isActive,
+    // 密钥永不回显：编辑时留空即保留原密钥。
+    apiKey: '',
+    apiKeyMasked: provider.apiKeyMasked ?? '',
+  }
+}
+
 export function ConnectionsPage() {
   const { Title, Text } = Typography
-  const navigate = useNavigate()
   const [options, setOptions] = useState<ConnectionOptions | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const [response, identity] = await Promise.all([
-          settingsApi.connectionOptions(),
-          authApi.me(),
-        ])
-        if (!cancelled) {
-          setOptions(response)
-          setIsAdmin(identity.user.role === 'admin')
-        }
-      } catch (loadError) {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : '加载连接选项失败')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
+  /**
+   * 连接管理在**同一张表内**用抽屉/弹窗完成（issue #197 第 7 条）：
+   * 以前「新增或编辑」会跳到旧的 `/console/admin/providers`，
+   * 用户被带离 Atelier 设置页且找不到回来的路。
+   */
+  const [draft, setDraft] = useState<ProviderDraft | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<string | null>(null)
+  const [rowBusy, setRowBusy] = useState<number | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [response, identity] = await Promise.all([
+        settingsApi.connectionOptions(),
+        authApi.me(),
+      ])
+      setOptions(response)
+      setIsAdmin(identity.user.role === 'admin')
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : '加载连接选项失败')
+    } finally {
+      setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  /**
+   * 保存连接。密钥只在用户真的填写了新值时才提交：
+   * 空串会让服务端沿用旧值，因此这里显式省略该字段。
+   */
+  const saveDraft = useCallback(async () => {
+    if (!draft) return
+    if (draft.name.trim() === '') {
+      setError('连接名称不能为空。')
+      return
+    }
+    if (draft.baseUrl.trim() === '') {
+      setError('接入地址（Base URL）不能为空。')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const payload: Partial<Provider> & { apiKey?: string } = {
+        id: draft.id > 0 ? draft.id : undefined,
+        name: draft.name.trim(),
+        baseUrl: draft.baseUrl.trim(),
+        model: draft.model.trim(),
+        providerType: draft.providerType.trim() || 'openai-compatible',
+        reasoningEffort: draft.reasoningEffort.trim(),
+        maxConcurrency: draft.maxConcurrency,
+        isActive: draft.isActive,
+      }
+      if (draft.apiKey.trim() !== '') {
+        payload.apiKey = draft.apiKey.trim()
+      }
+      await consoleApi.saveProvider(payload)
+      setDraft(null)
+      setTestResult(null)
+      Toast.success(draft.id > 0 ? '连接已更新。' : '连接已创建。')
+      await load()
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : '保存连接失败')
+    } finally {
+      setSaving(false)
+    }
+  }, [draft, load])
+
+  /** 测试连通性（与保存分离：测试失败不应阻止用户保存一个刚配置好的连接）。 */
+  const testDraft = useCallback(async () => {
+    if (!draft) return
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const result = await consoleApi.testProviderConnectivity({
+        id: draft.id > 0 ? draft.id : undefined,
+        name: draft.name.trim(),
+        baseUrl: draft.baseUrl.trim(),
+        model: draft.model.trim(),
+        providerType: draft.providerType.trim() || 'openai-compatible',
+        ...(draft.apiKey.trim() !== '' ? { apiKey: draft.apiKey.trim() } : {}),
+      })
+      setTestResult(
+        result.ok
+          ? `连通成功（HTTP ${result.statusCode}，${result.latencyMs}ms${result.modelFound ? '，模型可用' : '，但未在模型列表里找到该模型'}）`
+          : `连通失败（HTTP ${result.statusCode}，${result.latencyMs}ms）：${result.message}`,
+      )
+    } catch (testError) {
+      setTestResult(testError instanceof Error ? testError.message : '测试连接失败')
+    } finally {
+      setTesting(false)
+    }
+  }, [draft])
+
+  /**
+   * 行内启用/停用：列表项的直接操作，不必进编辑弹窗（issue #197 第 8 条）。
+   *
+   * 这里必须回读**完整记录**再提交：管理接口的语义是整行覆盖，
+   * 只传展示字段会把 baseUrl / 并发上限等字段清空（「启用一下把连接弄坏」）。
+   */
+  const toggleActive = useCallback(
+    async (provider: ConnectionProviderOption) => {
+      setRowBusy(provider.id)
+      setError(null)
+      try {
+        const all = await consoleApi.listProviders()
+        const full = all.find((item) => item.id === provider.id)
+        if (!full) {
+          setError('该连接已不存在（可能刚被其它管理员删除），列表已刷新。')
+          await load()
+          return
+        }
+        const nextDraft = draftFromProvider(full)
+        await consoleApi.saveProvider({
+          id: nextDraft.id,
+          name: nextDraft.name,
+          baseUrl: nextDraft.baseUrl,
+          model: nextDraft.model,
+          providerType: nextDraft.providerType,
+          reasoningEffort: nextDraft.reasoningEffort,
+          maxConcurrency: nextDraft.maxConcurrency,
+          isActive: !provider.isActive,
+        })
+        Toast.success(provider.isActive ? `已停用 ${provider.name}` : `已启用 ${provider.name}`)
+        await load()
+      } catch (toggleError) {
+        setError(toggleError instanceof Error ? toggleError.message : '切换连接状态失败')
+      } finally {
+        setRowBusy(null)
+      }
+    },
+    [load],
+  )
 
   return (
     <div className="console-page" data-studio-page="settings-connections">
@@ -74,10 +240,16 @@ export function ConnectionsPage() {
           <Button
             theme="solid"
             type="primary"
-            onClick={() => navigate('/console/admin/providers')}
+            icon={<Plus size={14} />}
+            onClick={() => {
+              // issue #197 第 7 条：不再跳转到旧兼容控制台，就在本页打开表单。
+              setError(null)
+              setTestResult(null)
+              setDraft({ ...EMPTY_PROVIDER_DRAFT })
+            }}
             data-connection-admin-action="true"
           >
-            管理模型连接
+            新增模型连接
           </Button>
         ) : null}
       </div>
@@ -101,8 +273,17 @@ export function ConnectionsPage() {
                 <Text type="tertiary" size="small">蓝图和质量实验只能选择已启用的连接；密钥不会在这里回显。</Text>
               </div>
               {isAdmin ? (
-                <Button size="small" onClick={() => navigate('/console/admin/providers')} data-connection-manage="true">
-                  新增或编辑
+                <Button
+                  size="small"
+                  icon={<Plus size={14} />}
+                  onClick={() => {
+                    setError(null)
+                    setTestResult(null)
+                    setDraft({ ...EMPTY_PROVIDER_DRAFT })
+                  }}
+                  data-connection-manage="true"
+                >
+                  新增连接
                 </Button>
               ) : null}
             </div>
@@ -116,18 +297,74 @@ export function ConnectionsPage() {
                   <span>类型</span>
                   <span>密钥标识</span>
                   <span>状态</span>
+                  {isAdmin ? <span>操作</span> : null}
                 </div>
                 {options.providers.map((provider) => (
                   <div key={provider.id} className="comparison-row" data-connection-id={provider.id}>
-                    <span>{provider.name}</span>
-                    <span>{provider.model}</span>
-                    <span>{provider.providerType}</span>
-                    <span>{provider.apiKeyMasked || '—'}</span>
-                    <span>
+                    {/* data-label 是窄屏卡片布局的字段名（issue #194）：
+                        390px 下表格无法横向展开时，如果只把 5 个单元格倒进两列，
+                        用户看到的是「表头与数据行错位混合」。这里让每个单元格
+                        自带字段名，行变成卡片式列表（表头整行隐藏）。 */}
+                    <span data-label="名称">{provider.name}</span>
+                    <span data-label="模型">{provider.model}</span>
+                    <span data-label="类型">{provider.providerType}</span>
+                    <span data-label="密钥标识">{provider.apiKeyMasked || '—'}</span>
+                    <span data-label="状态">
                       <Tag size="small" color={provider.isActive ? 'green' : 'grey'}>
                         {provider.isActive ? '启用' : '停用'}
                       </Tag>
                     </span>
+                    {/* issue #197 第 8 条：列表项必须有**元素级**编辑按钮。
+                        以前 11 行连接的行内按钮数是 0，用户只能去旧控制台。 */}
+                    {isAdmin ? (
+                      <span data-label="操作" className="connection-row-actions">
+                        <Button
+                          size="small"
+                          theme="borderless"
+                          icon={<Pencil size={13} />}
+                          loading={rowBusy === provider.id}
+                          onClick={() => {
+                            setError(null)
+                            setTestResult(null)
+                            // 编辑需要完整字段（含 baseUrl），而选项端点只给展示字段；
+                            // 因此这里按 id 取完整记录，而不是拿展示字段拼一个残缺草稿。
+                            void (async () => {
+                              setRowBusy(provider.id)
+                              try {
+                                // 选项端点只返回展示字段（无 baseUrl / 并发上限），
+                                // 而编辑表单需要完整记录。**拿不到就报错**，不用展示
+                                // 字段拼一个残缺草稿 —— 那样保存会把 baseUrl 清空。
+                                const all = await consoleApi.listProviders()
+                                const full = all.find((item) => item.id === provider.id)
+                                if (!full) {
+                                  setError('该连接已不存在（可能刚被其它管理员删除），列表已刷新。')
+                                  await load()
+                                  return
+                                }
+                                setDraft(draftFromProvider(full))
+                              } catch (loadError) {
+                                setError(loadError instanceof Error ? loadError.message : '读取连接详情失败')
+                              } finally {
+                                setRowBusy(null)
+                              }
+                            })()
+                          }}
+                          data-connection-edit={provider.id}
+                        >
+                          编辑
+                        </Button>
+                        <Button
+                          size="small"
+                          theme="borderless"
+                          icon={<Power size={13} />}
+                          loading={rowBusy === provider.id}
+                          onClick={() => void toggleActive(provider)}
+                          data-connection-toggle={provider.id}
+                        >
+                          {provider.isActive ? '停用' : '启用'}
+                        </Button>
+                      </span>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -151,11 +388,11 @@ export function ConnectionsPage() {
                 </div>
                 {options.storageProfiles.map((profile) => (
                   <div key={profile.id} className="comparison-row" data-storage-id={profile.id}>
-                    <span>{profile.name}</span>
-                    <span>{profile.provider}</span>
-                    <span>{profile.bucket}</span>
-                    <span>{profile.secretKeyMasked || '—'}</span>
-                    <span>
+                    <span data-label="名称">{profile.name}</span>
+                    <span data-label="类型">{profile.provider}</span>
+                    <span data-label="Bucket">{profile.bucket}</span>
+                    <span data-label="密钥标识">{profile.secretKeyMasked || '—'}</span>
+                    <span data-label="默认">
                       {profile.isDefault ? (
                         <Tag size="small" color="blue">
                           默认
@@ -174,6 +411,122 @@ export function ConnectionsPage() {
 
         </>
       ) : null}
+
+      {/*
+        连接表单：与列表**同一个页面**（issue #197 第 7 条）。
+        用 Modal 而不是路由跳转，是因为用户的心理模型是「在这一行上改」，
+        跳页会丢失上下文（旧控制台还不能一键返回）。
+      */}
+      <Modal
+        visible={draft !== null}
+        title={draft && draft.id > 0 ? `编辑连接：${draft.name || `#${draft.id}`}` : '新增模型连接'}
+        onCancel={() => {
+          setDraft(null)
+          setTestResult(null)
+        }}
+        onOk={() => void saveDraft()}
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={saving}
+        width={620}
+      >
+        {draft ? (
+          <div className="wizard-grid" data-connection-form="true">
+            <div className="wizard-field">
+              <label className="wizard-field__label" htmlFor="connection-name">名称</label>
+              <Input
+                id="connection-name"
+                value={draft.name}
+                onChange={(value) => setDraft({ ...draft, name: value })}
+                placeholder="例如 主裁判模型"
+              />
+            </div>
+            <div className="wizard-field">
+              <label className="wizard-field__label" htmlFor="connection-base-url">接入地址（Base URL）</label>
+              <Input
+                id="connection-base-url"
+                value={draft.baseUrl}
+                onChange={(value) => setDraft({ ...draft, baseUrl: value })}
+                placeholder="https://api.example.com/v1"
+              />
+            </div>
+            <div className="wizard-field">
+              <label className="wizard-field__label" htmlFor="connection-model">模型</label>
+              <Input
+                id="connection-model"
+                value={draft.model}
+                onChange={(value) => setDraft({ ...draft, model: value })}
+                placeholder="模型名（留空则用供应商默认）"
+              />
+            </div>
+            <div className="wizard-field">
+              <label className="wizard-field__label" htmlFor="connection-type">类型</label>
+              <Input
+                id="connection-type"
+                value={draft.providerType}
+                onChange={(value) => setDraft({ ...draft, providerType: value })}
+                placeholder="openai-compatible"
+              />
+            </div>
+            <div className="wizard-field">
+              <label className="wizard-field__label" htmlFor="connection-concurrency">最大并发</label>
+              <InputNumber
+                id="connection-concurrency"
+                min={1}
+                max={32}
+                value={draft.maxConcurrency}
+                onChange={(value) => setDraft({ ...draft, maxConcurrency: Number(value ?? 1) })}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div className="wizard-field">
+              <label className="wizard-field__label" htmlFor="connection-key">
+                密钥{draft.id > 0 ? '（留空表示不修改）' : ''}
+              </label>
+              <Input
+                id="connection-key"
+                mode="password"
+                value={draft.apiKey}
+                onChange={(value) => setDraft({ ...draft, apiKey: value })}
+                placeholder={draft.id > 0 ? `当前密钥 ${draft.apiKeyMasked || '未设置'}，留空保留` : '粘贴密钥'}
+              />
+            </div>
+            <div className="wizard-field">
+              <label className="wizard-field__label" htmlFor="connection-active">状态</label>
+              <Select
+                id="connection-active"
+                value={draft.isActive ? 'active' : 'inactive'}
+                style={{ width: '100%' }}
+                optionList={[
+                  { value: 'active', label: '启用（可被蓝图与实验选择）' },
+                  { value: 'inactive', label: '停用（保留配置但不出现在选择列表）' },
+                ]}
+                onChange={(value) => setDraft({ ...draft, isActive: value === 'active' })}
+              />
+            </div>
+            <Text type="tertiary" size="small" className="block">
+              密钥只写不回显：保存后这里只会显示掩码标识，服务端不会把明文传回浏览器。
+            </Text>
+            {/* 测试与保存分离：测试失败不应阻止保存一个刚配好的连接。 */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="small"
+                icon={<PlugZap size={13} />}
+                loading={testing}
+                onClick={() => void testDraft()}
+                data-connection-test="true"
+              >
+                测试连通性
+              </Button>
+              {testResult ? (
+                <Text size="small" type={testResult.startsWith('连通成功') ? 'success' : 'danger'}>
+                  {testResult}
+                </Text>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   )
 }
@@ -218,6 +571,11 @@ export function TeamPage() {
   const [members, setMembers] = useState<WorkspaceMemberRecord[]>([])
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('member')
+  // 直接建号（issue #197 第 15 条）：管理员设初始密码，账号可立即登录。
+  const [createEmail, setCreateEmail] = useState('')
+  const [createPassword, setCreatePassword] = useState('')
+  const [createRole, setCreateRole] = useState<'member' | 'admin'>('member')
+  const [createUserRole, setCreateUserRole] = useState<'user' | 'admin'>('user')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -404,6 +762,54 @@ export function TeamPage() {
     }
   }, [canManageWorkspace, email, load, role])
 
+  /**
+   * 创建账号并加入工作区（issue #197 第 15 条）。
+   *
+   * 与 addMember 的关键差别：这里**创建账号**，而不是「按邮箱找已有账号」。
+   * 甲方明确指出不能走邮件邀请（本部署无出站邮件），因此由管理员设初始密码。
+   * 前端只做「不为空 + 两次一致」这类能当场判定的校验；强度与查重以服务端为准，
+   * 并把字段级错误原样展示（避免前端与服务端两套规则漂移）。
+   */
+  const createAccount = useCallback(async () => {
+    if (!canManageWorkspace) {
+      setError('只有工作区管理员可以新建账号。')
+      return
+    }
+    if (createEmail.trim() === '') {
+      setError('请填写登录用户名（邮箱格式）。')
+      return
+    }
+    if (createPassword.length < 8) {
+      setError('初始密码至少 8 位。')
+      return
+    }
+    if (createPassword === createEmail.trim()) {
+      setError('初始密码不能与登录用户名相同。')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setNotice(null)
+    try {
+      await settingsApi.createWorkspaceMemberDirect({
+        email: createEmail.trim(),
+        password: createPassword,
+        role: createRole,
+        userRole: createUserRole,
+      })
+      setCreateEmail('')
+      setCreatePassword('')
+      setNotice(
+        `已创建账号 ${createEmail.trim()} 并加入工作区。请通过安全渠道转交初始密码，并提示本人首次登录后修改。`,
+      )
+      await load()
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : '创建账号失败')
+    } finally {
+      setBusy(false)
+    }
+  }, [canManageWorkspace, createEmail, createPassword, createRole, createUserRole, load])
+
   const removeMember = useCallback(
     async (userId: number) => {
       if (!canManageWorkspace) {
@@ -491,7 +897,91 @@ export function TeamPage() {
 
         {canManageWorkspace ? (
           <>
-            <div className="wizard-grid mt-3">
+            {/* 新建账号（issue #197 第 15 条）：本部署无出站邮件，因此不用邀请链接，
+                而是由管理员设初始密码，账号可立即登录。 */}
+            <hr className="settings-divider" />
+            <Text strong className="block mt-3" data-team-create-heading="true">
+              新建账号（用户名 + 初始密码）
+            </Text>
+            <Text type="tertiary" size="small" className="block mb-2">
+              系统不会发送邮件邀请。请把用户名与初始密码通过安全渠道转交本人。
+            </Text>
+            <div className="wizard-grid">
+              <div className="wizard-field">
+                <label className="wizard-field__label" htmlFor="team-create-email">
+                  登录用户名（邮箱）
+                </label>
+                <Input
+                  id="team-create-email"
+                  value={createEmail}
+                  onChange={setCreateEmail}
+                  placeholder="newuser@company.com"
+                  data-team-create-email="true"
+                />
+              </div>
+              <div className="wizard-field">
+                <label className="wizard-field__label" htmlFor="team-create-password">
+                  初始密码（至少 8 位）
+                </label>
+                <Input
+                  id="team-create-password"
+                  mode="password"
+                  value={createPassword}
+                  onChange={setCreatePassword}
+                  placeholder="由你设置，首次登录后建议修改"
+                  data-team-create-password="true"
+                />
+              </div>
+              <div className="wizard-field">
+                <label className="wizard-field__label" htmlFor="team-create-role">
+                  工作区角色
+                </label>
+                <Select
+                  id="team-create-role"
+                  value={createRole}
+                  style={{ width: '100%' }}
+                  optionList={[
+                    { value: 'member', label: '成员（可做项目内工作）' },
+                    { value: 'admin', label: '工作区管理员（可管成员与连接）' },
+                  ]}
+                  onChange={(value) => setCreateRole(value === 'admin' ? 'admin' : 'member')}
+                />
+              </div>
+              <div className="wizard-field">
+                <label className="wizard-field__label" htmlFor="team-create-user-role">
+                  系统角色
+                </label>
+                <Select
+                  id="team-create-user-role"
+                  value={createUserRole}
+                  style={{ width: '100%' }}
+                  optionList={[
+                    { value: 'user', label: '普通用户（仅数据项目）' },
+                    { value: 'admin', label: '管理员（可进兼容控制台）' },
+                  ]}
+                  onChange={(value) => setCreateUserRole(value === 'admin' ? 'admin' : 'user')}
+                />
+              </div>
+            </div>
+            <div className="mt-2">
+              <Button
+                size="small"
+                theme="solid"
+                type="primary"
+                icon={<Users size={14} />}
+                loading={busy}
+                onClick={() => void createAccount()}
+                data-team-create-submit="true"
+              >
+                创建账号并加入
+              </Button>
+            </div>
+
+            <hr className="settings-divider" />
+            <Text strong className="block mt-3">
+              添加已有账号
+            </Text>
+            <div className="wizard-grid">
               <div className="wizard-field">
                 <label className="wizard-field__label" htmlFor="team-email">
                   按邮箱添加已有账号
@@ -674,7 +1164,7 @@ export function HelpPage() {
   const terms: [string, string][] = [
     ['试制（pilot）', '小批量验证方案；与扩量批次相互独立，不会覆盖生产'],
     ['扩量（scale）', '正式批量生产；改模型或标准必须新建批次'],
-    ['接纳率', '接纳数 / 纳入检查数；待审阅不算接纳，隔离不缩小分母'],
+    ['接纳率', '接纳数 / 纳入检查数；待审阅不算接纳，隔离不缩小被评测数据集'],
     ['缺分', '裁判没给出分数。它不是 0 分，也不参与均值'],
     ['未知费用', '超时/断连但可能已收费：按当时预留金额占用额度，不记 0'],
     ['发布候选', '发布前的清单与门槛检查；只有制品校验成功才会 published'],

@@ -211,6 +211,37 @@ const CONTRACT_FORWARD_REFS = new Set([
   'sql/migrations/0032_studio_recipes.sql',
   'sql/migrations/0033_studio_activity_comments.sql',
   'sql/migrations/0034_studio_legacy_imports.sql',
+
+  // ---- #197 蓝图工作流化改造的**规划落点**（讨论 #165 × Issue #197）----
+  //
+  // `docs/architecture/blueprint-workflow-rearchitecture.md` 与
+  // `docs/prototypes/blueprint-workflow-rearchitecture/README.md` 是设计提案，
+  // 其职责就是**指定待实施的文件落点**（P0-2/P0-3/P1-1/P1-2 的代码位置）。
+  // 与上面两组同理：这些路径在提案阶段不存在是预期状态，一旦创建即自动
+  // 转为正常校验。删掉它们等于让设计文档不敢给出落点 —— 而那正是提案的价值。
+  'apps/web-user/src/studio/pages/TargetStructurePage.tsx',
+  'apps/web-user/src/studio/pages/SourceDocumentsPage.tsx',
+  'internal/model/studio_docs_test.go',
+  'internal/import/source_document.go',
+  'internal/import/source_document_test.go',
+  'internal/store/source_chunk_store.go',
+  'sql/migrations/0040_studio_source_documents.sql',
+  'docs/plans/round3-blueprint-workflow-inventory.md',
+  // 提案文档里用**占位名**说明「禁止创建平行文件」（AGENTS.md §3.1），
+  // 它们**永远不该存在**：`xxx_v2.go` / `xxx_new.go` 是反例，不是落点。
+  'xxx_v2.go',
+  'xxx_new.go',
+  // 竞品源码路径（Dify 上游仓库），不在本仓库内。这些引用用于注明
+  // 「借鉴的是哪个组件的形状」，删除引用会让调研失去可核对的出处。
+  'web/app/components/workflow/panel/index.tsx',
+  'panel.tsx',
+  'ChunkListHeader.js',
+  // 同一份提案里用**不带路径前缀**的形式描述「画布/检查器组件」与
+  // 「上游标签来源」。它们指的是同文档其它段落已给出全路径的文件，
+  // 这里以省略形式出现是为了让正文可读；补全前缀会与上方两条重复。
+  'WorkflowCanvas.tsx',
+  'WorkflowNodeInspector.tsx',
+  'SourceDocumentsPage.tsx',
 ])
 
 /**

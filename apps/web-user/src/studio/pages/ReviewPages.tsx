@@ -63,15 +63,22 @@ function statusColor(status: string): 'amber' | 'green' | 'red' | 'violet' | 'gr
   }
 }
 
-/** 从 URL 读审阅状态筛选（默认只看待判断：队列的第一屏应当是待办）。 */
-function reviewStatusFrom(searchParams: URLSearchParams): ReviewStatusFilter {
+/**
+ * 从 URL 读审阅状态筛选。
+ *
+ * 默认值**按页面语义分化**（issue #194）：审阅队列的第一屏应当是待办，
+ * 而「数据」的第一屏应当是「这一版里有什么」—— 后者默认看全部状态，
+ * 否则两个入口在观感上仍然是同一页。
+ *
+ * 显式 `status=all` 一律表示看全部（与默认值无关，保证 URL 可分享）。
+ */
+function reviewStatusFrom(searchParams: URLSearchParams, queueMode: boolean): ReviewStatusFilter {
   const raw = searchParams.get('status')
   if (raw === 'pending' || raw === 'accepted' || raw === 'quarantined' || raw === 'conflict') {
     return raw
   }
-  // 未指定时默认待判断；显式 `status=all` 表示看全部。
   if (raw === 'all') return ''
-  return 'pending'
+  return queueMode ? 'pending' : ''
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +91,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const { Title, Text } = Typography
 
-  const reviewStatus = reviewStatusFrom(searchParams)
+  const reviewStatus = reviewStatusFrom(searchParams, queueMode)
   const showAllStatuses = searchParams.get('status') === 'all'
   const search = searchParams.get('q') ?? ''
 
@@ -203,7 +210,21 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
     await freezeForRelease(Array.from(selected).sort((left, right) => left - right))
   }, [freezeForRelease, selected])
 
-  const title = queueMode ? '审阅队列' : '样本工作区'
+  /**
+   * 「数据」与「审阅」必须是两个不同的页面（issue #194 与 #197 第 12 条）。
+   *
+   * 缺陷形态：两个菜单项进入后标题不同，却是同一张表、同一段说明、同一个
+   * 主操作按钮，甲方无法预期点进去看到什么。
+   * 修复方式不是把其中一个删掉，而是让两者回答**不同的问题**：
+   *   数据   = 这一版里有什么？（默认看全部状态，主操作是导出/发布）
+   *   审阅   = 哪一条需要我判断？（默认只看待判断，主操作是逐条判断）
+   * 两者共用同一份服务端查询与行渲染是有意的（同一个事实只有一个实现），
+   * 但**默认值、说明文案、主操作与空状态**必须不同。
+   */
+  const title = queueMode ? '审阅队列' : '数据'
+  const description = queueMode
+    ? '这里只列需要你判断的样本（默认「待判断」，按等待时长排序）。点「审阅」进入三栏判断界面。'
+    : '浏览这一版里的全部样本内容与版本来源（默认包含已接纳与已隔离）。需要判断时切到「审阅队列」。'
 
   return (
     <div className="console-page" data-studio-page={queueMode ? 'review-queue' : 'sample-list'}>
@@ -212,7 +233,8 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
           <Title heading={4} className="!mb-1">
             {title}
           </Title>
-          <Text type="tertiary">
+          <Text type="tertiary">{description}</Text>
+          <Text type="tertiary" size="small" className="block mt-1">
             按审阅状态与关键词在<strong>服务端</strong>筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。
           </Text>
         </div>
@@ -277,6 +299,14 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
             </Button>
           </div>
         </Card>
+      ) : queueMode ? (
+        /* 审阅队列的主操作是「判断」，不是「导出」：默认整体冻结会让用户在
+           还没看内容的情况下就进入发布流程（issue #194 的 CTA 完全相同的成因）。 */
+        <div className="mb-3">
+          <Text type="tertiary" size="small">
+            待判断 {samples.length} 条{samples.length > 0 ? '，点每行的「审阅」逐条判断' : ''}。判断完成后可用下方「按筛选条件冻结」把同一范围交给发布流程。
+          </Text>
+        </div>
       ) : (
         <div className="mb-3">
           {projectCapabilities?.canPublish ? (
@@ -321,8 +351,8 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
           <Empty
             description={
               queueMode
-                ? '这个筛选下没有待办。已接纳的内容不会再出现在默认队列里。'
-                : '还没有样本。先运行一个批次产生内容。'
+                ? '这个筛选下没有待判断的样本。已接纳的内容不会再出现在队列里；要回看它们请切到「数据」。'
+                : '这个项目还没有任何样本版本。先在「生产」里跑一个批次产生内容。'
             }
           />
         </Card>
@@ -365,10 +395,12 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
                   ) : null}
                 </span>
                 <span className="flex gap-2">
-                  {sample.capabilities?.canReview ? <Button
+                  {/* 「数据」里的主操作是**预览内容**（#197 第 3 条：数据应当可以预览），
+                      「审阅」里的主操作才是判断。两个入口的行操作因此不同名同形。 */}
+                  <Button
                     size="small"
-                    theme="solid"
-                    type="primary"
+                    theme={queueMode && sample.capabilities?.canReview ? 'solid' : 'borderless'}
+                    type={queueMode && sample.capabilities?.canReview ? 'primary' : 'tertiary'}
                     onClick={() =>
                       navigate(
                         `${projectHref('project.sample', scope.projectId, { sampleId: sample.resourceId })}` +
@@ -376,8 +408,8 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
                       )
                     }
                   >
-                    审阅
-                  </Button> : null}
+                    {queueMode && sample.capabilities?.canReview ? '审阅' : '查看内容'}
+                  </Button>
                   <Button
                     size="small"
                     onClick={() => navigate(projectHref('project.sampleHistory', scope.projectId, { sampleId: sample.resourceId }))}
@@ -396,6 +428,110 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
             </div>
           ) : null}
         </>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 内容预览（D02 的「人话」视图）
+// ---------------------------------------------------------------------------
+
+/** 字段 → 中文标题（issue #197 第 3 条）。未知字段保留原名并加「（其它字段）」。 */
+const PAYLOAD_FIELD_LABELS: Record<string, string> = {
+  question: '问题',
+  reasoning: '推理过程',
+  answer: '答案',
+  teacherPrompt: '教师提示词',
+  rewardRubric: '奖励判据',
+  systemPrompt: '系统提示词',
+  userPrompt: '用户提示词',
+}
+
+/** 预览面板展示的字段顺序（未知字段排在后面）。 */
+const PAYLOAD_FIELD_ORDER = ['question', 'reasoning', 'answer', 'teacherPrompt', 'rewardRubric']
+
+type PayloadEntry = { key: string; label: string; text: string }
+
+/**
+ * 把样本 payload 拆成「字段 → 可读文本」。
+ *
+ * 为什么需要它（issue #197 第 3 条）：审阅页的「内容」区以前直接
+ * `JSON.stringify(payload, null, 2)`，于是用户看到的是
+ * `{"answer": "...", "question": "...", "reasoning": "..."}` 连同 `\n` 转义。
+ * 用户真正要判断的是「问法对不对、推理是否完整、答案是不是中文长链」，
+ * 而不是 JSON 是否合法。原始 JSON 仍然保留（作为可切换的次要视图），
+ * 因为排查格式问题时它是必需的。
+ */
+function payloadEntries(payload: unknown): PayloadEntry[] {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return [{ key: '__raw__', label: '内容', text: typeof payload === 'string' ? payload : JSON.stringify(payload) }]
+  }
+  const record = payload as Record<string, unknown>
+  const entries: PayloadEntry[] = []
+  const push = (key: string) => {
+    if (!(key in record)) return
+    const value = record[key]
+    if (value === null || value === undefined) return
+    const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+    if (text.trim() === '') return
+    entries.push({ key, label: PAYLOAD_FIELD_LABELS[key] ?? key, text })
+  }
+  for (const key of PAYLOAD_FIELD_ORDER) push(key)
+  for (const key of Object.keys(record).sort()) {
+    if (PAYLOAD_FIELD_ORDER.includes(key) || key === 'schemaVersion') continue
+    push(key)
+  }
+  // schemaVersion 不展示：它是存储表示，不是用户要判断的内容。
+  if (entries.length === 0) {
+    entries.push({ key: '__raw__', label: '内容', text: JSON.stringify(record, null, 2) })
+  }
+  return entries
+}
+
+/** 字符串长度摘要（中文字符数足够回答「这条数据有多长」）。 */
+function textLengthLabel(text: string): string {
+  return `${Array.from(text).length} 字`
+}
+
+function PayloadPreview({ payload }: { payload: unknown }) {
+  const { Text } = Typography
+  const entries = useMemo(() => payloadEntries(payload), [payload])
+  /**
+   * 默认是**人话视图**；原始 JSON 是次要视图（可切换）。
+   * 默认值的选择很重要：反过来就等于「默认把存储表示给用户看」，
+   * 而那正是这条缺陷的定义。
+   */
+  const [raw, setRaw] = useState(false)
+  return (
+    <div data-payload-preview="true">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        {entries.map((entry) => (
+          <Tag key={entry.key} size="small" color="blue">
+            {entry.label} {textLengthLabel(entry.text)}
+          </Tag>
+        ))}
+        <Button size="small" theme="borderless" onClick={() => setRaw((value) => !value)} data-payload-raw-toggle="true">
+          {raw ? '看分字段视图' : '看原始 JSON'}
+        </Button>
+      </div>
+      {raw ? (
+        <pre className="review-content" data-content-readonly="true">
+          {JSON.stringify(payload, null, 2)}
+        </pre>
+      ) : (
+        <div className="payload-preview" data-payload-fields="true">
+          {entries.map((entry) => (
+            <section key={entry.key} className="payload-preview__field">
+              <Text strong size="small" className="block mb-1">
+                {entry.label}
+              </Text>
+              {/* `white-space: pre-wrap` 保留换行但不保留 JSON 转义：
+                  用户看到的是真正的多行推理，而不是一串 \n。 */}
+              <div className="payload-preview__body">{entry.text}</div>
+            </section>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -856,10 +992,9 @@ export function SampleReviewPage() {
               复制
             </Button>
           </div>
-          {/* 内容只读：本区没有任何输入控件，判断也不会改写它。 */}
-          <pre className="review-content" data-content-readonly="true">
-            {JSON.stringify(detail.version.payload, null, 2)}
-          </pre>
+          {/* 内容只读：本区没有任何输入控件，判断也不会改写它。
+              默认「人话视图」，原始 JSON 作为可切换的次要视图（issue #197 第 3 条）。 */}
+          <PayloadPreview payload={detail.version.payload} />
           {copyFallback !== null ? (
             <div className="mt-3" data-copy-fallback="true">
               <div className="flex items-center justify-between mb-1">

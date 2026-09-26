@@ -1167,8 +1167,9 @@ select:focus {
 .blueprint-node__caption { overflow: hidden; color: var(--text-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .blueprint-inspector { border: 1px solid var(--panel-border); border-radius: 8px; background: var(--panel-strong); padding: 24px; }
 .blueprint-inspector h5 { font-size: 20px; }
-.blueprint-history { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr; align-items: start; gap: 18px; padding: 16px 20px; border-top: 1px solid var(--panel-border); }
-.blueprint-history__list { flex-direction: row; overflow-x: auto; }
+/* 折叠后的版本历史：整行一块，内部自己纵向排列（issue #197 第 4、6 条）。 */
+.blueprint-history { grid-column: 1 / -1; display: block; padding: 16px 20px; border-top: 1px solid var(--panel-border); }
+.blueprint-history__list { display: flex; flex-wrap: wrap; gap: 8px; overflow-x: auto; padding: 0; margin: 10px 0 0; list-style: none; }
 .blueprint-history__item { min-width: 160px; }
 
 /* D02/L03 shared flat surfaces. */
@@ -1267,6 +1268,147 @@ select:focus {
   [data-studio-page="release-card"] .console-stat-grid { grid-template-columns: 1fr; }
 }
 
+/*
+ * m × n × z 结构树（issue #197 第 11 条）。
+ *
+ * 「数据集结构不清晰」的根因是三个数字分散、且没有「可产出量」这个口径。
+ * 因此这里把公式与树放在编辑器的**最前面**：先让用户看清「要什么」，
+ * 再往下才是逐字段编辑。
+ * 树用嵌套 ul（语义上就是层级），不用 ASCII 缩进线 —— 后者无法被
+ * 屏幕阅读器朗读出层级。
+ */
+.coverage-tree {
+  margin: 14px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.coverage-tree__formula {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.coverage-tree__formula strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.coverage-tree__list,
+.coverage-tree__directions { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.coverage-tree__directions {
+  margin: 6px 0 2px 20px;
+  padding-left: 14px;
+  border-left: 1px solid var(--panel-border);
+}
+.coverage-tree__domain { font-weight: 600; }
+.coverage-tree__directions li { font-size: 13px; color: var(--text); }
+
+/*
+ * 节点「会做什么」与「执行顺序」（issue #197 第 5 条）。
+ *
+ * 这两个区块存在的唯一目的，是让下面的参数字段有上下文：甲方对独立评估
+ * 节点的原话是「页面晦涩难懂」，其实现状是术语同屏堆叠而没有一句
+ * 「它会做什么」。样式上刻意做得克制（浅底、无边框），避免它比参数本身更抢眼。
+ */
+.blueprint-node-purpose {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  border: 1px solid var(--panel-border);
+}
+.blueprint-node-steps { margin-bottom: 14px; }
+.blueprint-node-steps__summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-muted);
+}
+.blueprint-node-steps__summary::-webkit-details-marker { display: none; }
+.blueprint-node-steps__summary::before {
+  content: '▸ ';
+  color: var(--text-muted);
+}
+.blueprint-node-steps[open] .blueprint-node-steps__summary::before { content: '▾ '; }
+.blueprint-node-steps__list {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+/*
+ * 版本历史折叠块（issue #197 第 4、6 条）。
+ *
+ * 以前它是常驻的整行区块（历史项横排 + 指纹 + 理由），在单节点配置页上
+ * 把页面撑到 1.56 屏。改成 `<details>` 后：
+ *   - 默认折叠，页面高度由「画布 + 检查器」决定；
+ *   - 键盘可用（原生 summary 可聚焦、可回车展开），不需要额外 JS；
+ *   - 展开后仍然是横向可滚动的列表，行为与原来一致。
+ */
+.blueprint-history__summary {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+  list-style: none;
+  padding: 2px 0;
+}
+/* 去掉浏览器默认三角以外的第二套指示符；用自绘的 caret 保持一致外观。 */
+.blueprint-history__summary::-webkit-details-marker { display: none; }
+.blueprint-history__summary::before {
+  content: '▸';
+  position: absolute;
+  margin-left: -14px;
+  color: var(--text-muted);
+}
+.blueprint-history[open] .blueprint-history__summary::before { content: '▾'; }
+.blueprint-history__summary { position: relative; }
+.blueprint-history__body { grid-column: 1 / -1; min-width: 0; }
+
+/*
+ * 横向流程里的节点卡片与依赖箭头（issue #197 第 11 条）。
+ *
+ * 每个节点固定宽度（不是 min(360px, 86%)）：固定宽度才能让 7 个节点
+ * 在画布内形成稳定的横向流程，窄屏时由画布自己滚动。
+ * 箭头用 `::after` 而不是额外的 DOM 元素：它是**装饰**，不该进入
+ * 可访问性树（否则屏幕阅读器会朗读一串「→」，而依赖关系已经由
+ * 节点顺序与 aria 属性表达）。
+ */
+.blueprint-page .blueprint-nodes .blueprint-node {
+  flex: 0 0 236px;
+  width: 236px;
+  min-height: 104px;
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  grid-template-rows: auto auto;
+  align-content: start;
+  gap: 8px 10px;
+  text-align: left;
+}
+/* 状态标签独占一行，避免在 236px 宽度下与标题挤在一起。 */
+.blueprint-page .blueprint-nodes .blueprint-node__status { grid-column: 1 / -1; justify-self: start; }
+/* 节点副标题允许换行 —— 以前是 nowrap + ellipsis，实测 8 处被截断。 */
+.blueprint-page .blueprint-nodes .blueprint-node__caption {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.4;
+}
+/* 依赖箭头：只在节点之间，最后一个节点后面不画。 */
+.blueprint-page .blueprint-nodes .blueprint-node + .blueprint-node::before {
+  content: '→';
+  position: absolute;
+  margin-left: -30px;
+  align-self: center;
+  color: var(--text-muted);
+  font-size: 16px;
+  pointer-events: none;
+}
+.blueprint-page .blueprint-nodes .blueprint-node { position: relative; }
+.blueprint-page .blueprint-nodes .blueprint-node + .blueprint-node { margin-left: 34px; }
+
 /* Blueprint interaction contract: status, dependencies and editor feedback. */
 .blueprint-page .blueprint-node__status {
   justify-self: end;
@@ -1305,6 +1447,13 @@ select:focus {
 .blueprint-health--planned { color: var(--text-muted); }
 .blueprint-related-config {
   display: flex;
+  /*
+   * `flex-wrap` 是必需的，不是样式偏好（issue #194）：右栏最窄时
+   * 「当前引用配置 v1 · 项目创建：初始化 Atelier 配置」会换行成两行，
+   * 而按钮仍然被压在同一个 flex 行里 → 文字与按钮**视觉重叠**（审计截图）。
+   * 允许换行后，按钮在放不下时自然落到下一行。
+   */
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -1314,8 +1463,15 @@ select:focus {
   border-radius: 8px;
   background: var(--panel);
 }
-.blueprint-related-config > div { display: grid; gap: 3px; min-width: 0; }
-.blueprint-related-config span { color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 文字块必须能收缩（min-width:0）且占满剩余宽度：否则长版本名会把按钮
+   挤出容器，而不是自己换行。 */
+.blueprint-related-config > div { display: grid; gap: 3px; min-width: 0; flex: 1 1 220px; }
+/* 长版本名允许换到第二行（原来是 nowrap + ellipsis，等于把信息藏起来）；
+   真正的超长文本由下方 `overflow-wrap: anywhere` 在行内打断。 */
+.blueprint-related-config strong { overflow-wrap: anywhere; line-height: 1.4; }
+.blueprint-related-config span { color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+/* 按钮不被压缩：它比文字优先级高，放不下时应当让文字换行。 */
+.blueprint-related-config > .semi-button { flex: 0 0 auto; }
 .blueprint-validation-error {
   display: flex;
   align-items: center;
@@ -1570,6 +1726,26 @@ select:focus {
 }
 
 .document-editor__row--mapping { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 92px 36px; }
+/*
+ * 列头（issue #193）：与下方行使用**同一套 grid 列宽**，因此表头与输入框
+ * 严格对齐。以前这两个表单没有任何列头，用户看到的是两列相同的值
+ * （交付映射）和一个无标签的数字 + `project-default`（覆盖矩阵）。
+ */
+.document-editor__header-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 110px minmax(0, 1fr) 36px;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.document-editor__header-row--mapping { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 92px 36px; }
+.document-editor__header-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 操作列的表头不写「操作」两个字以外的内容，居中与图标按钮对齐。 */
+.document-editor__header-row--actions { text-align: center; }
 .document-editor__row:last-child { border-bottom: 0; }
 .document-editor__actions { display: flex; justify-content: flex-start; }
 .document-editor__icon-actions { display: flex; align-items: center; gap: 2px; }
@@ -2355,6 +2531,41 @@ select:focus {
 }
 
 
+/*
+ * 工作台总览磁贴（issue #197 第 10 条）。
+ *
+ * 甲方原话是「今日工作展示的数据不对，应当是一个工作台总览的效果」，
+ * 而现状是全页只有一个数字（7 条未读动态）。这里用六个可点的磁贴
+ * 回答「我的工作区现在是什么状态」。
+ *
+ * 响应式：`auto-fit` + `minmax(150px, 1fr)` 让 390px 窄屏自动降成两列，
+ * 而不是把每格压成一条竖线（#197 第 17 条的同类缺陷）。
+ */
+.atelier-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.atelier-overview-tile {
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  color: var(--text);
+  text-decoration: none;
+}
+.atelier-overview-tile:hover,
+.atelier-overview-tile:focus-visible { border-color: var(--accent); }
+.atelier-overview-tile strong { font-size: 26px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.atelier-overview-tile small { color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+/* 需要处理的数字用警示色：缺口与待判断都是「不做就会出问题」的量。 */
+.atelier-overview-tile--alert { color: var(--warning); }
+/* 总览磁贴里的 eyebrow 是次要标签，避免与 h1/h2 抢层级。 */
+.atelier-overview-tile .eyebrow { font-size: 10px; letter-spacing: .14em; }
+
 .atelier-today-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(260px, .7fr);
@@ -2953,6 +3164,62 @@ a {
   box-shadow: 0 8px 24px rgba(27, 35, 31, .04);
 }
 
+/*
+ * 设置页内部的表单分组分隔线（issue #197 第 15、17 条）。
+ *
+ * 团队页现在有两组表单（新建账号 / 添加已有账号），没有分隔线时它们看起来
+ * 是一组连续字段，用户会把「初始密码」当成「已有账号」的输入。
+ * 用 `<hr>` 而不是空 div：它在语义上就是分组边界，屏幕阅读器会朗读出来。
+ */
+/*
+ * 样本内容预览（issue #197 第 3 条：「数据应当可以预览」）。
+ *
+ * 以前审阅页的内容区是 `JSON.stringify(payload, null, 2)`，用户看到的是
+ * 转义过的原始 JSON。这里按字段分块渲染，并且：
+ *   - `white-space: pre-wrap`：保留模型输出里的真实换行；
+ *   - `overflow-wrap: anywhere`：超长无空格串（URL、代码）不撑破容器；
+ *   - `max-height` + `overflow-y: auto`：长推理不会把右栏拉成几屏。
+ */
+.payload-preview {
+  display: grid;
+  gap: 12px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+.payload-preview__field {
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--panel);
+}
+.payload-preview__body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  font-size: 13px;
+  color: var(--text);
+}
+
+/*
+ * 项目列表的分页状态行（issue #197 第 1 条）。
+ *
+ * 这一行**始终渲染**：只在 `nextCursor` 非空时才出现的分页控件，会让
+ * 「项目少到一页装得下」的用户以为系统没有分页（这正是甲方的原话）。
+ * 用一条上边框把它与卡片列表分开，避免看起来像列表的最后一行。
+ */
+.project-list-footer {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.settings-divider {
+  height: 1px;
+  margin: 18px 0 0;
+  border: 0;
+  background: var(--panel-border);
+}
+
 .atelier-shell [data-studio-page="settings-connections"] > .console-card,
 .atelier-shell [data-studio-page="settings-team"] > .console-card {
   padding: 20px;
@@ -3055,14 +3322,35 @@ a {
   .atelier-shell [data-studio-page="deliveries"] .console-page__header h4 { font-size: 25px; }
   .blueprint-ratio-editor__row { grid-template-columns: minmax(0, 1fr) 88px auto; }
   .atelier-shell [data-studio-page="settings-connections"] .comparison-table { overflow-x: visible; }
+  /*
+   * 窄屏（≤560px）连接与存储改成**卡片式列表**（issue #194）。
+   *
+   * 旧行为：表格变成两列，5 个单元格依次倒进两列，于是「名称 / 模型 / 类型 /
+   * 密钥标识 / 状态」的表头与数据行**错位混合**（审计截图里的真实形态）。
+   * 现在：
+   *   - 表头整行隐藏（不再有需要对齐的表头）；
+   *   - 每行变成单列卡片，每个单元格左侧显示自己的字段名（data-label）；
+   *   - 值仍可能很长（bucket / 掩码密钥），因此保留 `overflow-wrap: anywhere`。
+   */
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-row--head { display: none; }
   .atelier-shell [data-studio-page="settings-connections"] .comparison-row {
     min-width: 0;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 8px 12px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 12px 14px;
   }
-  .atelier-shell [data-studio-page="settings-connections"] .comparison-row--head { font-size: 10px; }
-  .atelier-shell [data-studio-page="settings-connections"] .comparison-row:not(.comparison-row--head) > span:nth-child(n+3) {
-    grid-column: span 2;
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-row:not(.comparison-row--head) > span {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 10px;
+    align-items: baseline;
+    grid-column: auto;
+  }
+  .atelier-shell [data-studio-page="settings-connections"] .comparison-row:not(.comparison-row--head) > span::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
   }
   .atelier-shell [data-studio-page="settings-team"] .comparison-table { overflow-x: visible; }
   .atelier-shell [data-studio-page="settings-team"] .comparison-row {
@@ -3092,10 +3380,15 @@ a {
  * release data-card hierarchy even when a legacy selector has equal weight.
  * --------------------------------------------------------------------------- */
 
-/* P02: canvas + inspector, with history spanning the full workspace. */
+/* P02: canvas + inspector, with history spanning the full workspace.
+ *
+ * issue #197 第 4、17 条：右栏从 320px 提到 420px。320px 下长文案（版本名、
+ * 连接名、检查点）会被压成两行并与按钮重叠（截图里的真实形态），
+ * 而检查器是**配置输入区**，宽度不足会直接导致填错。
+ * 画布列用 minmax(0, 1fr) 保证它自己收缩而不是把整页推出横向滚动。 */
 .blueprint-page .blueprint-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
   grid-template-areas:
     'canvas inspector'
     'history history';
@@ -3108,7 +3401,10 @@ a {
   min-width: 0;
   min-height: 680px;
   position: relative;
-  overflow: hidden;
+  /* issue #197 第 11 条：横向流程带在窄屏上必须**在画布内部**滚动，
+     而不是把整页推出横向滚动条（#197 第 17 条明确禁止整页横向溢出）。 */
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: 30px;
   border: 1px solid var(--panel-border);
   border-radius: 8px;
@@ -3116,6 +3412,28 @@ a {
   background-image: radial-gradient(var(--canvas-grid) 1px, transparent 1px);
   background-size: 16px 16px;
 }
+
+/*
+ * 横向工作流（issue #197 第 11 条）。
+ *
+ * 旧形态是 `flex-direction: column` 的纵向卡片堆叠（890×791 实测），
+ * 画布内没有任何连线，因此「步骤之间是什么关系」只能靠读文字。
+ * 现在：
+ *   - 节点横向排列，按数据流顺序（覆盖 → 标准 → 生成 → 评估 → 规则 → 人工 → 交付）；
+ *   - 节点之间用 `::after` 画箭头，明确「依赖方向」；
+ *   - Tab 顺序天然等于视觉顺序（DOM 顺序即渲染顺序），键盘可访问性不退化。
+ */
+.blueprint-page .blueprint-nodes {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  margin-top: 18px;
+  min-height: 0;
+}
+/* 连接线的旧实现（绝对定位的竖线）在横向布局下没有意义，必须关掉。 */
+.blueprint-page .blueprint-nodes::before { display: none; }
 
 .blueprint-page .blueprint-inspector {
   grid-area: inspector;
@@ -3139,26 +3457,13 @@ a {
   background: var(--panel-strong);
 }
 
-.blueprint-page .blueprint-nodes {
-  min-height: 560px;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 26px;
-  margin-top: 10px;
-}
-
-.blueprint-page .blueprint-nodes::before {
-  content: '';
-  position: absolute;
-  top: 72px;
-  bottom: 74px;
-  left: 50%;
-  width: 1px;
-  background: var(--panel-border-strong);
-}
+/*
+ * 已删除：这里曾有一条 `.blueprint-page .blueprint-nodes { flex-direction: column }`。
+ * 它与上方「横向工作流」规则**重复**，而且因为位置更靠后，实际生效的是竖向堆叠 ——
+ * 也就是说横向改造上线后肉眼仍是旧形态（实测 `computedStyle.flexDirection === "column"`）。
+ * 这类「同一个选择器在两个地方各写一套，后写的赢」正是 #197 第 17 条
+ * 「配色/布局不一致」的成因之一，因此直接删掉，只保留一份实现。
+ */
 
 .blueprint-page .blueprint-node {
   z-index: 1;
@@ -3254,6 +3559,41 @@ a {
   display: grid;
   place-items: center;
   color: var(--text-muted);
+}
+
+/*
+ * 加载态文字不得竖排（issue #193）。
+ *
+ * 真实成因（读 Semi 源码得到，不是猜的）：`.semi-spin` 基础样式是
+ * `display:inline-block; width:20px; height:20px`，提示文字放在**绝对定位**的
+ * `.semi-spin-wrapper` 里（`width:100%`）。当 spinner 是 grid/flex 的居中项时，
+ * 20px 就是它的最终宽度 → wrapper 只有 20px 宽，而中文每个字都是断行点，
+ * 于是文案被压成**逐字竖排**（截图里那条竖线）。
+ *
+ * 修复必须同时满足两件事：
+ *   1. 给 spinner 一个可用的宽度（min-width），否则文字永远只有 20px 可用；
+ *   2. 给高度一个下限，否则绝对居中的 wrapper（top:50% + translateY(-50%)）
+ *      会因为自身高度为 0 而溢出容器。
+ *
+ * 作用域限定在**页面级加载容器**（`.atelier-inline-state` 与 console 页面的
+ * 直接子级 spinner），不碰 `<Spin>{内容}</Spin>` 的遮罩用法 —— 后者的绝对
+ * 定位遮罩是 Semi 的设计意图，改写会破坏已有布局。
+ */
+.atelier-inline-state .semi-spin,
+.console-page > .semi-spin,
+.console-page > div > .semi-spin {
+  width: auto;
+  min-width: min(320px, 100%);
+  height: auto;
+  min-height: 64px;
+  writing-mode: horizontal-tb;
+}
+.atelier-inline-state .semi-spin-wrapper,
+.console-page > .semi-spin .semi-spin-wrapper,
+.console-page > div > .semi-spin .semi-spin-wrapper {
+  line-height: 1.5;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .atelier-project-mini-grid button:disabled {

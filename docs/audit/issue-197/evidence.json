@@ -1,0 +1,1658 @@
+{
+  "base": "http://127.0.0.1:3210",
+  "project": "p_1",
+  "findings": [
+    {
+      "key": "01-projects-list",
+      "routePath": "/projects",
+      "url": "http://127.0.0.1:3210/projects",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/01-projects-list.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1006,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/projects",
+        "docHeight": 1006,
+        "viewportHeight": 1000,
+        "inputs": 1,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "刷新",
+          "新建项目",
+          "甲方验收-冷链问答\nSFT\n交付可用于 SFT 的冷链领域问答数据\n领域 1 · 每领域方向 1 · 每方向问题 1\ndraft"
+        ],
+        "headings": [
+          "数据项目"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n搜索\nA\n已进入数据项目\n数据项目\n按项目组织设计、运行与发布；一个项目可以有多个并行批次。\n刷新\n新建项目\n甲方验收-冷链问答\nSFT\n交付可用于 SFT 的冷链领域问答数据\n领域 1 · 每领域方向 1 · 每方向问题 1\ndraft"
+      },
+      "probe": {
+        "paginationControls": 0,
+        "loadMoreButton": [],
+        "mentionsPageSize": false,
+        "tableRows": 1,
+        "allButtons": [
+          "",
+          "",
+          "",
+          "搜索",
+          "A",
+          "刷新",
+          "新建项目",
+          "甲方验收-冷链问答\nSFT\n交付可用于 SFT 的冷链领域问答数据\n领域 1 · 每领域方向 1 · 每方向问题 1\ndraft"
+        ]
+      }
+    },
+    {
+      "key": "01b-projects-pagination-dom",
+      "routePath": "/projects",
+      "url": "http://127.0.0.1:3210/projects",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/01b-projects-pagination-dom.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1006,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/projects",
+        "docHeight": 1006,
+        "viewportHeight": 1000,
+        "inputs": 1,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "刷新",
+          "新建项目",
+          "甲方验收-冷链问答\nSFT\n交付可用于 SFT 的冷链领域问答数据\n领域 1 · 每领域方向 1 · 每方向问题 1\ndraft"
+        ],
+        "headings": [
+          "数据项目"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n搜索\nA\n已进入数据项目\n数据项目\n按项目组织设计、运行与发布；一个项目可以有多个并行批次。\n刷新\n新建项目\n甲方验收-冷链问答\nSFT\n交付可用于 SFT 的冷链领域问答数据\n领域 1 · 每领域方向 1 · 每方向问题 1\ndraft"
+      },
+      "probe": {
+        "hasListRoot": true,
+        "paginationNodeCount": 0,
+        "listTextAfterLastRow": "数据项目\n按项目组织设计、运行与发布；一个项目可以有多个并行批次。\n刷新\n新建项目\n甲方验收-冷链问答\nSFT\n交付可用于 SFT 的冷链领域问答数据\n领域 1 · 每领域方向 1 · 每方向问题 1\ndraft"
+      }
+    },
+    {
+      "key": "02-blueprint-standard-node",
+      "routePath": "/p/p_1/blueprint?node=standard",
+      "url": "http://127.0.0.1:3210/p/p_1/blueprint?node=standard",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/02-blueprint-standard-node.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1726,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/blueprint?node=standard",
+        "docHeight": 1726,
+        "viewportHeight": 1000,
+        "inputs": 3,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "小批试制 →",
+          "覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行",
+          "思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行",
+          "生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行",
+          "独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行",
+          "规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行",
+          "人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行",
+          "版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行",
+          "格式化",
+          "填入示例",
+          "查看思维标准",
+          "保存为新版本",
+          "复制此版本",
+          "v2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置",
+          "v1\n指纹 190b627e\n甲方验收：首次保存蓝图版本"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "生产蓝图",
+          "思维标准"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n设计\n搜索\nA\n已进入设计\n甲方验收-冷链问答\n蓝图节点、覆盖矩阵与思维标准\n概览\n设计\n生产\n数据\n质量\n发布\nDESIGN / BLUEPRINT\n生产蓝图\n先确认每一步需要什么，再保存为新的配置版本。已经运行的批次不会被覆盖。\n小批试制 →\nATELIER / PRODUCTION BLUEPRINT / v2\n先看清步骤关系，再调整当前步骤。每个节点都是可键盘访问的按钮。\n覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行\n思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行\n生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行\n独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行\n规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行\n人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行\n版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行\n思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行\n必填配置已齐全，保存后可用于试制。\n标准版本 *\nv1 · 项目创建：初始化 Atelier 配置\n步骤顺序会被生产过程沿用；调整顺序后请保存为新的标准版本。\n思考步骤（可直接编辑）\n格式化\n填入示例\n可选\n可以先写下步骤和检查点；选择标准版本后，生产时以被引用版本为准。\n当前引用配置 v1 · 项目创建：初始化 Atelier 配置\n内容指纹 0853ab7b\n查看思维标准\n变更理由（必填，方便团队回溯）\n已保存\n保存为新版本\n复制此版本\n版本历史（只读）\nv2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置\nv1\n指纹 190b627e\n甲方验收：首次保存蓝图版本\n查看思维标准\n当前版本内容指纹：dad14c343e04b1bc5b8ef62d2d3294f51fb1f11cb2da4ccbf47bbd35e787eff8"
+      },
+      "probe": {
+        "fieldLabels": [
+          "标准版本 *",
+          "思考步骤（可直接编辑）"
+        ],
+        "jsonLikeTextareas": [
+          {
+            "value": "",
+            "startsWithBrace": false
+          },
+          {
+            "value": "",
+            "startsWithBrace": false
+          },
+          {
+            "value": "x",
+            "startsWithBrace": false
+          }
+        ],
+        "jsonFieldMarkers": [
+          "blueprint-standard-steps"
+        ],
+        "bodyHasBrace": false
+      }
+    },
+    {
+      "key": "03-data-no-preview",
+      "routePath": "/p/p_1/data",
+      "url": "http://127.0.0.1:3210/p/p_1/data",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/03-data-no-preview.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1000,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/data",
+        "docHeight": 1000,
+        "viewportHeight": 1000,
+        "inputs": 2,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "刷新样本",
+          "按当前筛选冻结并准备发布（服务端解析）",
+          "审阅",
+          "来源"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "样本工作区"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n数据\n搜索\nA\n已进入数据\n甲方验收-冷链问答\n样本内容、版本来源与审阅队列\n概览\n设计\n生产\n数据\n质量\n发布\n样本工作区\n按审阅状态与关键词在服务端筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。\n待判断\n刷新样本\n按当前筛选冻结并准备发布（服务端解析）\n样本\n版本\n审阅状态\n操作\n核心方向（难度 medium）：第 1 题\ns_1\nv1（版本 ID 1）\n待判断\n审阅\n来源"
+      },
+      "probe": {
+        "previewButtons": [],
+        "tableRows": 1,
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n数据\n搜索\nA\n已进入数据\n甲方验收-冷链问答\n样本内容、版本来源与审阅队列\n概览\n设计\n生产\n数据\n质量\n发布\n样本工作区\n按审阅状态与关键词在服务端筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。\n待判断\n刷新样本\n按当前筛选冻结并准备发布（服务端解析）\n样本\n版本\n审阅状态\n操作\n核心方向（难度 medium）：第 1 题\ns_1\nv1（版本 ID 1）\n待判断\n审阅\n来源"
+      }
+    },
+    {
+      "key": "04-blueprint-long-page",
+      "routePath": "/p/p_1/blueprint",
+      "url": "http://127.0.0.1:3210/p/p_1/blueprint",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/04-blueprint-long-page.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1561,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/blueprint",
+        "docHeight": 1561,
+        "viewportHeight": 1000,
+        "inputs": 2,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "小批试制 →",
+          "覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行",
+          "思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行",
+          "生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行",
+          "独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行",
+          "规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行",
+          "人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行",
+          "版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行",
+          "查看覆盖矩阵",
+          "保存为新版本",
+          "复制此版本",
+          "v2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置",
+          "v1\n指纹 190b627e\n甲方验收：首次保存蓝图版本"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "生产蓝图",
+          "覆盖范围"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n设计\n搜索\nA\n已进入设计\n甲方验收-冷链问答\n蓝图节点、覆盖矩阵与思维标准\n概览\n设计\n生产\n数据\n质量\n发布\nDESIGN / BLUEPRINT\n生产蓝图\n先确认每一步需要什么，再保存为新的配置版本。已经运行的批次不会被覆盖。\n小批试制 →\nATELIER / PRODUCTION BLUEPRINT / v2\n先看清步骤关系，再调整当前步骤。每个节点都是可键盘访问的按钮。\n覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行\n思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行\n生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行\n独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行\n规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行\n人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行\n版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行\n覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行\n必填配置已齐全，保存后可用于试制。\n覆盖版本 *\nv1 · 项目创建：初始化 Atelier 配置\n选择一份已保存的覆盖方案；后续调整不会影响已经运行的批次。\n当前引用配置 v1 · 项目创建：初始化 Atelier 配置\n内容指纹 554cd148\n查看覆盖矩阵\n变更理由（必填，方便团队回溯）\n已保存\n保存为新版本\n复制此版本\n版本历史（只读）\nv2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置\nv1\n指纹 190b627e\n甲方验收：首次保存蓝图版本\n查看覆盖矩阵\n当前版本内容指纹：dad14c343e04b1bc5b8ef62d2d3294f51fb1f11cb2da4ccbf47bbd35e787eff8"
+      },
+      "probe": {
+        "naturalContentHeight": 1561,
+        "viewportHeight": 1000,
+        "screensTall": 1.56,
+        "sections": [
+          {
+            "tag": "header",
+            "cls": "atelier-page-intro blueprint-page-intro",
+            "top": 260,
+            "height": 145
+          },
+          {
+            "tag": "div",
+            "cls": "blueprint-layout",
+            "top": 463,
+            "height": 995
+          }
+        ],
+        "canvas": {
+          "top": 463,
+          "height": 791
+        },
+        "inspector": {
+          "top": 463,
+          "height": 791
+        },
+        "history": {
+          "top": 1275,
+          "height": 182
+        },
+        "firstControlTop": 685,
+        "firstControlBelowFold": false
+      }
+    },
+    {
+      "key": "05-blueprint-evaluation-node",
+      "routePath": "/p/p_1/blueprint?node=evaluation",
+      "url": "http://127.0.0.1:3210/p/p_1/blueprint?node=evaluation",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/05-blueprint-evaluation-node.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1950,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/blueprint?node=evaluation",
+        "docHeight": 1950,
+        "viewportHeight": 1000,
+        "inputs": 5,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "小批试制 →",
+          "覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行",
+          "思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行",
+          "生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行",
+          "独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行",
+          "规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行",
+          "人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行",
+          "版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行",
+          "gpt-5.6-sol-judge",
+          "×",
+          "+ 添加维度",
+          "查看模型连接",
+          "保存为新版本",
+          "复制此版本",
+          "v2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置",
+          "v1\n指纹 190b627e\n甲方验收：首次保存蓝图版本"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "生产蓝图",
+          "独立评估"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n设计\n搜索\nA\n已进入设计\n甲方验收-冷链问答\n蓝图节点、覆盖矩阵与思维标准\n概览\n设计\n生产\n数据\n质量\n发布\nDESIGN / BLUEPRINT\n生产蓝图\n先确认每一步需要什么，再保存为新的配置版本。已经运行的批次不会被覆盖。\n小批试制 →\nATELIER / PRODUCTION BLUEPRINT / v2\n先看清步骤关系，再调整当前步骤。每个节点都是可键盘访问的按钮。\n覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行\n思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行\n生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行\n独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行\n规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行\n人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行\n版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行\n独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行\n必填配置已齐全，保存后可用于试制。\n检查模型服务 *\ngpt-5.6-sol-judge\n至少选择一个与生成服务不同的独立服务，避免同一来源自评。\n量表版本 *\nv1 · 项目创建：初始化 Atelier 配置\n可复现抽样编号\n使用相同编号会得到相同的抽样结果；已经创建的实验不会被改写。\n维度权重\n×\n合计 0.00（需等于 1.00）\n+ 添加维度\n总和必须为 1；缺分与真实 0 分必须区分（缺分不计入归一化分母的分子）。\n缺分策略\n排除缺分项\n当前使用：gpt-5.6-sol-judge\n连接的密钥不会显示在蓝图中；如需新增或启用连接，请到连接设置处理。\n查看模型连接\n变更理由（必填，方便团队回溯）\n已保存\n保存为新版本\n复制此版本\n版本历史（只读）\nv2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置\nv1\n指纹 190b627e\n甲方验收：首次保存蓝图版本\n查看模型连接\n当前版本内容指纹：dad14c343e04b1bc5b8ef62d2d3294f51fb1f11cb2da4ccbf47bbd35e787eff8"
+      },
+      "probe": {
+        "inspectorText": "独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行\n必填配置已齐全，保存后可用于试制。\n检查模型服务 *\ngpt-5.6-sol-judge\n至少选择一个与生成服务不同的独立服务，避免同一来源自评。\n量表版本 *\nv1 · 项目创建：初始化 Atelier 配置\n可复现抽样编号\n使用相同编号会得到相同的抽样结果；已经创建的实验不会被改写。\n维度权重\n×\n合计 0.00（需等于 1.00）\n+ 添加维度\n总和必须为 1；缺分与真实 0 分必须区分（缺分不计入归一化分母的分子）。\n缺分策略\n排除缺分项\n当前使用：gpt-5.6-sol-judge\n连接的密钥不会显示在蓝图中；如需新增或启用连接，请到连接设置处理。\n查看模型连接\n变更理由（必填，方便团队回溯）\n已保存\n保存为新版本\n复制此版本",
+        "fieldLabels": [
+          "检查模型服务 *",
+          "量表版本 *",
+          "可复现抽样编号",
+          "维度权重",
+          "缺分策略"
+        ],
+        "selectCount": 3,
+        "inputCount": 3
+      }
+    },
+    {
+      "key": "06-blueprint-version-coupling",
+      "routePath": "/p/p_1/blueprint?node=generation",
+      "url": "http://127.0.0.1:3210/p/p_1/blueprint?node=generation",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/06-blueprint-version-coupling.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 2437,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/blueprint?node=generation",
+        "docHeight": 2437,
+        "viewportHeight": 1000,
+        "inputs": 7,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "小批试制 →",
+          "覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行",
+          "思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行",
+          "生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行",
+          "独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行",
+          "规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行",
+          "人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行",
+          "版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行",
+          "格式化",
+          "填入示例",
+          "查看模型连接",
+          "保存为新版本",
+          "复制此版本",
+          "v2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置",
+          "v1\n指纹 190b627e\n甲方验收：首次保存蓝图版本"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "生产蓝图",
+          "生成"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n设计\n搜索\nA\n已进入设计\n甲方验收-冷链问答\n蓝图节点、覆盖矩阵与思维标准\n概览\n设计\n生产\n数据\n质量\n发布\nDESIGN / BLUEPRINT\n生产蓝图\n先确认每一步需要什么，再保存为新的配置版本。已经运行的批次不会被覆盖。\n小批试制 →\nATELIER / PRODUCTION BLUEPRINT / v2\n先看清步骤关系，再调整当前步骤。每个节点都是可键盘访问的按钮。\n覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行\n思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行\n生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行\n独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行\n规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行\n人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行\n版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行\n生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行\n必填配置已齐全，保存后可用于试制。\n模型服务 *\ndeepseek-v4.1-flash\n选择已启用的模型服务；密钥只保存在连接设置中。\n模型版本\n输出内容类型 *\n指令微调样本（SFT）\nSFT 适合指令微调，GRPO 适合带评分标准的偏好评估；两种结构不同。\n并发 *\n1–32。更高的并发会被预算预留与供应商限流拦住，而不是在这里放开。\n单次输出上限 *\n限制单条内容的最大长度，便于预估耗时和费用。\n温度\n推理型模型（gpt-5/o 系列等）会拒绝该参数；能力声明为不支持时请留空。\n失败策略\nfail_fast\n输出字段约束\n格式化\n填入示例\n可选\n留空表示使用所选输出类型的默认字段约束。\n当前使用：deepseek-v4.1-flash\n连接的密钥不会显示在蓝图中；如需新增或启用连接，请到连接设置处理。\n查看模型连接\n变更理由（必填，方便团队回溯）\n已保存\n保存为新版本\n复制此版本\n版本历史（只读）\nv2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置\nv1\n指纹 190b627e\n甲方验收：首次保存蓝图版本\n查看模型连接\n当前版本内容指纹：dad14c343e04b1bc5b8ef62d2d3294f51fb1f11cb2da4ccbf47bbd35e787eff8"
+      },
+      "probe": {
+        "requiresChangeReason": true,
+        "changeReasonRequiredHint": true,
+        "hasVersionSelector": 3,
+        "hasSaveBar": true,
+        "saveBarText": "已保存\n保存为新版本\n复制此版本",
+        "historyBlock": true,
+        "bodyMentionsVersion": 8
+      }
+    },
+    {
+      "key": "07-connections-entry",
+      "routePath": "/settings/connections",
+      "url": "http://127.0.0.1:3210/settings/connections",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/07-connections-entry.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 2315,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/settings/connections",
+        "docHeight": 2315,
+        "viewportHeight": 1000,
+        "inputs": 0,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "管理模型连接",
+          "新增或编辑"
+        ],
+        "headings": [
+          "连接与存储"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n连接设置\n搜索\nA\n已进入连接设置\n连接与存储\n可用的模型连接与结果存储。\n管理模型连接\n模型连接\n蓝图和质量实验只能选择已启用的连接；密钥不会在这里回显。\n新增或编辑\n名称\n模型\n类型\n密钥标识\n状态\n自动服务-192538\nopenai-compatible\n—\n启用\nopenai-compatible\n—\n启用\n—\n停用\n—\n停用\n自动服务-506335\nopenai-compatible\n—\n启用\nopenai-compatible\n—\n启用\n—\n停用\n—\n停用\nhy3-judge\nglobal:hy3\nopenai-compatible\n****ae67\n启用\ngpt-5.6-sol-judge\nglobal:hy4-preview\nopenai-compatible\n****ae67\n启用\ndeepseek-v4.1-flash\nglobal:deepseek-v4.1-flash\nopenai-compatible\n****ae67\n启用\n结果存储\n名称\n类型\nBUCKET\n密钥标识\n默认\n默认互斥测试-33209\nminio\nllm-factory-local\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n默认结果存储\nminio\nllm-factory-dev\n****dmin\n—\n自动存储-892389\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-793393\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-766084\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-351672\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-942314\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-192538\nminio\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n—\n—\n—\n—\n自动存储-506335\nminio\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n—\n—\n—\n—\nl15-r11-1238060-storage\nminio\nllm-factory-dev\n****dmin\n—"
+      },
+      "probe": {
+        "connectionRows": 11,
+        "perRowButtons": [],
+        "pageButtons": [
+          "搜索",
+          "A",
+          "管理模型连接",
+          "新增或编辑"
+        ],
+        "inputCount": 0,
+        "adminEntry": [
+          "管理模型连接",
+          "新增或编辑"
+        ],
+        "storageRows": 24
+      }
+    },
+    {
+      "key": "07b-connections-after-click",
+      "routePath": "/settings/connections",
+      "url": "http://127.0.0.1:3210/settings/connections",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/07b-connections-after-click.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 2315,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/settings/connections",
+        "docHeight": 2315,
+        "viewportHeight": 1000,
+        "inputs": 0,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "管理模型连接",
+          "新增或编辑"
+        ],
+        "headings": [
+          "连接与存储"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n连接设置\n搜索\nA\n已进入连接设置\n连接与存储\n可用的模型连接与结果存储。\n管理模型连接\n模型连接\n蓝图和质量实验只能选择已启用的连接；密钥不会在这里回显。\n新增或编辑\n名称\n模型\n类型\n密钥标识\n状态\n自动服务-192538\nopenai-compatible\n—\n启用\nopenai-compatible\n—\n启用\n—\n停用\n—\n停用\n自动服务-506335\nopenai-compatible\n—\n启用\nopenai-compatible\n—\n启用\n—\n停用\n—\n停用\nhy3-judge\nglobal:hy3\nopenai-compatible\n****ae67\n启用\ngpt-5.6-sol-judge\nglobal:hy4-preview\nopenai-compatible\n****ae67\n启用\ndeepseek-v4.1-flash\nglobal:deepseek-v4.1-flash\nopenai-compatible\n****ae67\n启用\n结果存储\n名称\n类型\nBUCKET\n密钥标识\n默认\n默认互斥测试-33209\nminio\nllm-factory-local\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n默认结果存储\nminio\nllm-factory-dev\n****dmin\n—\n自动存储-892389\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-793393\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-766084\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-351672\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-942314\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-192538\nminio\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n—\n—\n—\n—\n自动存储-506335\nminio\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n—\n—\n—\n—\nl15-r11-1238060-storage\nminio\nllm-factory-dev\n****dmin\n—"
+      },
+      "probe": {
+        "clickedButton": "管理模型连接",
+        "urlBefore": "http://127.0.0.1:3210/settings/connections",
+        "urlAfter": "http://127.0.0.1:3210/console/admin/providers",
+        "isLegacyConsole": true,
+        "afterBodyText": "L\n兼容控制台\n旧版入口 · 管理员\n返回 Atelier\n新建任务\n我的任务\n业务导航\n系统设置\n运营监控\nAI 服务\n结果存储\n生成规则\n生成指令\n操作记录\n任务\n58\n队列\n0\nA\nadmin@company.com\n系统设置\nAI 服务\n系统设置 / AI 服务\n管理 AI 服务\n看服务列表后再编辑、取模型或测试。\n刷新配置\n新增 AI 服务\nAI 服务列表\n搜索、编辑、测试或保存\n名称\t基础 URL\t模型\t类型\t推理强度\t状态\t操作\n自动服务-192538\tnot-a-url\t\t\nopenai-compatible\n\t默认\t\n启用\n\t\n编辑\n\n\t\t\t\nopenai-compatible\n\t默认\t\n启用\n\t\n编辑\n\n\t\t\t\n\t默认\t\n停用\n\t\n编辑\n\n\t\t\t\n\t默认\t\n停用\n\t\n编辑\n\n自动服务-506335\tnot-a-url\t\t\nopenai-compatible\n\t默认\t\n启用\n\t\n编辑\n\n\t\t\t\nopenai-compatible\n\t默认\t\n启用\n\t\n编辑\n\n\t\t\t\n\t默认\t\n停用\n\t\n编辑\n\n\t\t\t\n\t默认\t\n停用\n\t\n编辑\n\nhy3-judge\thttp://152.53.126.151:8885/v1\tglobal:hy3\t\nopenai-compatible\n\t默认\t\n启用\n\t\n编辑\n\ngpt-5.6-sol-judge\thttp://152.53.126.151:8885/v1\tglobal:hy4-preview\t\nopenai-compatible\n\t默认\t\n启用\n\t\n编辑\n\ndeepseek-v4.1-flash\thttp://152.53.126.151:8885/v1\tglobal:deepseek-v4.1-flash\t\nopenai-compatible\n\t默认\t\n启用\n\t\n编辑"
+      }
+    },
+    {
+      "key": "08-connections-row-edit",
+      "routePath": "/settings/connections",
+      "url": "http://127.0.0.1:3210/settings/connections",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/08-connections-row-edit.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 2315,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/settings/connections",
+        "docHeight": 2315,
+        "viewportHeight": 1000,
+        "inputs": 0,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "管理模型连接",
+          "新增或编辑"
+        ],
+        "headings": [
+          "连接与存储"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n连接设置\n搜索\nA\n已进入连接设置\n连接与存储\n可用的模型连接与结果存储。\n管理模型连接\n模型连接\n蓝图和质量实验只能选择已启用的连接；密钥不会在这里回显。\n新增或编辑\n名称\n模型\n类型\n密钥标识\n状态\n自动服务-192538\nopenai-compatible\n—\n启用\nopenai-compatible\n—\n启用\n—\n停用\n—\n停用\n自动服务-506335\nopenai-compatible\n—\n启用\nopenai-compatible\n—\n启用\n—\n停用\n—\n停用\nhy3-judge\nglobal:hy3\nopenai-compatible\n****ae67\n启用\ngpt-5.6-sol-judge\nglobal:hy4-preview\nopenai-compatible\n****ae67\n启用\ndeepseek-v4.1-flash\nglobal:deepseek-v4.1-flash\nopenai-compatible\n****ae67\n启用\n结果存储\n名称\n类型\nBUCKET\n密钥标识\n默认\n默认互斥测试-33209\nminio\nllm-factory-local\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n默认结果存储\nminio\nllm-factory-dev\n****dmin\n—\n自动存储-892389\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-793393\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-766084\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-351672\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-942314\nminio\nllm-factory-dev\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n自动存储-192538\nminio\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n—\n—\n—\n—\n自动存储-506335\nminio\n****dmin\n—\n本地 MinIO\nminio\nllm-factory-local\n****dmin\n—\n—\n—\n—\n—\nl15-r11-1238060-storage\nminio\nllm-factory-dev\n****dmin\n—"
+      },
+      "probe": {
+        "rowCount": 11,
+        "rowsWithEditButton": 0,
+        "rowCellTexts": [
+          "自动服务-192538 | openai-compatible | — | 启用",
+          "openai-compatible | — | 启用",
+          "— | 停用",
+          "— | 停用",
+          "自动服务-506335 | openai-compatible | — | 启用",
+          "openai-compatible | — | 启用",
+          "— | 停用",
+          "— | 停用",
+          "hy3-judge | global:hy3 | openai-compatible | ****ae67 | 启用",
+          "gpt-5.6-sol-judge | global:hy4-preview | openai-compatible | ****ae67 | 启用",
+          "deepseek-v4.1-flash | global:deepseek-v4.1-flash | openai-compatible | ****ae67 | 启用"
+        ]
+      }
+    },
+    {
+      "key": "09a-tools-evaluation",
+      "routePath": "/tools/evaluation",
+      "url": "http://127.0.0.1:3210/tools/evaluation",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/09a-tools-evaluation.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 10613,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/tools/evaluation",
+        "docHeight": 10613,
+        "viewportHeight": 1000,
+        "inputs": 77,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "刷新",
+          "导入内置维度",
+          "新建自定义维度",
+          "编辑",
+          "内置不可删除"
+        ],
+        "headings": [
+          "评估工作台",
+          "质量评估",
+          "评估维度管理"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n评估工作台\n搜索\nA\n已进入评估工作台\n评估工作台\n从评估维度与裁判配置，到运行进度、逐条证据和最终报告，完整保留原有质量评估能力。\nAtelier 辅助工作台 · 真实数据\n多模型互评\n质量评估\n维护评估维度、配置抽样与裁判模型、查看逐条打分与汇总结论。当前可评估数据集 58 个。\n维度管理\n新建评估\n运行列表\n结果与报告\n评估维度管理\n内置维度只读可停用，自定义维度可编辑与删除。\n刷新\n导入内置维度\n新建自定义维度\n内置 58 条\n自定义 0 条\n分类 7 个\n接口返回分类 7 个\nanswer_quality\n8 个维度\n可执行性\n内置\n启用\nkey=aq_actionability\n区间 1~5\n权重 1.4\n编辑\n内置不可删除\n读者能否据此直接行动，是否给出了可操作的步骤而非原则性建议。\n评分细则：检查是否给出可执行动作。只有原则性表述记 1 分；给出动作但缺执行条件或责任主体记 3 分；动作、执行条件、责任主体与验收方式齐备记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n答案完整性\n内置\n启用\nkey=aq_completeness\n区间 1~5\n权重 1.4\n编辑\n内置不可删除\n答案是否覆盖了从问题到结论所需的全部必要环节，无关键缺项。\n评分细则：列出必要环节清单并核对。缺失关键环节记 1 分；环节齐全但部分展开不足记 3 分；全部环节完整展开记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n表达精炼度\n内置\n启用\nkey=aq_concision\n区间 1~5\n权重 1\n编辑\n内置不可删除\n在保持完整的前提下，表达是否紧凑，是否存在大量无效铺垫。\n评分细则：检查无效铺垫占比。开场铺垫与总结套话超过全文三分之一记 1 分；存在明显重复表述记 3 分；每一段都承载独立信息记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n结论明确性\n内置\n启用\nkey=aq_conclusion_clarity\n区间 1~5\n权重 1.4\n编辑\n内置不可删除\n最终结论是否清晰、无歧义、可直接引用。\n评分细则：检查结论段是否可直接引用。结论含糊或需读者自行归纳记 1 分；结论明确但夹带大量条件从句记 3 分；结论一句话可引用，条件另段说明记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n备选方案与应急预案\n内置\n启用\nkey=aq_contingency\n区间 1~5\n权重 1.2\n编辑\n内置不可删除\n主方案失效时是否有可立即切换的备选路径。\n评分细则：检查是否有备选方案。只有单一方案记 1 分；有备选但未说明切换条件记 3 分；给出备选方案、切换触发条件与切换代价记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n成功标准可度量\n内置\n启用\nkey=aq_metric_definition\n区间 1~5\n权重 1.1\n编辑\n内置不可删除\n是否定义了判断方案成功的可度量标准，而非「效果好」这类模糊表述。\n评分细则：检查是否给出可度量标准。无标准或标准模糊记 1 分；给出指标但无目标值记 3 分；给出指标、目标值与观测方式记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n优先级排序\n内置\n启用\nkey=aq_prioritization\n区间 1~5\n权重 1.1\n编辑\n内置不可删除\n多个待办事项是否按重要性或时序排了优先级，而非平铺罗列。\n评分细则：检查多事项是否有序。平铺罗列无优先级记 1 分；有排序但未说明排序依据记 3 分；给出优先级并说明依据（紧迫度/依赖关系/影响面）记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n风险提示充分\n内置\n启用\nkey=aq_risk_disclosure\n区间 1~5\n权重 1.3\n编辑\n内置不可删除\n是否主动提示了方案的风险、副作用与失败后果。\n评分细则：检查风险段落。完全未提风险记 1 分；提及风险但未给应对记 3 分；逐项列出风险、触发条件与应对措施记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\ndomain_fit\n8 个维度\n专业常识一致性\n内置\n启用\nkey=df_common_sense\n区间 1~5\n权重 1.3\n编辑\n内置不可删除\n是否符合该领域的公认常识与基本规律，是否违反领域内不言自明的前提。\n评分细则：对照该领域基本常识。违反领域常识记 1 分；不违反但存在外行式表述记 3 分；符合领域常识且体现从业者视角记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n环境条件适配\n内置\n启用\nkey=df_environment_context\n区间 1~5\n权重 1.1\n编辑\n内置不可删除\n是否考虑了地理、气候、时段、电磁等环境条件对方案的影响。\n评分细则：检查环境因素是否进入推理。完全未考虑记 1 分；提及环境但未分析影响记 3 分；逐项分析关键环境条件对方案的影响与应对记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n实操可行性\n内置\n启用\nkey=df_feasibility\n区间 1~5\n权重 1.4\n编辑\n内置不可删除\n给出的方案在现实中是否真的可以执行，是否停留在纸面。\n评分细则：检查方案所需条件是否现实可得。方案在现实中无法执行记 1 分；可执行但未考虑执行中的现实阻力记 3 分；明确说明执行步骤、所需条件与主要阻力记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n法规与规程符合\n内置\n启用\nkey=df_regulation\n区间 1~5\n权重 1.2\n编辑\n内置不可删除\n是否遵守该领域相关的法律法规、行业规程与操作规范。\n评分细则：若该领域无明确法规约束，本维度按 5 分计（不适用即不扣分）。方案与现行法规或规程冲突记 1 分；未违反但未提及合规要求记 3 分；明确引用相关规程并说明合规依据记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n资源约束现实性\n内置\n启用\nkey=df_resource_constraint\n区间 1~5\n权重 1.2\n编辑\n内置不可删除\n是否考虑了人力、装备、时间、经费等资源约束，而非假设资源无限。\n评分细则：检查方案是否受资源约束。假设资源无限记 1 分；提到资源但未量化记 3 分；给出关键资源的数量级估算与分配方案记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n场景贴合度\n内置\n启用\nkey=df_scenario_fit\n区间 1~5\n权重 1.5\n编辑\n内置不可删除\n回答是否紧扣问题给定的具体场景，而非套用通用模板。\n评分细则：检查内容是否引用了题面场景的具体要素。完全通用化、可套用到任何场景记 1 分；引用了部分场景要素记 3 分；每个关键判断都落在题面给定的具体要素上记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n相关方视角完整\n内置\n启用\nkey=df_stakeholder\n区间 1~5\n权重 1.1\n编辑\n内置不可删除\n是否考虑了方案涉及的各相关方的目标、权限与可能反应。\n评分细则：列出方案涉及的相关方。仅从单一视角出发记 1 分；提到多个相关方但未分析其诉求差异记 3 分；逐个相关方分析目标、权限与可能反应记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n领域术语准确性\n内置\n启用\nkey=df_terminology\n区间 1~5\n权重 1.4\n编辑\n内置不可删除\n领域专业术语的使用是否准确，是否存在术语误用或混用。\n评分细则：标出全部专业术语并核对用法。出现术语误用或概念混淆记 1 分；术语使用正确但个别表述不地道记 3 分；术语准确、一致且符合该领域惯用表达记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5"
+      },
+      "probe": {
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n评估工作台\n搜索\nA\n已进入评估工作台\n评估工作台\n从评估维度与裁判配置，到运行进度、逐条证据和最终报告，完整保留原有质量评估能力。\nAtelier 辅助工作台 · 真实数据\n多模型互评\n质量评估\n维护评估维度、配置抽样与裁判模型、查看逐条打分与汇总结论。当前可评估数据集 58 个。\n维度管理\n新建评估\n运行列表\n结果与报告\n评估维度管理\n内置维度只读可停用，自定义维度可编辑与删除。\n刷新\n导入内置维度\n新建自定义维度\n内置 58 条\n自定义 0 条\n分类 7 个\n接口返回分类 7 个\nanswer_quality\n8 个维度\n可执行性\n内置\n启用\nkey=aq_actionability\n区间 1~5\n权重 1.4\n编辑\n内置不可删除\n读者能否据此直接行动，是否给出了可操作的步骤而非原则性建议。\n评分细则：检查是否给出可执行动作。只有原则性表述记 1 分；给出动作但缺执行条件或责任主体记 3 分；动作、执行条件、责任主体与验收方式齐备记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n答案完整性\n内置\n启用\nkey=aq_completeness\n区间 1~5\n权重 1.4\n编辑\n内置不可删除\n答案是否覆盖了从问题到结论所需的全部必要环节，无关键缺项。\n评分细则：列出必要环节清单并核对。缺失关键环节记 1 分；环节齐全但部分展开不足记 3 分；全部环节完整展开记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n表达精炼度\n内置\n启用\nkey=aq_concision\n区间 1~5\n权重 1\n编辑\n内置不可删除\n在保持完整的前提下，表达是否紧凑，是否存在大量无效铺垫。\n评分细则：检查无效铺垫占比。开场铺垫与总结套话超过全文三分之一记 1 分；存在明显重复表述记 3 分；每一段都承载独立信息记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n结论明确性\n内置\n启用\nkey=aq_conclusion_clarity\n区间 1~5\n权重 1.4\n编辑\n内置不可删除\n最终结论是否清晰、无歧义、可直接引用。\n评分细则：检查结论段是否可直接引用。结论含糊或需读者自行归纳记 1 分；结论明确但夹带大量条件从句记 3 分；结论一句话可引用，条件另段说明记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n备选方案与应急预案\n内置\n启用\nkey=aq_contingency\n区间 1~5\n权重 1.2\n编辑\n内置不可删除\n主方案失效时是否有可立即切换的备选路径。\n评分细则：检查是否有备选方案。只有单一方案记 1 分；有备选但未说明切换条件记 3 分；给出备选方案、切换触发条件与切换代价记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n成功标准可度量\n内置\n启用\nkey=aq_metric_definition\n区间 1~5\n权重 1.1\n编辑\n内置不可删除\n是否定义了判断方案成功的可度量标准，而非「效果好」这类模糊表述。\n评分细则：检查是否给出可度量标准。无标准或标准模糊记 1 分；给出指标但无目标值记 3 分；给出指标、目标值与观测方式记 5 分。分档判据（1~5 分）：1分=完全缺失，该维度的要求在整个输出中找不到任何对应内容；2分=严重不足，仅有一处提及且未展开，或展开方向与问题场景明显不符；3分=部分满足，有对应内容但存在跳跃、遗漏关键环节，或需要读者自行补全才能成立；4分=基本满足，内容完整且方向正确，仅有细节瑕疵（措辞含糊、个别环节论证偏薄）；5分=充分满足，内容完整、依据明确、与具体场景严格对应，可直接用于后续决策或训练。\n优先级排序\n内置\n启用\nkey=aq_prioritization\n区间 1~5\n权重 1.1\n编辑\n内置不可删除\n多个待办事项是否按重要性",
+        "datasetSelectors": 4,
+        "mentionsBlueprint": false,
+        "mentionsStandard": false,
+        "mentionsCoverage": true
+      }
+    },
+    {
+      "key": "09b-tools-cleaning",
+      "routePath": "/tools/cleaning",
+      "url": "http://127.0.0.1:3210/tools/cleaning",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/09b-tools-cleaning.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 6303,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/tools/cleaning",
+        "docHeight": 6303,
+        "viewportHeight": 1000,
+        "inputs": 55,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "刷新",
+          "去数据资产导出",
+          "前往新建任务",
+          "前往生成数据",
+          "前往质量评估",
+          "前往导出交付",
+          "去新建清洗规则",
+          "开始清洗",
+          "刷新记录",
+          "新增关键词",
+          "编辑",
+          "删除",
+          "导入",
+          "新建规则",
+          "回到质量评估",
+          "回到我的任务"
+        ],
+        "headings": [
+          "清洗工作台",
+          "拦截拒答与异常样本",
+          "这一步在任务流程里的位置",
+          "发起一次清洗",
+          "清洗记录",
+          "关键词库",
+          "批量导入",
+          "清洗规则",
+          "清洗之后去哪里"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n清洗工作台\n搜索\nA\n已进入清洗工作台\n清洗工作台\n配置拒答关键词和清洗规则，发起真实扫描，查看命中证据并把干净结果送往交付。\nAtelier 辅助工作台 · 真实数据\n数据清洗\n拦截拒答与异常样本\n数据清洗是任务流程的第 4 步：先在这里配置要拦截的词与规则，再对某个任务发起清洗，最后在「数据资产」导出干净数据。\n刷新\n去数据资产导出\n这一步在任务流程里的位置\n数据清洗是第 4 步（共 5 步）：先生成数据、再做质量评估， 然后在这里拦截拒答与异常样本，最后到「数据资产」导出成品。清洗只改样本状态，不改写内容。\n1\n新建任务\n填写主题与目标规模\n前往新建任务\n2\n生成数据\n问题、思维链、答案逐步产出\n前往生成数据\n3\n质量评估\n多模型互评打分\n前往质量评估\n4\n数据清洗\n当前位置\n拦截拒答与异常样本\n5\n导出交付\n在数据资产导出成品\n前往导出交付\n当前查看的任务\n验收-续跑-1789921689（任务 #191）\n任务状态\ndirections_completed\n清洗记录\n0 次\n最近一次\n还没清洗过\n发起一次清洗\n选一个任务，勾选要检查的阶段，确认要启用哪些规则，然后开始。清洗在后台执行，可以离开页面，完成后回到本页看报告。\n要清洗的任务\n验收-续跑-1789921689（任务 #191）\n拦截阶段（可多选）\n问题\n提问本身出现拒答、安全回避或占位文本\n思维链\n推理过程里出现拒答、含糊推脱或省略号占位\n答案\n最终回答里出现拒答、免责声明或未完成占位\n本次启用哪些规则\n开关会立即保存，清洗时只会使用启用中的规则（当前 0 / 0 条启用）。 一条规则都没启用时，命中关键词的样本不会被丢弃，但会被标记为待复查。\n还没有清洗规则，所以暂时不需要选。规则决定「命中多少词之后，样本该被丢弃还是先标记复查」。\n先建一条规则再回来发起清洗。\n去新建清洗规则\n开始清洗\n已选 3 个阶段 · 启用 0 条规则\n清洗记录\n每次清洗都会留一条记录，点「查看报告」看这一轮拦下了什么。\n刷新记录\n这个任务还没有清洗过。在上面「发起一次清洗」里选择阶段与规则，点「开始清洗」。\n关键词库\n清洗时逐条匹配这些词。命中「拦截」的样本会被标记为丢弃，命中「告警」的只做标记供复查。 内置词是系统基线，可以停用但不能删除。\n刷新\n新增关键词\n关键词总数\n50\n已启用\n50\n内置 / 自定义\n41 / 9\n英文拒答\n10 条\n关键词\t匹配方式\t严重度\t来源\t启用\t备注\t操作\nI cannot\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\nI can't\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\nI'm sorry\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\nI am unable\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\nAs an AI\t句首（prefix）\t\n拦截（block）\n\t\n内置\n\t\n\t仅句首匹配\t\n编辑\n删除\nI must decline\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\nI'm not able to\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\nI won't\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\nagainst my guidelines\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\nviolates policy\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n占位与空输出\n5 条\n关键词\t匹配方式\t严重度\t来源\t启用\t备注\t操作\nTODO\t包含（contains）\t\n告警（warn）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n待补充\t包含（contains）\t\n告警（warn）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n此处省略\t包含（contains）\t\n告警（warn）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\nN/A\t包含（contains）\t\n告警（warn）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n(\\.{3,}|…{2,})\t正则（regex）\t\n告警（warn）\n\t\n内置\n\t\n\t连续省略号，误伤风险高，仅告警\t\n编辑\n删除\n中文拒答\n22 条\n关键词\t匹配方式\t严重度\t来源\t启用\t备注\t操作\n对不起\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t典型中文拒答开场\t\n编辑\n删除\n我不能\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n抱歉，我无法\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n我无法提供\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n我不能帮助\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n恕难从命\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n我拒绝\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n无法回答\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n不适合回答\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n不便透露\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n我不能讨论\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n作为一个AI\t句首（prefix）\t\n拦截（block）\n\t\n内置\n\t\n\t自我身份声明式拒答，仅句首匹配\t\n编辑\n删除\n作为人工智能\t句首（prefix）\t\n拦截（block）\n\t\n内置\n\t\n\t自我身份声明式拒答，仅句首匹配\t\n编辑\n删除\n验收自定义拒答词1789830663\t包含（contains）\t\n拦截（block）\n\t\n自定义\n\t\n\t—\t\n编辑\n删除\n验收自定义拒答词1789835265\t包含（contains）\t\n拦截（block）\n\t\n自定义\n\t\n\t—\t\n编辑\n删除\n验收自定义拒答词1789843227\t包含（contains）\t\n拦截（block）\n\t\n自定义\n\t\n\t—\t\n编辑\n删除\n回归测试拒绝词-262174\t包含（contains）\t\n拦截（block）\n\t\n自定义\n\t\n\t—\t\n编辑\n删除\n回归测试拒绝词-587374\t包含（contains）\t\n拦截（block）\n\t\n自定义\n\t\n\t—\t\n编辑\n删除\n回归测试拒绝词-753930\t包含（contains）\t\n拦截（block）\n\t\n自定义\n\t\n\t—\t\n编辑\n删除\n回归测试拒绝词-916395\t包含（contains）\t\n拦截（block）\n\t\n自定义\n\t\n\t—\t\n编辑\n删除\n验收自定义拒答词1789871927\t包含（contains）\t\n拦截（block）\n\t\n自定义\n\t\n\t—\t\n编辑\n删除\n验收自定义拒答词1789926437\t包含（contains）\t\n拦截（block）\n\t\n自定义\n\t\n\t—\t\n编辑\n删除\n安全与合规回避\n8 条\n关键词\t匹配方式\t严重度\t来源\t启用\t备注\t操作\n违反\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n不符合规定\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n涉及敏感\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n不安全\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n违法违规\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n道德准则\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n使用政策\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n内容政策\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n含糊推脱\n5 条\n关键词\t匹配方式\t严重度\t来源\t启用\t备注\t操作\n请咨询专业人士\t包含（contains）\t\n告警（warn）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n建议咨询\t包含（contains）\t\n告警（warn）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n我建议你自行\t包含（contains）\t\n告警（warn）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n无法保证准确性\t包含（contains）\t\n告警（warn）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n可能不准确\t包含（contains）\t\n告警（warn）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n批量导入\n每行一个关键词，整批使用下方选择的分类与严重度。已经存在的词会被跳过，不会重复写入。\n关键词（每行一个）\n分类\n中文拒答\n严重度\n拦截（block）\n导入\n清洗规则\n规则回答「命中多少词之后该怎么处理」。判定顺序：先按优先级从大到小逐条看，第一条满足 「命中次数 ≥ 最少命中数」的规则生效；一条都不满足时样本会被标记为待复查。停用的规则不参与判定。\n刷新\n新建规则\n还没有清洗规则。点右上角「新建规则」定义：命中多少词之后，样本该被丢弃还是先标记复查。\n清洗之后去哪里\n清洗只改样本状态，不改写内容：被丢弃的样本不会再进入导出，被标记的样本仍可在数据资产里核对。\n去数据资产导出\n回到质量评估\n回到我的任务"
+      },
+      "probe": {
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n清洗工作台\n搜索\nA\n已进入清洗工作台\n清洗工作台\n配置拒答关键词和清洗规则，发起真实扫描，查看命中证据并把干净结果送往交付。\nAtelier 辅助工作台 · 真实数据\n数据清洗\n拦截拒答与异常样本\n数据清洗是任务流程的第 4 步：先在这里配置要拦截的词与规则，再对某个任务发起清洗，最后在「数据资产」导出干净数据。\n刷新\n去数据资产导出\n这一步在任务流程里的位置\n数据清洗是第 4 步（共 5 步）：先生成数据、再做质量评估， 然后在这里拦截拒答与异常样本，最后到「数据资产」导出成品。清洗只改样本状态，不改写内容。\n1\n新建任务\n填写主题与目标规模\n前往新建任务\n2\n生成数据\n问题、思维链、答案逐步产出\n前往生成数据\n3\n质量评估\n多模型互评打分\n前往质量评估\n4\n数据清洗\n当前位置\n拦截拒答与异常样本\n5\n导出交付\n在数据资产导出成品\n前往导出交付\n当前查看的任务\n验收-续跑-1789921689（任务 #191）\n任务状态\ndirections_completed\n清洗记录\n0 次\n最近一次\n还没清洗过\n发起一次清洗\n选一个任务，勾选要检查的阶段，确认要启用哪些规则，然后开始。清洗在后台执行，可以离开页面，完成后回到本页看报告。\n要清洗的任务\n验收-续跑-1789921689（任务 #191）\n拦截阶段（可多选）\n问题\n提问本身出现拒答、安全回避或占位文本\n思维链\n推理过程里出现拒答、含糊推脱或省略号占位\n答案\n最终回答里出现拒答、免责声明或未完成占位\n本次启用哪些规则\n开关会立即保存，清洗时只会使用启用中的规则（当前 0 / 0 条启用）。 一条规则都没启用时，命中关键词的样本不会被丢弃，但会被标记为待复查。\n还没有清洗规则，所以暂时不需要选。规则决定「命中多少词之后，样本该被丢弃还是先标记复查」。\n先建一条规则再回来发起清洗。\n去新建清洗规则\n开始清洗\n已选 3 个阶段 · 启用 0 条规则\n清洗记录\n每次清洗都会留一条记录，点「查看报告」看这一轮拦下了什么。\n刷新记录\n这个任务还没有清洗过。在上面「发起一次清洗」里选择阶段与规则，点「开始清洗」。\n关键词库\n清洗时逐条匹配这些词。命中「拦截」的样本会被标记为丢弃，命中「告警」的只做标记供复查。 内置词是系统基线，可以停用但不能删除。\n刷新\n新增关键词\n关键词总数\n50\n已启用\n50\n内置 / 自定义\n41 / 9\n英文拒答\n10 条\n关键词\t匹配方式\t严重度\t来源\t启用\t备注\t操作\nI cannot\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\nI can't\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\nI'm sorry\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\nI am unable\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\nAs an AI\t句首（prefix）\t\n拦截（block）\n\t\n内置\n\t\n\t仅句首匹配\t\n编辑\n删除\n\nI must decline\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\nI'm not able to\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\nI won't\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\nagainst my guidelines\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\nviolates policy\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n占位与空输出\n5 条\n关键词\t匹配方式\t严重度\t来源\t启用\t备注\t操作\nTODO\t包含（contains）\t\n告警（warn）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\n待补充\t包含（contains）\t\n告警（warn）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\n此处省略\t包含（contains）\t\n告警（warn）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\nN/A\t包含（contains）\t\n告警（warn）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\n(\\.{3,}|…{2,})\t正则（regex）\t\n告警（warn）\n\t\n内置\n\t\n\t连续省略号，误伤风险高，仅告警\t\n编辑\n删除\n中文拒答\n22 条\n关键词\t匹配方式\t严重度\t来源\t启用\t备注\t操作\n对不起\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t典型中文拒答开场\t\n编辑\n删除\n\n我不能\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\n抱歉，我无法\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\n我无法提供\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\n我不能帮助\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\n恕难从命\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\n我拒绝\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\n无法回答\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\n不适合回答\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\n不便透露\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\n我不能讨论\t包含（contains）\t\n拦截（block）\n\t\n内置\n\t\n\t—\t\n编辑\n删除\n\n作为一个AI\t句首（prefix）\t",
+        "mentionsBlueprint": false,
+        "mentionsCoverage": false
+      }
+    },
+    {
+      "key": "10-today-overview",
+      "routePath": "/today",
+      "url": "http://127.0.0.1:3210/today",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/10-today-overview.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1364,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/today",
+        "docHeight": 1364,
+        "viewportHeight": 1000,
+        "inputs": 0,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "＋ 开始一个数据项目",
+          "浏览生产方案",
+          "刷新",
+          "目标 → 证据 → 交付\n查看项目流程 →",
+          "查看项目 →",
+          "了解 Atelier 旅程 →",
+          "查看全部 →",
+          "查看动态 →",
+          "全部已读"
+        ],
+        "headings": [
+          "把下一份训练数据，\n做得更有把握。",
+          "需要你的决定",
+          "交付日历",
+          "你的工作方式",
+          "继续项目"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n今日工作\n搜索\nA\n已进入今日工作\nTODAY / YOUR WORKSPACE你的工作区 · 今日工作\n把下一份训练数据，\n做得更有把握。\n先解决值得你关注的决定，再继续生产。\n＋ 开始一个数据项目\n浏览生产方案\n刷新\n目标 → 证据 → 交付\n查看项目流程 →\nDECISIONS\n需要你的决定\n当前没有需要你处理的待办。\nTHIS WEEK\n交付日历\n暂无排期\n还没有服务端返回的交付候选。\n查看项目 →\nYOUR WAY OF WORKING\n你的工作方式\n设计方案 → 小批试制 → 扩量 → 审阅 → 发布。\n每次运行独立记录，每次发布固定内容。你可以随时回到修改前一版。\n了解 Atelier 旅程 →\nPROJECTS\n继续项目\n查看全部 →\n暂无可继续的项目。\n动态未读\n15 条动态尚未查看（未读不等于已处理）\n查看动态 →\n全部已读\n未读只影响红点：待办由事实派生（待判断/失败恢复/候选阻塞），不会因为点了「全部已读」而消失"
+      },
+      "probe": {
+        "hasAggregateMetrics": false,
+        "numericTokens": [
+          "15"
+        ],
+        "projectLabels": [],
+        "sections": [
+          "把下一份训练数据，\n做得更有把握。",
+          "需要你的决定",
+          "交付日历",
+          "你的工作方式",
+          "继续项目"
+        ],
+        "mentionsPriority": true,
+        "noteText": "未读"
+      }
+    },
+    {
+      "key": "11a-blueprint-canvas",
+      "routePath": "/p/p_1/blueprint",
+      "url": "http://127.0.0.1:3210/p/p_1/blueprint",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/11a-blueprint-canvas.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1561,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/blueprint",
+        "docHeight": 1561,
+        "viewportHeight": 1000,
+        "inputs": 2,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "小批试制 →",
+          "覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行",
+          "思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行",
+          "生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行",
+          "独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行",
+          "规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行",
+          "人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行",
+          "版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行",
+          "查看覆盖矩阵",
+          "保存为新版本",
+          "复制此版本",
+          "v2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置",
+          "v1\n指纹 190b627e\n甲方验收：首次保存蓝图版本"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "生产蓝图",
+          "覆盖范围"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n设计\n搜索\nA\n已进入设计\n甲方验收-冷链问答\n蓝图节点、覆盖矩阵与思维标准\n概览\n设计\n生产\n数据\n质量\n发布\nDESIGN / BLUEPRINT\n生产蓝图\n先确认每一步需要什么，再保存为新的配置版本。已经运行的批次不会被覆盖。\n小批试制 →\nATELIER / PRODUCTION BLUEPRINT / v2\n先看清步骤关系，再调整当前步骤。每个节点都是可键盘访问的按钮。\n覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行\n思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行\n生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行\n独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行\n规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行\n人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行\n版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行\n覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行\n必填配置已齐全，保存后可用于试制。\n覆盖版本 *\nv1 · 项目创建：初始化 Atelier 配置\n选择一份已保存的覆盖方案；后续调整不会影响已经运行的批次。\n当前引用配置 v1 · 项目创建：初始化 Atelier 配置\n内容指纹 554cd148\n查看覆盖矩阵\n变更理由（必填，方便团队回溯）\n已保存\n保存为新版本\n复制此版本\n版本历史（只读）\nv2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置\nv1\n指纹 190b627e\n甲方验收：首次保存蓝图版本\n查看覆盖矩阵\n当前版本内容指纹：dad14c343e04b1bc5b8ef62d2d3294f51fb1f11cb2da4ccbf47bbd35e787eff8"
+      },
+      "probe": {
+        "canvasWidth": 890,
+        "canvasHeight": 791,
+        "canvasIsFlexColumn": "column",
+        "nodes": [
+          {
+            "key": "coverage",
+            "label": "覆盖范围",
+            "status": "可执行"
+          },
+          {
+            "key": "standard",
+            "label": "思维标准",
+            "status": "可执行"
+          },
+          {
+            "key": "generation",
+            "label": "生成",
+            "status": "可执行"
+          },
+          {
+            "key": "evaluation",
+            "label": "独立评估",
+            "status": "可执行"
+          },
+          {
+            "key": "rules",
+            "label": "规则检查",
+            "status": "可执行"
+          },
+          {
+            "key": "human_review",
+            "label": "人工检查点",
+            "status": "可执行"
+          },
+          {
+            "key": "delivery",
+            "label": "版本交付",
+            "status": "可执行"
+          }
+        ],
+        "isDraggable": false,
+        "isVerticalChain": "flex",
+        "hasTreeStructure": false
+      }
+    },
+    {
+      "key": "11b-coverage-tree",
+      "routePath": "/p/p_1/coverage",
+      "url": "http://127.0.0.1:3210/p/p_1/coverage",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/11b-coverage-tree.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1241,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/coverage",
+        "docHeight": 1241,
+        "viewportHeight": 1000,
+        "inputs": 7,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "复制当前版本为草稿",
+          "添加方向",
+          "添加领域",
+          "保存覆盖方案新版本",
+          "以“核心方向”规划新批次"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "覆盖矩阵"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n设计\n覆盖矩阵\n搜索\nA\n已进入设计\n甲方验收-冷链问答\n蓝图节点、覆盖矩阵与思维标准\n概览\n设计\n生产\n数据\n质量\n发布\n覆盖矩阵\n领域和方向使用稳定 ID；保存新版本不会改写已经运行的批次。\n复制当前版本为草稿\n共 1 个领域，方向配额合计 1（计划单元数，不是已产出数量）\n覆盖范围编辑器\n把领域拆成可执行方向，并为每个方向设置计划数量。稳定 ID 用于让历史批次继续指向原版本。\n领域 1\n领域名称\n稳定 ID\n方向与配额\n添加方向\n添加领域\n当前版本已保存\n当前为 v1，指纹 554cd148dd\n保存覆盖方案新版本\n变更理由\n版本历史\nv1\n项目创建：初始化 Atelier 配置\n从方向开始下一批试制\n以“核心方向”规划新批次"
+      },
+      "probe": {
+        "hasDomainEditor": false,
+        "mentionsMNZ": true,
+        "text": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n设计\n覆盖矩阵\n搜索\nA\n已进入设计\n甲方验收-冷链问答\n蓝图节点、覆盖矩阵与思维标准\n概览\n设计\n生产\n数据\n质量\n发布\n覆盖矩阵\n领域和方向使用稳定 ID；保存新版本不会改写已经运行的批次。\n复制当前版本为草稿\n共 1 个领域，方向配额合计 1（计划单元数，不是已产出数量）\n覆盖范围编辑器\n把领域拆成可执行方向，并为每个方向设置计划数量。稳定 ID 用于让历史批次继续指向原版本。\n领域 1\n领域名称\n稳定 ID\n方向与配额\n添加方向\n添加领域\n当前版本已保存\n当前为 v1，指纹 554cd148dd\n保存覆盖方案新版本\n变更理由\n版本历史\nv1\n项目创建：初始化 Atelier 配置\n从方向开始下一批试制\n以“核心方向”规划新批次",
+        "treeishNodes": 2
+      }
+    },
+    {
+      "key": "12a-project-data",
+      "routePath": "/p/p_1/data",
+      "url": "http://127.0.0.1:3210/p/p_1/data",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/12a-project-data.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1000,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/data",
+        "docHeight": 1000,
+        "viewportHeight": 1000,
+        "inputs": 2,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "刷新样本",
+          "按当前筛选冻结并准备发布（服务端解析）",
+          "审阅",
+          "来源"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "样本工作区"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n数据\n搜索\nA\n已进入数据\n甲方验收-冷链问答\n样本内容、版本来源与审阅队列\n概览\n设计\n生产\n数据\n质量\n发布\n样本工作区\n按审阅状态与关键词在服务端筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。\n待判断\n刷新样本\n按当前筛选冻结并准备发布（服务端解析）\n样本\n版本\n审阅状态\n操作\n核心方向（难度 medium）：第 1 题\ns_1\nv1（版本 ID 1）\n待判断\n审阅\n来源"
+      },
+      "probe": {
+        "pageKey": "sample-list",
+        "title": "甲方验收-冷链问答",
+        "headerText": "样本工作区 | 按审阅状态与关键词在服务端筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。 | 待判断 | 刷新样本",
+        "primaryActions": [
+          "搜索",
+          "A",
+          "刷新样本",
+          "按当前筛选冻结并准备发布（服务端解析）",
+          "审阅",
+          "来源"
+        ]
+      }
+    },
+    {
+      "key": "12b-project-review",
+      "routePath": "/p/p_1/review",
+      "url": "http://127.0.0.1:3210/p/p_1/review",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/12b-project-review.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1000,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/review",
+        "docHeight": 1000,
+        "viewportHeight": 1000,
+        "inputs": 2,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "刷新样本",
+          "按当前筛选冻结并准备发布（服务端解析）",
+          "审阅",
+          "来源"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "审阅队列"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n数据\n审阅队列\n搜索\nA\n已进入数据\n甲方验收-冷链问答\n样本内容、版本来源与审阅队列\n概览\n设计\n生产\n数据\n质量\n发布\n审阅队列\n按审阅状态与关键词在服务端筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。\n待判断\n刷新样本\n按当前筛选冻结并准备发布（服务端解析）\n样本\n版本\n审阅状态\n操作\n核心方向（难度 medium）：第 1 题\ns_1\nv1（版本 ID 1）\n待判断\n审阅\n来源"
+      },
+      "probe": {
+        "pageKey": "review-queue",
+        "title": "甲方验收-冷链问答",
+        "headerText": "审阅队列 | 按审阅状态与关键词在服务端筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。 | 待判断 | 刷新样本",
+        "primaryActions": [
+          "搜索",
+          "A",
+          "刷新样本",
+          "按当前筛选冻结并准备发布（服务端解析）",
+          "审阅",
+          "来源"
+        ]
+      }
+    },
+    {
+      "key": "13-runs-no-preview",
+      "routePath": "/p/p_1/runs",
+      "url": "http://127.0.0.1:3210/p/p_1/runs",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/13-runs-no-preview.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1000,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/runs",
+        "docHeight": 1000,
+        "viewportHeight": 1000,
+        "inputs": 0,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "刷新批次",
+          "新建试制",
+          "扩量规划",
+          "b_2",
+          "b_1",
+          "暂停"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "生产批次"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n生产\n搜索\nA\n已进入生产\n甲方验收-冷链问答\n批次进度、暂停与失败恢复\n概览\n设计\n生产\n数据\n质量\n发布\n生产批次\n同一项目可以有多个并行批次；列表按最近创建排序，不按「最大 ID 猜当前运行」。\n刷新批次\n新建试制\n扩量规划\n批次\n用途\n状态\n计划\n完成\n失败\n在途\n操作\nb_2\n试制\n已完成\n4\n1\n0\n0\nb_1\n试制\n运行中\n12\n0\n12\n0\n暂停"
+      },
+      "probe": {
+        "hasPreview": false,
+        "hasAutoAnalysis": false,
+        "buttons": [
+          "搜索",
+          "A",
+          "刷新批次",
+          "新建试制",
+          "扩量规划",
+          "b_2",
+          "b_1",
+          "暂停"
+        ],
+        "columns": [
+          "批次",
+          "用途",
+          "状态",
+          "计划",
+          "完成",
+          "失败",
+          "在途",
+          "操作"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n生产\n搜索\nA\n已进入生产\n甲方验收-冷链问答\n批次进度、暂停与失败恢复\n概览\n设计\n生产\n数据\n质量\n发布\n生产批次\n同一项目可以有多个并行批次；列表按最近创建排序，不按「最大 ID 猜当前运行」。\n刷新批次\n新建试制\n扩量规划\n批次\n用途\n状态\n计划\n完成\n失败\n在途\n操作\nb_2\n试制\n已完成\n4\n1\n0\n0\nb_1\n试制\n运行中\n12\n0\n12\n0\n暂停"
+      }
+    },
+    {
+      "key": "14a-quality-list",
+      "routePath": "/p/p_1/quality",
+      "url": "http://127.0.0.1:3210/p/p_1/quality",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/14a-quality-list.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1000,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/quality",
+        "docHeight": 1000,
+        "viewportHeight": 1000,
+        "inputs": 0,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "新建质量实验"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "质量实验室"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n质量\n搜索\nA\n已进入质量\n甲方验收-冷链问答\n冻结论据、规则检查与人工判断\n概览\n设计\n生产\n数据\n质量\n发布\n质量实验室\n报告的分母是实验创建时冻结的样本版本数；待审阅不算接纳，隔离也不缩小分母。\n新建质量实验\n还没有质量实验。创建后会冻结本次检查的范围与量表。"
+      },
+      "probe": {
+        "headerText": "质量实验室 | 报告的分母是实验创建时冻结的样本版本数；待审阅不算接纳，隔离也不缩小分母。 | 新建质量实验",
+        "usesNumeratorDenominatorWords": true,
+        "numeratorDenominatorHits": 2,
+        "usesEvaluatedDatasetWords": false,
+        "columns": [],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n质量\n搜索\nA\n已进入质量\n甲方验收-冷链问答\n冻结论据、规则检查与人工判断\n概览\n设计\n生产\n数据\n质量\n发布\n质量实验室\n报告的分母是实验创建时冻结的样本版本数；待审阅不算接纳，隔离也不缩小分母。\n新建质量实验\n还没有质量实验。创建后会冻结本次检查的范围与量表。"
+      }
+    },
+    {
+      "key": "14b-quality-new",
+      "routePath": "/p/p_1/quality/new",
+      "url": "http://127.0.0.1:3210/p/p_1/quality/new",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/14b-quality-new.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1047,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/quality/new",
+        "docHeight": 1047,
+        "viewportHeight": 1000,
+        "inputs": 3,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "创建并冻结实验"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "新建质量实验"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n质量\n新建实验\n搜索\nA\n已进入质量\n甲方验收-冷链问答\n冻结论据、规则检查与人工判断\n概览\n设计\n生产\n数据\n质量\n发布\n新建质量实验\n创建即冻结：范围、抽样编号、量表与裁判都会写进实验，此后改配置不影响它。\n批次（可选：把实验挂在某个批次上，便于在批次详情里回看）\n不指定\n量表（创建后冻结）\n维度：accuracy（准确，权重 1，范围 0–10）。改量表需要新建实验。\n检查范围（冻结为分母）\n已选 0 个内容版本。\n内容版本\n审阅状态\n核心方向（难度 medium）：第 1 题 · v1（版本 ID 1）\npending\n裁判连接 ID\n服务端会再次检查独立性与同源别名：与生成来源同一接入点的连接不能自评。\n可复现抽样编号\n创建并冻结实验"
+      },
+      "probe": {
+        "judgeFieldExists": true,
+        "judgeFieldText": "裁判连接 ID | 服务端会再次检查独立性与同源别名：与生成来源同一接入点的连接不能自评。",
+        "judgeFieldInputType": "text",
+        "judgeIsSelect": false,
+        "hasModelListSelect": 1,
+        "judgePlaceholder": "例如 5",
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n质量\n新建实验\n搜索\nA\n已进入质量\n甲方验收-冷链问答\n冻结论据、规则检查与人工判断\n概览\n设计\n生产\n数据\n质量\n发布\n新建质量实验\n创建即冻结：范围、抽样编号、量表与裁判都会写进实验，此后改配置不影响它。\n批次（可选：把实验挂在某个批次上，便于在批次详情里回看）\n不指定\n量表（创建后冻结）\n维度：accuracy（准确，权重 1，范围 0–10）。改量表需要新建实验。\n检查范围（冻结为分母）\n已选 0 个内容版本。\n内容版本\n审阅状态\n核心方向（难度 medium）：第 1 题 · v1（版本 ID 1）\npending\n裁判连接 ID\n服务端会再次检查独立性与同源别名：与生成来源同一接入点的连接不能自评。\n可复现抽样编号\n创建并冻结实验"
+      }
+    },
+    {
+      "key": "15-team-new-user",
+      "routePath": "/settings/team",
+      "url": "http://127.0.0.1:3210/settings/team",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/15-team-new-user.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1006,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/settings/team",
+        "docHeight": 1006,
+        "viewportHeight": 1000,
+        "inputs": 1,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "移除",
+          "添加/更新成员",
+          "去项目列表"
+        ],
+        "headings": [
+          "团队与角色"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n成员与角色\n搜索\nA\n已进入成员与角色\n团队与角色\n选择工作区成员或项目成员。\n工作区成员（2）\n账号\n工作区角色\n操作\nadmin@company.com\n工作区管理员\n移除\nuser@company.com\n成员\n移除\n按邮箱添加已有账号\n角色\n成员\n添加/更新成员\n项目成员\n项目内容权限由项目成员角色决定。\n选择项目查看成员\n去项目列表"
+      },
+      "probe": {
+        "hasCreateUserForm": false,
+        "emailOnlyInvite": true,
+        "mentionsUsername": false,
+        "mentionsPassword": false,
+        "formLabels": [
+          "按邮箱添加已有账号",
+          "角色"
+        ],
+        "inputs": [
+          {
+            "type": "text",
+            "placeholder": "someone@company.com"
+          }
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n成员与角色\n搜索\nA\n已进入成员与角色\n团队与角色\n选择工作区成员或项目成员。\n工作区成员（2）\n账号\n工作区角色\n操作\nadmin@company.com\n工作区管理员\n移除\nuser@company.com\n成员\n移除\n按邮箱添加已有账号\n角色\n成员\n添加/更新成员\n项目成员\n项目内容权限由项目成员角色决定。\n选择项目查看成员\n去项目列表"
+      }
+    },
+    {
+      "key": "16-legacy-history",
+      "routePath": "/legacy/history",
+      "url": "http://127.0.0.1:3210/legacy/history",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/16-legacy-history.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1006,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/legacy/history",
+        "docHeight": 1006,
+        "viewportHeight": 1000,
+        "inputs": 0,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "兼容操作",
+          "刷新",
+          "领域图谱\n5\n已读取",
+          "方向\n2\n已读取",
+          "生成批次\n1\n已读取",
+          "长链标准\n0\n已读取",
+          "问题\n0\n已读取",
+          "推理记录\n0\n已读取",
+          "奖励记录\n0\n已读取",
+          "GRPO 提示词\n0\n已读取",
+          "SFT 样本\n0\n已读取",
+          "导出制品\n0\n已读取"
+        ],
+        "headings": [
+          "历史资产",
+          "验收-续跑-1789921689"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n历史资产\n搜索\nA\n已进入历史资产\nLEGACY / TRACE\n历史资产\n查阅历史数据集、生成记录与导出制品。\n#191 验收-续跑-1789921689\n兼容操作\n刷新\n历史数据集\n待关联\n尚未建立项目关联。\n概览\n结构\n样本\n制品\nLEGACY DATASET / READ ONLY\n验收-续跑-1789921689\n数据集 #191 · 最后更新 2026/9/20 16:28:22\nSFT\n状态\ndirections_completed\n根关键词\n军事\n目标规模\n8\n创建时间\n2026/9/20 16:28:09\n领域图谱\n5\n已读取\n方向\n2\n已读取\n生成批次\n1\n已读取\n长链标准\n0\n已读取\n问题\n0\n已读取\n推理记录\n0\n已读取\n奖励记录\n0\n已读取\nGRPO 提示词\n0\n已读取\nSFT 样本\n0\n已读取\n导出制品\n0\n已读取"
+      },
+      "probe": {
+        "mentionsMigration": false,
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n历史资产\n搜索\nA\n已进入历史资产\nLEGACY / TRACE\n历史资产\n查阅历史数据集、生成记录与导出制品。\n#191 验收-续跑-1789921689\n兼容操作\n刷新\n历史数据集\n待关联\n尚未建立项目关联。\n概览\n结构\n样本\n制品\nLEGACY DATASET / READ ONLY\n验收-续跑-1789921689\n数据集 #191 · 最后更新 2026/9/20 16:28:22\nSFT\n状态\ndirections_completed\n根关键词\n军事\n目标规模\n8\n创建时间\n2026/9/20 16:28:09\n领域图谱\n5\n已读取\n方向\n2\n已读取\n生成批次\n1\n已读取\n长链标准\n0\n已读取\n问题\n0\n已读取\n推理记录\n0\n已读取\n奖励记录\n0\n已读取\nGRPO 提示词\n0\n已读取\nSFT 样本\n0\n已读取\n导出制品\n0\n已读取",
+        "buttons": [
+          "搜索",
+          "A",
+          "兼容操作",
+          "刷新",
+          "领域图谱\n5\n已读取",
+          "方向\n2\n已读取",
+          "生成批次\n1\n已读取",
+          "长链标准\n0\n已读取",
+          "问题\n0\n已读取",
+          "推理记录\n0\n已读取",
+          "奖励记录\n0\n已读取",
+          "GRPO 提示词\n0\n已读取",
+          "SFT 样本\n0\n已读取",
+          "导出制品\n0\n已读取"
+        ],
+        "rowCount": 8
+      }
+    },
+    {
+      "key": "17a-styles-help",
+      "routePath": "/help",
+      "url": "http://127.0.0.1:3210/help",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/17a-styles-help.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1006,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/help",
+        "docHeight": 1006,
+        "viewportHeight": 1000,
+        "inputs": 0,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "查看数据项目",
+          "返回今日工作"
+        ],
+        "headings": [
+          "帮助"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n帮助\n搜索\nA\n已进入帮助\n帮助\n旅程、术语与快捷键；构建信息在下方。\n一条数据的旅程\n创建项目（不调用模型）→ 设计（蓝图/覆盖/标准）→ 试制 → 同基准比较并采纳 → 扩量 → 质量实验 → 人工判断 → 发布（冻结清单 + manifest/hash）→ 下载固定版本。\n术语\n· 试制（pilot）：小批量验证方案；与扩量批次相互独立，不会覆盖生产\n· 扩量（scale）：正式批量生产；改模型或标准必须新建批次\n· 接纳率：接纳数 / 纳入检查数；待审阅不算接纳，隔离不缩小分母\n· 缺分：裁判没给出分数。它不是 0 分，也不参与均值\n· 未知费用：超时/断连但可能已收费：按当时预留金额占用额度，不记 0\n· 发布候选：发布前的清单与门槛检查；只有制品校验成功才会 published\n快捷键\n· 命令搜索：侧边栏「搜索」：Esc 关闭、回车打开第一条\n· 审阅队列：J / K 在当前页内切换样本（保持筛选条件）\n· 返回来源：浏览器返回会保留筛选与聚焦的样本\n失败恢复清单\n• 先阅读当前页面显示的错误与恢复提示，再决定是否重试。\n• 重试运行前确认引用的蓝图、标准和范围版本仍是预期版本。\n• 长时间无变化时刷新页面；运行状态以服务端返回为准。\n• 遇到权限错误时联系项目 owner 或管理员，不要重复提交写操作。\n• 登录失效后重新登录，再从当前项目或历史资产链接继续。\n查看数据项目\n返回今日工作\n高风险操作\n• 启动运行、评估或发布前确认目标项目、输入版本与预算。\n• 超时但可能已计费的请求显示为未知费用；先核对运行记录，不要盲目重跑。\n• 旧版兼容操作是否允许提交，以服务端 LEGACY_WRITES_FROZEN 配置为准；历史资产页默认只读。\n构建信息\n0b18145（构建于 2026-09-24T20:35:30Z） · 构建时间 2026-09-24T20:35:30Z · 版本 0b181459d7bc5f3a960f9fc9c2926ed2b5f7cd9b"
+      },
+      "probe": {
+        "horizontalOverflow": [
+          {
+            "tag": "span",
+            "cls": "sr-only",
+            "scrollWidth": 80,
+            "clientWidth": 1,
+            "text": "已进入帮助"
+          }
+        ],
+        "verticalClipping": [
+          {
+            "tag": "span",
+            "cls": "sr-only",
+            "text": "已进入帮助",
+            "scrollHeight": 24,
+            "clientHeight": 1
+          }
+        ],
+        "docWidth": 1600
+      }
+    },
+    {
+      "key": "17b-styles-blueprint",
+      "routePath": "/p/p_1/blueprint",
+      "url": "http://127.0.0.1:3210/p/p_1/blueprint",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/17b-styles-blueprint.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1561,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/blueprint",
+        "docHeight": 1561,
+        "viewportHeight": 1000,
+        "inputs": 2,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "小批试制 →",
+          "覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行",
+          "思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行",
+          "生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行",
+          "独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行",
+          "规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行",
+          "人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行",
+          "版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行",
+          "查看覆盖矩阵",
+          "保存为新版本",
+          "复制此版本",
+          "v2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置",
+          "v1\n指纹 190b627e\n甲方验收：首次保存蓝图版本"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "生产蓝图",
+          "覆盖范围"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n设计\n搜索\nA\n已进入设计\n甲方验收-冷链问答\n蓝图节点、覆盖矩阵与思维标准\n概览\n设计\n生产\n数据\n质量\n发布\nDESIGN / BLUEPRINT\n生产蓝图\n先确认每一步需要什么，再保存为新的配置版本。已经运行的批次不会被覆盖。\n小批试制 →\nATELIER / PRODUCTION BLUEPRINT / v2\n先看清步骤关系，再调整当前步骤。每个节点都是可键盘访问的按钮。\n覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行\n思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行\n生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行\n独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行\n规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行\n人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行\n版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行\n覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行\n必填配置已齐全，保存后可用于试制。\n覆盖版本 *\nv1 · 项目创建：初始化 Atelier 配置\n选择一份已保存的覆盖方案；后续调整不会影响已经运行的批次。\n当前引用配置 v1 · 项目创建：初始化 Atelier 配置\n内容指纹 554cd148\n查看覆盖矩阵\n变更理由（必填，方便团队回溯）\n已保存\n保存为新版本\n复制此版本\n版本历史（只读）\nv2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置\nv1\n指纹 190b627e\n甲方验收：首次保存蓝图版本\n查看覆盖矩阵\n当前版本内容指纹：dad14c343e04b1bc5b8ef62d2d3294f51fb1f11cb2da4ccbf47bbd35e787eff8"
+      },
+      "probe": {
+        "overlapping": [
+          {
+            "a": "查看覆盖矩阵",
+            "b": "查看覆盖矩阵",
+            "overlapX": 94,
+            "overlapY": 20
+          },
+          {
+            "a": "查看覆盖矩阵",
+            "b": "查看覆盖矩阵",
+            "overlapX": 72,
+            "overlapY": 20
+          },
+          {
+            "a": "查看覆盖矩阵",
+            "b": "查看覆盖矩阵",
+            "overlapX": 72,
+            "overlapY": 20
+          }
+        ],
+        "clipped": [
+          {
+            "tag": "span",
+            "cls": "blueprint-node__caption",
+            "text": "确定要覆盖哪些领域和方向，以及每个方向要产出多少内容",
+            "scrollWidth": 312,
+            "clientWidth": 213
+          },
+          {
+            "tag": "span",
+            "cls": "blueprint-node__caption",
+            "text": "定义内容应该怎样思考，以及每一步完成前要检查什么",
+            "scrollWidth": 288,
+            "clientWidth": 213
+          },
+          {
+            "tag": "span",
+            "cls": "blueprint-node__caption",
+            "text": "决定系统使用哪个模型服务，以及每次生成的数量和边界",
+            "scrollWidth": 300,
+            "clientWidth": 213
+          },
+          {
+            "tag": "span",
+            "cls": "blueprint-node__caption",
+            "text": "用独立的模型服务检查生成结果，并按量表抽取样本",
+            "scrollWidth": 276,
+            "clientWidth": 213
+          },
+          {
+            "tag": "span",
+            "cls": "blueprint-node__caption",
+            "text": "设置哪些问题需要拦截、提醒或进入人工判断",
+            "scrollWidth": 240,
+            "clientWidth": 213
+          },
+          {
+            "tag": "span",
+            "cls": "blueprint-node__caption",
+            "text": "决定哪些内容需要人工确认，以及确认时必须提供什么依据",
+            "scrollWidth": 312,
+            "clientWidth": 213
+          },
+          {
+            "tag": "span",
+            "cls": "blueprint-node__caption",
+            "text": "确定交付文件的格式、字段对应关系和使用边界",
+            "scrollWidth": 252,
+            "clientWidth": 213
+          }
+        ]
+      }
+    },
+    {
+      "key": "03b-sample-review",
+      "routePath": "/p/p_1/data/s_1",
+      "url": "http://127.0.0.1:3210/p/p_1/data/s_1",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/03b-sample-review.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1164,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/data/s_1",
+        "docHeight": 1164,
+        "viewportHeight": 1000,
+        "inputs": 3,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "上一条",
+          "下一条",
+          "版本与来源",
+          "专注内容",
+          "核心方向（难度 medium）：第 1 题\n待判断\ns_1 · v1",
+          "复制",
+          "查看策略",
+          "完整评估",
+          "保存判断",
+          "发表评论"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "核心方向（难度 medium）：第 1 题"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n数据\n三栏审阅\n搜索\nA\n已进入数据\n甲方验收-冷链问答\n样本内容、版本来源与审阅队列\n概览\n设计\n生产\n数据\n质量\n发布\n核心方向（难度 medium）：第 1 题\ns_1 · v1 · 内容 hash 273739721b86\n待判断\n上一条\n下一条\n版本与来源\n专注内容\n队列\n1 条\n核心方向（难度 medium）：第 1 题\n待判断\ns_1 · v1\n内容（只读）\n复制\n{\n  \"answer\": \"核心方向定为可执行的“目标-约束-候选-验证”裁决流程，而不是在信息不足时直接指定具体赛道。具体交付物：1）写出一句可验收目标：在[时间]内为[对象]达成[指标]；2）列出至少3项硬约束、3项软约束、3类风险；3）生成2到3个候选方向；4）按目标匹配度、约束冲突数、验证成本、不确定性打分，选择约束冲突最少且7天内能用最小实验取得证据的方向；5）例外处理：关键信息缺失或所有候选冲突数超过阈值时，输出待确认清单，不强行定方向；6）验证计划：一周后以实验证据是否支持目标句，决定保留、调整或放弃。若需要具体业务方向，补充领域、目标指标、资源上限、截止时间和不可触碰约束后再套用该流程。\",\n  \"question\": \"核心方向（难度 medium）：第 1 题\",\n  \"reasoning\": \"第1步确认任务目标：中间结论是，题目只给出主题“核心方向”、难度 medium和第1题，没有给出业务域、对象、指标、资源或截止时间，因此不能凭空回答某个具体项目的核心方向；可回答的是确定核心方向的可执行裁决流程、输出模板和待确认边界。输出边界限定为方法、评分规则、例外处理和验证计划，不虚构行业结论。检查点：满足。依据是目标与题目“核心方向”一致，且没有超出题目范围引入具体行业或具体公司。\\n第2步提取关键约束：中间结论是，事实约束只有主题、难度和题号，信息不足；形式约束是 medium难度要求步骤完整但避免过度复杂；风险约束必须覆盖目标漂移、约束遗漏、候选方案不可执行、未知项被伪装成事实。因此答案必须包含目标句、约束表、候选评分、例外处理和待确认清单。检查点：满足。依据是这些关键约束均能在最终答案中找到对应依据，例如目标句对应第1步边界，约束表对应事实与风险，候选评分对应候选方案，待确认清单对应未知项处理。\\n第3步构建候选方案：中间结论是，候选A“直接指定某个核心方向”缺少依据，候选C“要求补充信息后拒绝回答”不可执行，候选B“通用决策流程”最稳定。流程设计为：先写一句可验收目标，格式为在给定时间内为给定对象达成给定指标；再列硬约束、软约束和三类风险；然后生成2到3个候选方向；接着按目标匹配度、约束冲突数、验证成本、不确定性四项打分；选择约束冲突最少且能在7天内用最小实验取得证据的方向；若关键信息缺失或所有候选冲突数超过阈值，则输出待确认清单而不强行定方向；最终形成目标句、约束表、候选评分表、选定方向、例外处理和验证计划。检查点：满足。依据是方案包含操作步骤，也包含关键信息缺失和候选全部不合格时的例外处理。\\n第4步验证结论：中间结论是，完整性上已覆盖目标、约束、候选、验证；冲突上没有同时宣称某个具体业务方向和未知信息；不确定性已明确标注，若要具体业务方向，必须补充领域、目标指标、资源上限、截止时间和不可触碰约束。验证结果为该答案可作为 medium难度第1题的通用结论，可复核，未知项未被伪装成事实。检查点：满足。依据是结论有明确验证方式，即一周后用证据是否支持目标句决定保留、调整或放弃，并明确列出需要补充的信息。\"\n}\n证据与判断\n查看策略\n完整评估\n必需证据版本：0\n判断次数：0 · 聚合序号 0\n生成来源：dad14c34\n判断历史（0）\n还没有判断记录\n处置\n接纳\n理由（必填）\n保存判断\n讨论（0）\n评论是讨论，不是判断：它不会改变有效处置，也不能解除发布门槛。\n还没有评论。\n提及项目成员（只能选本项目的成员）\n发表评论"
+      },
+      "probe": {
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n数据\n三栏审阅\n搜索\nA\n已进入数据\n甲方验收-冷链问答\n样本内容、版本来源与审阅队列\n概览\n设计\n生产\n数据\n质量\n发布\n核心方向（难度 medium）：第 1 题\ns_1 · v1 · 内容 hash 273739721b86\n待判断\n上一条\n下一条\n版本与来源\n专注内容\n队列\n1 条\n核心方向（难度 medium）：第 1 题\n待判断\ns_1 · v1\n内容（只读）\n复制\n{\n  \"answer\": \"核心方向定为可执行的“目标-约束-候选-验证”裁决流程，而不是在信息不足时直接指定具体赛道。具体交付物：1）写出一句可验收目标：在[时间]内为[对象]达成[指标]；2）列出至少3项硬约束、3项软约束、3类风险；3）生成2到3个候选方向；4）按目标匹配度、约束冲突数、验证成本、不确定性打分，选择约束冲突最少且7天内能用最小实验取得证据的方向；5）例外处理：关键信息缺失或所有候选冲突数超过阈值时，输出待确认清单，不强行定方向；6）验证计划：一周后以实验证据是否支持目标句，决定保留、调整或放弃。若需要具体业务方向，补充领域、目标指标、资源上限、截止时间和不可触碰约束后再套用该流程。\",\n  \"question\": \"核心方向（难度 medium）：第 1 题\",\n  \"reasoning\": \"第1步确认任务目标：中间结论是，题目只给出主题“核心方向”、难度 medium和第1题，没有给出业务域、对象、指标、资源或截止时间，因此不能凭空回答某个具体项目的核心方向；可回答的是确定核心方向的可执行裁决流程、输出模板和待确认边界。输出边界限定为方法、评分规则、例外处理和验证计划，不虚构行业结论。检查点：满足。依据是目标与题目“核心方向”一致，且没有超出题目范围引入具体行业或具体公司。\\n第2步提取关键约束：中间结论是，事实约束只有主题、难度和题号，信息不足；形式约束是 medium难度要求步骤完整但避免过度复杂；风险约束必须覆盖目标漂移、约束遗漏、候选方案不可执行、未知项被伪装成事实。因此答案必须包含目标句、约束表、候选评分、例外处理和待确认清单。检查点：满足。依据是这些关键约束均能在最终答案中找到对应依据，例如目标句对应第1步边界，约束表对应事实与风险，候选评分对应候选方案，待确认清单对应未知项处理。\\n第3步构建候选方案：中间结论是，候选A“直接指定某个核心方向”缺少依据，候选C“要求补充信息后拒绝回答”不可执行，候选B“通用决策流程”最稳定。流程设计为：先写一句可验收目标，格式为在给定时间内为给定对象达成给定指标；再列硬约束、软约束和三类风险；然后生成2到3个候选方向；接着按目标匹配度、约束冲突数、验证成本、不确定性四项打分；选择约束冲突最少且能在7天内用最小实验取得证据的方向；若关键信息缺失或所有候选冲突数超过阈值，则输出待确认清单而不强行定方向；最终形成目标句、约束表、候选评分表、选定方向、例外处理和验证计划。检查点：满足。依据是方案包含操作步骤，也包含关键信息缺失和候选全部不合格时的例外处理。\\n第4步验证结论：中间结论是，完整性上已覆盖目标、约束、候选、验证；冲突上没有同时宣称某个具体业务方向和未知信息；不确定性已明确标注，若要具体业务方向，必须补充领域、目标指标、资源上限、截止时间和不可触碰约束。验证结果为该答案可作为 medium难度第1题的通用结论，可复核，未知项未被伪装成事实。检查点：满足。依据是结论有明确验证方式，即一周后用证据是否支持目标句决定保留、调整或放弃，并明确列出需要补充的信息。\"\n}\n证据与判断\n查看策略\n完整评估\n必需证据版本：0\n判断次数：0 · 聚合序号 0\n生成来源：dad14c34\n判断历史（0）\n还没有判断记录\n处置\n接纳\n理由（必填）\n保存判断\n讨论（0）\n评论是讨论，不是判断：它不会改变有效处置，也不能解除发布门槛。\n还没有评论。\n提及项目成员（只能选本项目的成员）\n发表评论",
+        "paneCount": 1,
+        "panes": [
+          {
+            "cls": "console-page review-pane",
+            "text": "核心方向（难度 medium）：第 1 题\ns_1 · v1 · 内容 hash 273739721b86\n待判断\n上一条\n下一条\n版本与来源\n专注内容\n队列\n1 条\n核心方向（难度 medium）：第 1 题\n待判断\ns_1 · v1\n内容（只读）\n复制\n{\n  \"answer\": \"核心方向定为可执行的“目标-约束-候选-验证”裁决流程，而不是在信息不足时直接指定具体赛道。具体交付物：1）写出一句可验收目标：在[时间]内为[对象]达成[指标]；2）列出至少3项硬约束、3项软约束、3类风险；3）生成2到3个候选方向；4）按目标匹配度、约束冲突数、验证成本、不确定性打分，选择约束冲突最少且7天内能用最小实验取得证据的方向；5）例外处理：关键信息缺失或所有候选冲突数超过阈值时，输出待确认清单，不强行定方向；6）验证计划：一周后以实验证据是否支持目标句，决定保留、调整或放弃。若需要具体业务方向，补充领域、目标指标、资源上限、截止时间和不可触碰约束后再套用该流程。\",\n  \"question\": \"核心方向（难度 medium）：第 1 题\",\n  \"reasoning\": \"第1步确认任务目标：中间结论是，题目只给出主题“核心方向”、难度 medium和第1题，没有给出业务域、对象、指标、资源或截止时间，因此不能凭空回答某个具体项目的核心方向；可回答的是确定核心方向的可执行裁决流程、输出模板和待确认边界。输出边界限定为方法、评分规则、例外处理和验证计划，不虚构行业结论。检查点：满足。依据是目标与题目“核心方向”一致，且没有超出题目范围引入具体行业或具体公司。\\n第2步提取关键约束："
+          }
+        ]
+      }
+    },
+    {
+      "key": "03c-sample-history",
+      "routePath": "/p/p_1/data/s_1/history",
+      "url": "http://127.0.0.1:3210/p/p_1/data/s_1/history",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/03c-sample-history.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1000,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/data/s_1/history",
+        "docHeight": 1000,
+        "viewportHeight": 1000,
+        "inputs": 0,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "版本与来源"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n数据\n版本与来源\n搜索\nA\n已进入数据\n甲方验收-冷链问答\n样本内容、版本来源与审阅队列\n概览\n设计\n生产\n数据\n质量\n发布\n版本与来源\n内容只追加，永不覆盖；每一版都记录它生成时引用的标准与蓝图指纹。\nv1（最新）\n2026-09-24T20:51:02.059705Z\n内容指纹：273739721b86cb55450b9612c41be945e0fd73473535a0737d1513b2ff5bb44c\n来源批次：2 · 单元 13 · 第 1 次尝试\n标准指纹：0853ab7bb124e7f396ca8e710a77d992bfab3dd10a354bc60ccc7c016cb48064\n蓝图指纹：dad14c343e04b1bc5b8ef62d2d3294f51fb1f11cb2da4ccbf47bbd35e787eff8"
+      },
+      "probe": {
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n数据\n版本与来源\n搜索\nA\n已进入数据\n甲方验收-冷链问答\n样本内容、版本来源与审阅队列\n概览\n设计\n生产\n数据\n质量\n发布\n版本与来源\n内容只追加，永不覆盖；每一版都记录它生成时引用的标准与蓝图指纹。\nv1（最新）\n2026-09-24T20:51:02.059705Z\n内容指纹：273739721b86cb55450b9612c41be945e0fd73473535a0737d1513b2ff5bb44c\n来源批次：2 · 单元 13 · 第 1 次尝试\n标准指纹：0853ab7bb124e7f396ca8e710a77d992bfab3dd10a354bc60ccc7c016cb48064\n蓝图指纹：dad14c343e04b1bc5b8ef62d2d3294f51fb1f11cb2da4ccbf47bbd35e787eff8",
+        "versionRows": 0
+      }
+    },
+    {
+      "key": "13b-run-detail",
+      "routePath": "/p/p_1/runs/b_2",
+      "url": "http://127.0.0.1:3210/p/p_1/runs/b_2",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/13b-run-detail.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1000,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/runs/b_2",
+        "docHeight": 1000,
+        "viewportHeight": 1000,
+        "inputs": 0,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "异常恢复",
+          "创建质量实验",
+          "与试制比较"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "批次 b_2（试制）"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n生产\n批次详情\n搜索\nA\n已进入生产\n甲方验收-冷链问答\n批次进度、暂停与失败恢复\n概览\n设计\n生产\n数据\n质量\n发布\n批次 b_2（试制）\n已完成 · 计划 4 · 完成 1 · 失败 0 · 在途 0\n异常恢复\n本批已完成\n下一步可以创建质量实验（固定范围与量表）或与另一个试制批次做同基准比较。\n创建质量实验\n与试制比较\n配置快照（本批实际使用的配置）\n输出内容类型：\nsft.sample.v1\n模型连接：\n1\n（非秘密标识，凭证每次现取）\n并发 / 输出上限：4 / 2048\n蓝图内容指纹：\ndad14c343e04\n标准内容指纹：\n0853ab7bb124\n快照不可就地修改：改模型或标准必须复制为新批次，否则已有成功内容无法复现。\n阶段进度（按单位，不编造总体百分比）\n还没有阶段记录。\n批次预算：上限 0 分 · 在途 0 · 已结算 0 · 未知 0\n事件时间线\nBatchCompleted\n2026-09-24T20:51:02.120245Z\nBatchQueued\n2026-09-24T20:50:42.517183Z"
+      },
+      "probe": {
+        "naturalHeight": 913,
+        "screensTall": 0.91,
+        "hasPreview": false,
+        "hasAnalysis": false,
+        "hasPlannedVsActual": true,
+        "mentionsDatasetStructure": false,
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n生产\n批次详情\n搜索\nA\n已进入生产\n甲方验收-冷链问答\n批次进度、暂停与失败恢复\n概览\n设计\n生产\n数据\n质量\n发布\n批次 b_2（试制）\n已完成 · 计划 4 · 完成 1 · 失败 0 · 在途 0\n异常恢复\n本批已完成\n下一步可以创建质量实验（固定范围与量表）或与另一个试制批次做同基准比较。\n创建质量实验\n与试制比较\n配置快照（本批实际使用的配置）\n输出内容类型：\nsft.sample.v1\n模型连接：\n1\n（非秘密标识，凭证每次现取）\n并发 / 输出上限：4 / 2048\n蓝图内容指纹：\ndad14c343e04\n标准内容指纹：\n0853ab7bb124\n快照不可就地修改：改模型或标准必须复制为新批次，否则已有成功内容无法复现。\n阶段进度（按单位，不编造总体百分比）\n还没有阶段记录。\n批次预算：上限 0 分 · 在途 0 · 已结算 0 · 未知 0\n事件时间线\nBatchCompleted\n2026-09-24T20:51:02.120245Z\nBatchQueued\n2026-09-24T20:50:42.517183Z",
+        "contentTop": 0
+      }
+    },
+    {
+      "key": "13c-run-failures",
+      "routePath": "/p/p_1/runs/b_1/failures",
+      "url": "http://127.0.0.1:3210/p/p_1/runs/b_1/failures",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/13c-run-failures.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 2218,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/runs/b_1/failures",
+        "docHeight": 2218,
+        "viewportHeight": 1000,
+        "inputs": 0,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "恢复失败项",
+          "打开生成设置"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "异常恢复"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n生产\n异常恢复\n搜索\nA\n已进入生产\n甲方验收-冷链问答\n批次进度、暂停与失败恢复\n概览\n设计\n生产\n数据\n质量\n发布\n异常恢复\n只恢复可重试的失败单元；成功内容保留，因此反复点击不会重复产出。\n恢复失败项\nunit/default#1\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#2\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#3\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#4\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#5\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#6\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#7\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#8\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#9\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#10\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#11\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#12\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐"
+      },
+      "probe": {
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n生产\n异常恢复\n搜索\nA\n已进入生产\n甲方验收-冷链问答\n批次进度、暂停与失败恢复\n概览\n设计\n生产\n数据\n质量\n发布\n异常恢复\n只恢复可重试的失败单元；成功内容保留，因此反复点击不会重复产出。\n恢复失败项\nunit/default#1\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#2\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#3\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#4\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#5\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#6\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#7\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#8\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#9\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#10\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#11\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐\nunit/default#12\n不可自动重试\n错误类别：config_error · 尝试 1 次\n建议：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n打开生成设置\n原始信息：missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐",
+        "rows": 0
+      }
+    },
+    {
+      "key": "11c-blueprint-filled",
+      "routePath": "/p/p_1/blueprint?node=generation",
+      "url": "http://127.0.0.1:3210/p/p_1/blueprint?node=generation",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/11c-blueprint-filled.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 2437,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/blueprint?node=generation",
+        "docHeight": 2437,
+        "viewportHeight": 1000,
+        "inputs": 7,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "小批试制 →",
+          "覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行",
+          "思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行",
+          "生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行",
+          "独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行",
+          "规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行",
+          "人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行",
+          "版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行",
+          "格式化",
+          "填入示例",
+          "查看模型连接",
+          "保存为新版本",
+          "复制此版本",
+          "v2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置",
+          "v1\n指纹 190b627e\n甲方验收：首次保存蓝图版本"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "生产蓝图",
+          "生成"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n设计\n搜索\nA\n已进入设计\n甲方验收-冷链问答\n蓝图节点、覆盖矩阵与思维标准\n概览\n设计\n生产\n数据\n质量\n发布\nDESIGN / BLUEPRINT\n生产蓝图\n先确认每一步需要什么，再保存为新的配置版本。已经运行的批次不会被覆盖。\n小批试制 →\nATELIER / PRODUCTION BLUEPRINT / v2\n先看清步骤关系，再调整当前步骤。每个节点都是可键盘访问的按钮。\n覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行\n思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行\n生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行\n独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行\n规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行\n人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行\n版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行\n生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行\n必填配置已齐全，保存后可用于试制。\n模型服务 *\ndeepseek-v4.1-flash\n选择已启用的模型服务；密钥只保存在连接设置中。\n模型版本\n输出内容类型 *\n指令微调样本（SFT）\nSFT 适合指令微调，GRPO 适合带评分标准的偏好评估；两种结构不同。\n并发 *\n1–32。更高的并发会被预算预留与供应商限流拦住，而不是在这里放开。\n单次输出上限 *\n限制单条内容的最大长度，便于预估耗时和费用。\n温度\n推理型模型（gpt-5/o 系列等）会拒绝该参数；能力声明为不支持时请留空。\n失败策略\nfail_fast\n输出字段约束\n格式化\n填入示例\n可选\n留空表示使用所选输出类型的默认字段约束。\n当前使用：deepseek-v4.1-flash\n连接的密钥不会显示在蓝图中；如需新增或启用连接，请到连接设置处理。\n查看模型连接\n变更理由（必填，方便团队回溯）\n已保存\n保存为新版本\n复制此版本\n版本历史（只读）\nv2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置\nv1\n指纹 190b627e\n甲方验收：首次保存蓝图版本\n查看模型连接\n当前版本内容指纹：dad14c343e04b1bc5b8ef62d2d3294f51fb1f11cb2da4ccbf47bbd35e787eff8"
+      },
+      "probe": {
+        "inspectorText": "生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行\n必填配置已齐全，保存后可用于试制。\n模型服务 *\ndeepseek-v4.1-flash\n选择已启用的模型服务；密钥只保存在连接设置中。\n模型版本\n输出内容类型 *\n指令微调样本（SFT）\nSFT 适合指令微调，GRPO 适合带评分标准的偏好评估；两种结构不同。\n并发 *\n1–32。更高的并发会被预算预留与供应商限流拦住，而不是在这里放开。\n单次输出上限 *\n限制单条内容的最大长度，便于预估耗时和费用。\n温度\n推理型模型（gpt-5/o 系列等）会拒绝该参数；能力声明为不支持时请留空。\n失败策略\nfail_fast\n输出字段约束\n格式化\n填入示例\n可选\n留空表示使用所选输出类型的默认字段约束。\n当前使用：deepseek-v4.1-flash\n连接的密钥不会显示在蓝图中；如需新增或启用连接，请到连接设置处理。\n查看模型连接\n变更理由（必填，方便团队回溯）\n已保存\n保存为新版本\n复制此版本",
+        "stillIncomplete": false,
+        "selectValues": [
+          "deepseek-v4.1-flash",
+          "指令微调样本（SFT）",
+          "fail_fast"
+        ],
+        "inputValues": [
+          "global:deepseek-v4.1-flash",
+          "4",
+          "2048",
+          ""
+        ]
+      }
+    },
+    {
+      "key": "05b-evaluation-node-filled",
+      "routePath": "/p/p_1/blueprint?node=evaluation",
+      "url": "http://127.0.0.1:3210/p/p_1/blueprint?node=evaluation",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/05b-evaluation-node-filled.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1950,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/blueprint?node=evaluation",
+        "docHeight": 1950,
+        "viewportHeight": 1000,
+        "inputs": 5,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "小批试制 →",
+          "覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行",
+          "思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行",
+          "生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行",
+          "独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行",
+          "规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行",
+          "人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行",
+          "版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行",
+          "gpt-5.6-sol-judge",
+          "×",
+          "+ 添加维度",
+          "查看模型连接",
+          "保存为新版本",
+          "复制此版本",
+          "v2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置",
+          "v1\n指纹 190b627e\n甲方验收：首次保存蓝图版本"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "生产蓝图",
+          "独立评估"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n设计\n搜索\nA\n已进入设计\n甲方验收-冷链问答\n蓝图节点、覆盖矩阵与思维标准\n概览\n设计\n生产\n数据\n质量\n发布\nDESIGN / BLUEPRINT\n生产蓝图\n先确认每一步需要什么，再保存为新的配置版本。已经运行的批次不会被覆盖。\n小批试制 →\nATELIER / PRODUCTION BLUEPRINT / v2\n先看清步骤关系，再调整当前步骤。每个节点都是可键盘访问的按钮。\n覆盖范围\n确定要覆盖哪些领域和方向，以及每个方向要产出多少内容\n可执行\n思维标准\n定义内容应该怎样思考，以及每一步完成前要检查什么\n可执行\n生成\n决定系统使用哪个模型服务，以及每次生成的数量和边界\n可执行\n独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行\n规则检查\n设置哪些问题需要拦截、提醒或进入人工判断\n可执行\n人工检查点\n决定哪些内容需要人工确认，以及确认时必须提供什么依据\n可执行\n版本交付\n确定交付文件的格式、字段对应关系和使用边界\n可执行\n独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行\n必填配置已齐全，保存后可用于试制。\n检查模型服务 *\ngpt-5.6-sol-judge\n至少选择一个与生成服务不同的独立服务，避免同一来源自评。\n量表版本 *\nv1 · 项目创建：初始化 Atelier 配置\n可复现抽样编号\n使用相同编号会得到相同的抽样结果；已经创建的实验不会被改写。\n维度权重\n×\n合计 0.00（需等于 1.00）\n+ 添加维度\n总和必须为 1；缺分与真实 0 分必须区分（缺分不计入归一化分母的分子）。\n缺分策略\n排除缺分项\n当前使用：gpt-5.6-sol-judge\n连接的密钥不会显示在蓝图中；如需新增或启用连接，请到连接设置处理。\n查看模型连接\n变更理由（必填，方便团队回溯）\n已保存\n保存为新版本\n复制此版本\n版本历史（只读）\nv2\n指纹 dad14c34\n补齐 #197 取证所需的全部引用配置\nv1\n指纹 190b627e\n甲方验收：首次保存蓝图版本\n查看模型连接\n当前版本内容指纹：dad14c343e04b1bc5b8ef62d2d3294f51fb1f11cb2da4ccbf47bbd35e787eff8"
+      },
+      "probe": {
+        "inspectorText": "独立评估\n用独立的模型服务检查生成结果，并按量表抽取样本\n可执行\n必填配置已齐全，保存后可用于试制。\n检查模型服务 *\ngpt-5.6-sol-judge\n至少选择一个与生成服务不同的独立服务，避免同一来源自评。\n量表版本 *\nv1 · 项目创建：初始化 Atelier 配置\n可复现抽样编号\n使用相同编号会得到相同的抽样结果；已经创建的实验不会被改写。\n维度权重\n×\n合计 0.00（需等于 1.00）\n+ 添加维度\n总和必须为 1；缺分与真实 0 分必须区分（缺分不计入归一化分母的分子）。\n缺分策略\n排除缺分项\n当前使用：gpt-5.6-sol-judge\n连接的密钥不会显示在蓝图中；如需新增或启用连接，请到连接设置处理。\n查看模型连接\n变更理由（必填，方便团队回溯）\n已保存\n保存为新版本\n复制此版本",
+        "stillIncomplete": false,
+        "selectValues": [
+          "v1 · 项目创建：初始化 Atelier 配置",
+          "排除缺分项"
+        ]
+      }
+    },
+    {
+      "key": "02b-standard-steps-json",
+      "routePath": "/p/p_1/standard",
+      "url": "http://127.0.0.1:3210/p/p_1/standard",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/02b-standard-steps-json.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1948,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/standard",
+        "docHeight": 1948,
+        "viewportHeight": 1000,
+        "inputs": 18,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "复制当前版本为草稿",
+          "添加步骤",
+          "保存思维标准新版本"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "思维标准"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n设计\n思维标准\n搜索\nA\n已进入设计\n甲方验收-冷链问答\n蓝图节点、覆盖矩阵与思维标准\n概览\n设计\n生产\n数据\n质量\n发布\n思维标准\n步骤顺序就是执行顺序；每一步都要有可核对的完成标准。\n复制当前版本为草稿\n思维步骤编辑器\n每一步都要写清“做什么”和“怎么判断完成”，否则生产过程无法自查。\n第 1 步\n步骤 ID\n步骤名称\n具体做法\n完成检查点 *\n第 2 步\n步骤 ID\n步骤名称\n具体做法\n完成检查点 *\n第 3 步\n步骤 ID\n步骤名称\n具体做法\n完成检查点 *\n第 4 步\n步骤 ID\n步骤名称\n具体做法\n完成检查点 *\n添加步骤\n当前版本已保存\n当前为 v1，指纹 0853ab7bb1\n保存思维标准新版本\n变更理由\n版本历史\nv1\n项目创建：初始化 Atelier 配置"
+      },
+      "probe": {
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n设计\n思维标准\n搜索\nA\n已进入设计\n甲方验收-冷链问答\n蓝图节点、覆盖矩阵与思维标准\n概览\n设计\n生产\n数据\n质量\n发布\n思维标准\n步骤顺序就是执行顺序；每一步都要有可核对的完成标准。\n复制当前版本为草稿\n思维步骤编辑器\n每一步都要写清“做什么”和“怎么判断完成”，否则生产过程无法自查。\n第 1 步\n步骤 ID\n步骤名称\n具体做法\n完成检查点 *\n第 2 步\n步骤 ID\n步骤名称\n具体做法\n完成检查点 *\n第 3 步\n步骤 ID\n步骤名称\n具体做法\n完成检查点 *\n第 4 步\n步骤 ID\n步骤名称\n具体做法\n完成检查点 *\n添加步骤\n当前版本已保存\n当前为 v1，指纹 0853ab7bb1\n保存思维标准新版本\n变更理由\n版本历史\nv1\n项目创建：初始化 Atelier 配置",
+        "stepCards": 4,
+        "hasJSONBraces": false,
+        "textareas": [
+          {
+            "value": "明确问题要回答什么以及输出边界。",
+            "brace": false
+          },
+          {
+            "value": "目标与题目内容一致，且没有超出项目范围。",
+            "brace": false
+          },
+          {
+            "value": "列出事实、限制条件和必须覆盖的风险。",
+            "brace": false
+          },
+          {
+            "value": "关键约束均可在答案中找到对应依据。",
+            "brace": false
+          },
+          {
+            "value": "按步骤形成可执行、可复核的结论。",
+            "brace": false
+          },
+          {
+            "value": "方案包含操作步骤与必要的例外处理。",
+            "brace": false
+          },
+          {
+            "value": "检查完整性、冲突和不确定性。",
+            "brace": false
+          },
+          {
+            "value": "结论有明确验证结果，未知项没有被伪装成事实。",
+            "brace": false
+          },
+          {
+            "value": "x",
+            "brace": false
+          }
+        ]
+      }
+    },
+    {
+      "key": "12c-data-with-samples",
+      "routePath": "/p/p_1/data",
+      "url": "http://127.0.0.1:3210/p/p_1/data",
+      "ok": true,
+      "screenshot": "docs/audit/issue-197/12c-data-with-samples.png",
+      "layout": {
+        "expanded": true,
+        "naturalHeight": 1000,
+        "viewportHeight": 1000
+      },
+      "page": {
+        "url": "/p/p_1/data",
+        "docHeight": 1000,
+        "viewportHeight": 1000,
+        "inputs": 2,
+        "visibleButtons": [
+          "退出",
+          "搜索",
+          "A",
+          "刷新样本",
+          "按当前筛选冻结并准备发布（服务端解析）",
+          "审阅",
+          "来源"
+        ],
+        "headings": [
+          "甲方验收-冷链问答",
+          "样本工作区"
+        ],
+        "bodyText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n数据\n搜索\nA\n已进入数据\n甲方验收-冷链问答\n样本内容、版本来源与审阅队列\n概览\n设计\n生产\n数据\n质量\n发布\n样本工作区\n按审阅状态与关键词在服务端筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。\n待判断\n刷新样本\n按当前筛选冻结并准备发布（服务端解析）\n样本\n版本\n审阅状态\n操作\n核心方向（难度 medium）：第 1 题\ns_1\nv1（版本 ID 1）\n待判断\n审阅\n来源"
+      },
+      "probe": {
+        "sampleRows": 1,
+        "firstRowText": "核心方向（难度 medium）：第 1 题 | s_1 | v1（版本 ID 1） | 待判断 | 审阅 | 来源",
+        "showsContentText": false
+      }
+    }
+  ]
+}

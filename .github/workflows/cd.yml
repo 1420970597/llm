@@ -50,6 +50,19 @@ jobs:
           chmod 600 ~/.ssh/id_deploy
           echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
+      # 部署必须在**同一段脚本里**把版本注入并验证（issue #195）。
+      #
+      # 缺陷形态：远程验收环境的构建信息是 `版本 unknown`，
+      # 于是甲方无法判断「手上的部署到底是哪一版」，已经修好的问题
+      # 在验收环境里照样复现（#195 就是这样把 0fadcd4 判成未修）。
+      #
+      # 三处必须同时满足，缺一个都会回到 unknown：
+      #   1. `git rev-parse HEAD` 在**目标机器**上取（CI 的 checkout 与部署目录
+      #      可能不是同一个 commit，用 CI 侧的值会得到「自信的错误版本」）；
+      #   2. 以 `GIT_SHA=… BUILD_TIME=… docker compose up -d --build` 的形式传入
+      #      （compose 变量插值不做命令替换，不显式传就是 `${GIT_SHA:-unknown}`）；
+      #   3. 部署后立刻用 `scripts/check-deployed-version.sh` 对比，不一致即失败
+      #      并触发回滚 —— 否则「落后于 main」这件事只能靠人工发现。
       - name: Deploy
         run: |
           ssh -i ~/.ssh/id_deploy \
@@ -59,9 +72,46 @@ jobs:
              cd '${{ vars.DEPLOY_PATH }}'
              git fetch --all --tags --prune
              git checkout --force '${{ env.DEPLOY_REF }}'
+             git submodule update --init --recursive 2>/dev/null || true
+             export GIT_SHA=\$(git rev-parse HEAD)
+             export BUILD_TIME=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
+             echo \"deploying \$GIT_SHA\"
              docker compose pull --ignore-buildable
              docker compose up -d --build --remove-orphans
-             docker image prune -f"
+             docker image prune -f
+             echo \"\$GIT_SHA\" > .deployed-sha"
+
+      # 部署后的版本自证（issue #195）：目标 commit 与线上 /version.json 必须一致。
+      #
+      # 为什么不能只依赖上一步的 `echo`：endpoint 可能被缓存、镜像可能被复用、
+      # compose 也可能用了另一个 project 的旧容器。只有把线上产物读回来比较，
+      # 才能证伪「部署了但页面还是旧的」。
+      - name: Verify deployed version matches the deployed commit
+        run: |
+          DEPLOYED_SHA="$(ssh -i ~/.ssh/id_deploy \
+            -o StrictHostKeyChecking=yes \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cat '${{ vars.DEPLOY_PATH }}/.deployed-sha'")"
+          echo "目标 commit: ${DEPLOYED_SHA:0:7}"
+          if [ -z "$DEPLOYED_SHA" ]; then
+            echo "::error::无法读取部署目标 commit"
+            exit 1
+          fi
+          if [ -z "${{ vars.DEPLOY_VERSION_URL }}" ]; then
+            echo "::warning::未配置 DEPLOY_VERSION_URL，跳过版本比对；请配置 <验收地址>/version.json 以启用 #195 的自证门禁"
+            exit 0
+          fi
+          LIVE="$(curl -fsS "${{ vars.DEPLOY_VERSION_URL }}" | sed -n 's/.*\"version\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p')"
+          echo "线上 version.json: ${LIVE:0:7}"
+          if [ "$LIVE" = "unknown" ] || [ -z "$LIVE" ]; then
+            echo "::error::线上版本是 unknown，说明构建期没有注入 GIT_SHA（issue #195 的核心症状）"
+            exit 1
+          fi
+          if [ "$LIVE" != "$DEPLOYED_SHA" ]; then
+            echo "::error::线上版本 $LIVE 与部署目标 $DEPLOYED_SHA 不一致（部署落后或缓存未失效）"
+            exit 1
+          fi
+          echo "版本自证通过"
 
       - name: Post-deploy smoke
         run: |

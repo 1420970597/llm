@@ -104,6 +104,19 @@ type BlueprintNodeSpec struct {
 	RequiresGeneration bool `json:"requiresGeneration"`
 	// Fields 是该节点的 typed 配置字段。
 	Fields []NodeFieldSpec `json:"fields"`
+	// Purpose 用一句**人话**回答「这个节点会做什么」（issue #197 第 5 条）。
+	//
+	// 为什么必须是元数据而不是前端文案：术语堆叠（量表版本 / 维度权重 /
+	// 缺分策略 / 抽样编号）本身没有错，错的是它们**同屏出现且没有一句
+	// 上下文**。把「它会做什么」放在服务端元数据里，前端的检查器与
+	// 「蓝图节点是否可执行」的校验读到的是同一句话，不会两处各说一套。
+	Purpose string `json:"purpose"`
+	// Steps 是该节点按**执行顺序**列出的小步骤（同样是人话）。
+	//
+	// 与 Fields 区分：Fields 回答「要填什么」，Steps 回答「执行时会做什么」。
+	// 只有 Fields 的检查器就是 #197 第 5 条批评的形态 —— 用户看到一组
+	// 参数，却不知道它们会怎样被用。
+	Steps []string `json:"steps,omitempty"`
 }
 
 // BlueprintNodeSpecs 返回全部节点元数据（顺序即界面顺序，与数据流一致）。
@@ -199,6 +212,16 @@ func BlueprintNodeSpecs() []BlueprintNodeSpec {
 			Key:          BlueprintNodeEvaluation,
 			PayloadField: "evaluation",
 			Label:        "独立评估",
+			// 一句话说明它会做什么（issue #197 第 5 条）：甲方原话是
+			// 「独立评估这个功能没有实现预想的效果，主要是页面晦涩难懂」。
+			// 术语本身没错，缺的是「它到底会做什么」。
+			Purpose: "用另一个模型当裁判，按你定的量表给这一批内容打分；分数用来回答「这批数据能不能交付」，不直接改写内容。",
+			Steps: []string{
+				"① 冻结被评测数据集：把这次要评的样本版本固定下来，之后审阅与隔离都不会改变它",
+				"② 抽样：按你填的编号抽出一部分内容（同样的编号永远抽出同一批，便于复现）",
+				"③ 打分：裁判模型逐条按量表维度打分，缺分与真实的 0 分分开记录",
+				"④ 汇总：给出每个维度的均值与覆盖情况；分歧与缺分逐条可点开核对",
+			},
 			Caption:      "用独立的模型服务检查生成结果，并按量表抽取样本",
 			Availability: NodeAvailabilityAvailable,
 			Task:         "T11、T14",

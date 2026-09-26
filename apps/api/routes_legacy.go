@@ -79,6 +79,24 @@ func init() {
 
 func registerLegacyRoutes(mux *http.ServeMux, app *application) {
 	mux.HandleFunc("GET /api/v1/legacy/datasets/{datasetId}/project", app.getLegacyDatasetProject)
+	// issue #197 第 16 条：用户问「历史资产是否已全部迁移成功？成功则删除这个菜单」。
+	// 这个结论**必须由服务端给出**（前端看不到导入台账与 legacy_dataset_id 绑定），
+	// 硬编码在页面上等于撒谎：迁移真的完成后页面仍会写「尚未迁移」。
+	mux.HandleFunc("GET /api/v1/legacy/migration-status", app.getLegacyMigrationStatus)
+}
+
+// getLegacyMigrationStatus 返回旧资产迁移对账读数与结论。
+func (app *application) getLegacyMigrationStatus(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requestUser(r); !ok {
+		app.writeAPIError(w, r, http.StatusUnauthorized, codeUnauthorized, msgAuthRequired, nil)
+		return
+	}
+	status, err := store.NewLegacyImportStore(app.studio.Pool).LegacyMigrationStatus(r.Context())
+	if err != nil {
+		app.writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	app.writeJSON(w, http.StatusOK, status)
 }
 
 // legacyProjectMapping 是旧 dataset → 新项目的映射响应。

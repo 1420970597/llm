@@ -306,6 +306,13 @@ export type BatchSummary = {
   budgetLimitMinor: number
   createdAt: string
   updatedAt: string
+  /**
+   * issue #190 的缺口读数：`shortfallUnits = plannedUnits - completedUnits`。
+   * 缺口 > 0 时状态不可能是「已完成」，界面显示「部分完成（1/12）」与原因，
+   * 而不是让用户自己拿两个数字相减。
+   */
+  shortfallUnits: number
+  shortfallNote: string
   /** 服务端按当前用户与状态计算的 UI 操作能力；命令端点仍会重新鉴权。 */
   capabilities: BatchCapabilities
 }
@@ -357,6 +364,43 @@ export type BatchGenerationConfig = {
   maxTokens: number
   temperature?: number
   schemaVersion: string
+}
+
+/**
+ * 数据集结构与内容分析（issue #197 第 13 条）。
+ *
+ * 所有指标都由**服务端**计算：前端拉全量样本自己算分位与占比会让
+ * 10 万单元的批次把整表拖进浏览器，而且同一个指标会在不同页面算出不同的数。
+ * `null` 表示「没有数据 → 无法得出结论」，与「0」严格区分。
+ */
+export type DatasetAnalysis = {
+  structure: Array<{
+    domainStableId: string
+    domainName: string
+    directionStableId: string
+    directionName: string
+    planned: number
+    produced: number
+  }>
+  length: {
+    count: number
+    shortest: number
+    longest: number
+    p50: number
+    p90: number
+    meanChars: number
+  } | null
+  difficulty: Array<{ key: string; label: string; count: number; share: number; expected?: number | null }>
+  reviewStatus: Array<{ key: string; label: string; count: number; share: number }>
+  groundedRate: number | null
+  duplicateRate: number | null
+  pendingReviewRate: number | null
+  sampleCount: number
+  plannedUnits: number
+  completedUnits: number
+  shortfallUnits: number
+  shortfallNote: string
+  notes: string[]
 }
 
 export type BatchDetail = {
@@ -1028,6 +1072,12 @@ export const studioApi = {
       .get<Page<BatchEvent>>(`${projectPath(projectId)}/batches/${batchId}/events${queryString(params)}`)
       .then((response) => response.data),
 
+  /** 批次产出的数据集结构与内容分析（打开即算，不需要点按钮）。 */
+  batchAnalysis: (projectId: ProjectResourceId, batchId: string) =>
+    client
+      .get<TypedEnvelope<DatasetAnalysis, BatchCapabilities>>(`${projectPath(projectId)}/batches/${batchId}/analysis`)
+      .then((response) => unwrapStudioData<DatasetAnalysis>(response)),
+
   /** `POST P/batches`（契约 §2.3）：202 + batchId；**幂等键必填**。 */
   createBatch: (projectId: ProjectResourceId, payload: CreateBatchRequest, options?: CommandOptions) =>
     client
@@ -1377,6 +1427,26 @@ export type ReadWatermark = {
   lastSeenEventId: number
 }
 
+/**
+ * 今日工作的总览数字（issue #197 第 10 条）。
+ *
+ * 全部是**计数**，没有一个是由前端换算出来的比率 —— 跨批次/跨项目的
+ * 合并百分比没有可解释的分母。每个数字都能点进对应列表，且与列表页
+ * 读的是同一份事实。
+ */
+export type WorkspaceOverview = {
+  projectCount: number
+  runningBatches: number
+  /** 已定稿但产出少于计划量的批次（issue #190 的缺口）。 */
+  batchesWithShortfall: number
+  totalPlannedUnits: number
+  totalCompletedUnits: number
+  pendingReview: number
+  producedLast7Days: number
+  publishedReleases: number
+  blockedReleases: number
+}
+
 export type ActivityItem = {
   source: string
   eventId: number
@@ -1421,7 +1491,7 @@ export const activityApi = {
   /** `GET /v1/today`：待办聚合（每条带具体对象链接）。 */
   today: (workspaceId?: number) =>
     client
-      .get<{ todos: TodoItem[]; watermark: ReadWatermark; notes: string[] }>(
+      .get<{ todos: TodoItem[]; watermark: ReadWatermark; notes: string[]; overview: WorkspaceOverview }>(
         `/v1/today${workspaceId ? `?workspaceId=${workspaceId}` : ''}`,
       )
       .then((response) => response.data),
@@ -1547,6 +1617,27 @@ export const settingsApi = {
 
   upsertWorkspaceMember: (payload: { email?: string; userId?: number; role: string; workspaceId?: number }) =>
     client.post<WorkspaceMemberRecord>('/v1/workspace/members', payload).then((response) => response.data),
+
+  /**
+   * 创建账号并加入工作区（issue #197 第 15 条）。
+   *
+   * 与 `upsertWorkspaceMember` 的区别：后者只能添加**已有账号**，
+   * 因为本部署没有出站邮件，「邮件邀请」那条路永远走不通。
+   * 这里由管理员直接设定初始密码，账号可立即登录。
+   */
+  createWorkspaceMemberDirect: (payload: {
+    email: string
+    password: string
+    role: string
+    userRole?: string
+    workspaceId?: number
+  }) =>
+    client
+      .post<{ user: { id: number; email: string; role: string }; member: WorkspaceMemberRecord; note: string }>(
+        '/v1/workspace/members/direct',
+        payload,
+      )
+      .then((response) => response.data),
 
   removeWorkspaceMember: (userId: number, workspaceId?: number) =>
     client

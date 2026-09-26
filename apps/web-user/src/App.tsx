@@ -91,6 +91,7 @@ import {
 import {
   describeArtifactContentType,
   describeArtifactType,
+  describeAuditAction,
   describeDomainReviewStatus,
 } from './lib/enumLabels'
 import { buildLoginPath, resolveLoginRedirect } from './lib/authRedirect'
@@ -2133,7 +2134,14 @@ export default function App() {
   const auditColumns = useMemo(
     () => [
       { title: '操作人', dataIndex: 'actor' },
-      { title: '操作', dataIndex: 'action' },
+      // issue #191：审计表以前直接渲染后端 action code，同一个动作在动态里
+      // 有中文、在这里却是 `blueprint_version_created`。两处现在共用同一套
+      // 展示层映射；原始 code 保留在 title 里供排查，而不是丢给用户。
+      {
+        title: '操作',
+        dataIndex: 'action',
+        render: (value: string) => <span title={value}>{describeAuditAction(value)}</span>,
+      },
       { title: '资源', dataIndex: 'resourceType' },
       { title: '详情', dataIndex: 'detail' },
       { title: '时间', dataIndex: 'createdAt' },

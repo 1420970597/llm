@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button, Card, Empty, Input, Spin, Tag, Typography } from '@douyinfe/semi-ui'
 import { Bell, RefreshCw, Search } from 'lucide-react'
 import { activityApi } from '../../lib/api/studio'
-import type { ActivityItem, SearchHit, TodoItem } from '../../lib/api/studio'
+import type { ActivityItem, SearchHit, TodoItem, WorkspaceOverview } from '../../lib/api/studio'
 import { allStudioRoutes, fillRoutePathByKey } from '../routes'
 
 /**
@@ -50,6 +50,8 @@ export function TodayPage() {
   const { Text } = Typography
   const [todos, setTodos] = useState<TodoItem[]>([])
   const [notes, setNotes] = useState<string[]>([])
+  /** 工作台总览（issue #197 第 10 条）：全页只有一个未读数字的形态已修正。 */
+  const [overview, setOverview] = useState<WorkspaceOverview | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -99,6 +101,7 @@ export function TodayPage() {
       const response = await activityApi.today()
       setTodos(response.todos ?? [])
       setNotes(response.notes ?? [])
+      setOverview(response.overview ?? null)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载今日工作失败')
     } finally {
@@ -155,6 +158,52 @@ export function TodayPage() {
         <Card className="console-card mb-3" bodyStyle={{ padding: 14 }} data-today-error="true">
           <Text type="danger">{error}</Text>
         </Card>
+      ) : null}
+
+      {/*
+        issue #197 第 10 条：甲方原话是「今日工作展示的数据不对，应当是一个
+        工作台总览的效果」。以前全页只有一个数字（7 条未读动态）。
+        这里的每个数字都可点进对应列表，且与列表页读的是同一份事实。
+      */}
+      {overview ? (
+        <section className="atelier-overview-grid" data-today-overview="true">
+          <a className="atelier-overview-tile" href={studioPath('projects')} data-overview-tile="projects">
+            <span className="eyebrow">数据项目</span>
+            <strong>{overview.projectCount}</strong>
+            <small>你可见的项目</small>
+          </a>
+          <a className="atelier-overview-tile" href={studioPath('today')} data-overview-tile="running">
+            <span className="eyebrow">进行中批次</span>
+            <strong>{overview.runningBatches}</strong>
+            <small>排队 / 运行 / 暂停请求中</small>
+          </a>
+          <a className="atelier-overview-tile" href={studioPath('today')} data-overview-tile="shortfall">
+            <span className="eyebrow">产出缺口</span>
+            <strong className={overview.batchesWithShortfall > 0 ? 'atelier-overview-tile--alert' : undefined}>
+              {overview.batchesWithShortfall}
+            </strong>
+            <small>
+              计划 {overview.totalPlannedUnits} · 完成 {overview.totalCompletedUnits}
+            </small>
+          </a>
+          <a className="atelier-overview-tile" href={studioPath('activity')} data-overview-tile="pending">
+            <span className="eyebrow">待人工判断</span>
+            <strong className={overview.pendingReview > 0 ? 'atelier-overview-tile--alert' : undefined}>
+              {overview.pendingReview}
+            </strong>
+            <small>进入项目「审阅」处理</small>
+          </a>
+          <a className="atelier-overview-tile" href={studioPath('today')} data-overview-tile="produced">
+            <span className="eyebrow">近 7 天产出</span>
+            <strong>{overview.producedLast7Days}</strong>
+            <small>新增样本版本数</small>
+          </a>
+          <a className="atelier-overview-tile" href={studioPath('deliveries')} data-overview-tile="releases">
+            <span className="eyebrow">交付</span>
+            <strong>{overview.publishedReleases}</strong>
+            <small>已发布 · 被挡住 {overview.blockedReleases}</small>
+          </a>
+        </section>
       ) : null}
 
       <div className="atelier-today-grid">

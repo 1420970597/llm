@@ -54,6 +54,19 @@ type Service struct {
 	Rollout Rollout
 }
 
+// CreateWorkspaceMemberWithAccount 创建账号并加入工作区（issue #197 第 15 条）。
+//
+// 为什么放在 service 层而不是 handler 里直接 new store：本项目**禁止**在
+// handler 里写业务编排（AGENTS.md §3.2）。授权已在 handler 完成，这里只负责
+// 「建号 + 加成员」这个复合命令，并且两条写入在同一个事务里（store 实现）。
+func (s *Service) CreateWorkspaceMemberWithAccount(ctx context.Context, input store.CreateWorkspaceMemberWithAccountInput) (model.User, store.WorkspaceMember, error) {
+	userID, member, err := store.NewWorkspaceMemberStore(s.Pool).CreateWorkspaceMemberWithAccount(ctx, input)
+	if err != nil {
+		return model.User{}, store.WorkspaceMember{}, err
+	}
+	return model.User{ID: userID, Email: member.Email, Role: member.UserRole}, member, nil
+}
+
 // New 构造服务。
 func New(pool *pgxpool.Pool) *Service {
 	return &Service{
@@ -421,6 +434,11 @@ type BatchSummary struct {
 	BudgetLimitMinor int64  `json:"budgetLimitMinor"`
 	CreatedAt        string `json:"createdAt"`
 	UpdatedAt        string `json:"updatedAt"`
+	// ShortfallUnits / ShortfallNote 是 issue #190 的缺口读数。
+	// 缺口 > 0 时状态不可能是「已完成」，界面据此显示「部分完成（1/12）」与原因，
+	// 而不是让用户自己拿两个数字相减。
+	ShortfallUnits int    `json:"shortfallUnits"`
+	ShortfallNote  string `json:"shortfallNote"`
 	// Capabilities are included on list rows as a fail-closed UI hint. The
 	// authoritative command endpoints still recalculate authorization.
 	Capabilities BatchCapabilities `json:"capabilities"`
@@ -443,6 +461,8 @@ func ToBatchSummary(batch model.Batch) BatchSummary {
 		BudgetLimitMinor: batch.Budget.LimitMinor,
 		CreatedAt:        FormatTime(batch.CreatedAt),
 		UpdatedAt:        FormatTime(batch.UpdatedAt),
+		ShortfallUnits:   batch.Shortfall(),
+		ShortfallNote:    batch.ShortfallNote(),
 	}
 }
 

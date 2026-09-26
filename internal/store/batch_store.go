@@ -102,6 +102,12 @@ func (s *BatchStore) createBatchWithJob(ctx context.Context, projectID, actorID 
 	if err != nil {
 		return model.Batch{}, nil, err
 	}
+	// issue #190：计划量必须与覆盖矩阵**实际可产出量**比较。
+	// 以前两者互不校对，于是「计划 12、可产出 1」的批次可以直接入队，
+	// 跑完 1 个单元就置 completed —— 静默少交付比直接失败更危险。
+	if err := validateBatchCapacityTx(ctx, tx, projectID, input, snapshot); err != nil {
+		return model.Batch{}, nil, err
+	}
 	generationConfig.SchemaVersion = model.SampleSchemaForTarget(targetKind)
 	if requireExecutionConfig {
 		if err := validateBatchExecutionSnapshot(input, generationConfig); err != nil {
@@ -232,6 +238,49 @@ func (s *BatchStore) createBatchWithJob(ctx context.Context, projectID, actorID 
 		return model.Batch{}, nil, err
 	}
 	return batch, createdJob, nil
+}
+
+// validateBatchCapacityTx 是 issue #190 的入口校验：
+// `plannedUnits > 覆盖矩阵可产出量` 时直接 422，而不是静默少交付。
+//
+// 为什么放在「快照解析之后、INSERT 之前」：此时覆盖版本的 payload 已经可读，
+// 而失败不会写入 batches/events/jobs —— 用户看到的是可操作的拒绝，
+// 而不是一个已经花了钱的空批次。
+func validateBatchCapacityTx(ctx context.Context, tx pgx.Tx, projectID int64, input model.CreateBatchInput, snapshot model.BatchSnapshot) error {
+	if snapshot.CoverageVersionID <= 0 {
+		// 没有覆盖版本时 unit_key 退化成 `unit/default#n`，容量等于计划量本身，
+		// 因此不存在缺口。
+		return nil
+	}
+	var raw []byte
+	if err := tx.QueryRow(ctx, `
+    SELECT payload FROM document_versions WHERE id = $1 AND project_id = $2`,
+		snapshot.CoverageVersionID, projectID).Scan(&raw); err != nil {
+		return err
+	}
+	var coverage model.CoveragePayload
+	if err := json.Unmarshal(raw, &coverage); err != nil {
+		return model.FieldErrors{{
+			Field:   "coverageVersionId",
+			Message: "覆盖版本内容无法解析，请重新保存覆盖方案后再启动批次",
+		}}
+	}
+	capacity := model.CoverageCapacity(coverage)
+	if capacity <= 0 {
+		return model.FieldErrors{{
+			Field:   "coverageVersionId",
+			Message: "当前覆盖方案没有任何方向配额，最多产出 0 个单元；请先在覆盖矩阵里补充领域/方向与配额",
+		}}
+	}
+	if input.UnitCount > capacity {
+		return model.FieldErrors{{
+			Field: "unitCount",
+			Message: fmt.Sprintf(
+				"计划单元数 %d 超过当前覆盖矩阵的可产出量 %d；请把计划量改为不超过 %d，或在覆盖矩阵里增加方向/配额",
+				input.UnitCount, capacity, capacity),
+		}}
+	}
+	return nil
 }
 
 // validateBatchExecutionSnapshot 是进入 queued 前的最终边界。
@@ -1503,8 +1552,23 @@ func (s *BatchStore) RefreshBatchCounts(ctx context.Context, batchID int64) (mod
 		return model.Batch{}, err
 	}
 
+	// planned 取「用户计划量」与「已落库单元数」的较大值，绝不用 total 覆盖它：
+	// 计划量是用户的意图事实（界面显示「计划 12」），而 total 只是已写入的单元数。
+	// 把计划量改小会让 #190 的缺口在状态推导里消失。
+	var planned int
+	if err := tx.QueryRow(ctx, `SELECT planned_units FROM batches WHERE id = $1`, batchID).
+		Scan(&planned); err != nil {
+		return model.Batch{}, err
+	}
+
 	// 状态聚合：终态由「所有单元都定稿」推导，而不是由调用方声明。
 	// 这样「worker 崩在最后一步」不会留下一个永远 running 的批次。
+	//
+	// issue #190："completed" 只允许在"计划量真的都产出了"时出现。
+	// 以前 completed_units 在 planned_units 之内就置 completed，于是
+	// 「计划 12、完成 1」的批次会显示绿色「已完成」，用户据此以为方案已验证 ——
+	// 那是比直接失败更危险的静默少交付。现在两者不相等就降级为 partial_failed，
+	// 并让界面显示「部分完成（1/12）」。
 	nextStatus := status
 	switch {
 	case status == model.BatchStatusCompleted || status == model.BatchStatusFailed:
@@ -1513,8 +1577,11 @@ func (s *BatchStore) RefreshBatchCounts(ctx context.Context, batchID int64) (mod
 		// 暂停态保持：控制意图高于计数推导。
 	case total > 0 && completed+failed == total && failed > 0:
 		nextStatus = model.BatchStatusPartialFailed
-	case total > 0 && completed == total:
+	case total > 0 && completed == total && completed >= planned:
 		nextStatus = model.BatchStatusCompleted
+	case total > 0 && completed+failed == total && completed < planned:
+		// 所有单元都已定稿，但产出少于计划：缺口必须可见，不能叫「已完成」。
+		nextStatus = model.BatchStatusPartialFailed
 	case total > 0 && failed > 0:
 		nextStatus = model.BatchStatusPartialFailed
 	}
@@ -1529,7 +1596,7 @@ func (s *BatchStore) RefreshBatchCounts(ctx context.Context, batchID int64) (mod
         status = $6,
         started_at = COALESCE(started_at,
           CASE WHEN ($2::int + $3::int + $4::int) > 0 THEN NOW() ELSE NULL END),
-        finished_at = CASE WHEN $6 IN ('completed', 'failed') THEN NOW() ELSE finished_at END,
+        finished_at = CASE WHEN $6 IN ('completed', 'failed', 'partial_failed') THEN NOW() ELSE finished_at END,
         updated_at = NOW()
     WHERE id = $1`, batchID, completed, failed, inFlight, total, nextStatus); err != nil {
 		return model.Batch{}, err
@@ -1649,4 +1716,131 @@ func derefVersionID(id *int64) int64 {
 		return 0
 	}
 	return *id
+}
+
+// SampleVersionFact 是「一条产出内容」的分析事实（issue #197 第 13 条）。
+//
+// 只取分析需要的字段，不返回 payload 正文：
+// 批次详情要做长度/难度/接地/重复/审阅状态统计，而把 10 万条正文拉进
+// 进程既慢又没必要（长度在 SQL 里用 jsonb 的字面长度算即可）。
+type SampleVersionFact struct {
+	SampleVersionID   int64
+	SampleKey         string
+	DomainStableID    string
+	DirectionStableID string
+	Difficulty        string
+	ReviewStatus      string
+	ContentHash       string
+	PayloadChars      int
+	Grounded          bool
+}
+
+// ListSampleVersionFacts 读取某批次产出的样本版本分析事实。
+//
+// 三条口位约定：
+//
+//  1. **只读 sample_versions**（只追加的内容事实），不读「当前采用」指针：
+//     分析必须针对这一批真正产出的内容，否则「跑了 3 次、改了 2 次配置」的
+//     项目会把历史内容算进当前批次。
+//  2. **方向与难度来自 batch_items.item_key**（形如 `domain/direction#ordinal`）：
+//     它记录的是**产出时**的实际分配，而不是事后拿覆盖版本重算（覆盖可以被改）。
+//  3. **接地与否来自 payload**：`question`/`reasoning`/`answer` 之外的
+//     `sourceChunkIds`（或 `sourceChunk`）字段存在且非空即视为有素材接地。
+//     没有该字段的项目自然全部为 false，这是**如实**的而不是缺陷。
+func (s *BatchStore) ListSampleVersionFacts(ctx context.Context, projectID, batchID int64, limit int) ([]SampleVersionFact, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 2000
+	}
+	rows, err := s.db.Query(ctx, `
+    SELECT sv.id,
+           s.sample_key,
+           sv.payload,
+           COALESCE(sv.content_hash, ''),
+           COALESCE(rp.effective_action, 'pending'),
+           COALESCE(bi.item_key, '')
+    FROM sample_versions sv
+    JOIN samples s ON s.id = sv.sample_id
+    LEFT JOIN batch_items bi ON bi.id = sv.batch_item_id
+    -- review_projections 以**样本版本**为主键（不是样本）：一个样本可以有多版，
+    -- 每版的审阅状态各自独立。用 sample_id 关联会得到 SQLSTATE 42703。
+    LEFT JOIN review_projections rp ON rp.sample_version_id = sv.id
+    WHERE sv.project_id = $1 AND sv.batch_id = $2
+    ORDER BY sv.id
+    LIMIT $3`, projectID, batchID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	facts := []SampleVersionFact{}
+	for rows.Next() {
+		var fact SampleVersionFact
+		var payload []byte
+		var itemKey string
+		if err := rows.Scan(&fact.SampleVersionID, &fact.SampleKey, &payload,
+			&fact.ContentHash, &fact.ReviewStatus, &itemKey); err != nil {
+			return nil, err
+		}
+		fact.DomainStableID, fact.DirectionStableID = splitItemKey(itemKey)
+		fact.Difficulty, fact.PayloadChars, fact.Grounded = summarizePayload(payload)
+		facts = append(facts, fact)
+	}
+	return facts, rows.Err()
+}
+
+// splitItemKey 把 `domain/direction#ordinal` 拆成 (domain, direction)。
+//
+// 键不存在或形状异常时返回空串而不是猜测：猜测会把不同方向的内容
+// 混进同一行统计，而那是比「未归类」更糟的错误。
+func splitItemKey(itemKey string) (string, string) {
+	trimmed := strings.TrimSpace(itemKey)
+	if trimmed == "" {
+		return "", ""
+	}
+	if index := strings.LastIndex(trimmed, "#"); index >= 0 {
+		trimmed = trimmed[:index]
+	}
+	parts := strings.SplitN(trimmed, "/", 2)
+	if len(parts) != 2 {
+		return "", ""
+	}
+	return parts[0], parts[1]
+}
+
+// summarizePayload 从内容 payload 里取出分析需要的三个值。
+//
+// 用解析后的字符串长度而不是 JSON 字节数：JSON 里的转义（`\n` 占两个字节）
+// 会让「长度」变成存储大小的度量，而不是用户看到的文本长度。
+func summarizePayload(payload []byte) (difficulty string, chars int, grounded bool) {
+	if len(payload) == 0 {
+		return "", 0, false
+	}
+	var record map[string]any
+	if err := json.Unmarshal(payload, &record); err != nil {
+		return "", 0, false
+	}
+	for _, key := range []string{"difficulty", "difficultyLevel"} {
+		if value, ok := record[key].(string); ok && strings.TrimSpace(value) != "" {
+			difficulty = strings.ToLower(strings.TrimSpace(value))
+			break
+		}
+	}
+	for _, key := range []string{"question", "reasoning", "answer", "teacherPrompt"} {
+		if value, ok := record[key].(string); ok {
+			chars += len([]rune(value))
+		}
+	}
+	for _, key := range []string{"sourceChunkIds", "sourceChunks", "groundedFrom"} {
+		value, ok := record[key]
+		if !ok {
+			continue
+		}
+		switch typed := value.(type) {
+		case []any:
+			grounded = grounded || len(typed) > 0
+		case string:
+			grounded = grounded || strings.TrimSpace(typed) != ""
+		}
+	}
+	return difficulty, chars, grounded
 }

@@ -223,9 +223,77 @@ function addButton(label: string, onClick: () => void, disabled: boolean) {
 export function CoveragePayloadEditor({ payload, disabled, onChange }: { payload: Record<string, unknown>; disabled: boolean; onChange: (payload: Record<string, unknown>) => void }) {
   const domains = asArray(payload.domains)
   const updateDomains = (next: Array<Record<string, unknown>>) => onChange({ ...payload, schemaVersion: 'coverage.v1', domains: next })
+  /*
+   * m × n × z 结构树（issue #197 第 11 条）。
+   *
+   * 甲方原话：「数据集结构不清晰（m*n*z），应当以树状图展示（可编辑）」。
+   * 旧界面的问题不是没有数字，而是**三个数字分散在不同位置**，用户要自己
+   * 心算 m×n×z；而且「计划量」与「可产出量」从不并列，于是 #190 的
+   * 「计划 12、实际只能产 1」在界面上完全看不出来。
+   *
+   * 这里把三者（领域数 m / 每领域方向 n / 每方向题数 z）与乘积、
+   * **以及本版本的最大可产出量**并列显示。可产出量由
+   * `sum(direction.quota)` 得出 —— 与后端 `model.CoverageCapacity`
+   * 是同一个口径（后端在启动批次时用它做拒绝校验）。
+   */
+  const directionCount = domains.reduce((total, domain) => total + asArray(domain.directions).length, 0)
+  const capacity = domains.reduce(
+    (total, domain) =>
+      total +
+      asArray(domain.directions).reduce((subtotal, direction) => {
+        const quota = Number(direction.quota)
+        return subtotal + (Number.isFinite(quota) && quota > 0 ? quota : 1)
+      }, 0),
+    0,
+  )
   return (
     <div className="document-editor document-editor--coverage">
       <div className="document-editor__intro"><Text strong>覆盖范围编辑器</Text><Text type="tertiary" size="small">把领域拆成可执行方向，并为每个方向设置计划数量。稳定 ID 用于让历史批次继续指向原版本。</Text></div>
+      <div className="coverage-tree" data-coverage-tree="true">
+        <div className="coverage-tree__formula">
+          <span className="eyebrow">数据集结构</span>
+          <strong data-coverage-formula="true">
+            m {domains.length} × n {directionCount} × z {capacity} = {capacity}
+          </strong>
+          <Text type="tertiary" size="small" className="block">
+            领域数 × 方向数 × 每个方向的题数。公式里的结果就是<strong>本版本最多能产出的单元数</strong>；
+            启动批次时填的计划量不能超过它（否则会被拒绝，避免静默少交付）。
+          </Text>
+        </div>
+        <ul className="coverage-tree__list">
+          {domains.map((domain, domainIndex) => {
+            const directions = asArray(domain.directions)
+            const domainQuota = directions.reduce((total, direction) => {
+              const quota = Number(direction.quota)
+              return total + (Number.isFinite(quota) && quota > 0 ? quota : 1)
+            }, 0)
+            return (
+              <li key={`${String(domain.stableId)}-${domainIndex}`} data-coverage-domain={String(domain.stableId ?? domainIndex)}>
+                <span className="coverage-tree__domain">
+                  {String(domain.name ?? '') || '（未命名领域）'}
+                  <Text type="tertiary" size="small">
+                    {' '}
+                    合计 {domainQuota}
+                  </Text>
+                </span>
+                <ul className="coverage-tree__directions">
+                  {directions.map((direction, directionIndex) => (
+                    <li key={`${String(direction.stableId)}-${directionIndex}`}>
+                      {String(direction.name ?? '') || '（未命名方向）'}
+                      <Text type="tertiary" size="small">
+                        {' '}
+                        × {Number(direction.quota) > 0 ? Number(direction.quota) : 1}
+                        {' · '}
+                        {String(direction.source ?? '') || '未标注来源'}
+                      </Text>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
       {domains.length === 0 ? <Empty description="还没有领域，点击下方按钮开始配置。" /> : domains.map((domain, domainIndex) => {
         const directions = asArray(domain.directions)
         return <Card className="document-editor__section" key={`${String(domain.stableId)}-${domainIndex}`} bodyStyle={{ padding: 14 }}>
@@ -235,11 +303,25 @@ export function CoveragePayloadEditor({ payload, disabled, onChange }: { payload
             <label className="wizard-field"><span className="wizard-field__label">稳定 ID</span><Input value={String(domain.stableId ?? '')} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { stableId: value }))} /></label>
           </div>
           <div className="document-editor__subhead"><strong>方向与配额</strong>{addButton('添加方向', () => updateDomains(updateAt(domains, domainIndex, { directions: [...directions, { stableId: `direction-${directions.length + 1}`, name: '', quota: 1, source: 'manual' }] })), disabled)}</div>
+          {/*
+            列头（issue #193）：第 3、4 个输入框以前只有 aria-label，
+            视觉上完全没有标签 —— 截图里就是一个数字和一个 `project-default`，
+            而配额直接决定批次的**可产出量**（#190），填错代价很高。
+            保留原名 aria-label 作为可访问名称，同时新增可见列头；
+            来源列同时说明合法取值，避免用户手填一个不存在的枚举。
+          */}
+          <div className="document-editor__header-row" role="row">
+            <span role="columnheader">方向名称</span>
+            <span role="columnheader">稳定 ID</span>
+            <span role="columnheader">每个方向计划数量</span>
+            <span role="columnheader">来源（manual / document / ai）</span>
+            <span role="columnheader" className="document-editor__header-row--actions">操作</span>
+          </div>
           {directions.map((direction, directionIndex) => <div className="document-editor__row" key={`${String(direction.stableId)}-${directionIndex}`}>
             <Input aria-label="方向名称" placeholder="方向名称" value={String(direction.name ?? '')} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { directions: updateAt(directions, directionIndex, { name: value }) }))} />
             <Input aria-label="方向稳定 ID" placeholder="稳定 ID" value={String(direction.stableId ?? '')} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { directions: updateAt(directions, directionIndex, { stableId: value }) }))} />
-            <Input aria-label="计划数量" type="number" min={1} value={String(direction.quota ?? 1)} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { directions: updateAt(directions, directionIndex, { quota: Number(value) || 0 }) }))} />
-            <Input aria-label="来源说明" placeholder="来源说明（可选）" value={String(direction.source ?? '')} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { directions: updateAt(directions, directionIndex, { source: value }) }))} />
+            <Input aria-label="每个方向计划数量" type="number" min={1} value={String(direction.quota ?? 1)} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { directions: updateAt(directions, directionIndex, { quota: Number(value) || 0 }) }))} />
+            <Input aria-label="来源" placeholder="manual / document / ai" value={String(direction.source ?? '')} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { directions: updateAt(directions, directionIndex, { source: value }) }))} />
             <Button type="tertiary" icon={<Trash2 size={14} />} aria-label="删除方向" disabled={disabled || directions.length <= 1} onClick={() => updateDomains(updateAt(domains, domainIndex, { directions: removeAt(directions, directionIndex) }))} />
           </div>)}
         </Card>
@@ -312,9 +394,22 @@ export function MappingPayloadEditor({ payload, disabled, onChange }: { payload:
     <div className="document-editor__intro"><Text strong>交付映射编辑器</Text><Text type="tertiary" size="small">把内部内容字段映射到交付文件字段。必需字段缺失会在发布前被明确拦截。</Text></div>
     <label className="wizard-field"><span className="wizard-field__label">交付格式</span><Select value={String(payload.format ?? 'jsonl')} disabled={disabled} optionList={FORMAT_OPTIONS} onChange={(value) => onChange({ ...payload, schemaVersion: 'mapping.v1', format: String(value) })} /></label>
     <div className="document-editor__subhead"><strong>字段映射</strong>{addButton('添加字段', () => updateFields([...fields, { targetField: '', sourceField: '', required: false }]), disabled)}</div>
+    {/*
+      列头（issue #193 / #197-17）：左右两列以前只有 placeholder，输入后
+      placeholder 消失，用户再也分不清哪列是内部字段、哪列是交付字段 ——
+      而填错列直接导致交付文件字段错位。因此用真正的列头（含 aria-label），
+      并与行的 grid 列宽完全对齐。
+      空列表时也要渲染表头：否则第一个字段加进来时列头会突然出现（布局跳变）。
+    */}
+    <div className="document-editor__header-row document-editor__header-row--mapping" role="row">
+      <span role="columnheader" id="mapping-col-delivery">交付字段（输出文件里的键）</span>
+      <span role="columnheader" id="mapping-col-source">内部字段（样本内容里的键）</span>
+      <span role="columnheader" id="mapping-col-required">必填</span>
+      <span role="columnheader" className="document-editor__header-row--actions">操作</span>
+    </div>
     {fields.length === 0 ? <Empty description="还没有字段映射，请添加至少一个输出字段。" /> : fields.map((field, index) => <div className="document-editor__row document-editor__row--mapping" key={`${String(field.targetField)}-${index}`}>
-      <Input aria-label="交付字段" placeholder="交付字段" value={String(field.targetField ?? '')} disabled={disabled} onChange={(value) => updateFields(updateAt(fields, index, { targetField: value }))} />
-      <Input aria-label="来源字段" placeholder="来源字段" value={String(field.sourceField ?? '')} disabled={disabled} onChange={(value) => updateFields(updateAt(fields, index, { sourceField: value }))} />
+      <Input aria-label="交付字段" aria-labelledby="mapping-col-delivery" placeholder="question" value={String(field.targetField ?? '')} disabled={disabled} onChange={(value) => updateFields(updateAt(fields, index, { targetField: value }))} />
+      <Input aria-label="内部字段" aria-labelledby="mapping-col-source" placeholder="question" value={String(field.sourceField ?? '')} disabled={disabled} onChange={(value) => updateFields(updateAt(fields, index, { sourceField: value }))} />
       <label className="document-editor__checkbox"><input type="checkbox" checked={Boolean(field.required)} disabled={disabled} onChange={(event) => updateFields(updateAt(fields, index, { required: event.target.checked }))} /> 必填</label>
       <Button type="tertiary" icon={<Trash2 size={14} />} aria-label="删除字段" disabled={disabled || fields.length <= 1} onClick={() => updateFields(removeAt(fields, index))} />
     </div>)}
