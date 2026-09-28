@@ -253,6 +253,12 @@ for (const vp of viewports) {
         add('offline:draft-persisted-locally', draft.queueRaw.length > 0,
           draft.queueRaw ? `本机队列键已写入：${draft.queueRaw}` : '本机未写入队列（草稿没有真的保存）')
         await page.screenshot({ path: path.join(OUT, 'offline-draft.png') })
+        // 同时落一份带阶段名的副本：仓库里提交的证据就叫
+        // `01-before.png` / `02-after.png`，这样重跑采集器可以直接覆盖它们，
+        // 而不需要人工手改脚本或复制文件（否则证据与脚本会各自漂移）。
+        const stage = draft.queueRaw.length > 0 ? '02-after' : '01-before'
+        await page.screenshot({ path: path.join(OUT, `${stage}.png`) })
+        writeFileSync(path.join(OUT, `${stage}-findings.json`), `${JSON.stringify(report, null, 2)}\n`)
       }
       await ctx.setOffline(false)
     } else {
