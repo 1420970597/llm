@@ -156,19 +156,30 @@ flowchart LR
 > `round.sh` 自行前置 `~/.local/share/pi-node/current/bin`（版本无关的符号链接）
 > 并在找不到 `pi` 时输出可读的 FATAL 原因；crontab 里另显式声明 `PATH=` 作为纵深防御。
 >
-> **两个已上线后才暴露、且都很隐蔽的缺陷（实测）**：
+> **一个已上线后才暴露的隐蔽缺陷（实测）**：
 >
-> 1. **锚点与 cron 边界不对齐**：schedule 的 `anchorAt` 是创建时刻（如 `:23`），
->    而 crontab 是 `0 */6`（`:00`）。于是 `--due-only` 在 `:00` 检查时
->    「下一次运行是 `:23`」→ **判定无到期任务**。实测 18:00 那次的输出正是
->    `No schedules are due.` —— 轨道二看着装好了，实际每次都是空跑。
-> 2. **未设 `timeoutMs` 会退回 30 分钟默认值**：`pi-subagents` 对单代理异步运行的
->    默认超时是 30 分钟（`runs/background/subagent-wait.ts:76`），而真实轮次耗时
->    跨度是 **11 分钟 ~ 2.5 小时**。实测 20:23 那轮**恰好卡在 30.0 分钟被杀**，
->    来不及收尾，以致 `#191/#160/#214` 的认领锁全部残留。
+> **未设 `timeoutMs` 会退回 30 分钟默认值**。`pi-subagents` 对单代理异步运行的
+> 默认超时是 30 分钟（`runs/background/subagent-wait.ts:76`），而真实轮次耗时
+> 跨度是 **11 分钟 ~ 2.5 小时**。实测 20:23 那轮**恰好卡在 30.0 分钟被杀**，
+> 来不及收尾，以致 `#191/#160/#214` 的认领锁全部残留。
+> 现在是 `timeoutMs = 4h`，并有一条测试断言「陈旧锁阈值必须严格大于调度超时」。
 >
-> 教训：**“配置看起来对”不等于“配置真的生效”**。两个缺陷都不报错、不崩溃，
-> 只是安静地什么都不做（或做一半），必须靠“检查实际事件流/耗时”才能发现。
+> 教训：**“配置看起来对”不等于“配置真的生效”**。这个缺陷不报错、不崩溃，
+> 只是安静地把工作做一半就死，必须靠“检查实际耗时与事件流”才能发现。
+>
+> **一个被我自己误判过的点（记录以正视听）**：schedule 的 `anchorAt` 是创建
+> 时刻（如 `:09`），与 crontab 的 `0 */6`（`:00`）并**不对齐**，看上去很可疑。
+> 但逐条推演证明它**不是缺陷**：
+>
+> - 进程内定时器在 `:09` 按时触发后，`nextRunAt` 会前推到下一个 `:09`，
+>   因此 `:00` 的 cron 轮询看到的是**未来时间** → 正确地不做任何事（无重复）；
+> - 若当时**没有** pi 进程，`nextRunAt` 就会停在过去 → cron 轮询看到它**已到期** →
+>   正常拉起（`catchUp: latest`）。
+>
+> 两种情况下有效节奏都精确保持 6 小时。实测：18:00 那次输出
+> `No schedules are due.` 是**正确行为**（当时 14:23 已跑过、`nextRunAt` 为 20:23），
+> 而不是「轨道二空转」。真正的「到期即拉起」也已实测验证：把 `nextRunAt`
+> 强行改到过去后，`run-due` 回复 `Processed 1 due schedule(s).`
 >
 > 这是本设计的诚实之处：不假装 pi 自带守护进程能力。定时任务的**正确性**由
 > 「标签锁 + 台账 + overlap=skip + 陈旧锁自愈」保证，**触发可靠性**由双轨补足。
@@ -523,6 +534,7 @@ flowchart LR
 | `probe` | 探针明细 | `0` 可信 / `10` 降级 / `1` 配置错误 | 是（只读） |
 | `ensure-labels` | 标签创建结果 | `0` | 是（`--force`） |
 | `scan` | `编号\t轮次\t标题`（≤3 行）；超轮次提示走 **stderr** | `0` | 是（只读） |
+| `reclaim-stale` | `RECLAIMED <n>` | `0` | 是（重入安全） |
 | `claim <n>` | `CLAIMED <n>` | `0` 成功 / `2` 已被认领或已暂停 / `3` 轮次耗尽 | 否（有副作用，但重入安全） |
 | `release <n> [--blocked]` | 释放提示 | `0` 成功（含回读复核）/ `1` 复核失败 | 是（重入安全） |
 | `next-round <n>` | 轮次号（≥1） | `0` | 是（只读） |
@@ -543,6 +555,7 @@ flowchart LR
 | 静默失败（退出码 0 但无 assistant 输出） | `exit 1` |
 | 超时 | `exit 124`（`timeout` 语义） |
 | SOP 缺失 | `exit 1`（拒绝无规则空跑） |
+| `pi` 不在 PATH | `exit 127` + 可读 FATAL（已自行补全 PATH） |
 | `--due-only` | 只拉活 pi 内定时器 |
 | `ISSUE_AUTOFIX_DRY_RUN` | 只打印将执行的命令 |
 
@@ -555,9 +568,10 @@ flowchart LR
 | `ISSUE_AUTOFIX_MAX_PER_ROUND` | `3` | 每轮认领上限 |
 | `ISSUE_AUTOFIX_MAX_ROUNDS` | `3` | 单 issue 最大迭代轮数（**由代码执行**） |
 | `ISSUE_AUTOFIX_MIN_SHOT_BYTES` | `5120` | 截图最小字节数（防白图） |
+| `ISSUE_AUTOFIX_STALE_CLAIM_HOURS` | `6` | 陈旧认领阈值；**必须严格大于调度侧 `timeoutMs`（4h）** |
 | `ISSUE_AUTOFIX_PROVIDER` | `my-custom-provider` | 调度用 provider |
 | `ISSUE_AUTOFIX_MODEL` | `deepseek-v4.1-flash` | 调度用 model |
-| `ISSUE_AUTOFIX_TIMEOUT` | `10800` | 单轮超时（秒） |
+| `ISSUE_AUTOFIX_TIMEOUT` | `14400` | 外层包装器超时（秒）；不小于调度侧 `timeoutMs`（4h） |
 
 ### 6.4 标签契约
 
@@ -667,12 +681,14 @@ subagent({ action: "schedule.history", id: "issue-autofix-loop" })
 | 现象 | 可能原因 | 处置 |
 | --- | --- | --- |
 | 长时间无任何评论 | probe 反复降级 | 手动跑 `probe` 看哪项失败；修栈 |
-| 某 issue 再也不被处理 | `autofix-running` 残留（未 release） | `preflight.sh release <n>` |
+| 某 issue 再也不被处理 | `autofix-running` 残留（被硬杀/未 release） | `preflight.sh reclaim-stale`（本 SOP 已把它作为每轮前置步骤） |
+| 轮次跑到一半被杀、锁残留 | 调度 `timeoutMs` 太小 | 确认 schedule 的 `timeoutMs` ≥ 4h；`schedule.show` 查看 |
 | cron 跑了但什么都没发生 | **静默失败**（provider/模型 id 无效） | 看 `logs/round-*.log`；`round.sh` 应已 `exit 1` |
+| cron 日志报 `pi: No such file or directory` / exit 127 | cron 的最小 PATH 不含 pi | `round.sh` 已自行补全；若仍报错，导出 `PI_NODE_BIN` |
 | 同一 issue 反复做同一方案 | 台账未写入 / 未读历史 | 检查 `ledger-show`；确认 SOP §3 被执行 |
 | 某 issue 永远在重试 | 轮次上限未生效 | 确认代码含 `budget` 检查（本文档 §4.4） |
 | 评论图片 404 | 分支被删（未合并的 SHA） | 恢复分支，或重推并改链接 |
-| 定时器不触发 | 无 pi 进程存活 | 依赖 cron 轨道（§3.2）补活 |
+| 定时器不触发 | 无 pi 进程存活 | 依赖 cron 轨道（§3.2）补活；注意 `--due-only` 输出 `No schedules are due.` 属正常（见 §3.2） |
 
 ### 8.4 实际注册命令（本方案落地时执行）
 

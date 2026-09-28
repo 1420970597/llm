@@ -47,7 +47,9 @@ export PATH="$PI_NODE_BIN:$HOME/.pi/agent/bin:/usr/local/sbin:/usr/local/bin:/us
 
 PROVIDER="${ISSUE_AUTOFIX_PROVIDER:-my-custom-provider}"
 MODEL="${ISSUE_AUTOFIX_MODEL:-deepseek-v4.1-flash}"
-TIMEOUT_S="${ISSUE_AUTOFIX_TIMEOUT:-10800}"
+# 默认 4h：必须 **不小于** 调度侧 `timeoutMs`。否则当 cron 轨道直接执行 SOP
+# （非 --due-only）时，外层 timeout 会先于调度层把本轮杀掉，同样会遗留认领锁。
+TIMEOUT_S="${ISSUE_AUTOFIX_TIMEOUT:-14400}"
 
 DUE_ONLY=0
 for arg in "$@"; do
