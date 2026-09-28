@@ -1,0 +1,48 @@
+{
+  "stage": "after",
+  "batch": "b_1",
+  "eventRows": [
+    {
+      "type": "批次请求重试",
+      "typeTitle": "BatchRetryFailedRequested",
+      "detail": ""
+    },
+    {
+      "type": "批次已暂停",
+      "typeTitle": "BatchPaused",
+      "detail": ""
+    },
+    {
+      "type": "批次请求重试",
+      "typeTitle": "BatchRetryFailedRequested",
+      "detail": ""
+    },
+    {
+      "type": "批次已恢复",
+      "typeTitle": "BatchResumed",
+      "detail": ""
+    },
+    {
+      "type": "批次已暂停",
+      "typeTitle": "BatchPaused",
+      "detail": ""
+    },
+    {
+      "type": "批次请求重试",
+      "typeTitle": "BatchRetryFailedRequested",
+      "detail": ""
+    },
+    {
+      "type": "批次完成",
+      "typeTitle": "BatchCompleted",
+      "detail": ""
+    },
+    {
+      "type": "批次部分失败",
+      "typeTitle": "BatchPartialFailed",
+      "detail": "单元 #12 · 错误类型 config_error · 不可重试"
+    }
+  ],
+  "visibleEnumKeys": [],
+  "consoleErrors": []
+}

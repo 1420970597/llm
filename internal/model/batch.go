@@ -297,14 +297,20 @@ type BatchItem struct {
 
 // BatchEvent 是事件时间线的一项。
 type BatchEvent struct {
-	ID        int64           `json:"id"`
-	BatchID   int64           `json:"batchId"`
-	ProjectID int64           `json:"projectId"`
-	EventType string          `json:"eventType"`
-	Sequence  int             `json:"sequence"`
-	ActorID   *int64          `json:"actorId,omitempty"`
-	Detail    json.RawMessage `json:"detail,omitempty"`
-	CreatedAt time.Time       `json:"createdAt"`
+	ID        int64  `json:"id"`
+	BatchID   int64  `json:"batchId"`
+	ProjectID int64  `json:"projectId"`
+	EventType string `json:"eventType"`
+	// EventTypeLabel 是事件类型的中文文案（issue #206）。
+	//
+	// 为什么由服务端下发而不是让前端映射：批次事件的文案表已存在
+	// （`store.batchEventLabels`，动态列表在用它）。前端再抄一张会产生
+	// 两种译法 —— 那正是 #206（动态已中文、时间线仍英文）的成因。
+	EventTypeLabel string          `json:"eventTypeLabel"`
+	Sequence       int             `json:"sequence"`
+	ActorID        *int64          `json:"actorId,omitempty"`
+	Detail         json.RawMessage `json:"detail,omitempty"`
+	CreatedAt      time.Time       `json:"createdAt"`
 }
 
 // 事件类型。载荷只含对象 ID 与版本，不把大段样本内容塞进消息（契约 §5）。

@@ -2233,6 +2233,15 @@ select:focus {
   color: var(--text);
 }
 
+/* issue #206：事件的可诊断细节（单元号/错误类/缺口）。
+   用较弱的视觉权重，避免它抢过事件名本身的阅读顺序；
+   同时允许换行，因为错误类型串可能较长。 */
+.batch-events__detail {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .batch-events__time {
   color: var(--text-muted);
   font-size: 12px;

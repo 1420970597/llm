@@ -29,6 +29,8 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const read = (relative) => readFileSync(path.join(REPO_ROOT, relative), 'utf8')
 
 const MODEL_DOCS = read('internal/model/studio_docs.go')
+// #206：批次事件模型（eventTypeLabel 字段的落点）。
+const MODEL_BATCH = read('internal/model/batch.go')
 const BATCH_STORE = read('internal/store/batch_store.go')
 const BATCH_RUNNER = read('internal/studio/batch_runner.go')
 const ACTIVITY_STORE = read('internal/store/activity_store.go')
@@ -349,6 +351,103 @@ function problemsWithMarkdownGuardCoverage(guardSrc) {
   return problems
 }
 
+/**
+ * #211：审阅状态（`review_projections.effective_action`）不得裸渲染。
+ *
+ * 缺陷形态：新建质量实验的「检查范围」直接渲染 `sample.reviewStatus`，
+ * 中文界面里漏出 `pending` / `accepted`。同一类形态在本仓已有先例：
+ * ReviewPages 旧实现用 `LABEL[status] ?? status` 兜底，未知值同样漏出枚举。
+ *
+ * 两条断言：
+ *   1. `QualityPages.tsx` 的审阅状态列必须走 `describeReviewStatus`；
+ *   2. 任何 `?? <xxx>.reviewStatus` / `?? effective` 式的**原始值回退**都不得存在
+ *      （回退即漏出，这是同一缺陷的另一种写法）。
+ */
+function problemsWithReviewStatusLabels(qualitySrc, reviewSrc, enumSrc) {
+  const problems = []
+  if (!/export function describeReviewStatus\(/.test(enumSrc)) {
+    problems.push('enumLabels 缺少 describeReviewStatus（审阅状态没有单一来源）')
+  }
+  if (!/export function reviewStatusColor\(/.test(enumSrc)) {
+    problems.push('enumLabels 缺少 reviewStatusColor（颜色与文案会各自演化）')
+  }
+  // 检查范围表格必须接线（#211 的实测泄漏点）。
+  if (!/describeReviewStatus\(sample\.reviewStatus\)/.test(qualitySrc)) {
+    problems.push('QualityPages 的审阅状态列没有调用 describeReviewStatus（#211 实测泄漏点）')
+  }
+  // 审阅队列页也必须用同一份映射：它原先有一个本地表 + `?? status` 兜底，
+  // 两者共存会让同一状态在「队列」与「检查范围」出现两种译法。
+  if (!/describeReviewStatus\(/.test(reviewSrc)) {
+    problems.push('ReviewPages 的审阅状态没有走 describeReviewStatus（会出现第二张映射表）')
+  }
+  if (!/reviewStatusColor\(/.test(reviewSrc)) {
+    problems.push('ReviewPages 的标签颜色没有走 reviewStatusColor')
+  }
+  // 原始值回退形态：`?? sample.reviewStatus` / `?? item.reviewStatus` / `?? effective`。
+  for (const [name, src] of [['QualityPages', qualitySrc], ['ReviewPages', reviewSrc]]) {
+    // 注释可能**解释**缺陷来源（「旧实现用 `?? reviewStatus`」），
+    // 把注释当缺陷是误报，而误报会让人直接关掉守卫 —— 因此先剥注释。
+    const code = stripComments(src)
+    if (/\?\?\s*(sample|item|detail\.sample)?\.?reviewStatus\b/.test(code)) {
+      problems.push(`${name} 仍用 ?? reviewStatus 兜底（未知值会把内部枚举漏给用户）`)
+    }
+    if (/\?\?\s*effective\b/.test(code)) {
+      problems.push(`${name} 仍用 ?? effective 兜底`)
+    }
+  }
+  // #211 的第二个要求：必须说明未审阅内容能否纳入评测。
+  if (!/unreviewedScopeNotice/.test(qualitySrc)) {
+    problems.push('QualityPages 未说明「未审阅内容能否纳入评测」（#211 第 2 项要求）')
+  }
+  return problems
+}
+
+/**
+ * #206：批次详情「事件时间线」不得裸渲染内部事件键。
+ *
+ * 缺陷形态：`RunPages.tsx` 直接输出 `{event.eventType}`（BatchPartialFailed
+ * 等），与「动态」列表的中文文案分叉。
+ *
+ * 断言：
+ *   1. 不得出现 `{event.eventType}` 原样渲染（#206 建议的守卫）；
+ *   2. 必须消费服务端下发的 `eventTypeLabel`（而不是前端再抄一张表）；
+ *   3. 必须把 detail 里的可诊断字段显示出来（单元号/错误类/缺口）。
+ */
+function problemsWithBatchTimelineLabels(runSrc, modelSrc, apiSrc, storeSrc) {
+  const problems = []
+  // 先剥注释：修复说明里会引用 `{event.eventType}` 这个旧形态，
+  // 不剥会让守卫对**自己的文档**报错（误报 → 有人直接关掉守卫）。
+  const runCode = stripComments(runSrc)
+  // 排除 `title={event.eventType}`：把原始 code 保留在 title 上是**刻意**的
+  // （与本仓其它页面的惯例一致，便于排查），不是泄漏。
+  // 不加负向断言的话，合法用法会把守卫弄成永久红灯。
+  const rawRender = runCode.replace(/title=\{\s*event\.eventType\s*\}/g, '')
+  if (/\{\s*event\.eventType\s*\}/.test(rawRender)) {
+    problems.push('RunPages 仍原样渲染 {event.eventType}（#206 的缺陷形态）')
+  }
+  if (!/event\.eventTypeLabel/.test(runCode)) {
+    problems.push('RunPages 时间线没消费服务端下发的 eventTypeLabel')
+  }
+  // 时间线兜底不得回退成原始 code（用 title 保留才是对的）。
+  if (/event\.eventTypeLabel\s*\|\|\s*event\.eventType\b/.test(runCode)) {
+    problems.push('时间线把原始 eventType 当作文案兜底（泄漏再现）')
+  }
+  if (!/describeBatchEventDetail\(/.test(runCode)) {
+    problems.push('时间线没有显示 detail 里的可诊断字段（12 行「部分失败」无法区分）')
+  }
+  // 服务端必须真的下发文案，且与动态列表用**同一张表**（不得新建第二张）。
+  //
+  // 断言 JSON 标签而不是字段名：字段名在同一段注释里被反复引用（解释为什么要
+  // 下发），只查名字时「删字段但留注释」会让断言空转 —— 变异自证把它拓出来了。
+  if (!/json:"eventTypeLabel"/.test(modelSrc)) {
+    problems.push('model.BatchEvent 缺少 eventTypeLabel 字段（前端拿不到中文文案）')
+  }
+  if (!/DescribeBatchEvent/.test(apiSrc) || !/DescribeBatchEvent/.test(storeSrc)) {
+    problems.push('API 未从 store 的 batchEventLabels 下发事件文案（会诱发第二张表）')
+  }
+  return problems
+}
+
 // ---------------------------------------------------------------------------
 // 判定
 // ---------------------------------------------------------------------------
@@ -362,6 +461,12 @@ const checks = [
     problemsWithEnumLabelLeaks(ACTIVITY_STORE, ENUM_LABELS, CLEANING_META)],
   ['#191 审计表「资源」列不再漏出内部英文键',
     problemsWithAuditResourceLabels(ENUM_LABELS, APP_TSX, ADMIN_PAGE)],
+  ['#211 审阅状态不再裸渲染 + 说明未审阅内容口径',
+    problemsWithReviewStatusLabels(read('apps/web-user/src/studio/pages/QualityPages.tsx'),
+      REVIEW_PAGE, ENUM_LABELS)],
+  ['#206 批次事件时间线不再漏出内部事件键',
+    problemsWithBatchTimelineLabels(RUN_PAGE, MODEL_BATCH, read('apps/api/routes_studio_batches.go'),
+      ACTIVITY_STORE)],
   ['#194 数据与审阅是两个语义不同的页面',
     problemsWithDataReviewSplit(REVIEW_PAGE, ROUTES)],
   ['#194 窄屏表格卡片化 + 右栏不重叠',
@@ -400,6 +505,19 @@ const mutations = [
       'export function describeAuditResource(raw: string) { return raw }'), APP_TSX, ADMIN_PAGE)],
   ['#191 摘掉治理面板的资源列接线', problemsWithAuditResourceLabels(
     ENUM_LABELS, APP_TSX, ADMIN_PAGE.replaceAll('describeAuditResource(item.resourceType)', 'item.resourceType').replaceAll('describeAuditResource(value)', 'value'))],
+  ['#211 让审阅状态退回裸渲染', problemsWithReviewStatusLabels(
+    read('apps/web-user/src/studio/pages/QualityPages.tsx').replace(
+      /describeReviewStatus\(sample\.reviewStatus\)/, 'sample.reviewStatus'), REVIEW_PAGE, ENUM_LABELS)],
+  ['#211 让颜色/文案映射退化', problemsWithReviewStatusLabels(
+    read('apps/web-user/src/studio/pages/QualityPages.tsx'),
+    REVIEW_PAGE.replace(/describeReviewStatus\(/g, 'noop('), ENUM_LABELS),
+],
+  ['#206 让时间线退回原样渲染 eventType', problemsWithBatchTimelineLabels(
+    RUN_PAGE.replace(/event\.eventTypeLabel \|\| '批次事件'/, 'event.eventType'),
+    MODEL_BATCH, read('apps/api/routes_studio_batches.go'), ACTIVITY_STORE)],
+  ['#206 删掉服务端下发的文案字段', problemsWithBatchTimelineLabels(
+    RUN_PAGE, MODEL_BATCH.replace('`json:"eventTypeLabel"`', '`json:"removed"`'),
+    read('apps/api/routes_studio_batches.go'), ACTIVITY_STORE)],
   ['#194 两个入口共用默认筛选', problemsWithDataReviewSplit(
     REVIEW_PAGE.replace(/queueMode \? 'pending' : ''/, "'pending'"), ROUTES)],
   // 必须替换**全部**出现：连接表与存储表各有 `data-label="名称"`，

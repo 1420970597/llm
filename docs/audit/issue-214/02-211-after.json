@@ -1,0 +1,24 @@
+{
+  "stage": "after",
+  "statusCells": [
+    {
+      "text": "待判断",
+      "title": "pending"
+    },
+    {
+      "text": "已接纳",
+      "title": "accepted"
+    },
+    {
+      "text": "待判断",
+      "title": "pending"
+    },
+    {
+      "text": "待判断",
+      "title": "pending"
+    }
+  ],
+  "visibleEnumKeys": [],
+  "scopeExplanation": "检查范围（冻结为「被评测数据集」） | 已选 0 个内容版本。 | 其中 3 个内容版本尚未人工判断。评测可以纳入它们（评测只是度量），但未审阅内容的结论不作为发布证据，发布时仍会被门槛拦截。 | 内容版本 | 审阅状态 | 方向二（难度 normal）：第 2 题 · v2（版本 ID 9） | 待判断 | 方向二（难度 normal）：第 1 题 · v2（版本 ID 8） | 已接纳 | 方向一（难度 normal）：第 2 题 · v2（版本 ID 7） | 待判断 | 方向一（难度 normal）：第 1 题 · v3（版本 ID 6） | 待判断",
+  "consoleErrors": []
+}

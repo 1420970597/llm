@@ -334,3 +334,66 @@ func sortedKeys(m map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// TestDescribeBatchEventNeverLeaksRawCode 断言批次事件文案不把内部 code 回传给用户。
+//
+// 该函数是 issue #206 的修复基础：批次详情「事件时间线」原先直接渲染
+// `event.eventType`（BatchPartialFailed 等），与「动态」列表的中文文案分叉。
+// 现在时间线走服务端从**同一张表**下发的文案。
+//
+// 正常路径：全部 BatchEvent* 取值都有中文文案。
+// 边界路径：未知/空值必须落中性中文，而不是回传原始 code。
+func TestDescribeBatchEventNeverLeaksRawCode(t *testing.T) {
+	// 正常路径：与 model 层常量表逐一比对，保证「新增事件类型忘补文案」会失败。
+	for _, eventType := range []string{
+		"BatchQueued", "BatchStarted", "BatchPaused", "BatchResumed",
+		"BatchStepCompleted", "BatchPartialFailed", "BatchCompleted",
+		"BatchFailed", "BatchRetryFailedRequested",
+	} {
+		label := DescribeBatchEvent(eventType)
+		if label == "" {
+			t.Errorf("DescribeBatchEvent(%q) 返回空文案", eventType)
+			continue
+		}
+		if label == eventType {
+			t.Errorf("DescribeBatchEvent(%q) 原样返回内部 code（issue #206 的缺陷形态）", eventType)
+		}
+		if !hasCJK(label) {
+			t.Errorf("DescribeBatchEvent(%q) = %q 不含中文", eventType, label)
+		}
+	}
+
+	// 边界路径：未知类型与空串都不得回传原始 code。
+	for _, unknown := range []string{"SomethingBrandNew", "", "batch_weird_thing"} {
+		label := DescribeBatchEvent(unknown)
+		if !hasCJK(label) {
+			t.Errorf("DescribeBatchEvent(%q) = %q 不含中文（会漏出内部 code）", unknown, label)
+		}
+		if label == unknown {
+			t.Errorf("DescribeBatchEvent(%q) 原样返回了入参", unknown)
+		}
+	}
+}
+
+// TestBatchEventLabelsCoverModelConstants 断言事件文案表覆盖 model 层全部事件常量。
+//
+// 与资源表同一思路：取值域的所有权在 Go 源码，因此从源码提取后比对，
+// 而不是手抄一份清单（手抄只能证明「表和自己一致」）。
+func TestBatchEventLabelsCoverModelConstants(t *testing.T) {
+	src := readRepoSource(t, "../model/batch.go")
+	matches := regexp.MustCompile(`(BatchEvent[A-Za-z]+)\s*=\s*"([A-Za-z]+)"`).FindAllStringSubmatch(src, -1)
+	if len(matches) == 0 {
+		t.Fatal("未从 model/batch.go 提取到任何 BatchEvent 常量，守卫失效")
+	}
+	missing := []string{}
+	for _, m := range matches {
+		if _, ok := batchEventLabels[m[2]]; !ok {
+			missing = append(missing, m[2])
+		}
+	}
+	sort.Strings(missing)
+	if len(missing) > 0 {
+		t.Errorf("batchEventLabels 缺少以下事件类型的文案：%v\n"+
+			"  缺文案时批次详情时间线与动态列表会分叉（issue #206）。", missing)
+	}
+}

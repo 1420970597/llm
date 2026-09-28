@@ -285,12 +285,47 @@ export function RunsPage() {
 // 批次详情（R02/R04/R06）
 // ---------------------------------------------------------------------------
 
+// 本文件的局部事件形状。与 `lib/api/studio.ts` 的 `BatchEvent` 对应；
+// `eventTypeLabel` 是 issue #206 新增的服务端下发中文字案。
 type BatchEvent = {
   id: number
   eventType: string
+  eventTypeLabel?: string
   sequence: number
   detail?: unknown
   createdAt: string
+}
+
+/**
+ * 把批次事件的 `detail` 摘成一句可诊断的中文（issue #206）。
+ *
+ * 为什么需要它：时间线以前只渲染事件类型，于是「批次部分失败」出现 12 次时
+ * 无法区分 **一次故障的 12 个单元** 与 **12 个独立故障** —— 而这恰恰是
+ * 排查时最先要回答的问题。detail 里本来就有 `itemId` / `errorClass` /
+ * `retryable` / `shortfall`，只是被丢掉了。
+ *
+ * 契约：字段缺失时**不编造**内容（宁可不显示，也不给一个看起来完整但错的摘要）。
+ */
+function describeBatchEventDetail(event: BatchEvent): string {
+  const detail = event.detail
+  if (!detail || typeof detail !== 'object') return ''
+  const d = detail as Record<string, unknown>
+  const parts: string[] = []
+
+  // 单元级失败：指出是哪个单元、哪类错误、能否重试。
+  if (typeof d.itemId === 'number' && d.itemId > 0) parts.push(`单元 #${d.itemId}`)
+  if (typeof d.errorClass === 'string' && d.errorClass) parts.push(`错误类型 ${d.errorClass}`)
+  if (typeof d.retryable === 'boolean') parts.push(d.retryable ? '可重试' : '不可重试')
+
+  // 缺口：给出可核对的数字，而不是只写「有缺口」。
+  const completed = typeof d.completed === 'number' ? d.completed : null
+  const planned = typeof d.planned === 'number' ? d.planned : null
+  if (typeof d.shortfall === 'number' && d.shortfall > 0) {
+    parts.push(planned !== null && completed !== null
+      ? `缺口 ${d.shortfall}（已完成 ${completed}/${planned}）`
+      : `缺口 ${d.shortfall}`)
+  }
+  return parts.join(' · ')
 }
 
 export function BatchDetailPage() {
@@ -714,7 +749,22 @@ export function BatchDetailPage() {
           <ul className="batch-events">
             {events.map((event) => (
               <li key={event.id}>
-                <span className="batch-events__type">{event.eventType}</span>
+                {/* issue #206：原先直接渲染 `event.eventType`（BatchPartialFailed
+                    等内部英文键）。现在用服务端下发的同源中文文案；
+                    旧后端未带该字段时给中性兜底 —— **绝不回退成原始 code**。 */}
+                <span className="batch-events__type" title={event.eventType}>
+                  {/* 服务端未下发文案时给中性中文，**不回退成原始 code**：
+                      这是 issue #206 的根因形态，回退等于把缺陷再引回来。 */}
+                  {event.eventTypeLabel || '批次事件'}
+                </span>
+                {/* #206 的第二个要求：把 detail 里的可诊断字段显式出来。
+                    否则 12 行「批次部分失败」无法区分「一次故障的 12 个单元」
+                    与「12 个独立故障」—— 而这正是排查时最需要知道的。 */}
+                {describeBatchEventDetail(event) ? (
+                  <span className="batch-events__detail" data-batch-event-detail="true">
+                    {describeBatchEventDetail(event)}
+                  </span>
+                ) : null}
                 <span className="batch-events__time">{event.createdAt}</span>
               </li>
             ))}
