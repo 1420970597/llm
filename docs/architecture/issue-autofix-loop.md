@@ -658,7 +658,9 @@ subagent({ action: "schedule.create", id: "issue-autofix-loop", every: "6h",
            args: { task: "读取 /root/llm/docs/plans/issue-autofix-prompt.md 并严格执行一轮 issue-autofix。" } })
 
 # 轨道二：crontab 拉活（无 pi 进程时补足）
-0 */6 * * * /root/llm/scripts/issue-bot/round.sh >> /root/llm/.pi/issue-autofix/logs/cron.log 2>&1
+#   用 --due-only：只催醒 pi 内定时器（且受 due / overlap=skip 约束），
+#   而不是再独立跑一整轮 —— 后者会与轨道一双重消耗 token。
+0 */6 * * * /root/llm/scripts/issue-bot/round.sh --due-only >> /root/llm/.pi/issue-autofix/logs/cron.log 2>&1
 ```
 
 ---
@@ -667,7 +669,7 @@ subagent({ action: "schedule.create", id: "issue-autofix-loop", every: "6h",
 
 | # | 限制 | 影响 | 后续方向 |
 | --- | --- | --- | --- |
-| L1 | 触发依赖本机存活，无高可用 | 宕机期间完全停摆 | 迁到常驻主机 + 系统级 timer |
+| L1 | 触发依赖本机存活，无高可用 | 宕机期间完全停摆；`quiet` 下失败通知无处投递（只能看日志/台账） | 迁到常驻主机 + 系统级 timer + 失败外部告警 |
 | L2 | 单轮 3 条，吞吐有限 | 大批积压消化慢 | 动态扩缩 + 并行 lane |
 | L3 | 无法自动判断「聚合型 issue 是否全部收口」 | 需模型逐项核对，可能漏判 | 引入结构化子项清单 + 校验器 |
 | L4 | 截图对比依赖人眼 | 无视觉回归自动判定 | 接入像素/结构 diff 阈值 |
