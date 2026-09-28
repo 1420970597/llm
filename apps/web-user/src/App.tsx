@@ -97,6 +97,7 @@ import {
 import { buildLoginPath, resolveLoginRedirect } from './lib/authRedirect'
 import { APP_BUILD_TIME, APP_VERSION_SHORT, APP_VERSION_UNKNOWN } from './buildInfo'
 import { CleaningView } from './views/CleaningView'
+import { clearForActor, currentActorID, setCurrentActorID } from './lib/pendingQueue'
 import { studioRouteTree } from './studio/StudioRoutes'
 import { LegacyStageBridgeRoute, LegacyTaskBridgeRoute } from './studio/LegacyRouteBridge'
 import { RouteStatusPage } from './studio/pages/RouteStatusPage'
@@ -1332,10 +1333,14 @@ export default function App() {
       })
       Toast.error(message)
       setUser(null)
+      // 会话失效等同于退出登录：本机敏感正文与 actor 分键一并清除，
+      // 否则下一个人在这台机器上可能读到前一个账号的离线草稿（T29 隐私约定）。
+      const expiredActor = currentActorID()
+      if (expiredActor > 0) clearForActor(expiredActor)
+      setCurrentActorID(0)
       navigate('/login', { replace: true })
       return true
     }
-
     if (isForbiddenError(error)) {
       const message = apiError.message || '你没有执行该操作的权限，请联系管理员。'
       setTrustSignal({
@@ -1500,9 +1505,13 @@ export default function App() {
         const result = await authApi.me()
         if (!active) return
         setUser(result.user)
+        // #160 T29：会话恢复成功时记录 actor，否则离线草稿会以「未登录」
+        // 被拒绝，且退出账号时清理不到本机敏感正文。
+        setCurrentActorID(result.user.id)
       } catch {
         if (!active) return
         setUser(null)
+        setCurrentActorID(0)
       } finally {
         if (active) setSessionLoading(false)
       }
@@ -1557,6 +1566,7 @@ export default function App() {
     try {
       const result = await authApi.login({ email, password })
       setUser(result.user)
+      setCurrentActorID(result.user.id)
       setTrustSignal(null)
       Toast.success(`欢迎回来，${result.user.email}`)
       navigate(loginRedirect, { replace: true })
@@ -1579,6 +1589,7 @@ export default function App() {
       await authApi.logout()
     } finally {
       setUser(null)
+      setCurrentActorID(0)
       setGraph(null)
       setQuestions([])
       setReasoning([])
