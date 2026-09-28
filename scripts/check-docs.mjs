@@ -228,9 +228,12 @@ const CONTRACT_FORWARD_REFS = new Set([
   'sql/migrations/0040_studio_source_documents.sql',
   'docs/plans/round3-blueprint-workflow-inventory.md',
   // 提案文档里用**占位名**说明「禁止创建平行文件」（AGENTS.md §3.1），
-  // 它们**永远不该存在**：`xxx_v2.go` / `xxx_new.go` 是反例，不是落点。
+  // 它们**永远不该存在**：`xxx_v2.go` / `xxx_new.go` / `xxx_patch.go` 是反例，不是落点。
+  // 注意 AGENTS.md §3.1 列举了三个占位名；本处必须与它同步，
+  // 否则文档引用 §3.1 原文时会被 docs 门禁误判为「引用了不存在的代码」。
   'xxx_v2.go',
   'xxx_new.go',
+  'xxx_patch.go',
   // 竞品源码路径（Dify 上游仓库），不在本仓库内。这些引用用于注明
   // 「借鉴的是哪个组件的形状」，删除引用会让调研失去可核对的出处。
   'web/app/components/workflow/panel/index.tsx',
