@@ -47,6 +47,7 @@ import {
   type Strategy,
 } from '../../lib/api'
 import { describeDatasetStatus } from '../../lib/datasetStatus'
+import { describeAuditAction, describeAuditResource } from '../../lib/enumLabels'
 
 const { Title, Text } = Typography
 
@@ -493,8 +494,8 @@ export function AdminWorkspacePage() {
                 columns={[
                   { title: '时间', dataIndex: 'createdAt', key: 'createdAt' },
                   { title: '操作者', dataIndex: 'actor', key: 'actor' },
-                  { title: '动作', dataIndex: 'action', key: 'action' },
-                  { title: '资源', key: 'resource', render: (_: unknown, item: AuditRecord) => `${item.resourceType} #${item.resourceId}` },
+                  { title: '动作', dataIndex: 'action', key: 'action', render: (value: string) => <span title={value}>{describeAuditAction(value)}</span> },
+                  { title: '资源', key: 'resource', render: (_: unknown, item: AuditRecord) => <span title={`${item.resourceType} #${item.resourceId}`}>{describeAuditResource(item.resourceType)} #{item.resourceId}</span> },
                 ]}
                 dataSource={auditLogs.slice(0, 6)}
                 rowKey="id"
@@ -549,8 +550,8 @@ export function AdminWorkspacePage() {
             {auditLogs.length ? <Table columns={[
               { title: '时间', dataIndex: 'createdAt', key: 'createdAt' },
               { title: '操作者', dataIndex: 'actor', key: 'actor' },
-              { title: '动作', dataIndex: 'action', key: 'action' },
-              { title: '资源', key: 'resource', render: (_: unknown, item: AuditRecord) => `${item.resourceType} #${item.resourceId}` },
+              { title: '动作', dataIndex: 'action', key: 'action', render: (value: string) => <span title={value}>{describeAuditAction(value)}</span> },
+              { title: '资源', key: 'resource', render: (_: unknown, item: AuditRecord) => <span title={`${item.resourceType} #${item.resourceId}`}>{describeAuditResource(item.resourceType)} #{item.resourceId}</span> },
               { title: '详情', dataIndex: 'detail', key: 'detail' },
             ]} dataSource={auditLogs} rowKey="id" pagination={{ pageSize: 8 }} /> : <Empty description="还没有操作记录" />}
           </Card>

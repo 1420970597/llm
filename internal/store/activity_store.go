@@ -1013,20 +1013,59 @@ func auditActionFallback(action string) string {
 	return "配置" + verb
 }
 
-// auditResourceLabels 把审计动作前缀翻成中文资源名。
+// auditResourceLabels 把审计动作前缀，以及 `audit_logs.resource_type` 的取值
+// 翻成中文资源名（issue #191 第四条渲染路径）。
+//
+// 为什么资源表要与动作表并列：审计记录有两个独立取值域 ——「动作」（= operation +
+// resource 拼接）与「资源」（= 业务对象类型）。旧实现只翻译了前者，资源列直接
+// 把 `sample_version` / `workspace_member` 给用户看。键集合以后端写入值为准。
 var auditResourceLabels = map[string]string{
-	"batch":            "批次",
-	"project":          "项目",
-	"recipe":           "方案",
-	"blueprint":        "蓝图",
-	"coverage":         "覆盖方案",
-	"standard":         "思维标准",
-	"quality_policy":   "质量策略",
-	"mapping":          "交付映射",
-	"experiment":       "质量实验",
-	"release":          "发布候选",
-	"member":           "项目成员",
-	"workspace_member": "工作区成员",
+	// 动作前缀（`<resource>_created` 之类被裁下来的前缀）
+	"batch":          "批次",
+	"project":        "项目",
+	"recipe":         "方案",
+	"blueprint":      "蓝图",
+	"coverage":       "覆盖方案",
+	"standard":       "思维标准",
+	"quality_policy": "质量策略",
+	"mapping":        "交付映射",
+	"experiment":     "质量实验",
+	"release":        "发布候选",
+	"member":         "项目成员",
+	// 审计记录的资源类型（`audit_logs.resource_type`）
+	"project_member":            "项目成员",
+	"workspace_member":          "工作区成员",
+	"comment":                   "评论",
+	"recipe_version":            "方案版本",
+	"blueprint_version":         "蓝图版本",
+	"coverage_version":          "覆盖方案版本",
+	"standard_version":          "思维标准版本",
+	"quality_policy_version":    "质量策略版本",
+	"mapping_version":           "交付映射版本",
+	"export_mapping":            "导出映射",
+	"sample_version":            "样本版本",
+	"chain_standard":            "思维链标准",
+	"comparison_baseline":       "比较基线",
+	"rule_evaluation":           "规则评估",
+	"dataset":                   "数据集",
+	"dataset_domains":           "数据集领域",
+	"dataset_export":            "数据集导出",
+	"dataset_reward_levels":     "奖励等级",
+	"generation_run":            "生成运行",
+	"generation_strategy":       "生成策略",
+	"direction_generation":      "方向生成任务",
+	"question_generation":       "问题生成任务",
+	"reasoning_generation":      "推理生成任务",
+	"reward_generation":         "奖励生成任务",
+	"chain_standard_generation": "思维链标准生成任务",
+	"grpo_prompts":              "GRPO 提示词",
+	"sft_records":               "SFT 记录",
+	"eval_run":                  "评估运行",
+	"eval_dimension":            "评估维度",
+	"eval_run_judges":           "评估裁判",
+	"model_provider":            "模型服务",
+	"storage_profile":           "结果存储",
+	"prompt_template":           "生成指令模板",
 }
 
 // decodeMentionIDs 解析 mentions JSONB。

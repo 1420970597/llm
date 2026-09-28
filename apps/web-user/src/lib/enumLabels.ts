@@ -200,20 +200,111 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   release_published: '发布版本',
 }
 
-/** 动作前缀 → 中文资源名（用于未登记动作的派生兜底）。 */
+/**
+ * 资源名 → 中文文案。
+ *
+ * 这张表同时服务两个取值域（issue #191 第四条渲染路径）：
+ *
+ *  1. **审计动作前缀**：`describeAuditAction` 把 `blueprint_version_created`
+ *     拆成资源 `blueprint_version` + 动词「创建」时用它取中文资源名；
+ *  2. **审计记录的资源列**：旧控制台「系统设置 → 操作记录」的「资源」列直接
+ *     渲染后端 `audit_logs.resource_type`（`sample_version` / `blueprint_version` /
+ *     `workspace_member`…），此前**完全没有经过任何映射**，是 #191 在
+ *     修复动作列之后**仍然漏出**的那一半。
+ *
+ * 取值域由后端决定（`internal/store/*_store.go` 的 `WriteAuditLog` 与
+ * `writeProjectAuditTx` 实参，以及 `document_store.go` 的 `"<kind>_version"`），
+ * 因此 key 集合必须以后端写入值为准；一致性由 `test/audit_resource_labels_test.go`
+ * 从 Go 源码提取后断言。
+ */
 const AUDIT_RESOURCE_LABELS: Record<string, string> = {
-  batch: '批次',
+  // 项目与协作
   project: '项目',
+  project_member: '项目成员',
+  workspace_member: '工作区成员',
+  member: '项目成员',
+  comment: '评论',
+  // 方案与版本化文档
   recipe: '方案',
+  recipe_version: '方案版本',
+  blueprint_version: '蓝图版本',
+  coverage_version: '覆盖方案版本',
+  standard_version: '思维标准版本',
+  quality_policy_version: '质量策略版本',
+  mapping_version: '交付映射版本',
+  export_mapping: '导出映射',
+  sample_version: '样本版本',
+  chain_standard: '思维链标准',
+  // 下面五个是**动作前缀别名**：`describeAuditAction` 会先把
+  // `blueprint_version_deleted` 这类未登记动作裁成资源前缀 `blueprint`，
+  // 再取中文名。它们与上面的 `*_version` 键指向同一种业务对象，
+  // 保留两套 key 是因为两个取值域的粒度不同（动作前缀 vs 资源类型）。
   blueprint: '蓝图',
   coverage: '覆盖方案',
   standard: '思维标准',
   quality_policy: '质量策略',
   mapping: '交付映射',
+  // 批次、比较与规则
+  batch: '批次',
+  comparison_baseline: '比较基线',
+  rule_evaluation: '规则评估',
   experiment: '质量实验',
   release: '发布候选',
-  member: '项目成员',
-  workspace_member: '工作区成员',
+  // 数据与生成流水线
+  dataset: '数据集',
+  dataset_domains: '数据集领域',
+  dataset_export: '数据集导出',
+  dataset_reward_levels: '奖励等级',
+  generation_run: '生成运行',
+  generation_strategy: '生成策略',
+  direction_generation: '方向生成任务',
+  question_generation: '问题生成任务',
+  reasoning_generation: '推理生成任务',
+  reward_generation: '奖励生成任务',
+  chain_standard_generation: '思维链标准生成任务',
+  grpo_prompts: 'GRPO 提示词',
+  sft_records: 'SFT 记录',
+  // 评估
+  eval_run: '评估运行',
+  eval_dimension: '评估维度',
+  eval_run_judges: '评估裁判',
+  // 管理与发布
+  model_provider: '模型服务',
+  storage_profile: '结果存储',
+  prompt_template: '生成指令模板',
+}
+
+/** 资源名后缀 → 中文类型名，顺序即优先级（更长的后缀必须排在前面）。 */
+const AUDIT_RESOURCE_SUFFIXES: Array<{ code: string; label: string }> = [
+  { code: '_generation', label: '生成任务' },
+  { code: '_version', label: '版本' },
+  { code: '_export', label: '导出' },
+  { code: '_judges', label: '裁判' },
+  { code: '_records', label: '记录' },
+  { code: '_prompts', label: '提示词' },
+  { code: '_levels', label: '等级' },
+  { code: '_domains', label: '领域' },
+]
+
+/**
+ * 审计记录的资源类型 → 用户可见文案。
+ *
+ * 契约：**永不返回原始 `resourceType`**（与 `describeAuditAction` 同一条契约）。
+ * 未登记的资源按后缀派生中文；连后缀都不认识时给中性的「其他资源」。
+ * 原始 code 由调用方保留在 `title` 上供排查，而不是丢给用户当文案。
+ */
+export function describeAuditResource(raw: string): string {
+  if (!raw) return '未知资源'
+  if (raw in AUDIT_RESOURCE_LABELS) {
+    return AUDIT_RESOURCE_LABELS[raw]
+  }
+  for (const rule of AUDIT_RESOURCE_SUFFIXES) {
+    if (!raw.endsWith(rule.code)) continue
+    const base = raw.slice(0, raw.length - rule.code.length)
+    const baseLabel = AUDIT_RESOURCE_LABELS[base]
+    return baseLabel ? `${baseLabel}${rule.label}` : `配置${rule.label}`
+  }
+  return '其他资源'
 }
 
 /** 后缀 → 中文动词，顺序即优先级（`_version_created` 必须先于 `_created`）。 */
