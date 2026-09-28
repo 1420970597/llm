@@ -92,6 +92,7 @@ import {
   describeArtifactContentType,
   describeArtifactType,
   describeAuditAction,
+  describeAuditResource,
   describeDomainReviewStatus,
 } from './lib/enumLabels'
 import { buildLoginPath, resolveLoginRedirect } from './lib/authRedirect'
@@ -2142,7 +2143,18 @@ export default function App() {
         dataIndex: 'action',
         render: (value: string) => <span title={value}>{describeAuditAction(value)}</span>,
       },
-      { title: '资源', dataIndex: 'resourceType' },
+      // issue #191 第四条渲染路径：「资源」列原先直接渲染 `resourceType`
+      // （`sample_version` / `workspace_member` …），修了动作列却漏了这一列。
+      // 与动作列同约定：原文保留在 title 上，单元格给人话。
+      {
+        title: '资源',
+        dataIndex: 'resourceType',
+        render: (value: string, record: AuditRecord) => (
+          <span title={`${value} #${record.resourceId}`}>
+            {describeAuditResource(value)} #{record.resourceId}
+          </span>
+        ),
+      },
       { title: '详情', dataIndex: 'detail' },
       { title: '时间', dataIndex: 'createdAt' },
     ],

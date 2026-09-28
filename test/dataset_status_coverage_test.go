@@ -518,7 +518,13 @@ func TestEnumLabelModuleCoversObservedValues(t *testing.T) {
 	}
 
 	// 断言三个 describe* 函数都存在且被 App.tsx 调用（防止模块写了但没接线）。
-	for _, fn := range []string{"describeDomainReviewStatus", "describeArtifactType", "describeArtifactContentType"} {
+	//
+	// issue #191 追加两个审计类函数：它们同样属于「模块写了但没接线 = 缺陷仍在」
+	// 的形态 —— #191 上一轮正是因为只接了「动作」列、漏了「资源」列而复现。
+	for _, fn := range []string{
+		"describeDomainReviewStatus", "describeArtifactType", "describeArtifactContentType",
+		"describeAuditAction", "describeAuditResource",
+	} {
 		if !strings.Contains(source, "export function "+fn) {
 			t.Errorf("enumLabels.ts 缺少导出函数 %s", fn)
 		}

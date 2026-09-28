@@ -1,0 +1,50 @@
+{
+  "stage": "before",
+  "base": "http://127.0.0.1:3210",
+  "tableHead": [
+    "操作人",
+    "操作",
+    "资源",
+    "详情",
+    "时间"
+  ],
+  "resourceCells": [
+    {
+      "text": "batch",
+      "title": "batch"
+    },
+    {
+      "text": "batch",
+      "title": "batch"
+    },
+    {
+      "text": "sample_version",
+      "title": "sample_version"
+    },
+    {
+      "text": "batch",
+      "title": "batch"
+    },
+    {
+      "text": "workspace_member",
+      "title": "workspace_member"
+    },
+    {
+      "text": "batch",
+      "title": "batch"
+    },
+    {
+      "text": "batch",
+      "title": "batch"
+    },
+    {
+      "text": "batch",
+      "title": "batch"
+    }
+  ],
+  "visibleEnumKeys": [
+    "sample_version",
+    "workspace_member"
+  ],
+  "consoleErrors": []
+}

@@ -41,6 +41,8 @@ const SETTINGS_PAGE = read('apps/web-user/src/studio/pages/SettingsPages.tsx')
 const RUN_PAGE = read('apps/web-user/src/studio/pages/RunPages.tsx')
 const ROUTES = read('apps/web-user/src/studio/routes.ts')
 const ENUM_LABELS = read('apps/web-user/src/lib/enumLabels.ts')
+const APP_TSX = read('apps/web-user/src/App.tsx')
+const ADMIN_PAGE = read('apps/web-user/src/studio/pages/AdminWorkspacePage.tsx')
 const CLEANING_META = read('apps/web-user/src/views/cleaning/cleaningMeta.ts')
 const CD_WORKFLOW = read('.github/workflows/cd.yml')
 const MARKDOWN_GUARD = read('test/l15_markdown_ui.mjs')
@@ -154,6 +156,52 @@ function problemsWithEnumLabelLeaks(activitySrc, enumSrc, cleaningSrc) {
   // 把注释也当缺陷会让守卫产生误报 —— 而误报会让人直接关掉守卫。
   if (/\?\?\s*status\b/.test(stripComments(cleaningSrc))) {
     problems.push('cleaningMeta 仍用 `?? status` 兜底（会漏出 directions_completed）')
+  }
+  return problems
+}
+
+/**
+ * #191 第四条渲染路径：审计表的「**资源**」列。
+ *
+ * 为什么单列一个谓词：#191 上一轮修的是「动作」列（`audit_logs.action`），
+ * 而「资源」列读的是**另一个取值域** `audit_logs.resource_type`
+ * （`sample_version` / `workspace_member` / `blueprint_version` …），
+ * 当时完全没有映射，于是在真实 Chromium 里仍然显示英文内部键。
+ * 把两者分开断言，是为了让「只修一半」这种形态在结构上不再可能。
+ *
+ * 三个渲染载体（都在旧控制台）：
+ *   1. `App.tsx` 的 `auditColumns`（`/console/admin/audit` 主表）；
+ *   2. `AdminWorkspacePage.tsx` 治理面板的「最近操作」（前 6 条）；
+ *   3. `AdminWorkspacePage.tsx` 治理面板的「操作记录」全表。
+ */
+function problemsWithAuditResourceLabels(enumSrc, appSrc, adminSrc) {
+  const problems = []
+  if (!/export function describeAuditResource\(/.test(enumSrc)) {
+    problems.push('enumLabels 缺少 describeAuditResource（资源列没有中文映射）')
+  }
+  if (!/AUDIT_RESOURCE_LABELS/.test(enumSrc)) {
+    problems.push('enumLabels 缺少 AUDIT_RESOURCE_LABELS 资源文案表')
+  }
+  // 兜底不得回传原始 resourceType（与动作列同一条契约）。
+  const fn = enumSrc.match(/export function describeAuditResource\([^)]*\)[^{]*\{([\s\S]*?)\n\}/)
+  if (!fn) {
+    problems.push('describeAuditResource 结构无法解析，守卫失效')
+  } else if (/\breturn\s+raw\b/.test(fn[1])) {
+    problems.push('describeAuditResource 把原始 resourceType 回传给用户')
+  }
+  // 载体 1：App.tsx 的 auditColumns 必须接线。
+  if (!/describeAuditResource\(value\)/.test(appSrc)) {
+    problems.push('App.tsx 的「资源」列没有调用 describeAuditResource（#191 实测泄漏点）')
+  }
+  // 载体 2 + 3：治理面板两张表都必须接线（同一缺陷的两个额外载体）。
+  const wired = (adminSrc.match(/describeAuditResource\(/g) ?? []).length
+  if (wired < 2) {
+    problems.push(`AdminWorkspacePage 只有 ${wired} 处审计表接到 describeAuditResource（应为「最近操作」与「操作记录」两张）`)
+  }
+  // 可见文案不得直接插值原始 code；只允许出现在 title 上（便于排查）。
+  const visibleRawLeak = /(?<!title=\{`[^`]{0,40})\$\{item\.resourceType\} #\$\{item\.resourceId\}/
+  if (visibleRawLeak.test(adminSrc.replace(/<span title=\{[^}]*\}>/g, '<span>'))) {
+    problems.push('AdminWorkspacePage 把原始 resourceType 当可见文案渲染（未放进 title）')
   }
   return problems
 }
@@ -312,6 +360,8 @@ const checks = [
     problemsWithHonestBatchStatus(BATCH_STORE, BATCH_RUNNER)],
   ['#191 枚举/事件键不再漏出内部英文',
     problemsWithEnumLabelLeaks(ACTIVITY_STORE, ENUM_LABELS, CLEANING_META)],
+  ['#191 审计表「资源」列不再漏出内部英文键',
+    problemsWithAuditResourceLabels(ENUM_LABELS, APP_TSX, ADMIN_PAGE)],
   ['#194 数据与审阅是两个语义不同的页面',
     problemsWithDataReviewSplit(REVIEW_PAGE, ROUTES)],
   ['#194 窄屏表格卡片化 + 右栏不重叠',
@@ -344,6 +394,12 @@ const mutations = [
   ['#191 让兜底回传原始 action code', problemsWithEnumLabelLeaks(ACTIVITY_STORE.replace(
     /func auditActionFallback\(action string\) string \{[\s\S]*?\n\}/, 'func auditActionFallback(action string) string { return action }'),
     ENUM_LABELS, CLEANING_META)],
+  // 变异必须同时打断**映射**与**接线**：只删映射或只删接线，两者都要报问题。
+  ['#191 让资源列回传原始 resourceType', problemsWithAuditResourceLabels(
+    ENUM_LABELS.replace(/export function describeAuditResource\([^)]*\)[^{]*\{[\s\S]*?\n\}/,
+      'export function describeAuditResource(raw: string) { return raw }'), APP_TSX, ADMIN_PAGE)],
+  ['#191 摘掉治理面板的资源列接线', problemsWithAuditResourceLabels(
+    ENUM_LABELS, APP_TSX, ADMIN_PAGE.replaceAll('describeAuditResource(item.resourceType)', 'item.resourceType').replaceAll('describeAuditResource(value)', 'value'))],
   ['#194 两个入口共用默认筛选', problemsWithDataReviewSplit(
     REVIEW_PAGE.replace(/queueMode \? 'pending' : ''/, "'pending'"), ROUTES)],
   // 必须替换**全部**出现：连接表与存储表各有 `data-label="名称"`，

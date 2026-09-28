@@ -1,0 +1,47 @@
+{
+  "stage": "after",
+  "base": "http://127.0.0.1:3210",
+  "tableHead": [
+    "操作人",
+    "操作",
+    "资源",
+    "详情",
+    "时间"
+  ],
+  "resourceCells": [
+    {
+      "text": "批次 #1",
+      "title": ""
+    },
+    {
+      "text": "批次 #1",
+      "title": ""
+    },
+    {
+      "text": "样本版本 #8",
+      "title": ""
+    },
+    {
+      "text": "批次 #4",
+      "title": ""
+    },
+    {
+      "text": "工作区成员 #6",
+      "title": ""
+    },
+    {
+      "text": "批次 #1",
+      "title": ""
+    },
+    {
+      "text": "批次 #1",
+      "title": ""
+    },
+    {
+      "text": "批次 #1",
+      "title": ""
+    }
+  ],
+  "visibleEnumKeys": [],
+  "consoleErrors": []
+}
