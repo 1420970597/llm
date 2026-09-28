@@ -168,6 +168,108 @@ echo "== 14. round.sh 参数契约 =="
 "$ROUND" --bogus-flag >/dev/null 2>&1; check "未知参数退出 2" "2" "$?"
 "$ROUND" --help >/dev/null 2>&1; check "--help 退出 0" "0" "$?"
 
+echo "== 16. 陈旧认领必须能自愈（否则被硬杀的 issue 永久失联）=="
+# 回归的真实缺陷：20:23 轮次被调度超时硬杀后，autofix-running 永久残留在
+# #191/#160/#214 上；而 scan 会把带该标签的 issue **直接过滤掉**，于是它再也
+# 不会被任何一轮处理 —— 只把回收挂在 claim 上是不可达路径。
+# 这里用 gh shim 注入可控的加锁时间，验证「新鲜保留 / 陈旧回收」两侧边界。
+FAKEBIN="$TMPROOT/fakebin"
+mkdir -p "$FAKEBIN"
+cat > "$FAKEBIN/gh" <<'SH'
+#!/usr/bin/env bash
+# 最小 gh shim：只为 reclaim 相关调用提供可控事实。
+state="$FAKE_GH_STATE"
+case "$1 $2" in
+  "api "*|api)
+    for a in "$@"; do
+      case "$a" in
+        *issues/*/timeline*)
+          n=$(printf '%s' "$a" | sed -n 's#.*issues/\([0-9]*\)/timeline.*#\1#p')
+          awk -v k="$n" '$1==k {print $2}' "$state" | tail -n1
+          exit 0 ;;
+      esac
+    done
+    exit 0 ;;
+  "issue list")
+    awk '{print $1}' "$state"
+    exit 0 ;;
+  "issue edit")
+    n=""; for a in "$@"; do case "$a" in [0-9]*) n=$a ;; esac; done
+    awk -v k="$n" '$1!=k' "$state" > "$state.tmp" && mv "$state.tmp" "$state"
+    exit 0 ;;
+  "issue view")
+    n=""; for a in "$@"; do case "$a" in [0-9]*) n=$a ;; esac; done
+    if awk -v k="$n" '$1==k {found=1} END {exit !found}' "$state"; then
+      echo "autofix-auto,autofix-running"
+    else
+      echo "autofix-auto"
+    fi
+    exit 0 ;;
+  *) exit 0 ;;
+esac
+SH
+chmod +x "$FAKEBIN/gh"
+export FAKE_GH_STATE="$TMPROOT/locks.txt"
+SAVED_PATH="$PATH"
+export PATH="$FAKEBIN:$PATH"
+
+iso_ago() { # $1 = 秒数前
+  python3 - "$1" <<'PY'
+import datetime, sys
+now = datetime.datetime.now(datetime.timezone.utc)
+print((now - datetime.timedelta(seconds=int(sys.argv[1]))).strftime('%Y-%m-%dT%H:%M:%SZ'))
+PY
+}
+
+# (a) 陈旧锁（10h 前加的，阈值 6h）→ 必须回收
+printf '4242 %s\n' "$(iso_ago 36000)" > "$FAKE_GH_STATE"
+out=$(ISSUE_AUTOFIX_STALE_CLAIM_HOURS=6 "$PREFLIGHT" reclaim-stale 2>&1)
+check "陈旧锁被回收（RECLAIMED 1）" "RECLAIMED 1" "$(printf '%s' "$out" | tail -n1)"
+check "回收后标签确实不在了" "0" "$(wc -l < "$FAKE_GH_STATE" | tr -d ' ')"
+
+# (b) 新鲜锁（5 秒前加的）→ 必须保留（绝不与在跑的任务抢同一条 issue）
+printf '4242 %s\n' "$(iso_ago 5)" > "$FAKE_GH_STATE"
+out=$(ISSUE_AUTOFIX_STALE_CLAIM_HOURS=6 "$PREFLIGHT" reclaim-stale 2>&1)
+check "新鲜锁被保留（RECLAIMED 0）" "RECLAIMED 0" "$(printf '%s' "$out" | tail -n1)"
+check "新鲜锁未被改动" "1" "$(wc -l < "$FAKE_GH_STATE" | tr -d ' ')"
+
+# (c) 边界：刚好越过阈值 → 回收；刚好未到阈值 → 保留
+printf '4242 %s\n' "$(iso_ago 21610)" > "$FAKE_GH_STATE"
+check "刚过 6h 阈值即回收" "RECLAIMED 1" "$(ISSUE_AUTOFIX_STALE_CLAIM_HOURS=6 "$PREFLIGHT" reclaim-stale 2>/dev/null | tail -n1)"
+printf '4242 %s\n' "$(iso_ago 21590)" > "$FAKE_GH_STATE"
+check "未到 6h 阈值则保留" "RECLAIMED 0" "$(ISSUE_AUTOFIX_STALE_CLAIM_HOURS=6 "$PREFLIGHT" reclaim-stale 2>/dev/null | tail -n1)"
+
+# (d) 无法取得加锁时间时必须**保守保留**，不得当作 0
+: > "$FAKE_GH_STATE"
+printf '4242\n' > "$FAKE_GH_STATE"   # 有该 issue 但无时间戳
+out=$(ISSUE_AUTOFIX_STALE_CLAIM_HOURS=6 "$PREFLIGHT" reclaim-stale 2>&1)
+check "时间戳缺失时保守保留" "RECLAIMED 0" "$(printf '%s' "$out" | tail -n1)"
+
+# (e) 无锁时不得误报
+: > "$FAKE_GH_STATE"
+check "无锁时输出 RECLAIMED 0" "RECLAIMED 0" "$(ISSUE_AUTOFIX_STALE_CLAIM_HOURS=6 "$PREFLIGHT" reclaim-stale 2>/dev/null | tail -n1)"
+
+export PATH="$SAVED_PATH"
+
+# 不变式：陈旧阈值必须 **严格大于** 调度侧 timeoutMs，否则会把仍在正常
+# 运行的认领误判为陈旧，造成两条流程并发处理同一条 issue。
+if [ -f "$HERE/../../.pi/subagents/schedules/issue-autofix-loop/schedule.json" ]; then
+  sch_timeout_h=$(python3 -c "
+import json
+d=json.load(open('$HERE/../../.pi/subagents/schedules/issue-autofix-loop/schedule.json'))
+t=d.get('timeoutMs')
+print(-1 if t is None else t/3600000)
+")
+  stale_h="${ISSUE_AUTOFIX_STALE_CLAIM_HOURS:-6}"
+  if [ "$sch_timeout_h" = "-1" ]; then
+    bad "调度未设 timeoutMs（会退回 30min 默认值，实测已因此硬杀一轮并遗留 3 个死锁）"
+  elif python3 -c "import sys; sys.exit(0 if $stale_h > $sch_timeout_h else 1)"; then
+    ok "陈旧阈值 ${stale_h}h 严格大于调度超时 ${sch_timeout_h}h"
+  else
+    bad "陈旧阈值 ${stale_h}h 未大于调度超时 ${sch_timeout_h}h（会把在跑的任务误判为陈旧）"
+  fi
+fi
+
 echo
 echo "通过 $PASS 项，失败 $FAIL 项"
 [ "$FAIL" -eq 0 ] || exit 1

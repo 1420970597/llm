@@ -50,6 +50,15 @@ MAX_ROUNDS="${ISSUE_AUTOFIX_MAX_ROUNDS:-3}"
 # 不能作为「修复前/修复后」证据（防「用一张白图冒充已验证」）。
 MIN_SHOT_BYTES="${ISSUE_AUTOFIX_MIN_SHOT_BYTES:-5120}"
 
+# 陈旧认领阈值（小时）。**为什么必须有这个值**：任何硬杀（调度超时 / OOM /
+# 机器重启 / Ctrl-C）都会把 autofix-running 永久留在 issue 上，使其再也不被任何
+# 一轮处理。实测已发生：20:23 轮次被 30min 默认超时杀死后，#191/#160/#214
+# 三条 issue 全部被锁死。
+#
+# 不变式：STALE_CLAIM_HOURS 必须 **严格大于** 调度侧 timeoutMs，否则会把一个
+# 仍在正常运行的认领误判为陈旧并与之并发处理。当前取值：6h > 4h(调度超时)。
+STALE_CLAIM_HOURS="${ISSUE_AUTOFIX_STALE_CLAIM_HOURS:-6}"
+
 LABEL_AUTO="autofix-auto"
 LABEL_RUN="autofix-running"
 LABEL_PAUSE="autofix-paused"
@@ -68,6 +77,54 @@ lock_run() {
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 die() { echo "FATAL: $*" >&2; exit 1; }
+degraded() { echo "DEGRADED: $*" >&2; exit 10; }
+info() { echo "[issue-autofix] $*" >&2; }
+
+# 返回 autofix-running 标签**最后一次被添加**至今的秒数。
+# 用 GitHub timeline API 而非标签本身：标签列表不带时间，timeline 才是权威时间源。
+# 无法判定时输出空串（调用方必须按「保守保留」处理，不得当作 0）。
+_label_added_seconds_ago() {
+  local n="$1" ts
+  ts=$(gh api "repos/{owner}/{repo}/issues/$n/timeline?per_page=100" \
+        --jq "[.[] | select(.event==\"labeled\" and .label.name==\"$LABEL_RUN\")] | last | .created_at // empty" \
+        2>/dev/null)
+  [ -z "$ts" ] && { echo ""; return 0; }
+  python3 - "$ts" <<'PY'
+import datetime, sys
+raw = sys.argv[1].replace('Z', '+00:00')
+added = datetime.datetime.fromisoformat(raw)
+if added.tzinfo is None:
+    added = added.replace(tzinfo=datetime.timezone.utc)
+now = datetime.datetime.now(datetime.timezone.utc)
+print(max(0, int((now - added).total_seconds())))
+PY
+}
+
+# 陈旧认领回收：把被硬杀而残留的 autofix-running 摘掉。
+# 返回 0 = 已回收（或本就无锁）；1 = 锁仍然有效（保留）。
+# 保守原则：时间戳取不到 / 刚被加上，一律保留 —— 宁可少回收，不可与在跑的任务抢同一条 issue。
+_reclaim_stale_claim() {
+  local n="$1" age limit
+  limit=$((STALE_CLAIM_HOURS * 3600))
+  age=$(_label_added_seconds_ago "$n")
+  if [ -z "$age" ]; then
+    info "#$n 带 $LABEL_RUN 但无法取得加锁时间，保守保留（需人工确认）"
+    return 1
+  fi
+  if [ "$age" -lt "$limit" ]; then
+    info "#$n 正被 ${age}s 前的认领占用（阈值 ${limit}s），跳过"
+    return 1
+  fi
+  info "#$n 的 $LABEL_RUN 已陈旧 $((age / 3600))h（阈值 ${STALE_CLAIM_HOURS}h）—— 判定为被硬杀遗留，回收"
+  gh issue edit "$n" --remove-label "$LABEL_RUN" >/dev/null 2>&1 || true
+  local after
+  after=$(gh issue view "$n" --json labels -q '[.labels[].name] | join(",")' 2>/dev/null)
+  case ",$after," in
+    *",$LABEL_RUN,"*) info "#$n 陈旧锁回收失败（仍带标签），跳过"; return 1 ;;
+  esac
+  info "#$n 陈旧锁已回收（复核通过）"
+  return 0
+}
 degraded() { echo "DEGRADED: $*" >&2; exit 10; }
 info() { echo "[issue-autofix] $*"; }
 
@@ -275,7 +332,12 @@ cmd_claim() {
 
   case ",$labels," in
     *",$LABEL_PAUSE,"*) info "#$n 已标记禁止自动修复，跳过"; return 2 ;;
-    *",$LABEL_RUN,"*)   info "#$n 已被认领，跳过"; return 2 ;;
+    *",$LABEL_RUN,"*)
+      # 已被认领：先判是否为硬杀遗留的陈旧锁，是则回收后继续，否则跳过。
+      if ! _reclaim_stale_claim "$n"; then
+        return 2
+      fi
+      ;;
   esac
 
   gh issue edit "$n" --add-label "$LABEL_AUTO" --add-label "$LABEL_RUN" >/dev/null 2>&1 \
@@ -472,6 +534,35 @@ cmd_raw_url() {
   echo "https://raw.githubusercontent.com/${owner}/${repo}/${sha}/${rel}"
 }
 
+# ----------------------------------------------------- reclaim-stale --------
+
+# 扫描所有带 autofix-running 的 issue，回收陈旧锁。
+#
+# **为什么必需**：`scan` 会把带 autofix-running 的 issue 直接从候选里过滤掉，
+# 因此陈旧锁永远走不到 `claim` 里的回收分支 —— 只把回收挂在 claim 上是一条
+# 不可达的路径。实测教训：20:23 轮次被超时杀死后，3 条 issue 的锁在「下一轮」
+# 依然存在，且 `scan` 根本不会列出它们，永远无人回收。
+# 因此回收必须是一个**独立于 scan 的前置步骤**。
+cmd_reclaim_stale() {
+  cd "$REPO_ROOT" || die "无法进入仓库"
+  local nums
+  nums=$(gh issue list --state open --limit 100 --label "$LABEL_RUN" \
+           --json number -q '.[].number' 2>/dev/null) \
+    || die "拉取 $LABEL_RUN issue 列表失败"
+  if [ -z "$nums" ]; then
+    info "无带 $LABEL_RUN 的 issue，无需回收"
+    echo "RECLAIMED 0"
+    return 0
+  fi
+
+  local reclaimed=0 kept=0 n
+  for n in $nums; do
+    if _reclaim_stale_claim "$n"; then reclaimed=$((reclaimed + 1)); else kept=$((kept + 1)); fi
+  done
+  info "陈旧锁回收完成：回收 $reclaimed，保留 $kept"
+  echo "RECLAIMED $reclaimed"
+}
+
 # ------------------------------------------------------------ main ---------
 
 case "${1:-help}" in
@@ -479,6 +570,8 @@ case "${1:-help}" in
   __probe)        cmd_probe ;;
   ensure-labels)  cmd_ensure_labels ;;
   scan)           cmd_scan ;;
+  reclaim-stale)  lock_run "$0" __reclaim_stale ;;
+  __reclaim_stale) cmd_reclaim_stale ;;
   claim)          shift; lock_run "$0" __claim "$@" ;;
   __claim)        shift; cmd_claim "$@" ;;
   release)        shift; lock_run "$0" __release "$@" ;;
