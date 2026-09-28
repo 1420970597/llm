@@ -112,11 +112,12 @@ graph TD
 
 | 事实 | 证据 | 影响 |
 | --- | --- | --- |
-| pi-subagents 的 schedule 用**进程内 `setTimeout`** 触发 | `runs/background/scheduled-runs.ts:799` `this.timersApi.setTimeout(...)`，`:808` `timer.unref?.()` | 无 pi 进程存活时**不会**触发 |
+| pi-subagents 的 schedule 用**进程内 `setTimeout`** 触发 | `runs/background/scheduled-runs.ts:799` `this.timersApi.setTimeout(...)`，`:808` `timer.unref?.()` | 无 pi 进程存活时不会**自动**触发 |
 | 定时器只在工具调用时 `restore()` 恢复 | 同文件 `:968` `this.restore(store)` | 进程重启后需有一次工具调用才会重新武装 |
-| 提供外部拉活入口 `schedule.run-due` | 同文件 `:718` `runDue()` | 可用外部调度器补足 |
+| **`schedule.run-due` 能从一个短命进程里真正拉起独立运行** | **实测**：用 `pi -p`（跑完即退）执行 `run-due`，schedule 事件流出现 `schedule.run.started` → `attached_async` → `completed`；子运行在 `/tmp/pi-subagents-uid-0/async-subagent-runs/<id>/` 有**自己的 pid** 与 42s 真实执行时长 | cron 轨道是**有效**的补足手段（不只是「催醒」，而是真的把活干完） |
 | **`pi -p` 在模型失败时仍 exit 0** | 实测：默认 provider 被网关拒绝（403），事件流无 assistant 文本，退出码 **0** | **必须外层校验输出**，否则 cron 静默空转 |
 | `~/.pi/agent/settings.json` 的默认模型 id 无效 | 实测：`defaultModel = deepseek/deepseek-v4-flash`，而 provider 实际只提供 `deepseek-v4.1-flash` → 裸 `pi -p` 无输出 | 调度**必须**显式写死 provider/model |
+| **cron 的 PATH 不含 pi 的安装目录** | **实测**：首次 cron 触发产出 `timeout: failed to run command 'pi': No such file or directory` + **exit 127** | 必须补全 PATH，否则「已注册」的定时任务一次都跑不成 |
 | 系统 cron 可用 | `systemctl is-active cron` → `active` | 可作为无状态拉活器 |
 
 ### 3.2 双轨设计
@@ -139,10 +140,21 @@ flowchart LR
 ```
 
 - **轨道一（进程内）**：pi 进程存活时由 `setTimeout` 自动触发，是常规路径。
-- **轨道二（外部拉活）**：crontab 调用 `round.sh`，用 `pi -p` 执行
-  `schedule.run-due` 或直接执行 SOP。作用是把「进程已退出」导致的漏跑补回来。
+- **轨道二（外部拉活）**：crontab 调用 `round.sh --due-only`，用 `pi -p` 执行
+  `schedule.run-due`，把「进程已退出」导致的漏跑补回来。
+  **实测确认它真的能把活干完**：schedule 事件流会记下 `started → attached_async → completed`，
+  且子运行是**脱离父进程的独立运行**（自己的 pid + 独立 async 目录），
+  因此 `pi -p` 退出不会杀掉它。
 - **`overlap: skip`（默认，不可配）**：两轨同时到点也只会跑一个，天然防重入。
 - **`catchUp: latest`**：长时间停机后只补最近一次，不雪崩式补跑历史。
+
+> **PATH 是本轨道的真实籍脚石（已踩到并修复）**：cron 的默认 PATH 只有
+> `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`，**不包含** pi 的安装目录。
+> 首次 cron 触发的实际结果是
+> `timeout: failed to run command 'pi': No such file or directory` + **exit 127** ——
+> 定时任务看起来「已注册」实则一次都跑不成。现由两处共同防护：
+> `round.sh` 自行前置 `~/.local/share/pi-node/current/bin`（版本无关的符号链接）
+> 并在找不到 `pi` 时输出可读的 FATAL 原因；crontab 里另显式声明 `PATH=` 作为纵深防御。
 
 > 这是本设计的诚实之处：不假装 pi 自带守护进程能力。定时任务的**正确性**由
 > 「标签锁 + 台账 + overlap=skip」保证，**触发可靠性**由双轨补足。

@@ -125,7 +125,6 @@ _reclaim_stale_claim() {
   info "#$n 陈旧锁已回收（复核通过）"
   return 0
 }
-degraded() { echo "DEGRADED: $*" >&2; exit 10; }
 info() { echo "[issue-autofix] $*"; }
 
 # ---------------------------------------------------------------- probe ----
@@ -143,8 +142,8 @@ cmd_probe() {
     die "gh 未登录（定时任务无法取 issue / 评论）"
   fi
   local repo
-  repo=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) \
-    || die "无法解析 gh 仓库（检查 remote 与网络）"
+  repo=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) ||
+    die "无法解析 gh 仓库（检查 remote 与网络）"
   echo "  ✓ repo = $repo"
 
   # 门禁脚本是「按输出判定」的唯一入口（gofmt -l 列文件时仍 exit 0，见 #94 / PR #151）。
@@ -174,31 +173,42 @@ cmd_probe() {
   local svc missing=""
   for svc in llm-api-1 llm-worker-1 llm-web-user-1 llm-postgres-1 llm-redis-1 llm-minio-1; do
     case "$(docker inspect -f '{{.State.Running}}' "$svc" 2>/dev/null)" in
-      true) echo "  ✓ $svc running" ;;
-      *)    echo "  ✗ $svc 未运行"; missing="$missing $svc" ;;
+    true) echo "  ✓ $svc running" ;;
+    *)
+      echo "  ✗ $svc 未运行"
+      missing="$missing $svc"
+      ;;
     esac
   done
   [ -n "$missing" ] && bad="容器未运行:$missing"
 
   local code
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:8080/healthz 2>/dev/null || echo 000)
-  [ "$code" = "200" ] && echo "  ✓ api /healthz 200" || { echo "  ✗ api /healthz=$code"; bad="$bad api:$code"; }
+  [ "$code" = "200" ] && echo "  ✓ api /healthz 200" || {
+    echo "  ✗ api /healthz=$code"
+    bad="$bad api:$code"
+  }
 
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:3210/ 2>/dev/null || echo 000)
-  [ "$code" = "200" ] && echo "  ✓ web 200" || { echo "  ✗ web=$code"; bad="$bad web:$code"; }
+  [ "$code" = "200" ] && echo "  ✓ web 200" || {
+    echo "  ✗ web=$code"
+    bad="$bad web:$code"
+  }
 
   # 评论要求「图文并茂」，截图能力缺失时应降级而不是产出纯文字评论。
   if [ -d /root/.pi/agent/npm/node_modules/playwright ]; then
     echo "  ✓ playwright 可用"
   else
-    echo "  ✗ playwright 缺失"; bad="$bad playwright"
+    echo "  ✗ playwright 缺失"
+    bad="$bad playwright"
   fi
 
   # 前端门禁（tsc + vite）走用户级 node/npm，宿主机不装 Node（AGENTS.md §1）。
   if command -v npm >/dev/null 2>&1; then
     echo "  ✓ npm 可用（$(command -v npm)）"
   else
-    echo "  ✗ npm 不可用"; bad="$bad npm"
+    echo "  ✗ npm 不可用"
+    bad="$bad npm"
   fi
 
   # 图片要能被 GitHub 渲染，必须提交进仓库并走 raw 链接（既有约定：docs/audit/）。
@@ -207,7 +217,8 @@ cmd_probe() {
   if [ -n "$(git ls-tree origin/main --name-only docs/audit/ 2>/dev/null)" ]; then
     echo "  ✓ docs/audit 已跟踪（评论区贴图路径可用）"
   else
-    echo "  ✗ docs/audit 未跟踪"; bad="$bad docs-audit"
+    echo "  ✗ docs/audit 未跟踪"
+    bad="$bad docs-audit"
   fi
 
   if [ -n "$bad" ]; then degraded "环境不可信：$bad"; fi
@@ -228,10 +239,11 @@ cmd_ensure_labels() {
     "$LABEL_AUTO|自动修复守护接管|5319e7" \
     "$LABEL_RUN|自动修复进行中（勿手工并发）|fbca04" \
     "$LABEL_PAUSE|禁止自动修复|d73a4a" \
-    "$LABEL_BLOCK|自动修复已升级待人工|b60205"
-  do
-    local name=${spec%%|*}; rest=${spec#*|}
-    local desc=${rest%%|*}; color=${rest##*|}
+    "$LABEL_BLOCK|自动修复已升级待人工|b60205"; do
+    local name=${spec%%|*}
+    rest=${spec#*|}
+    local desc=${rest%%|*}
+    color=${rest##*|}
     if gh label create "$name" --description "$desc" --color "$color" --force >/dev/null 2>&1; then
       echo "  ✓ label $name"
     else
@@ -258,7 +270,7 @@ cmd_scan() {
 
   # 用文件传参而不是 heredoc + herestring：两者都抢 stdin，shellcheck SC2261。
   python3 - "$LEDGER" "$MAX_PER_ROUND" "$MAX_ROUNDS" \
-           "$LABEL_PAUSE" "$LABEL_RUN" "$LABEL_BLOCK" "$tmp" <<'PY'
+    "$LABEL_PAUSE" "$LABEL_RUN" "$LABEL_BLOCK" "$tmp" <<'PY'
 import json, sys, os
 ledger_path, max_per_round, max_rounds, L_PAUSE, L_RUN, L_BLOCK, issues_path = sys.argv[1:8]
 max_per_round = int(max_per_round)
@@ -323,12 +335,13 @@ cmd_claim() {
 
   # 轮次预算先于认领检查：超限的 issue 不该被再次认领。
   if ! cmd_budget "$n" >/dev/null 2>&1; then
-    info "#$n 已达最大迭代轮数 $MAX_ROUNDS，拒绝认领（应升级人工）"; return 3
+    info "#$n 已达最大迭代轮数 $MAX_ROUNDS，拒绝认领（应升级人工）"
+    return 3
   fi
 
   local labels
-  labels=$(gh issue view "$n" --json labels -q '[.labels[].name] | join(",")' 2>/dev/null) \
-    || die "读取 issue #$n 标签失败"
+  labels=$(gh issue view "$n" --json labels -q '[.labels[].name] | join(",")' 2>/dev/null) ||
+    die "读取 issue #$n 标签失败"
 
   case ",$labels," in
     *",$LABEL_PAUSE,"*) info "#$n 已标记禁止自动修复，跳过"; return 2 ;;
@@ -340,14 +353,17 @@ cmd_claim() {
       ;;
   esac
 
-  gh issue edit "$n" --add-label "$LABEL_AUTO" --add-label "$LABEL_RUN" >/dev/null 2>&1 \
-    || die "认领 issue #$n 失败"
+  gh issue edit "$n" --add-label "$LABEL_AUTO" --add-label "$LABEL_RUN" >/dev/null 2>&1 ||
+    die "认领 issue #$n 失败"
 
   # 复核：确认标签真的落下（API 成功 ≠ 状态可见）
   labels=$(gh issue view "$n" --json labels -q '[.labels[].name] | join(",")' 2>/dev/null)
   case ",$labels," in
-    *",$LABEL_RUN,"*) echo "CLAIMED $n"; return 0 ;;
-    *) die "认领后复核失败：#$n 未见 $LABEL_RUN" ;;
+  *",$LABEL_RUN,"*)
+    echo "CLAIMED $n"
+    return 0
+    ;;
+  *) die "认领后复核失败：#$n 未见 $LABEL_RUN" ;;
   esac
 }
 
@@ -362,8 +378,11 @@ cmd_release() {
     local labels
     labels=$(gh issue view "$n" --json labels -q '[.labels[].name] | join(",")' 2>/dev/null)
     case ",$labels," in
-      *",$LABEL_RUN,"*) echo "FATAL: #$n 仍带 $LABEL_RUN（释放失败，下轮会跳过该 issue）" >&2; return 1 ;;
-      *) info "#$n 已释放认领（复核通过）" ;;
+    *",$LABEL_RUN,"*)
+      echo "FATAL: #$n 仍带 $LABEL_RUN（释放失败，下轮会跳过该 issue）" >&2
+      return 1
+      ;;
+    *) info "#$n 已释放认领（复核通过）" ;;
     esac
   else
     info "#$n 本无 $LABEL_RUN（无需释放）"
@@ -373,7 +392,8 @@ cmd_release() {
     if gh issue edit "$n" --add-label "$LABEL_BLOCK" >/dev/null 2>&1; then
       info "#$n 已升级人工（$LABEL_BLOCK）"
     else
-      echo "FATAL: #$n 打 $LABEL_BLOCK 失败" >&2; return 1
+      echo "FATAL: #$n 打 $LABEL_BLOCK 失败" >&2
+      return 1
     fi
   fi
 }
@@ -429,11 +449,11 @@ cmd_budget() {
 cmd_ledger_add() {
   local n="${1:?}" round="${2:?}" result="${3:?}" branch="${4:-}" pr="${5:-}" note="${6:-}"
   case "$result" in
-    fixed|partial|blocked|closed) ;;
-    *) die "result 必须是 fixed|partial|blocked|closed，收到：$result" ;;
+  fixed | partial | blocked | closed) ;;
+  *) die "result 必须是 fixed|partial|blocked|closed，收到：$result" ;;
   esac
   case "$round" in
-    ''|*[!0-9]*) die "round 必须是正整数，收到：$round" ;;
+  '' | *[!0-9]*) die "round 必须是正整数，收到：$round" ;;
   esac
   python3 - "$LEDGER" "$n" "$round" "$result" "$branch" "$pr" "$note" <<'PY'
 import json, os, sys, datetime
@@ -456,7 +476,10 @@ PY
 
 cmd_ledger_show() {
   local n="${1:-}"
-  if [ ! -f "$LEDGER" ]; then echo "（台账为空：$LEDGER）"; return 0; fi
+  if [ ! -f "$LEDGER" ]; then
+    echo "（台账为空：$LEDGER）"
+    return 0
+  fi
   # 按 issue 过滤走 python 解析，而不是 grep 文本匹配：
   # 后者依赖 json.dumps 的 `"issue": 191,` 精确间距，格式一变就静默漏报。
   if [ -n "$n" ]; then
@@ -496,17 +519,23 @@ cmd_evidence_check() {
   local f
   for f in "$before" "$after"; do
     if [ ! -f "$f" ]; then
-      echo "MISSING: $f 不存在（不许用文字描述替代截图）" >&2; rc=1; continue
+      echo "MISSING: $f 不存在（不许用文字描述替代截图）" >&2
+      rc=1
+      continue
     fi
     local size
     size=$(wc -c <"$f" | tr -d ' ')
     if [ "$size" -lt "$MIN_SHOT_BYTES" ]; then
-      echo "TOO_SMALL: $f 仅 ${size}B < ${MIN_SHOT_BYTES}B（疑似空白/加载失败图）" >&2; rc=1
+      echo "TOO_SMALL: $f 仅 ${size}B < ${MIN_SHOT_BYTES}B（疑似空白/加载失败图）" >&2
+      rc=1
     else
       echo "  ✓ $(basename "$f") ${size}B"
     fi
   done
-  [ "$rc" -ne 0 ] && { echo "EVIDENCE REJECTED" >&2; return 1; }
+  [ "$rc" -ne 0 ] && {
+    echo "EVIDENCE REJECTED" >&2
+    return 1
+  }
 
   local bsum asum
   bsum=$(python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$before")
