@@ -21,13 +21,37 @@
 本次**真实发起过**一次 4 单元试制批次（`b_4`），走完 `queued → running → completed 4/4`，
 证明生成链路本身是通的（不是假功能）。但它同时把「今日工作读数」与「批次状态机」两处缺陷暴露出来。
 
+
+---
+
+## 0.1 已提交的 Issue 索引
+
+本轮 14 条确认缺陷已**逐条建单**，总索引见 [#214](https://github.com/1420970597/llm/issues/214)。
+
+| 严重度 | Issue | 一句话 |
+| --- | --- | --- |
+| 🔴 | [#200](https://github.com/1420970597/llm/issues/200) | 今日工作「待人工判断」恒为 0，与审阅队列真实待办矛盾 |
+| 🔴 | [#201](https://github.com/1420970597/llm/issues/201) | 批次已完成却只产出 1/4 且无恢复入口（#190 未修历史终态路径） |
+| 🔴 | [#202](https://github.com/1420970597/llm/issues/202) | 批次「运行中」但全部单元失败且无在途作业（resume 不重新入队） |
+| 🟠 | [#203](https://github.com/1420970597/llm/issues/203) | 冻结发布范围把未审阅内容当「已接纳」 |
+| 🟠 | [#204](https://github.com/1420970597/llm/issues/204) | 蓝图画布节点被右栏遮挡，7 个节点中 4 个点击命中右栏 |
+| 🟠 | [#205](https://github.com/1420970597/llm/issues/205) | 今日工作 6 个总览磁贴有 3 个指向 /today 自身 |
+| 🟡 | [#206](https://github.com/1420970597/llm/issues/206) | 批次详情「事件时间线」仍漏出英文事件键（#191 未覆盖） |
+| 🟡 | [#207](https://github.com/1420970597/llm/issues/207) | 帮助页承诺的审阅 J/K 快捷键没有实现 |
+| 🟡 | [#208](https://github.com/1420970597/llm/issues/208) | 批次缺口文案写死「覆盖率不足」，与真实原因矛盾 |
+| 🟡 | [#209](https://github.com/1420970597/llm/issues/209) | 6 条空连接（含 2 条 is_active=true）混进蓝图下拉 |
+| 🟡 | [#211](https://github.com/1420970597/llm/issues/211) | 质量实验「检查范围」漏出英文枚举 pending/accepted |
+| 🔵 | [#210](https://github.com/1420970597/llm/issues/210) | 动态 19 条审计类事件「查看」全指向项目概览 |
+| 🔵 | [#212](https://github.com/1420970597/llm/issues/212) | 批次「阶段进度」恒为空（batch_steps 全库 0 行） |
+| 🔵 | [#213](https://github.com/1420970597/llm/issues/213) | 交付映射「必填」复选框无可访问名 + 多字段错误只显示最后一条 |
+
 ---
 
 ## 1. 测试范围
 
 ### 1.1 全路由走查（31 条）
 
-```
+```text
 today, projects, recipes, deliveries, new(/new,/new/coverage,/new/quality),
 activity, tools/evaluation, tools/cleaning, legacy/history,
 settings/connections, settings/team, help, catalog, 未知路由(404),
@@ -51,7 +75,7 @@ p/1/{overview,blueprint,coverage,standard,runs,pilot,runs/new,compare,
 
 ## 2. 确认的缺陷（按严重度）
 
-### 🔴 D1. 今日工作「待人工判断」恒为 0，与审阅队列真实待办矛盾
+### 🔴 D1. 今日工作「待人工判断」恒为 0，与审阅队列真实待办矛盾 → #200
 
 | 证据 | 事实 |
 | --- | --- |
@@ -74,7 +98,7 @@ p/1/{overview,blueprint,coverage,standard,runs,pilot,runs/new,compare,
 
 ---
 
-### 🔴 D2. 批次「已完成」却只有 1/4 产出，且无任何恢复入口（#190 修复不完整）
+### 🔴 D2. 批次「已完成」却只有 1/4 产出，且无任何恢复入口（#190 修复不完整） → #201
 
 | 批次 | 计划 | 完成 | 失败 | 状态 | 缺口 | 可操作按钮 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -107,7 +131,7 @@ case status == model.BatchStatusCompleted || status == model.BatchStatusFailed:
 
 ---
 
-### 🔴 D3. 批次「运行中」+ 12 条不可重试失败，形成永久僵尸批次
+### 🔴 D3. 批次「运行中」+ 12 条不可重试失败，形成永久僵尸批次 → #202
 
 `b_1`：`planned=12, completed=0, failed=12, inFlight=0`，状态 `running`。
 
@@ -122,7 +146,7 @@ case status == model.BatchStatusCompleted || status == model.BatchStatusFailed:
 
 ---
 
-### 🟠 D4. 「按当前筛选冻结并准备发布」冻结的范围与按钮文案不符（把待审内容当已接纳）
+### 🟠 D4. 「按当前筛选冻结并准备发布」冻结的范围与按钮文案不符（把待审内容当已接纳） → #203
 
 | 入口 | 页面语义 | 冻结结果 |
 | --- | --- | --- |
@@ -143,14 +167,14 @@ case status == model.BatchStatusCompleted || status == model.BatchStatusFailed:
 
 ---
 
-### 🟠 D5. 蓝图画布节点被右栏遮挡，点击命中右栏（三种不同反应）
+### 🟠 D5. 蓝图画布节点被右栏遮挡，点击命中右栏（三种不同反应） → #204
 
 `/p/1/blueprint` 实测几何：
 
 ```
 画布      : x=225  width=790   scrollWidth=1886  (overflow-x: auto)
 检查器右栏 : x=1062 width=370
-```
+```text
 
 | 节点 | x | 右边界 | 与右栏重叠 | 点击命中的元素 |
 | --- | --- | --- | --- | --- |
@@ -174,7 +198,7 @@ case status == model.BatchStatusCompleted || status == model.BatchStatusFailed:
 
 ---
 
-### 🟠 D6. 「产出缺口」磁贴指向 `/today` 自身，点击无任何反馈
+### 🟠 D6. 「产出缺口」磁贴指向 `/today` 自身，点击无任何反馈 → #205
 
 | 磁贴 | href | 点击后 |
 | --- | --- | --- |
@@ -191,7 +215,7 @@ case status == model.BatchStatusCompleted || status == model.BatchStatusFailed:
 
 ---
 
-### 🟡 D7. 失败/暂停批次没有「恢复入口」的闭环说明
+### 🟡 D7. 失败/暂停批次没有「恢复入口」的闭环说明 → #208
 
 `b_1` 详情页显示「计划 12，实际产出 0，缺口 12：覆盖率不足或无素材接地，
 请补充方向配额/素材后重跑」，但：
@@ -203,7 +227,7 @@ case status == model.BatchStatusCompleted || status == model.BatchStatusFailed:
 
 ---
 
-### 🟡 D8. 帮助页承诺的 J/K 快捷键完全没有实现
+### 🟡 D8. 帮助页承诺的 J/K 快捷键完全没有实现 → #207
 
 `/help`「快捷键」区写着：
 
@@ -214,13 +238,13 @@ case status == model.BatchStatusCompleted || status == model.BatchStatusFailed:
 
 ---
 
-### 🟡 D9. 批次事件时间线直接显示英文内部事件键
+### 🟡 D9. 批次事件时间线直接显示英文内部事件键 → #206
 
 `/p/1/runs/b_1`「事件时间线」逐条渲染原始 `eventType`：
 
 ```
 BatchRetryFailedRequested / BatchResumed / BatchPaused / BatchCompleted / BatchPartialFailed
-```
+```text
 
 `RunPages.tsx:717` 是 `{event.eventType}` 原样输出。这与 issue #191
 （内部英文事件键泄漏）是同一类缺陷的**未覆盖残留**：动态列表已修好（「批次已恢复」
@@ -228,7 +252,7 @@ BatchRetryFailedRequested / BatchResumed / BatchPaused / BatchCompleted / BatchP
 
 ---
 
-### 🟡 D10. 「数据」页冻结按钮文案与真实行为不一致（与 D4 同源，单列）
+### 🟡 D10. 「数据」页冻结按钮文案与真实行为不一致（与 D4 同源，单列） → #203
 
 `/p/1/data` 主按钮写「按当前筛选冻结并准备发布（服务端解析）」，用户理解为
 「导出/发布当前筛选」。但它是**唯一**入口，且不校验 reviewStatus；而
@@ -240,7 +264,7 @@ BatchRetryFailedRequested / BatchResumed / BatchPaused / BatchCompleted / BatchP
 
 ---
 
-### 🟡 D11. 连接设置首屏被 6 条空记录占据
+### 🟡 D11. 连接设置首屏被 6 条空记录占据 → #209
 
 `/settings/connections` 模型连接表（11 条）中有 **6 条完全空白**记录
 （name/baseUrl/model 全空），其中 **2 条 `isActive=true`**：
@@ -260,7 +284,7 @@ BatchRetryFailedRequested / BatchResumed / BatchPaused / BatchCompleted / BatchP
 
 ---
 
-### 🟡 D12. 「检查范围」用的是与审阅队列一致的口径，但 UI 不说明
+### 🟡 D12. 「检查范围」用的是与审阅队列一致的口径，但 UI 不说明 → #211
 
 `/p/1/quality/new` 的「检查范围」列出 4 条内容版本，审阅状态列显示
 `accepted / pending`（英文枚举，属 #191 同类）。用户不知道该不该勾未审阅的内容；
@@ -271,7 +295,7 @@ BatchRetryFailedRequested / BatchResumed / BatchPaused / BatchCompleted / BatchP
 
 ---
 
-### 🔵 D13. 活动行「查看」对审计类事件指向无信息的 `/p/1/overview`
+### 🔵 D13. 活动行「查看」对审计类事件指向无信息的 `/p/1/overview` → #210
 
 `/activity` 中 `data-activity-item=audit` 的行（19 条）「查看」链接全部指向
 `/p/1/overview`，而那条记录讲的是「恢复批次 / 暂停批次 / 创建发布候选」等
@@ -279,7 +303,7 @@ BatchRetryFailedRequested / BatchResumed / BatchPaused / BatchCompleted / BatchP
 
 ---
 
-### 🔵 D14. 「交付」磁贴的「被挡住 1」点进去看不到被挡住的候选
+### 🔵 D14. 「交付」磁贴的「被挡住 1」点进去看不到被挡住的候选 → #212
 
 磁贴显示「已发布 0 · **被挡住 1**」，指向 `/deliveries`；而交付库按定义
 **只显示已发布版本**，页面显示「还没有可交付的已发布版本」。
@@ -287,7 +311,7 @@ BatchRetryFailedRequested / BatchResumed / BatchPaused / BatchCompleted / BatchP
 
 ---
 
-### 🔵 D15. 全局搜索不覆盖批次与样本 ID，且无结果时文案有歧义
+### 🔵 D15. 全局搜索不覆盖批次与样本 ID，且无结果时文案有歧义 → #210
 
 | 关键词 | 结果 |
 | --- | --- |
