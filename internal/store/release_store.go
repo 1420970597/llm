@@ -116,7 +116,11 @@ func (s *ReleaseStore) CreateReleaseCandidate(ctx context.Context, input CreateR
 		return Release{}, &apiStoreError{Message: "发布范围同时指定了选择快照和内容版本，不能混用"}
 	}
 	if input.SelectionSnapshotID <= 0 && len(input.SampleVersionIDs) == 0 {
-		return Release{}, &apiStoreError{Message: "发布范围不能为空，请先选择要发布的内容版本"}
+		// 字段级而不是一句总体提示（issue #213）：前端据此把提示渲染到「发布范围」
+		// 那一区，并使用户能在长页面里直接看到是哪里缺东西。
+		return Release{}, model.FieldErrors{{
+			Field: "sampleVersionIds", Message: "发布范围不能为空，请先选择要发布的内容版本",
+		}}
 	}
 	if input.Format == "" {
 		input.Format = "jsonl"
@@ -240,7 +244,9 @@ func (s *ReleaseStore) UpdateReleaseCandidate(ctx context.Context, projectID, re
 		return Release{}, err
 	}
 	if len(input.SampleVersionIDs) == 0 {
-		return Release{}, &apiStoreError{Message: "发布范围不能为空"}
+		return Release{}, model.FieldErrors{{
+			Field: "sampleVersionIds", Message: "发布范围不能为空，请先选择要发布的内容版本",
+		}}
 	}
 	if input.Format == "" {
 		input.Format = current.Format

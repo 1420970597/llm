@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { Button, Card, Empty, Input, Modal, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, Download, RefreshCw } from 'lucide-react'
 import { client } from '../../lib/api'
+import type { ApiFieldError } from '../../lib/api/studio'
 import { projectNumericId, projectPath, studioApi } from '../../lib/api/studio'
 import type {
   BatchSummary,
@@ -192,6 +193,26 @@ export function ReleasesListPage() {
 // 准备发布（L02）
 // ---------------------------------------------------------------------------
 
+/**
+ * 服务端字段名 → 页面上那个「错误落点」的锚点（issue #213）。
+ *
+ * 为什么需要一层翻译：服务端的字段名是**请求体字段**（`sampleVersionIds` /
+ * `selectionSnapshotId`），而页面上并没有叫这个名字的输入框 —— 它们共同对应
+ * 「发布范围」那一区。直接拿服务端字段名去查锚点会静默漏掉提示（正是缺陷本身）。
+ *
+ * 未列入的字段名原样传递：未知字段保守地当作同名锚点，命中不到时页面上看不到该提示
+ * —— 这比丢掉错误好，但不如显式登记，因此新增服务端字段时必须同步本表。
+ */
+const RELEASE_FIELD_ANCHORS: Record<string, string> = {
+  sampleVersionIds: 'range',
+  selectionSnapshotId: 'range',
+  range: 'range',
+  intendedUse: 'intendedUse',
+  releaseName: 'releaseName',
+  format: 'format',
+  mappingVersionId: 'mappingVersionId',
+}
+
 export function ReleaseNewPage() {
   const scope = useProjectScope()
   const navigate = useNavigate()
@@ -226,6 +247,16 @@ export function ReleaseNewPage() {
   const [projectCapabilities, setProjectCapabilities] = useState<ProjectCapabilities | null>(null)
   const [blockers, setBlockers] = useState<ReleaseBlocker[]>([])
   const [error, setError] = useState<string | null>(null)
+  /**
+   * 字段级错误（issue #213）。
+   *
+   * 缺陷形态：页面只有一个 `error` 字符串，**多字段错误时只显示最后一条** ——
+   * 用户修完「用途」才发现「发布范围」也是空的，而在长页面里还得自己找那个字段。
+   * 服务端**本来就**返回结构化的 `fieldErrors[]`（带 `field`），只是被丢了。
+   *
+   * 键是服务端字段名（`intendedUse` / `releaseName` / `format` / `range`）。
+   */
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
 
   /**
@@ -345,40 +376,70 @@ export function ReleaseNewPage() {
     return () => { cancelled = true }
   }, [numericProjectId, scope.projectId, selectionParam, selectionSnapshotID])
 
+  /**
+   * 只设一个字段的错误（issue #213）。
+   *
+   * 前端校验的错误与后端 `fieldErrors` 走**同一份状态**：两者都渲染在对应输入框
+   * 下方（而不是页底一行字），否则本地提示与远端提示会出现在两个不同位置，
+   * 用户得在两处找原因。`range` 不是输入框而是筛选区，因此用它自己的锚点。
+   */
+  const setFieldError = useCallback((field: string, message: string) => {
+    setError(message)
+    setFieldErrors(message ? { [field]: message } : {})
+  }, [])
+
+  /** 把服务端返回的 fieldErrors 落成字段级提示；返回是否真的用上了字段级。 */
+  const applyServerFieldErrors = useCallback((errors: ApiFieldError[] | undefined): boolean => {
+    if (!errors || errors.length === 0) return false
+    const next: Record<string, string> = {}
+    for (const item of errors) {
+      if (!item?.field) continue
+      const anchor = RELEASE_FIELD_ANCHORS[item.field] ?? item.field
+      // 同一字段多条只留第一条：输入框下方只放一行，多行会把布局推得很难读，
+      // 而服务端的第一条就是最根本的那条（与向导页的 `groupServerErrors` 同一取舍）。
+      next[anchor] ??= item.message
+    }
+    if (Object.keys(next).length === 0) return false
+    setFieldErrors(next)
+    setError(errors.map((item) => item.message).filter(Boolean).join('；'))
+    return true
+  }, [])
+
   const submit = useCallback(async () => {
     setError(null)
+    setFieldErrors({})
     setBlockers([])
     if (!projectCapabilities?.canPublish) {
       setError('当前项目没有发布权限；请联系项目负责人')
       return
     }
     if (hasInvalidSelectionParam || selectionSnapshotState === 'invalid') {
-      setError('发布范围快照无效或已过期，请返回样本工作区重新选择')
+      setFieldError('range', '发布范围快照无效或已过期，请返回样本工作区重新选择')
       return
     }
     if (selectionSnapshotID > 0 && selectionSnapshotState === 'loading') {
-      setError('正在恢复服务端发布范围，请稍候再提交')
+      setFieldError('range', '正在恢复服务端发布范围，请稍候再提交')
       return
     }
     if (selectionSnapshotID > 0 && selectionSnapshotState !== 'ready') {
-      setError('尚未恢复服务端发布范围，请返回样本工作区重新选择')
+      setFieldError('range', '尚未恢复服务端发布范围，请返回样本工作区重新选择')
       return
     }
     const selectedVersionIDs = selectionSnapshotID > 0 ? selectionSnapshotItems ?? [] : selected
     if (selectedVersionIDs.length === 0) {
-      setError('发布范围不能为空：请选择要发布的内容版本')
+      setFieldError('range', '发布范围不能为空：请选择要发布的内容版本')
       return
     }
     if (intendedUse.trim() === '') {
-      setError('必须填写用途：数据卡要能说清这份数据用来做什么')
+      setFieldError('intendedUse', '必须填写用途：数据卡要能说清这份数据用来做什么')
       return
     }
     if (targetKind === 'grpo' && format !== 'jsonl') {
-      setError('GRPO 只能发布 JSONL；请切换格式后再提交')
+      setFieldError('format', 'GRPO 只能发布 JSONL；请切换格式后再提交')
       return
     }
     if (format.trim() === '') {
-      setError('请选择发布格式')
+      setFieldError('format', '请选择发布格式')
       return
     }
     setBusy(true)
@@ -406,7 +467,12 @@ export function ReleaseNewPage() {
       // 导航到**服务端分配的**稳定 releaseId。
       navigate(projectHref('project.releaseCard', scope.projectId, { releaseId: result.release.id }))
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : '创建发布候选失败')
+      // 服务端返回结构化 fieldErrors 时**逐字段渲染**（issue #213）；
+      // 只有拿不到时才退回单行总体提示 —— 而不是把多字段错误压成一句话。
+      const apiError = submitError as { fieldErrors?: ApiFieldError[] }
+      if (!applyServerFieldErrors(apiError?.fieldErrors)) {
+        setError(submitError instanceof Error ? submitError.message : '创建发布候选失败')
+      }
     } finally {
       setBusy(false)
     }
@@ -424,6 +490,8 @@ export function ReleaseNewPage() {
     selectionSnapshotItems,
     selectionSnapshotState,
     targetKind,
+    applyServerFieldErrors,
+    setFieldError,
     projectCapabilities?.canPublish,
   ])
 
@@ -464,13 +532,23 @@ export function ReleaseNewPage() {
 
       <Card className="console-card mb-3" bodyStyle={{ padding: 16 }}>
         <div className="wizard-fields">
-          <div className="wizard-field">
+          {/*
+            issue #213：每个字段的错误渲染在**它自己的输入框下方**，并用
+            `aria-describedby` 关联，而不是只在页底给一行字。页底提示在长页面里
+            要求用户自己找字段，而读屏用户拿不到任何关联。
+          */}
+          <div className="wizard-field" data-field="releaseName" data-invalid={fieldErrors.releaseName ? 'true' : undefined}>
             <label className="wizard-field__label" htmlFor="release-name">版本名</label>
             <Input id="release-name" value={releaseName} onChange={(value) => setReleaseName(value)}
-              placeholder="例如 v1.2（不能叫 latest）" />
+              placeholder="例如 v1.2（不能叫 latest）"
+              aria-invalid={fieldErrors.releaseName ? true : undefined}
+              aria-describedby={fieldErrors.releaseName ? 'release-name-error' : undefined} />
             <Text type="tertiary" size="small" className="block mt-1">
               版本名用于展示与文件名；下载路径只用稳定的发布 ID。
             </Text>
+            {fieldErrors.releaseName ? (
+              <div className="wizard-field__error" id="release-name-error" role="alert">{fieldErrors.releaseName}</div>
+            ) : null}
           </div>
           <div className="wizard-field">
             <label className="wizard-field__label" htmlFor="mapping-version">用于本次发布的映射版本</label>
@@ -489,7 +567,7 @@ export function ReleaseNewPage() {
               </div>
             ) : null}
           </div>
-          <div className="wizard-field">
+          <div className="wizard-field" data-field="format" data-invalid={fieldErrors.format ? 'true' : undefined}>
             <label className="wizard-field__label" htmlFor="release-format">交付格式</label>
             <Select
               id="release-format"
@@ -497,6 +575,8 @@ export function ReleaseNewPage() {
               optionList={targetKind === 'grpo' ? GRPO_FORMAT_OPTIONS : SFT_FORMAT_OPTIONS}
               onChange={(value) => setFormat(String(value))}
               aria-label="选择交付格式"
+              aria-invalid={fieldErrors.format ? true : undefined}
+              aria-describedby={fieldErrors.format ? 'release-format-error' : undefined}
               style={{ width: '100%' }}
             />
             <Text type="tertiary" size="small" className="block mt-1">
@@ -504,6 +584,9 @@ export function ReleaseNewPage() {
                 ? 'GRPO 只允许 JSONL，服务端会逐行校验教师评判字段。'
                 : 'SFT 可选择 JSONL、Alpaca JSON 或 CSV；格式会写入不可变发布清单。'}
             </Text>
+            {fieldErrors.format ? (
+              <div className="wizard-field__error" id="release-format-error" role="alert">{fieldErrors.format}</div>
+            ) : null}
             {targetKind === 'grpo' ? (
               <Text type="tertiary" size="small" className="block mt-1" data-grpo-release-hint="true">
                 映射必须包含 question / judge_prompt / levels / level_rubrics；
@@ -511,10 +594,15 @@ export function ReleaseNewPage() {
               </Text>
             ) : null}
           </div>
-          <div className="wizard-field">
+          <div className="wizard-field" data-field="intendedUse" data-invalid={fieldErrors.intendedUse ? 'true' : undefined}>
             <label className="wizard-field__label" htmlFor="intended-use">用途</label>
             <Input id="intended-use" value={intendedUse} onChange={(value) => setIntendedUse(value)}
-              placeholder="例如 SFT 训练" />
+              placeholder="例如 SFT 训练"
+              aria-invalid={fieldErrors.intendedUse ? true : undefined}
+              aria-describedby={fieldErrors.intendedUse ? 'intended-use-error' : undefined} />
+            {fieldErrors.intendedUse ? (
+              <div className="wizard-field__error" id="intended-use-error" role="alert">{fieldErrors.intendedUse}</div>
+            ) : null}
           </div>
           <div className="wizard-field">
             <label className="wizard-field__label" htmlFor="limitations">限制（每行一条）</label>
@@ -530,6 +618,14 @@ export function ReleaseNewPage() {
           已选 {selectionSnapshotID > 0 ? selectionSnapshotItems?.length ?? 0 : selected.length} 条
           {selectionSnapshotID > 0 ? '（来自服务端冻结快照，范围已锁定）' : '（当前页）'}。候选保存的是具体内容版本，不是筛选条件。
         </Text>
+        {/*
+          issue #213：「范围为空」不是一个输入框的错，而是这一整块筛选区的错。
+          因此错误渲染在这一区（而不是页底），并给出 `data-field="range"`
+          供守卫与焦点定位使用。
+        */}
+        {fieldErrors.range ? (
+          <div className="wizard-field__error mb-2" role="alert" data-range-error="true">{fieldErrors.range}</div>
+        ) : null}
         {samples.length === 0 ? (
           <Empty description="还没有已接纳的内容。请先在审阅队列中完成判断。" />
         ) : (
@@ -589,7 +685,14 @@ export function ReleaseNewPage() {
         </Card>
       ) : null}
 
-      {error ? <div className="wizard-field__error mb-3" role="alert">{error}</div> : null}
+      {/*
+        issue #213：字段级提示已经在各自的输入框下方渲染，因此页底这行只在
+        「错误没有对应字段」时才出现。否则同一句话会在页面顶部与底部各出现一次，
+        而用户会以为发生了两件事。
+      */}
+      {error && Object.keys(fieldErrors).length === 0 ? (
+        <div className="wizard-field__error mb-3" role="alert" data-release-error="true">{error}</div>
+      ) : null}
 
       <Button theme="solid" type="primary" loading={busy} disabled={!projectCapabilities?.canPublish} onClick={() => void submit()}>
         创建发布候选

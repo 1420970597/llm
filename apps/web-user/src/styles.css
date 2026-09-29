@@ -2574,6 +2574,27 @@ select:focus {
 .atelier-overview-tile--alert { color: var(--warning); }
 /* 总览磁贴里的 eyebrow 是次要标签，避免与 h1/h2 抢层级。 */
 .atelier-overview-tile .eyebrow { font-size: 10px; letter-spacing: .14em; }
+/*
+  交付磁贴（issue #205）：主体与「被挡住的候选」是两个事实，因此是两个链接。
+  它必须是 `div`（`<a>` 里不能嵌 `<a>`），因此内层的链接需要自己拿回样式。
+*/
+.atelier-overview-tile--split { gap: 0; }
+.atelier-overview-tile__main {
+  display: grid;
+  gap: 2px;
+  color: inherit;
+  text-decoration: none;
+}
+.atelier-overview-tile__blocked {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--panel-border);
+  color: var(--accent);
+  font-size: 12px;
+  text-decoration: none;
+}
+.atelier-overview-tile__blocked:hover,
+.atelier-overview-tile__blocked:focus-visible { text-decoration: underline; }
 
 .atelier-today-grid {
   display: grid;

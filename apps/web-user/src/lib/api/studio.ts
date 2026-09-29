@@ -1444,6 +1444,14 @@ export type ReadWatermark = {
  */
 export type WorkspaceOverview = {
   projectCount: number
+  /**
+   * 参与全部总览计数的项目 ID（工作区作用域）。
+   *
+   * 为什么需要它：总览数字是**跨项目聚合**的，而「点进去看到的是同一份事实」
+   * 要求磁贴落到项目内页（`/p/{id}/runs` 等）。恰好一个项目时才能深链；
+   * 多个时只能先去项目列表 —— 不在界面上猜一个项目给用户。
+   */
+  scopedProjectIds: number[]
   runningBatches: number
   /** 已定稿但产出少于计划量的批次（issue #190 的缺口）。 */
   batchesWithShortfall: number

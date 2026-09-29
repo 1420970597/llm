@@ -5,6 +5,7 @@ import { Bell, RefreshCw, Search } from 'lucide-react'
 import { activityApi } from '../../lib/api/studio'
 import type { ActivityItem, SearchHit, TodoItem, WorkspaceOverview } from '../../lib/api/studio'
 import { allStudioRoutes, fillRoutePathByKey } from '../routes'
+import { projectHref } from '../StudioLayout'
 
 /**
  * 今日工作与动态（Issue #160 T27）。
@@ -33,6 +34,32 @@ function todoHref(todo: TodoItem): string | undefined {
 
 function studioPath(key: string): string {
   return fillRoutePathByKey(key, {})
+}
+
+/**
+ * 总览磁贴的跳转目标（issue #205）。
+ *
+ * 缺陷形态：6 个磁贴里有 3 个写死了 `studioPath('today')`，也就是**当前页自身**
+ * （点下去原地不动），而同一页自己写着「点进去看到的是同一份事实」——
+ * 一半的磁贴直接推翻了这句话。
+ *
+ * 三条取值规则（把「点得进去」变成结构事实，而不是靠逐个改死值）：
+ *  1. **项目内页**：数据都是项目内对象的聚合，因此优先落到项目页；
+ *  2. **恰好一个项目时才能深链**：`/p/{id}/runs` 只能指向一个项目。
+ *     多个项目时先去 `/projects`（让用户选）—— 不猜一个项目，那会在界面上
+ *     展示一个属于别人项目的数字；
+ *  3. **无项目时**（新工作区）回项目列表：那里正是「去建一个项目」。
+ */
+function overviewProjectID(overview: WorkspaceOverview): number {
+  return overview.projectCount === 1 && overview.scopedProjectIds?.length === 1
+    ? overview.scopedProjectIds[0]
+    : 0
+}
+
+/** 项目内页跳转；无单一项目时回到项目列表。 */
+function overviewProjectHref(overview: WorkspaceOverview, projectRouteKey: string): string {
+  const projectID = overviewProjectID(overview)
+  return projectID > 0 ? projectHref(projectRouteKey, projectID) : studioPath('projects')
 }
 
 function formatTodoDate(value: string): string {
@@ -172,12 +199,12 @@ export function TodayPage() {
             <strong>{overview.projectCount}</strong>
             <small>你可见的项目</small>
           </a>
-          <a className="atelier-overview-tile" href={studioPath('today')} data-overview-tile="running">
+          <a className="atelier-overview-tile" href={overviewProjectHref(overview, 'project.runs')} data-overview-tile="running">
             <span className="eyebrow">进行中批次</span>
             <strong>{overview.runningBatches}</strong>
             <small>排队 / 运行 / 暂停请求中</small>
           </a>
-          <a className="atelier-overview-tile" href={studioPath('today')} data-overview-tile="shortfall">
+          <a className="atelier-overview-tile" href={overviewProjectHref(overview, 'project.runs')} data-overview-tile="shortfall">
             <span className="eyebrow">产出缺口</span>
             <strong className={overview.batchesWithShortfall > 0 ? 'atelier-overview-tile--alert' : undefined}>
               {overview.batchesWithShortfall}
@@ -186,23 +213,55 @@ export function TodayPage() {
               计划 {overview.totalPlannedUnits} · 完成 {overview.totalCompletedUnits}
             </small>
           </a>
-          <a className="atelier-overview-tile" href={studioPath('activity')} data-overview-tile="pending">
+          {/*
+            issue #205：「待人工判断」以前指向 `/activity`（动态），那是**语义错误** ——
+            这个数字来自审阅投影，而「动态」不会显示任何待判断样本，用户点进去
+            看到的是另一份事实。应去项目的审阅队列。
+          */}
+          <a className="atelier-overview-tile" href={overviewProjectHref(overview, 'project.review')} data-overview-tile="pending">
             <span className="eyebrow">待人工判断</span>
             <strong className={overview.pendingReview > 0 ? 'atelier-overview-tile--alert' : undefined}>
               {overview.pendingReview}
             </strong>
             <small>进入项目「审阅」处理</small>
           </a>
-          <a className="atelier-overview-tile" href={studioPath('today')} data-overview-tile="produced">
+          <a className="atelier-overview-tile" href={overviewProjectHref(overview, 'project.data')} data-overview-tile="produced">
             <span className="eyebrow">近 7 天产出</span>
             <strong>{overview.producedLast7Days}</strong>
             <small>新增样本版本数</small>
           </a>
-          <a className="atelier-overview-tile" href={studioPath('deliveries')} data-overview-tile="releases">
-            <span className="eyebrow">交付</span>
-            <strong>{overview.publishedReleases}</strong>
-            <small>已发布 · 被挡住 {overview.blockedReleases}</small>
-          </a>
+          {/*
+            issue #205 第二条：「交付」磁贴写「已发布 0 · 被挡住 1」却整体链到
+            `/deliveries`，而交付库按定义**只显示已发布版本** —— 被挡住的那 1 条
+            在那个页面里根本不存在，用户找不到任何出口。
+            两个事实必须给两个目标：主体 → 交付库（已发布）；
+            「被挡住 N」→ 项目「发布」（那里才能处理门槛阻塞）。
+
+            为什么这个磁贴是 `div` 而不是 `a`：内层要放**第二个链接**，而 `<a>`
+            里嵌 `<a>` 是非法 HTML（浏览器会拆开它）。其余磁贴只有单一目标，
+            保持 `a` 即可。
+          */}
+          <div className="atelier-overview-tile atelier-overview-tile--split" data-overview-tile="releases">
+            <a className="atelier-overview-tile__main" href={studioPath('deliveries')}>
+              <span className="eyebrow">交付</span>
+              <strong>{overview.publishedReleases}</strong>
+              <small>
+                已发布
+                {overview.blockedReleases > 0
+                  ? ` · 被挡住 ${overview.blockedReleases}`
+                  : ' · 无阻塞候选'}
+              </small>
+            </a>
+            {overview.blockedReleases > 0 ? (
+              <a
+                className="atelier-overview-tile__blocked"
+                data-overview-blocked-link="true"
+                href={overviewProjectHref(overview, 'project.releases')}
+              >
+                处理被挡住的 {overview.blockedReleases} 个候选 →
+              </a>
+            ) : null}
+          </div>
         </section>
       ) : null}
 

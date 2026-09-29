@@ -722,6 +722,44 @@ export function SampleReviewPage() {
     [navigate, queueSearch, queueStatus, sampleID, scope.projectId, searchParams],
   )
 
+  /**
+   * 键盘流：`J` 下一条 / `K` 上一条（issue #207）。
+   *
+   * 为什么必须实现而不是删掉帮助页那句话：审阅是**批量**动作，键盘流是吞吐量的
+   * 关键，而帮助页的「快捷键」区已经把它当作既有能力承诺给用户。承诺了不做，
+   * 用户按 J 没反应时只会认为自己操作错了 —— 那是比「没这个功能」更差的体验。
+   *
+   * 三条约束（每条都对应一个真实的误触发场景）：
+   *  1. **焦点在输入控件里时不抢键**：审阅页有一整块判断理由输入框，
+   *     在那里敲 `j` 必须输入字母 `j`，而不是跳走并丢掉写了一半的理由；
+   *  2. **有修饰键时不抢**：⌘K/⌘J 属浏览器与系统（而 ⌘K 是本页命令搜索），
+   *     `Shift+J` 也不是本快捷键的意图；
+   *  3. **不与其他快捷键重复**：全仓只有 StudioLayout 的 Esc（关闭导航）与
+   *     命令搜索的 Esc/回车，`J`/`K` 没有第二个使用者。
+   *
+   * 复用 `goRelative`（「上一条/下一条」按钮的同一函数）：两者共享服务端游标遍历、
+   * 筛选条件保留与「已经是最后一条」提示，因此不可能出现「按钮能用、键盘不能用」。
+   */
+  const goRelativeRef = useRef(goRelative)
+  useEffect(() => {
+    goRelativeRef.current = goRelative
+  }, [goRelative])
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'j' && event.key !== 'k' && event.key !== 'J' && event.key !== 'K') return
+      if (event.altKey || event.ctrlKey || event.metaKey) return
+      const target = event.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return
+      }
+      event.preventDefault()
+      void goRelativeRef.current(event.key === 'j' || event.key === 'J' ? 'next' : 'prev')
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   const submit = useCallback(async () => {
     if (!detail) return
     if (!capabilities.canReview) {
