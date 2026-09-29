@@ -50,6 +50,12 @@ MAX_ROUNDS="${ISSUE_AUTOFIX_MAX_ROUNDS:-3}"
 # 不能作为「修复前/修复后」证据（防「用一张白图冒充已验证」）。
 MIN_SHOT_BYTES="${ISSUE_AUTOFIX_MIN_SHOT_BYTES:-5120}"
 
+# 开工所需的最小可用磁盘（GB）。实测教训：Docker 构建缓存涨到 71GB 后，
+# 09:09 那轮跑了 19 分钟死在 ENOSPC 并遗留 3 个认领锁；而当时的 probe 不查磁盘，
+# 所以环境实际不可用却判定为「可信」。阈值按实际需求给足余量：
+# 一轮前端重建 + Playwright 截图约需 2-4GB，此处取 10GB 留安全边际。
+MIN_FREE_GB="${ISSUE_AUTOFIX_MIN_FREE_GB:-10}"
+
 # 陈旧认领阈值（小时）。**为什么必须有这个值**：任何硬杀（调度超时 / OOM /
 # 机器重启 / Ctrl-C）都会把 autofix-running 永久留在 issue 上，使其再也不被任何
 # 一轮处理。实测已发生：20:23 轮次被 30min 默认超时杀死后，#191/#160/#214
@@ -231,6 +237,35 @@ cmd_probe() {
   else
     echo "  ✗ docs/audit 未跟踪"
     bad="$bad docs-audit"
+  fi
+
+  # 磁盘空间：**这是实测踩过的坑**。09:09 那轮通过了其他所有探针项，跑了 19 分钟后
+  # 死在 `ENOSPC: no space left on device`，遗留 3 个认领锁。根因是 Docker 构建
+  # 缓存涨到 71GB（SOP §6.4 要求修复后重建镜像做同条件复现，每轮都会留缓存），
+  # 而**之前的 probe 从不检查磁盘**，于是环境实际上不可用却判定为「可信」。
+  #
+  # 为什么按**可用空间**而不是百分比：大磁盘上的 5% 可能远比小磁盘的 20% 多。
+  echo "== 磁盘 =="
+  local avail_gb
+  avail_gb=$(df -Pk / 2>/dev/null | awk 'NR==2 {printf "%d", $4/1024/1024}')
+  if [ -z "$avail_gb" ]; then
+    echo "  ✗ 无法取得磁盘可用空间"
+    bad="$bad df"
+  elif [ "$avail_gb" -lt "$MIN_FREE_GB" ]; then
+    echo "  ✗ 可用仅 ${avail_gb}G < 阈值 ${MIN_FREE_GB}G（构建/截图会 ENOSPC）"
+    bad="$bad disk:${avail_gb}G"
+  else
+    echo "  ✓ 可用 ${avail_gb}G（阈值 ${MIN_FREE_GB}G）"
+  fi
+
+  # 同一故障模式的另一半：inode 耗尽也是 ENOSPC，而 df -h 看起来完全正常。
+  local avail_inode
+  avail_inode=$(df -Pi / 2>/dev/null | awk 'NR==2 {print $4}')
+  if [ -n "$avail_inode" ] && [ "$avail_inode" -lt 1000 ]; then
+    echo "  ✗ inode 仅剩 ${avail_inode}（也会表现为 ENOSPC）"
+    bad="$bad inodes:${avail_inode}"
+  else
+    echo "  ✓ inode 充足${avail_inode:+（剩 $avail_inode）}"
   fi
 
   if [ -n "$bad" ]; then degraded "环境不可信：$bad"; fi
