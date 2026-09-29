@@ -81,6 +81,27 @@ const (
 	ErrorClassInternal    = "internal_error"
 )
 
+// ErrorClassInDetail 从事件 detail 里取出 `errorClass`（没有则返回空串）。
+//
+// 为什么需要它：`BatchEvent.Detail` 是自由 JSON，失败类事件里带 `errorClass`，
+// 而界面要把它显示成中文。与其让前端写第二张映射表（必然与服务端的
+// `ErrorClassLabel` 漂移，那正是 #191 的成因），不如在组装事件时译好。
+//
+// 解析失败时返回空串而不是报错：detail 的形状由写入方决定，
+// 一条形状意外的事件不应让整页时间线请求失败。
+func ErrorClassInDetail(detail json.RawMessage) string {
+	if len(detail) == 0 {
+		return ""
+	}
+	var payload struct {
+		ErrorClass string `json:"errorClass"`
+	}
+	if err := json.Unmarshal(detail, &payload); err != nil {
+		return ""
+	}
+	return payload.ErrorClass
+}
+
 // ErrorClassLabel 给出错误类别的**中文名**。
 //
 // 为什么需要与 ErrorClassAction 分开：两者用途不同 —— 类别是「这是什么错」，
@@ -343,11 +364,21 @@ type BatchEvent struct {
 	// 为什么由服务端下发而不是让前端映射：批次事件的文案表已存在
 	// （`store.batchEventLabels`，动态列表在用它）。前端再抄一张会产生
 	// 两种译法 —— 那正是 #206（动态已中文、时间线仍英文）的成因。
-	EventTypeLabel string          `json:"eventTypeLabel"`
-	Sequence       int             `json:"sequence"`
-	ActorID        *int64          `json:"actorId,omitempty"`
-	Detail         json.RawMessage `json:"detail,omitempty"`
-	CreatedAt      time.Time       `json:"createdAt"`
+	EventTypeLabel string `json:"eventTypeLabel"`
+	// ErrorClassLabel 是事件 detail 里 `errorClass` 的中文名（issue #191 第 2 轮）。
+	//
+	// 为什么由服务端从 detail 里提出并译好：`detail` 是自由 JSON
+	// （`json.RawMessage`），前端渲染「错误类型 xxx」时只能拿原始码。
+	// 不做第二个前端映射表，而是与 `eventTypeLabel` 同一做法：
+	// 服务端译好后随事件下发（单一来源）。
+	//
+	// 空值表示这个事件的 detail 里没有 `errorClass`（绝大多数事件如此），
+	// 前端据此不渲染「错误类型」这一段。
+	ErrorClassLabel string          `json:"errorClassLabel,omitempty"`
+	Sequence        int             `json:"sequence"`
+	ActorID         *int64          `json:"actorId,omitempty"`
+	Detail          json.RawMessage `json:"detail,omitempty"`
+	CreatedAt       time.Time       `json:"createdAt"`
 }
 
 // 事件类型。载荷只含对象 ID 与版本，不把大段样本内容塞进消息（契约 §5）。

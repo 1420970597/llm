@@ -291,6 +291,13 @@ type BatchEvent = {
   id: number
   eventType: string
   eventTypeLabel?: string
+  /**
+   * detail 里 `errorClass` 的中文名（issue #191 第 2 轮）。
+   *
+   * 由服务端译好后下发（与 `eventTypeLabel` 同一做法）：detail 是自由 JSON，
+   * 前端只能拿到原始码。空值表示这个事件的 detail 没有 `errorClass`。
+   */
+  errorClassLabel?: string
   sequence: number
   detail?: unknown
   createdAt: string
@@ -314,7 +321,16 @@ function describeBatchEventDetail(event: BatchEvent): string {
 
   // 单元级失败：指出是哪个单元、哪类错误、能否重试。
   if (typeof d.itemId === 'number' && d.itemId > 0) parts.push(`单元 #${d.itemId}`)
-  if (typeof d.errorClass === 'string' && d.errorClass) parts.push(`错误类型 ${d.errorClass}`)
+  // 错误类型用服务端下发的同源中文名（issue #191 第 2 轮：以前显示原始码
+  // `config_error`）。不在这里再写一张映射表 —— 那张表会与 `ErrorClassLabel`
+  // 漂移。服务端未下发时**不编造**，直接省略这一段。
+  if (event.errorClassLabel) {
+    parts.push(`错误类型 ${event.errorClassLabel}`)
+  } else if (typeof d.errorClass === 'string' && d.errorClass) {
+    // 旧后端（不带 errorClassLabel）：给出中性兜底而**不回退成原始码** ——
+    // 回退等于把 #191 的缺陷形态再引回来。
+    parts.push('错误类型 其他错误')
+  }
   if (typeof d.retryable === 'boolean') parts.push(d.retryable ? '可重试' : '不可重试')
 
   // 缺口：给出可核对的数字，而不是只写「有缺口」。

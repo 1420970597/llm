@@ -1,0 +1,14 @@
+{
+  "stage": "after",
+  "base": "http://127.0.0.1:3210",
+  "category": {
+    "hits": [],
+    "visibleEnumKeys": []
+  },
+  "errorClass": {
+    "hits": [],
+    "visibleEnumKeys": [],
+    "bodyHasRawCode": false
+  },
+  "consoleErrors": []
+}

@@ -534,8 +534,14 @@ func (app *application) listBatchEvents(w http.ResponseWriter, r *http.Request) 
 	// `store.batchEventLabels`）下发。前端因此不需要第二张映射表，
 	// 也就不会出现「动态是中文、时间线是英文」这种漂移。
 	// 原始 eventType 保留不变，供排查与前端 title 使用。
+	//
+	// issue #191（第 2 轮全路由扫描）：detail 里的 `errorClass` 同样要译好后再下发
+	// —— 时间线以前会显示「错误类型 config_error」。用同一个 `ErrorClassLabel`。
 	for i := range events {
 		events[i].EventTypeLabel = store.DescribeBatchEvent(events[i].EventType)
+		if class := model.ErrorClassInDetail(events[i].Detail); class != "" {
+			events[i].ErrorClassLabel = model.ErrorClassLabel(class)
+		}
 	}
 	app.writeJSON(w, http.StatusOK, studio.NewPage(events, query.Limit, "sequence:desc",
 		func(event model.BatchEvent) studio.Cursor { return studio.Cursor{ID: int64(event.Sequence)} }))
