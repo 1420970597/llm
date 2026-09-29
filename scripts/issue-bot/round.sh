@@ -36,16 +36,33 @@ WORK_DIR="${ISSUE_AUTOFIX_DIR:-$REPO_ROOT/.pi/issue-autofix}"
 LOG_DIR="$WORK_DIR/logs"
 SOP="$REPO_ROOT/docs/plans/issue-autofix-prompt.md"
 
+# --------------------------------------------------------------- PATH ----
+# cron 的默认 PATH 只有 /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin，
+# 而 pi（及其 node）安装在 pi-node 的版本目录内。**实测**：不补全 PATH 时，
+# 首次 cron 触发会以 `timeout: failed to run command 'pi': No such file or directory`
+# + exit 127 失败 —— 定时任务看起来「装好了」实则一次都没跑成。
+# 因此这里显式把 pi 的 bin 目录（用 current 符号链接，避免锁死版本号）前置。
+PI_NODE_BIN="${PI_NODE_BIN:-$HOME/.local/share/pi-node/current/bin}"
+export PATH="$PI_NODE_BIN:$HOME/.pi/agent/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
+
 PROVIDER="${ISSUE_AUTOFIX_PROVIDER:-my-custom-provider}"
 MODEL="${ISSUE_AUTOFIX_MODEL:-deepseek-v4.1-flash}"
-TIMEOUT_S="${ISSUE_AUTOFIX_TIMEOUT:-10800}"
+# 默认 4h：必须 **不小于** 调度侧 `timeoutMs`。否则当 cron 轨道直接执行 SOP
+# （非 --due-only）时，外层 timeout 会先于调度层把本轮杀掉，同样会遗留认领锁。
+TIMEOUT_S="${ISSUE_AUTOFIX_TIMEOUT:-14400}"
 
 DUE_ONLY=0
 for arg in "$@"; do
   case "$arg" in
-    --due-only) DUE_ONLY=1 ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
-    *) echo "未知参数：$arg" >&2; exit 2 ;;
+  --due-only) DUE_ONLY=1 ;;
+  -h | --help)
+    sed -n '2,30p' "$0"
+    exit 0
+    ;;
+  *)
+    echo "未知参数：$arg" >&2
+    exit 2
+    ;;
   esac
 done
 
@@ -56,6 +73,22 @@ EVENTS="$LOG_DIR/round-$STAMP.jsonl"
 info() { echo "[issue-autofix round $(date -u +%H:%M:%SZ)] $*" | tee -a "$LOG"; }
 
 info "启动：provider=$PROVIDER model=$MODEL timeout=${TIMEOUT_S}s log=$LOG"
+
+# 依赖探测：把「找不到命令」变成可读原因，而不是让它变成一个神秘的 127。
+# （实测教训：cron 轨道首次触发就是因为 pi 不在 PATH 而静默失败。）
+PI_BIN=$(command -v pi 2>/dev/null || true)
+if [ -z "$PI_BIN" ]; then
+  info "FATAL: 找不到 pi 可执行文件（已尝试 PATH 补全：$PI_NODE_BIN）。"
+  info "       请在 crontab 显式设置 PATH，或导出 PI_NODE_BIN 指向包含 pi 的 bin 目录。"
+  exit 127
+fi
+info "使用 pi：$PI_BIN"
+for dep in timeout python3; do
+  if ! command -v "$dep" >/dev/null 2>&1; then
+    info "FATAL: 缺少依赖命令 $dep"
+    exit 1
+  fi
+done
 
 if [ ! -f "$SOP" ]; then
   info "FATAL: SOP 缺失：$SOP（定时任务无规则来源，拒绝空跑）"
@@ -77,17 +110,22 @@ else
 如果该文件不存在，立即停止并报告缺失。不要凭记忆执行规则。"
 fi
 
-CMD=(pi -p --no-session --mode json
-     --provider "$PROVIDER" --model "$MODEL"
-     --append-system-prompt "本轮是无交互定时任务：不要请求确认，不要提问。按 SOP 执行到底，末尾按 SOP §10 输出轮次总结。"
-     "$PROMPT")
+CMD=("$PI_BIN" -p --no-session --mode json
+  --provider "$PROVIDER" --model "$MODEL"
+  --append-system-prompt "本轮是无交互定时任务：不要请求确认，不要提问。按 SOP 执行到底，末尾按 SOP §10 输出轮次总结。"
+  "$PROMPT")
 
 if [ -n "${ISSUE_AUTOFIX_DRY_RUN:-}" ]; then
-  printf 'DRY_RUN:'; printf ' %q' "${CMD[@]}"; echo
+  printf 'DRY_RUN:'
+  printf ' %q' "${CMD[@]}"
+  echo
   exit 0
 fi
 
-cd "$REPO_ROOT" || { info "FATAL: 无法进入 $REPO_ROOT"; exit 1; }
+cd "$REPO_ROOT" || {
+  info "FATAL: 无法进入 $REPO_ROOT"
+  exit 1
+}
 
 set +e
 timeout "$TIMEOUT_S" "${CMD[@]}" >"$EVENTS" 2>>"$LOG"
@@ -105,7 +143,8 @@ fi
 
 # 从 JSON 事件流中抽出最终 assistant 文本。注意 --mode json 下 assistant 内容
 # 只在流事件的 message 里，**stdout 不是纯文本**，因此不能直接把 stdout 当报告。
-SUMMARY=$(python3 - "$EVENTS" <<'PY'
+SUMMARY=$(
+  python3 - "$EVENTS" <<'PY'
 import json, sys
 texts = []
 try:

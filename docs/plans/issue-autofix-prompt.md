@@ -51,8 +51,20 @@ echo "exit=$?"
 
 ```bash
 scripts/issue-bot/preflight.sh ensure-labels   # 幂等，首次执行即可
+scripts/issue-bot/preflight.sh reclaim-stale   # 回收被硬杀遗留的陈旧认领（必须先跑）
 scripts/issue-bot/preflight.sh scan            # 输出：<编号> <已做轮次> <标题>
 ```
+
+> **为什么 `reclaim-stale` 必须先于 `scan`**：任何硬杀（调度超时 / OOM / 机器重启 / Ctrl-C）
+> 都会把 `autofix-running` 永久留在 issue 上。而 `scan` 会把带该标签的 issue
+> **直接过滤掉**，因此陈旧锁永远走不到 `claim` 里的回收分支 —— 只把回收挂在 claim 上
+> 是一条**不可达路径**。这不是理论风险：实测 20:23 轮次被 30min 默认超时杀死后，
+> #191/#160/#214 三条 issue 的锁在下一轮依然存在，且 `scan` 根本不会列出它们。
+> 因此回收必须是**独立于 scan 的前置步骤**。
+>
+> 阈值 `ISSUE_AUTOFIX_STALE_CLAIM_HOURS`（默认 6h）**必须严格大于**调度侧 `timeoutMs`
+> （当前 4h），否则会把一个仍在正常运行的认领误判为陈旧并与它并发处理同一 issue。
+> 若时间戳取不到，脚本按「保守保留」处理 —— 宁可少回收，不可抢跑。
 
 `scan` 已内建四重过滤与一个排序意图：
 

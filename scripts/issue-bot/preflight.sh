@@ -50,6 +50,15 @@ MAX_ROUNDS="${ISSUE_AUTOFIX_MAX_ROUNDS:-3}"
 # 不能作为「修复前/修复后」证据（防「用一张白图冒充已验证」）。
 MIN_SHOT_BYTES="${ISSUE_AUTOFIX_MIN_SHOT_BYTES:-5120}"
 
+# 陈旧认领阈值（小时）。**为什么必须有这个值**：任何硬杀（调度超时 / OOM /
+# 机器重启 / Ctrl-C）都会把 autofix-running 永久留在 issue 上，使其再也不被任何
+# 一轮处理。实测已发生：20:23 轮次被 30min 默认超时杀死后，#191/#160/#214
+# 三条 issue 全部被锁死。
+#
+# 不变式：STALE_CLAIM_HOURS 必须 **严格大于** 调度侧 timeoutMs，否则会把一个
+# 仍在正常运行的认领误判为陈旧并与之并发处理。当前取值：6h > 4h(调度超时)。
+STALE_CLAIM_HOURS="${ISSUE_AUTOFIX_STALE_CLAIM_HOURS:-6}"
+
 LABEL_AUTO="autofix-auto"
 LABEL_RUN="autofix-running"
 LABEL_PAUSE="autofix-paused"
@@ -69,6 +78,53 @@ lock_run() {
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 die() { echo "FATAL: $*" >&2; exit 1; }
 degraded() { echo "DEGRADED: $*" >&2; exit 10; }
+info() { echo "[issue-autofix] $*" >&2; }
+
+# 返回 autofix-running 标签**最后一次被添加**至今的秒数。
+# 用 GitHub timeline API 而非标签本身：标签列表不带时间，timeline 才是权威时间源。
+# 无法判定时输出空串（调用方必须按「保守保留」处理，不得当作 0）。
+_label_added_seconds_ago() {
+  local n="$1" ts
+  ts=$(gh api "repos/{owner}/{repo}/issues/$n/timeline?per_page=100" \
+        --jq "[.[] | select(.event==\"labeled\" and .label.name==\"$LABEL_RUN\")] | last | .created_at // empty" \
+        2>/dev/null)
+  [ -z "$ts" ] && { echo ""; return 0; }
+  python3 - "$ts" <<'PY'
+import datetime, sys
+raw = sys.argv[1].replace('Z', '+00:00')
+added = datetime.datetime.fromisoformat(raw)
+if added.tzinfo is None:
+    added = added.replace(tzinfo=datetime.timezone.utc)
+now = datetime.datetime.now(datetime.timezone.utc)
+print(max(0, int((now - added).total_seconds())))
+PY
+}
+
+# 陈旧认领回收：把被硬杀而残留的 autofix-running 摘掉。
+# 返回 0 = 已回收（或本就无锁）；1 = 锁仍然有效（保留）。
+# 保守原则：时间戳取不到 / 刚被加上，一律保留 —— 宁可少回收，不可与在跑的任务抢同一条 issue。
+_reclaim_stale_claim() {
+  local n="$1" age limit
+  limit=$((STALE_CLAIM_HOURS * 3600))
+  age=$(_label_added_seconds_ago "$n")
+  if [ -z "$age" ]; then
+    info "#$n 带 $LABEL_RUN 但无法取得加锁时间，保守保留（需人工确认）"
+    return 1
+  fi
+  if [ "$age" -lt "$limit" ]; then
+    info "#$n 正被 ${age}s 前的认领占用（阈值 ${limit}s），跳过"
+    return 1
+  fi
+  info "#$n 的 $LABEL_RUN 已陈旧 $((age / 3600))h（阈值 ${STALE_CLAIM_HOURS}h）—— 判定为被硬杀遗留，回收"
+  gh issue edit "$n" --remove-label "$LABEL_RUN" >/dev/null 2>&1 || true
+  local after
+  after=$(gh issue view "$n" --json labels -q '[.labels[].name] | join(",")' 2>/dev/null)
+  case ",$after," in
+    *",$LABEL_RUN,"*) info "#$n 陈旧锁回收失败（仍带标签），跳过"; return 1 ;;
+  esac
+  info "#$n 陈旧锁已回收（复核通过）"
+  return 0
+}
 info() { echo "[issue-autofix] $*"; }
 
 # ---------------------------------------------------------------- probe ----
@@ -86,8 +142,8 @@ cmd_probe() {
     die "gh 未登录（定时任务无法取 issue / 评论）"
   fi
   local repo
-  repo=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) \
-    || die "无法解析 gh 仓库（检查 remote 与网络）"
+  repo=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) ||
+    die "无法解析 gh 仓库（检查 remote 与网络）"
   echo "  ✓ repo = $repo"
 
   # 门禁脚本是「按输出判定」的唯一入口（gofmt -l 列文件时仍 exit 0，见 #94 / PR #151）。
@@ -117,31 +173,42 @@ cmd_probe() {
   local svc missing=""
   for svc in llm-api-1 llm-worker-1 llm-web-user-1 llm-postgres-1 llm-redis-1 llm-minio-1; do
     case "$(docker inspect -f '{{.State.Running}}' "$svc" 2>/dev/null)" in
-      true) echo "  ✓ $svc running" ;;
-      *)    echo "  ✗ $svc 未运行"; missing="$missing $svc" ;;
+    true) echo "  ✓ $svc running" ;;
+    *)
+      echo "  ✗ $svc 未运行"
+      missing="$missing $svc"
+      ;;
     esac
   done
   [ -n "$missing" ] && bad="容器未运行:$missing"
 
   local code
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:8080/healthz 2>/dev/null || echo 000)
-  [ "$code" = "200" ] && echo "  ✓ api /healthz 200" || { echo "  ✗ api /healthz=$code"; bad="$bad api:$code"; }
+  [ "$code" = "200" ] && echo "  ✓ api /healthz 200" || {
+    echo "  ✗ api /healthz=$code"
+    bad="$bad api:$code"
+  }
 
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:3210/ 2>/dev/null || echo 000)
-  [ "$code" = "200" ] && echo "  ✓ web 200" || { echo "  ✗ web=$code"; bad="$bad web:$code"; }
+  [ "$code" = "200" ] && echo "  ✓ web 200" || {
+    echo "  ✗ web=$code"
+    bad="$bad web:$code"
+  }
 
   # 评论要求「图文并茂」，截图能力缺失时应降级而不是产出纯文字评论。
   if [ -d /root/.pi/agent/npm/node_modules/playwright ]; then
     echo "  ✓ playwright 可用"
   else
-    echo "  ✗ playwright 缺失"; bad="$bad playwright"
+    echo "  ✗ playwright 缺失"
+    bad="$bad playwright"
   fi
 
   # 前端门禁（tsc + vite）走用户级 node/npm，宿主机不装 Node（AGENTS.md §1）。
   if command -v npm >/dev/null 2>&1; then
     echo "  ✓ npm 可用（$(command -v npm)）"
   else
-    echo "  ✗ npm 不可用"; bad="$bad npm"
+    echo "  ✗ npm 不可用"
+    bad="$bad npm"
   fi
 
   # 图片要能被 GitHub 渲染，必须提交进仓库并走 raw 链接（既有约定：docs/audit/）。
@@ -150,7 +217,8 @@ cmd_probe() {
   if [ -n "$(git ls-tree origin/main --name-only docs/audit/ 2>/dev/null)" ]; then
     echo "  ✓ docs/audit 已跟踪（评论区贴图路径可用）"
   else
-    echo "  ✗ docs/audit 未跟踪"; bad="$bad docs-audit"
+    echo "  ✗ docs/audit 未跟踪"
+    bad="$bad docs-audit"
   fi
 
   if [ -n "$bad" ]; then degraded "环境不可信：$bad"; fi
@@ -171,10 +239,11 @@ cmd_ensure_labels() {
     "$LABEL_AUTO|自动修复守护接管|5319e7" \
     "$LABEL_RUN|自动修复进行中（勿手工并发）|fbca04" \
     "$LABEL_PAUSE|禁止自动修复|d73a4a" \
-    "$LABEL_BLOCK|自动修复已升级待人工|b60205"
-  do
-    local name=${spec%%|*}; rest=${spec#*|}
-    local desc=${rest%%|*}; color=${rest##*|}
+    "$LABEL_BLOCK|自动修复已升级待人工|b60205"; do
+    local name=${spec%%|*}
+    rest=${spec#*|}
+    local desc=${rest%%|*}
+    color=${rest##*|}
     if gh label create "$name" --description "$desc" --color "$color" --force >/dev/null 2>&1; then
       echo "  ✓ label $name"
     else
@@ -201,7 +270,7 @@ cmd_scan() {
 
   # 用文件传参而不是 heredoc + herestring：两者都抢 stdin，shellcheck SC2261。
   python3 - "$LEDGER" "$MAX_PER_ROUND" "$MAX_ROUNDS" \
-           "$LABEL_PAUSE" "$LABEL_RUN" "$LABEL_BLOCK" "$tmp" <<'PY'
+    "$LABEL_PAUSE" "$LABEL_RUN" "$LABEL_BLOCK" "$tmp" <<'PY'
 import json, sys, os
 ledger_path, max_per_round, max_rounds, L_PAUSE, L_RUN, L_BLOCK, issues_path = sys.argv[1:8]
 max_per_round = int(max_per_round)
@@ -266,26 +335,35 @@ cmd_claim() {
 
   # 轮次预算先于认领检查：超限的 issue 不该被再次认领。
   if ! cmd_budget "$n" >/dev/null 2>&1; then
-    info "#$n 已达最大迭代轮数 $MAX_ROUNDS，拒绝认领（应升级人工）"; return 3
+    info "#$n 已达最大迭代轮数 $MAX_ROUNDS，拒绝认领（应升级人工）"
+    return 3
   fi
 
   local labels
-  labels=$(gh issue view "$n" --json labels -q '[.labels[].name] | join(",")' 2>/dev/null) \
-    || die "读取 issue #$n 标签失败"
+  labels=$(gh issue view "$n" --json labels -q '[.labels[].name] | join(",")' 2>/dev/null) ||
+    die "读取 issue #$n 标签失败"
 
   case ",$labels," in
     *",$LABEL_PAUSE,"*) info "#$n 已标记禁止自动修复，跳过"; return 2 ;;
-    *",$LABEL_RUN,"*)   info "#$n 已被认领，跳过"; return 2 ;;
+    *",$LABEL_RUN,"*)
+      # 已被认领：先判是否为硬杀遗留的陈旧锁，是则回收后继续，否则跳过。
+      if ! _reclaim_stale_claim "$n"; then
+        return 2
+      fi
+      ;;
   esac
 
-  gh issue edit "$n" --add-label "$LABEL_AUTO" --add-label "$LABEL_RUN" >/dev/null 2>&1 \
-    || die "认领 issue #$n 失败"
+  gh issue edit "$n" --add-label "$LABEL_AUTO" --add-label "$LABEL_RUN" >/dev/null 2>&1 ||
+    die "认领 issue #$n 失败"
 
   # 复核：确认标签真的落下（API 成功 ≠ 状态可见）
   labels=$(gh issue view "$n" --json labels -q '[.labels[].name] | join(",")' 2>/dev/null)
   case ",$labels," in
-    *",$LABEL_RUN,"*) echo "CLAIMED $n"; return 0 ;;
-    *) die "认领后复核失败：#$n 未见 $LABEL_RUN" ;;
+  *",$LABEL_RUN,"*)
+    echo "CLAIMED $n"
+    return 0
+    ;;
+  *) die "认领后复核失败：#$n 未见 $LABEL_RUN" ;;
   esac
 }
 
@@ -300,8 +378,11 @@ cmd_release() {
     local labels
     labels=$(gh issue view "$n" --json labels -q '[.labels[].name] | join(",")' 2>/dev/null)
     case ",$labels," in
-      *",$LABEL_RUN,"*) echo "FATAL: #$n 仍带 $LABEL_RUN（释放失败，下轮会跳过该 issue）" >&2; return 1 ;;
-      *) info "#$n 已释放认领（复核通过）" ;;
+    *",$LABEL_RUN,"*)
+      echo "FATAL: #$n 仍带 $LABEL_RUN（释放失败，下轮会跳过该 issue）" >&2
+      return 1
+      ;;
+    *) info "#$n 已释放认领（复核通过）" ;;
     esac
   else
     info "#$n 本无 $LABEL_RUN（无需释放）"
@@ -311,7 +392,8 @@ cmd_release() {
     if gh issue edit "$n" --add-label "$LABEL_BLOCK" >/dev/null 2>&1; then
       info "#$n 已升级人工（$LABEL_BLOCK）"
     else
-      echo "FATAL: #$n 打 $LABEL_BLOCK 失败" >&2; return 1
+      echo "FATAL: #$n 打 $LABEL_BLOCK 失败" >&2
+      return 1
     fi
   fi
 }
@@ -367,11 +449,11 @@ cmd_budget() {
 cmd_ledger_add() {
   local n="${1:?}" round="${2:?}" result="${3:?}" branch="${4:-}" pr="${5:-}" note="${6:-}"
   case "$result" in
-    fixed|partial|blocked|closed) ;;
-    *) die "result 必须是 fixed|partial|blocked|closed，收到：$result" ;;
+  fixed | partial | blocked | closed) ;;
+  *) die "result 必须是 fixed|partial|blocked|closed，收到：$result" ;;
   esac
   case "$round" in
-    ''|*[!0-9]*) die "round 必须是正整数，收到：$round" ;;
+  '' | *[!0-9]*) die "round 必须是正整数，收到：$round" ;;
   esac
   python3 - "$LEDGER" "$n" "$round" "$result" "$branch" "$pr" "$note" <<'PY'
 import json, os, sys, datetime
@@ -394,7 +476,10 @@ PY
 
 cmd_ledger_show() {
   local n="${1:-}"
-  if [ ! -f "$LEDGER" ]; then echo "（台账为空：$LEDGER）"; return 0; fi
+  if [ ! -f "$LEDGER" ]; then
+    echo "（台账为空：$LEDGER）"
+    return 0
+  fi
   # 按 issue 过滤走 python 解析，而不是 grep 文本匹配：
   # 后者依赖 json.dumps 的 `"issue": 191,` 精确间距，格式一变就静默漏报。
   if [ -n "$n" ]; then
@@ -434,17 +519,23 @@ cmd_evidence_check() {
   local f
   for f in "$before" "$after"; do
     if [ ! -f "$f" ]; then
-      echo "MISSING: $f 不存在（不许用文字描述替代截图）" >&2; rc=1; continue
+      echo "MISSING: $f 不存在（不许用文字描述替代截图）" >&2
+      rc=1
+      continue
     fi
     local size
     size=$(wc -c <"$f" | tr -d ' ')
     if [ "$size" -lt "$MIN_SHOT_BYTES" ]; then
-      echo "TOO_SMALL: $f 仅 ${size}B < ${MIN_SHOT_BYTES}B（疑似空白/加载失败图）" >&2; rc=1
+      echo "TOO_SMALL: $f 仅 ${size}B < ${MIN_SHOT_BYTES}B（疑似空白/加载失败图）" >&2
+      rc=1
     else
       echo "  ✓ $(basename "$f") ${size}B"
     fi
   done
-  [ "$rc" -ne 0 ] && { echo "EVIDENCE REJECTED" >&2; return 1; }
+  [ "$rc" -ne 0 ] && {
+    echo "EVIDENCE REJECTED" >&2
+    return 1
+  }
 
   local bsum asum
   bsum=$(python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$before")
@@ -472,6 +563,35 @@ cmd_raw_url() {
   echo "https://raw.githubusercontent.com/${owner}/${repo}/${sha}/${rel}"
 }
 
+# ----------------------------------------------------- reclaim-stale --------
+
+# 扫描所有带 autofix-running 的 issue，回收陈旧锁。
+#
+# **为什么必需**：`scan` 会把带 autofix-running 的 issue 直接从候选里过滤掉，
+# 因此陈旧锁永远走不到 `claim` 里的回收分支 —— 只把回收挂在 claim 上是一条
+# 不可达的路径。实测教训：20:23 轮次被超时杀死后，3 条 issue 的锁在「下一轮」
+# 依然存在，且 `scan` 根本不会列出它们，永远无人回收。
+# 因此回收必须是一个**独立于 scan 的前置步骤**。
+cmd_reclaim_stale() {
+  cd "$REPO_ROOT" || die "无法进入仓库"
+  local nums
+  nums=$(gh issue list --state open --limit 100 --label "$LABEL_RUN" \
+           --json number -q '.[].number' 2>/dev/null) \
+    || die "拉取 $LABEL_RUN issue 列表失败"
+  if [ -z "$nums" ]; then
+    info "无带 $LABEL_RUN 的 issue，无需回收"
+    echo "RECLAIMED 0"
+    return 0
+  fi
+
+  local reclaimed=0 kept=0 n
+  for n in $nums; do
+    if _reclaim_stale_claim "$n"; then reclaimed=$((reclaimed + 1)); else kept=$((kept + 1)); fi
+  done
+  info "陈旧锁回收完成：回收 $reclaimed，保留 $kept"
+  echo "RECLAIMED $reclaimed"
+}
+
 # ------------------------------------------------------------ main ---------
 
 case "${1:-help}" in
@@ -479,6 +599,8 @@ case "${1:-help}" in
   __probe)        cmd_probe ;;
   ensure-labels)  cmd_ensure_labels ;;
   scan)           cmd_scan ;;
+  reclaim-stale)  lock_run "$0" __reclaim_stale ;;
+  __reclaim_stale) cmd_reclaim_stale ;;
   claim)          shift; lock_run "$0" __claim "$@" ;;
   __claim)        shift; cmd_claim "$@" ;;
   release)        shift; lock_run "$0" __release "$@" ;;
