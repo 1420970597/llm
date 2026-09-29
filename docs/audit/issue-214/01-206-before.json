@@ -1,0 +1,57 @@
+{
+  "stage": "before",
+  "batch": "b_1",
+  "eventRows": [
+    {
+      "type": "BatchRetryFailedRequested",
+      "typeTitle": "",
+      "detail": ""
+    },
+    {
+      "type": "BatchPaused",
+      "typeTitle": "",
+      "detail": ""
+    },
+    {
+      "type": "BatchRetryFailedRequested",
+      "typeTitle": "",
+      "detail": ""
+    },
+    {
+      "type": "BatchResumed",
+      "typeTitle": "",
+      "detail": ""
+    },
+    {
+      "type": "BatchPaused",
+      "typeTitle": "",
+      "detail": ""
+    },
+    {
+      "type": "BatchRetryFailedRequested",
+      "typeTitle": "",
+      "detail": ""
+    },
+    {
+      "type": "BatchCompleted",
+      "typeTitle": "",
+      "detail": ""
+    },
+    {
+      "type": "BatchPartialFailed",
+      "typeTitle": "",
+      "detail": ""
+    }
+  ],
+  "visibleEnumKeys": [
+    "BatchRetryFailedRequested",
+    "BatchPaused",
+    "BatchRetryFailedRequested",
+    "BatchResumed",
+    "BatchPaused",
+    "BatchRetryFailedRequested",
+    "BatchCompleted",
+    "BatchPartialFailed"
+  ],
+  "consoleErrors": []
+}

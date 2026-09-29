@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Card, Empty, Input, InputNumber, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 // AlertTriangle 来自 lucide-react（图标库），不是 semi-ui 的组件。
 import { AlertTriangle } from 'lucide-react'
 import { client } from '../../lib/api'
 import { newIdempotencyKey, projectPath, settingsApi, studioApi } from '../../lib/api/studio'
+// #211：审阅状态列原先直接渲染后端 `effective_action`（pending/accepted），
+// 中文界面里漏出内部枚举；同时页面未说明「未审阅内容能否纳入评测」。
+import { describeReviewStatus, reviewStatusColor, unreviewedScopeNotice } from '../../lib/enumLabels'
 import type { BatchSummary, ConnectionProviderOption, CreateExperimentRequest, Experiment, ExperimentDetail, Page, SampleSummary, RulePreviewResult } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
@@ -193,6 +196,12 @@ export function QualityNewPage() {
 
   const [batches, setBatches] = useState<BatchSummary[]>([])
   const [samples, setSamples] = useState<SampleSummary[]>([])
+  // #211：未审阅的内容版本数（用于在「检查范围」处显式说明它们能否纳入评测）。
+  // 派生而不是另存一份 state：另存一份会与 samples 漂移。
+  const unreviewedCount = useMemo(
+    () => samples.filter((sample) => sample.reviewStatus === 'pending').length,
+    [samples],
+  )
   const [batchID, setBatchID] = useState('')
   const [selected, setSelected] = useState<number[]>([])
   const [judgeID, setJudgeID] = useState('')
@@ -420,6 +429,13 @@ export function QualityNewPage() {
         <Text type="tertiary" size="small" className="block mb-2">
           已选 {selected.length} 个内容版本。
         </Text>
+        {/* #211：必须说明未审阅内容能否纳入评测 —— 否则用户不知道该不该勾选，
+            而发布门槛（PENDING_REVIEW）实际会拦住未审阅内容，两者需要一个显式交代。 */}
+        {unreviewedCount > 0 ? (
+          <Text type="warning" size="small" className="block mb-2" data-scope-unreviewed-notice="true">
+            {unreviewedScopeNotice(unreviewedCount)}
+          </Text>
+        ) : null}
         <div className="sample-table">
           <div className="sample-row sample-row--head">
             <span />
@@ -448,7 +464,11 @@ export function QualityNewPage() {
                 {sample.latestVersionId > 0 ? `（版本 ID ${sample.latestVersionId}）` : '（暂无内容版本）'}
               </span>
               <span>
-                <Tag size="small">{sample.reviewStatus}</Tag>
+                <span title={sample.reviewStatus}>
+                  <Tag size="small" color={reviewStatusColor(sample.reviewStatus)}>
+                    {describeReviewStatus(sample.reviewStatus)}
+                  </Tag>
+                </span>
               </span>
             </div>
           ))}

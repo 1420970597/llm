@@ -1,0 +1,29 @@
+{
+  "stage": "before",
+  "statusCells": [
+    {
+      "text": "pending",
+      "title": ""
+    },
+    {
+      "text": "accepted",
+      "title": ""
+    },
+    {
+      "text": "pending",
+      "title": ""
+    },
+    {
+      "text": "pending",
+      "title": ""
+    }
+  ],
+  "visibleEnumKeys": [
+    "pending",
+    "accepted",
+    "pending",
+    "pending"
+  ],
+  "scopeExplanation": "检查范围（冻结为「被评测数据集」） | 已选 0 个内容版本。 | 内容版本 | 审阅状态 | 方向二（难度 normal）：第 2 题 · v2（版本 ID 9） | pending | 方向二（难度 normal）：第 1 题 · v2（版本 ID 8） | accepted | 方向一（难度 normal）：第 2 题 · v2（版本 ID 7） | pending | 方向一（难度 normal）：第 1 题 · v3（版本 ID 6） | pending",
+  "consoleErrors": []
+}

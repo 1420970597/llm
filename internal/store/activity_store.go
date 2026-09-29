@@ -889,6 +889,11 @@ func activityLinks(source string, projectID, objectID int64) model.Links {
 }
 
 // batchEventLabels 是批次事件的展示文案（覆盖 model.BatchEvent* 的全部取值）。
+//
+// issue #206：这张表也是**批次详情事件时间线**的文案来源 ——
+// 通过 `DescribeBatchEvent` 暴露、经 API 的 `eventTypeLabel` 字段下发给前端。
+// 为什么不把表抄一份到前端：同一批事件在「动态」与「批次详情」两处各有一张表，
+// 迟早会出现两种译法（这正是 #191/#206 反复复现的成因）。
 var batchEventLabels = map[string]string{
 	model.BatchEventQueued:         "批次已排队",
 	model.BatchEventStarted:        "批次开始执行",
@@ -899,6 +904,25 @@ var batchEventLabels = map[string]string{
 	model.BatchEventCompleted:      "批次完成",
 	model.BatchEventFailed:         "批次失败",
 	model.BatchEventRetryRequested: "批次请求重试",
+}
+
+// DescribeBatchEvent 返回批次事件的中文文案（issue #206）。
+//
+// 为什么导出而不是让前端自己拿 eventType 去查：批次详情的「事件时间线」
+// 需要与「动态」列表**同源**的文案。如果前端再抄一张表，两处迟早漂移 ——
+// 这正是 #191（动态修好了、审计表没修）与 #206（动态修好了、时间线没修）
+// 反复出现的成因。因此把已有的这张表直接经 API 下发给前端。
+//
+// 未知事件类型给中性中文，**不回传原始 code**（与 issue #191 的
+// `describeBatchStatus` / `auditActionFallback` 同一契约）。
+func DescribeBatchEvent(eventType string) string {
+	if label, found := batchEventLabels[eventType]; found {
+		return label
+	}
+	if eventType == "" {
+		return "批次事件"
+	}
+	return "批次事件：" + auditActionFallback(eventType)
 }
 
 // batchStatusLabels 是批次状态的中文文案（覆盖 model.BatchStatus* 的全部取值）。

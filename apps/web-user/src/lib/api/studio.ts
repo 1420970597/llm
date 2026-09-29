@@ -429,6 +429,14 @@ export type BatchEvent = {
   batchId: number
   projectId: number
   eventType: string
+  /**
+   * 事件类型的中文文案（issue #206），由服务端从**动态列表同一张表**下发。
+   *
+   * 为什么不在前端自己映射：同一批事件在「动态」与「批次详情时间线」两处
+   * 各有一张表，迟早出现两种译法 —— 那正是 #206 的形态。
+   * 旧后端可能不带此字段，因此渲染侧有中性兜底。
+   */
+  eventTypeLabel?: string
   sequence: number
   detail?: unknown
   actorId?: number

@@ -151,6 +151,81 @@ export function describeArtifactContentType(raw: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// review_projection.effective_action（issue #191 第四条渲染路径 / #211）
+// ---------------------------------------------------------------------------
+
+/**
+ * 审阅投影的有效处置。
+ *
+ * 取值域由数据库约束决定：`review_projections.effective_action` 的
+ * CHECK 约束只允许 `pending / accepted / quarantined / conflict`。
+ * 注意它与上方的 `DomainReviewStatus` **不是同一个东西**：
+ * 那个是「方向/领域」的复核状态（draft/pending/approved），
+ * 这个是「内容版本」的人工判断结果。取值域碰巧都有 pending，但语义不同，
+ * 因此分开两张表，而不是合并 —— 合并会让「领域待复核」与「样本待判断」
+ * 显示成同一句话。
+ */
+export type ReviewEffectiveAction = 'pending' | 'accepted' | 'quarantined' | 'conflict'
+
+/** 有效处置 → 中文文案。`Record<ReviewEffectiveAction, string>` 保证不漏 key。 */
+export const REVIEW_EFFECTIVE_ACTION_LABELS: Record<ReviewEffectiveAction, string> = {
+  pending: '待判断',
+  accepted: '已接纳',
+  quarantined: '已隔离',
+  conflict: '存在冲突',
+}
+
+/** 有效处置 → Semi Tag 颜色（与文案同一张表，避免两处各自演化）。 */
+export const REVIEW_EFFECTIVE_ACTION_COLORS: Record<ReviewEffectiveAction, 'amber' | 'green' | 'red' | 'violet'> = {
+  pending: 'amber',
+  accepted: 'green',
+  quarantined: 'red',
+  conflict: 'violet',
+}
+
+/**
+ * 有效处置 → 用户可见文案。
+ *
+ * 契约：**永不返回原始 `effective_action`**。
+ * 本函数是 `ReviewPages.tsx` 原先的本地 `REVIEW_STATUS_LABEL` 的单一来源版：
+ * 原实现用 `LABEL[status] ?? status` 兜底，**未知值会把内部枚举直接漏出**；
+ * 且 `QualityPages.tsx` 根本没有映射（直接渲染 `sample.reviewStatus`）——
+ * 那正是 #211 的实测形态。两处现在共用本函数。
+ */
+export function describeReviewStatus(raw: string): string {
+  if (raw in REVIEW_EFFECTIVE_ACTION_LABELS) {
+    return REVIEW_EFFECTIVE_ACTION_LABELS[raw as ReviewEffectiveAction]
+  }
+  // 未知取值给中性中文：「结论未知」不会误导用户以为已接纳，
+  // 也不会把内部枚举当文案（与 describeDomainReviewStatus 同一取向）。
+  return raw ? '结论未知' : '待判断'
+}
+
+/** 有效处置 → Tag 颜色（未知值给中性灰）。 */
+export function reviewStatusColor(raw: string): 'amber' | 'green' | 'red' | 'violet' | 'grey' {
+  if (raw in REVIEW_EFFECTIVE_ACTION_COLORS) {
+    return REVIEW_EFFECTIVE_ACTION_COLORS[raw as ReviewEffectiveAction]
+  }
+  return 'grey'
+}
+
+/**
+ * 未审阅的内容版本能否纳入评测（#211 的第二个要求：页面必须说明）。
+ *
+ * 返回一句面向用户的说明，而不是布尔值：调用方需要的是「怎么告诉用户」，
+ * 让每个调用点自己写文案会导致同一事实在不同页面有不同说法。
+ *
+ * 口径来自项目内其它页面的既有约定：发布门槛用 `PENDING_REVIEW` 拦住未审阅内容
+ * （见 `internal/studio` 的门槛判据）。因此评测可以纳入未审阅内容（它只是**度量**，
+ * 不是对外交付），但其结论**不得**当作已验证证据用于发布。
+ */
+export function unreviewedScopeNotice(unreviewedCount: number): string {
+  if (unreviewedCount <= 0) return ''
+  return `其中 ${unreviewedCount} 个内容版本尚未人工判断。评测可以纳入它们（评测只是度量），`
+    + `但未审阅内容的结论不作为发布证据，发布时仍会被门槛拦截。`
+}
+
+// ---------------------------------------------------------------------------
 // audit.action（issue #191）
 // ---------------------------------------------------------------------------
 

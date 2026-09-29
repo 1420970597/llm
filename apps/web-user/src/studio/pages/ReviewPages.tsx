@@ -18,6 +18,10 @@ import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
 import { CommentPanel } from '../CommentsPanel'
 import { currentActorID, enqueue, pendingCount } from '../../lib/pendingQueue'
+// #211：审阅状态文案与颜色收敛到 enumLabels 的单一来源。
+// 原先本文件有一个本地 `REVIEW_STATUS_LABEL`，兜底是 `?? status`
+// （未知值直接漏出内部枚举），而 QualityPages 干脆没有映射。
+import { describeReviewStatus, reviewStatusColor } from '../../lib/enumLabels'
 
 /**
  * 数据工作区页面（Issue #160 T17）：样本列表、三栏审阅、版本与来源历史。
@@ -40,28 +44,6 @@ import { currentActorID, enqueue, pendingCount } from '../../lib/pendingQueue'
  */
 
 type ReviewStatusFilter = '' | 'pending' | 'accepted' | 'quarantined' | 'conflict'
-
-const REVIEW_STATUS_LABEL: Record<string, string> = {
-  pending: '待判断',
-  accepted: '已接纳',
-  quarantined: '已隔离',
-  conflict: '存在冲突',
-}
-
-function statusColor(status: string): 'amber' | 'green' | 'red' | 'violet' | 'grey' {
-  switch (status) {
-    case 'accepted':
-      return 'green'
-    case 'quarantined':
-      return 'red'
-    case 'conflict':
-      return 'violet'
-    case 'pending':
-      return 'amber'
-    default:
-      return 'grey'
-  }
-}
 
 /**
  * 从 URL 读审阅状态筛选。
@@ -385,9 +367,11 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
                 </span>
                 <span>v{sample.latestVersion}（版本 ID {sample.latestVersionId || '暂无'}）</span>
                 <span>
-                  <Tag size="small" color={statusColor(sample.reviewStatus)}>
-                    {REVIEW_STATUS_LABEL[sample.reviewStatus] ?? sample.reviewStatus}
-                  </Tag>
+                  <span title={sample.reviewStatus}>
+                    <Tag size="small" color={reviewStatusColor(sample.reviewStatus)}>
+                      {describeReviewStatus(sample.reviewStatus)}
+                    </Tag>
+                  </span>
                   {sample.aggregateReviewRevision > 0 ? (
                     <Text type="tertiary" size="small" className="block">
                       判断 {sample.aggregateReviewRevision} 次
@@ -865,9 +849,11 @@ export function SampleReviewPage() {
           </Text>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Tag color={statusColor(effective)} data-effective-tag="true">
-            {REVIEW_STATUS_LABEL[effective] ?? effective}
-          </Tag>
+          <span title={effective}>
+            <Tag color={reviewStatusColor(effective)} data-effective-tag="true">
+              {describeReviewStatus(effective)}
+            </Tag>
+          </span>
           <Button size="small" icon={<ChevronLeft size={14} />} onClick={() => void goRelative('prev')}>
             上一条
           </Button>
@@ -955,9 +941,11 @@ export function SampleReviewPage() {
                       >
                         <div className="flex items-center justify-between gap-2">
                           <Text strong size="small">{item.title || item.sampleKey}</Text>
-                          <Tag size="small" color={statusColor(item.reviewStatus)}>
-                            {REVIEW_STATUS_LABEL[item.reviewStatus] ?? item.reviewStatus}
-                          </Tag>
+                          <span title={item.reviewStatus}>
+                            <Tag size="small" color={reviewStatusColor(item.reviewStatus)}>
+                              {describeReviewStatus(item.reviewStatus)}
+                            </Tag>
+                          </span>
                         </div>
                         <Text type="tertiary" size="small" className="block mt-1">
                           {item.resourceId} · v{item.latestVersion}
@@ -1056,9 +1044,11 @@ export function SampleReviewPage() {
               <ul className="review-evidence">
                 {decisions.map((decision) => (
                   <li key={decision.id}>
-                    <Tag size="small" color={statusColor(decision.action)}>
-                      {decision.action === 'accepted' ? '接纳' : '隔离'}
-                    </Tag>{' '}
+                    <span title={decision.action}>
+                      <Tag size="small" color={reviewStatusColor(decision.action)}>
+                        {decision.action === 'accepted' ? '接纳' : '隔离'}
+                      </Tag>
+                    </span>{' '}
                     <Text size="small">{decision.reason}</Text>
                     <Text type="tertiary" size="small" className="block">
                       审阅者 {decision.reviewerId} · 第 {decision.reviewerRevision} 次

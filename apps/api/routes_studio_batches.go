@@ -526,6 +526,13 @@ func (app *application) listBatchEvents(w http.ResponseWriter, r *http.Request) 
 		app.writeStudioError(w, r, err)
 		return
 	}
+	// issue #206：事件类型的中文文案由服务端从**同一张表**（动态列表在用的
+	// `store.batchEventLabels`）下发。前端因此不需要第二张映射表，
+	// 也就不会出现「动态是中文、时间线是英文」这种漂移。
+	// 原始 eventType 保留不变，供排查与前端 title 使用。
+	for i := range events {
+		events[i].EventTypeLabel = store.DescribeBatchEvent(events[i].EventType)
+	}
 	app.writeJSON(w, http.StatusOK, studio.NewPage(events, query.Limit, "sequence:desc",
 		func(event model.BatchEvent) studio.Cursor { return studio.Cursor{ID: int64(event.Sequence)} }))
 }
