@@ -311,8 +311,35 @@ export function offlineContentAllowed(workspaceDisabled: boolean, sessionValidUn
  * 「队列按 A 存、按 B 读」—— 于是草稿看起来丢了（或更糟：错寄）。
  *
  * 只用于**本地分键**，不参与任何权限判定（权限一律由服务端判）。
+ *
+ * 为什么必须是「有写有读」的闭环：#160 T29 实测发现本键**曾被读但从无人写**，
+ * 于是 `currentActorID()` 永远返回 0 —— 后果有两个，且都是静默的：
+ *   1. `enqueue` 一律以「未登录」拒绝，离线草稿功能整条不可用；
+ *   2. 退出账号时 `clearForActor(0)` 变成空操作，敏感正文继续留在本机，
+ *      而这正是 T29 原文要禁止的（「退出账号时清理敏感缓存」）。
+ * 因此现在由 `App.tsx` 在会话建立/失效的**同一处**写入与清除。
  */
 const SESSION_ACTOR_KEY = 'studio.session.userId'
+
+/**
+ * 记录当前会话用户 ID（登录/会话恢复成功后调用）。
+ *
+ * 传 0 或非正整数等价于「清除」。瞬失败不抛出：本键只服务本地分键，
+ * 写不进去时应当表现为「草稿不可用」，而不是让登录流程失败。
+ */
+export function setCurrentActorID(userId: number): void {
+  const store = storage()
+  if (!store) return
+  try {
+    if (Number.isFinite(userId) && userId > 0) {
+      store.setItem(SESSION_ACTOR_KEY, String(Math.trunc(userId)))
+    } else {
+      store.removeItem(SESSION_ACTOR_KEY)
+    }
+  } catch {
+    // 存储被禁用/已满：静默降级（调用方会在入队时看到「存储不可用」）。
+  }
+}
 
 /** 读取当前会话用户 ID（读不到返回 0，表示「未登录/未知」）。 */
 export function currentActorID(): number {

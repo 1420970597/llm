@@ -206,6 +206,34 @@ try {
   queue.clearForActor(actor)
   record('退出账号清理该账号队列', queue.pendingCount(actor, workspace) === 0,
     `afterClear=${queue.pendingCount(actor, workspace)}`)
+  // ---- 6. actor 分键必须有写有读（#160 T29 实测补强） ----
+  //
+  // 缺陷形态（实测发现）：`currentActorID()` 读 `studio.session.userId`，
+  // 但**全仓库没有一处写这个键** —— 于是 actorId 永远是 0，后果有两个且都是静默的：
+  //   1. 离线草稿一律以「未登录」被拒绝（功能整条不可用，但界面只显示一句
+  //      看似合理的错误，所以自动化以外的走查极易放行）；
+  //   2. 退出账号时 `clearForActor(0)` 是空操作，本机敏感正文不清理，
+  //      而这正是 T29 原文要禁止的。
+  //
+  // 这条断言是**源码级**的：它不依赖任何运行时路径，因此不会因为
+  // 「本地没登录」而跳过 —— 而跳过正是这个缺陷能潜伏下来的原因。
+  const queueSourceText = readFileSync(QUEUE_SOURCE, 'utf8')
+  const appSourceText = readFileSync(path.join(WEB_ROOT, 'src', 'App.tsx'), 'utf8')
+  const actorKeyMatch = queueSourceText.match(/const SESSION_ACTOR_KEY = '([^']+)'/) 
+  const actorKey = actorKeyMatch?.[1] ?? ''
+  record('会话 actor 键名有定义', actorKey.length > 0, `SESSION_ACTOR_KEY="${actorKey}"`)
+  record('存在写入会话 actor 的导出函数',
+    /export function setCurrentActorID\(/.test(queueSourceText),
+    'setCurrentActorID 已导出（读取方不再是单腿）')
+  // 写入方必须真的被 UI 调用，否则模块写了但没人用，缺陷依旧。
+  const actorWriteCalls = (appSourceText.match(/setCurrentActorID\(/g) ?? []).length
+  record('会话建立/失效处调用 setCurrentActorID', actorWriteCalls >= 2,
+    `App.tsx 有 ${actorWriteCalls} 处调用（需 ≥2：登录+恢复、退出+失效）`)
+  // actor 为 0 必须在入队处被拒（否则会静默把草稿寄存到「0 号账号」）。
+  record('actor 为 0 时拒绝入队（不静默写错寄）',
+    /未登录：离线草稿必须绑定当前账号/.test(queueSourceText),
+    '未登录分支存在且文案明确')
+
   record('工作区可禁用离线内容',
     queue.offlineContentAllowed(true) === false && queue.offlineContentAllowed(false) === true,
     'disabled=true → 不允许；disabled=false → 允许')
@@ -230,7 +258,46 @@ try {
       `放宽后 batch_create 变成 ${mutatedResult.status}（第 2 条断言会失败）`)
   }
 
-  recordSkip('真实浏览器断网/窄屏（390/768/1440）断言', '需要 chromium 与真实网络切换，属人工验收（T29 验收项要求记录设备与实测数据）')
+  // 变异自证：把「写入方」删掉， actor 分键断言必须报错。
+  //
+  // 用**同一个谓词**跑变异体，而不是只跑真实文件：只跑真实文件证明不了
+  // 断言真的在检查这件事（可能只是恒真）。
+  const actorWiringProblems = (queueText, appText) => {
+    const problems = []
+    if (!/const SESSION_ACTOR_KEY = '[^']+'/.test(queueText)) problems.push('缺少键名定义')
+    if (!/export function setCurrentActorID\(/.test(queueText)) problems.push('缺少写入函数')
+    if ((appText.match(/setCurrentActorID\(/g) ?? []).length < 2) problems.push('UI 未在两个会话转换点调用')
+    if (!/未登录：离线草稿必须绑定当前账号/.test(queueText)) problems.push('actor=0 未被拒')
+    return problems
+  }
+  record('actor 分键谓词对真实源码无问题',
+    actorWiringProblems(queueSourceText, appSourceText).length === 0,
+    '谓词基线通过')
+  const mutatedQueueText = queueSourceText.replace(/export function setCurrentActorID\(/, 'function setCurrentActorID(')
+  const mutatedAppText = appSourceText.replaceAll('setCurrentActorID(', 'noopActorId(')
+  record('变异自证（拆掉 actor 写入链路必须被捕获）',
+    actorWiringProblems(mutatedQueueText, mutatedAppText).length >= 2,
+    `捕获 ${actorWiringProblems(mutatedQueueText, mutatedAppText).length} 个问题（缺少写入函数 + UI 未调用）`)
+
+  // ---- 9. 真实浏览器断网/窄屏/键盘（可选的第二层，`--with-browser`） ----
+  //
+  // 为什么保留「需要真实栈」的分支而不是把它移进默认路径：CI 运行镜像里没有
+  // chromium 也没有起容器，把需要栈的断言塞进默认路径会让 CI 红掉，
+  // 而「让守卫因环境而红」的后果是别人直接把它从 CI 里摘掉（本仓库已发生过）。
+  // 因此默认路径只跑不需要容器的源码级断言，实测走可选的采集器。
+  const wantsBrowser = process.argv.includes('--with-browser')
+  if (!wantsBrowser) {
+    recordSkip('真实浏览器断网/窄屏（390/768/1440）断言',
+      '未启用 --with-browser：默认路径无容器；采集器为 test/audit/t29_measure.mjs')
+  } else {
+    // 采集器自己会断言；这里只负责把它的退出码并进本守卫。
+    const { spawnSync } = await import('node:child_process')
+    const measured = spawnSync(process.execPath,
+      [path.join(REPO_ROOT, 'test', 'audit', 't29_measure.mjs')],
+      { cwd: REPO_ROOT, stdio: 'inherit' })
+    record('真实浏览器 T29 实测（断网/窄屏/键盘）', measured.status === 0,
+      `t29_measure.mjs 退出码=${measured.status}（产物 docs/audit/issue-160-t29/findings.json）`)
+  }
 } finally {
   rmSync(workDir, { recursive: true, force: true })
 }
