@@ -1,0 +1,48 @@
+{
+  "stage": "after",
+  "base": "http://127.0.0.1:3210",
+  "checkboxes": [
+    {
+      "id": "",
+      "ariaLabel": "把交付字段 question设为必填",
+      "labelText": "必填",
+      "accessibleName": "把交付字段 question设为必填"
+    },
+    {
+      "id": "",
+      "ariaLabel": "把交付字段 reasoning设为必填",
+      "labelText": "必填",
+      "accessibleName": "把交付字段 reasoning设为必填"
+    },
+    {
+      "id": "",
+      "ariaLabel": "把交付字段 answer设为必填",
+      "labelText": "必填",
+      "accessibleName": "把交付字段 answer设为必填"
+    }
+  ],
+  "checkboxNames": [
+    "把交付字段 question设为必填",
+    "把交付字段 reasoning设为必填",
+    "把交付字段 answer设为必填"
+  ],
+  "accessibleNameIssues": 0,
+  "duplicateNames": false,
+  "a11ySnapshot": [
+    "- checkbox \"把交付字段 question设为必填\" [checked]",
+    "- text: 必填"
+  ],
+  "a11ySnapshotAll": [
+    "- checkbox \"把交付字段 question设为必填\" [checked] - text: 必填",
+    "- checkbox \"把交付字段 reasoning设为必填\" [checked] - text: 必填",
+    "- checkbox \"把交付字段 answer设为必填\" [checked] - text: 必填"
+  ],
+  "emptySubmitText": "今日工作\n数据项目\n方案库\n交付库\n评估工作台\n清洗工作台\n历史资产\n动态\n连接设置\n成员与角色\n帮助\n数据项目\n甲方验收-冷链问答\n发布\n准备发布\n搜索\nA\n已进入发布\n甲方验收-冷链问答\n候选门槛、不可变制品与交付\n概览\n设计\n生产\n数据\n质量\n发布\n准备发布\n候选创建时同时分配候选 ID、稳定的发布 ID 与项目内唯一的版本名； 发布失败重试沿用同一身份。\n交付映射\n先在这里维护字段对应关系，下面的发布候选会引用你保存的版本。\n复制当前版本为草稿\n交付映射编辑器\n把内部内容字段映射到交付文件字段。必需字段缺失会在发布前被明确拦截。\n交付格式\nJSONL\n字段映射\n添加字段\n交付字段（输出文件里的键）\n内部字段（样本内容里的键）\n必填\n操作\n必填\n必填\n必填\n当前版本已保存\n当前为 v1，指纹 6aa939656c\n保存交付映射新版本\n变更理由\n版本历史\nv1\n项目创建：初始化 Atelier 配置\n版本名\n版本名用于展示与文件名；下载路径只用稳定的发布 ID。\n用于本次发布的映射版本\nv1 · 项目创建：初始化 Atelier 配置\n发布会冻结这个版本的字段映射；后续修改需要保存为新版本。\n交付格式\nJSONL\nSFT 可选择 JSONL、Alpaca JSON 或 CSV；格式会写入不可变发布清单。\n用途\n限制（每行一条）\n发布范围（已接纳的内容版本）\n已选 0 条（当前页）。候选保存的是具体内容版本，不是筛选条件。\n发布范围不能为空：请选择要发布的内容版本\n内容版本\n批次\n方向二（难度 normal）：第 1 题 · v2（版本 ID 8）\n#3\n提示：同一批次的输出通常一起发布；跨批次混合会扩大数据卡的覆盖范围。\n创建发布候选",
+  "emptySubmitFieldError": "发布范围不能为空：请选择要发布的内容版本",
+  "emptySubmitHasRangeAnchor": 1,
+  "intendedUseError": "必须填写用途：数据卡要能说清这份数据用来做什么",
+  "intendedUseErrorCount": 1,
+  "intendedUseAriaInvalid": "true",
+  "intendedUseDescribedBy": "intended-use-error",
+  "consoleErrors": []
+}

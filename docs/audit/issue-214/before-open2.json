@@ -1,0 +1,19 @@
+{
+  "stage": "before",
+  "base": "http://127.0.0.1:3210",
+  "keyboard": {
+    "start": "/p/1/data/s_5",
+    "startTitle": "方向二（难度 normal）：第 2 题",
+    "afterJ": "/p/1/data/s_5",
+    "afterJTitle": "方向二（难度 normal）：第 2 题",
+    "moved": false
+  },
+  "auditExit": {
+    "rowText": "未读 |  重试失败项 | 2026/9/28 06:03:53 · 查看",
+    "href": "/p/1/overview",
+    "landedOn": "/p/1/overview",
+    "landedTitle": "甲方验收-冷链问答",
+    "isOverview": true
+  },
+  "consoleErrors": []
+}
