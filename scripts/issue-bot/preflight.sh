@@ -76,8 +76,14 @@ lock_run() {
 }
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-die() { echo "FATAL: $*" >&2; exit 1; }
-degraded() { echo "DEGRADED: $*" >&2; exit 10; }
+die() {
+  echo "FATAL: $*" >&2
+  exit 1
+}
+degraded() {
+  echo "DEGRADED: $*" >&2
+  exit 10
+}
 info() { echo "[issue-autofix] $*" >&2; }
 
 # 返回 autofix-running 标签**最后一次被添加**至今的秒数。
@@ -86,9 +92,12 @@ info() { echo "[issue-autofix] $*" >&2; }
 _label_added_seconds_ago() {
   local n="$1" ts
   ts=$(gh api "repos/{owner}/{repo}/issues/$n/timeline?per_page=100" \
-        --jq "[.[] | select(.event==\"labeled\" and .label.name==\"$LABEL_RUN\")] | last | .created_at // empty" \
-        2>/dev/null)
-  [ -z "$ts" ] && { echo ""; return 0; }
+    --jq "[.[] | select(.event==\"labeled\" and .label.name==\"$LABEL_RUN\")] | last | .created_at // empty" \
+    2>/dev/null)
+  [ -z "$ts" ] && {
+    echo ""
+    return 0
+  }
   python3 - "$ts" <<'PY'
 import datetime, sys
 raw = sys.argv[1].replace('Z', '+00:00')
@@ -120,7 +129,10 @@ _reclaim_stale_claim() {
   local after
   after=$(gh issue view "$n" --json labels -q '[.labels[].name] | join(",")' 2>/dev/null)
   case ",$after," in
-    *",$LABEL_RUN,"*) info "#$n 陈旧锁回收失败（仍带标签），跳过"; return 1 ;;
+  *",$LABEL_RUN,"*)
+    info "#$n 陈旧锁回收失败（仍带标签），跳过"
+    return 1
+    ;;
   esac
   info "#$n 陈旧锁已回收（复核通过）"
   return 0
@@ -344,13 +356,16 @@ cmd_claim() {
     die "读取 issue #$n 标签失败"
 
   case ",$labels," in
-    *",$LABEL_PAUSE,"*) info "#$n 已标记禁止自动修复，跳过"; return 2 ;;
-    *",$LABEL_RUN,"*)
-      # 已被认领：先判是否为硬杀遗留的陈旧锁，是则回收后继续，否则跳过。
-      if ! _reclaim_stale_claim "$n"; then
-        return 2
-      fi
-      ;;
+  *",$LABEL_PAUSE,"*)
+    info "#$n 已标记禁止自动修复，跳过"
+    return 2
+    ;;
+  *",$LABEL_RUN,"*)
+    # 已被认领：先判是否为硬杀遗留的陈旧锁，是则回收后继续，否则跳过。
+    if ! _reclaim_stale_claim "$n"; then
+      return 2
+    fi
+    ;;
   esac
 
   gh issue edit "$n" --add-label "$LABEL_AUTO" --add-label "$LABEL_RUN" >/dev/null 2>&1 ||
@@ -576,8 +591,8 @@ cmd_reclaim_stale() {
   cd "$REPO_ROOT" || die "无法进入仓库"
   local nums
   nums=$(gh issue list --state open --limit 100 --label "$LABEL_RUN" \
-           --json number -q '.[].number' 2>/dev/null) \
-    || die "拉取 $LABEL_RUN issue 列表失败"
+    --json number -q '.[].number' 2>/dev/null) ||
+    die "拉取 $LABEL_RUN issue 列表失败"
   if [ -z "$nums" ]; then
     info "无带 $LABEL_RUN 的 issue，无需回收"
     echo "RECLAIMED 0"
@@ -595,25 +610,58 @@ cmd_reclaim_stale() {
 # ------------------------------------------------------------ main ---------
 
 case "${1:-help}" in
-  probe)          lock_run "$0" __probe ;;
-  __probe)        cmd_probe ;;
-  ensure-labels)  cmd_ensure_labels ;;
-  scan)           cmd_scan ;;
-  reclaim-stale)  lock_run "$0" __reclaim_stale ;;
-  __reclaim_stale) cmd_reclaim_stale ;;
-  claim)          shift; lock_run "$0" __claim "$@" ;;
-  __claim)        shift; cmd_claim "$@" ;;
-  release)        shift; lock_run "$0" __release "$@" ;;
-  __release)      shift; cmd_release "$@" ;;
-  next-round)     shift; cmd_next_round "$@" ;;
-  budget)         shift; cmd_budget "$@" ;;
-  ledger-add)     shift; lock_run "$0" __ledger_add "$@" ;;
-  __ledger_add)   shift; cmd_ledger_add "$@" ;;
-  ledger-show)    shift; cmd_ledger_show "$@" ;;
-  evidence-check) shift; cmd_evidence_check "$@" ;;
-  raw-url)        shift; cmd_raw_url "$@" ;;
-  ledger-path)    echo "$LEDGER" ;;
-  *)
-    sed -n '2,45p' "$0"
-    ;;
+probe) lock_run "$0" __probe ;;
+__probe) cmd_probe ;;
+ensure-labels) cmd_ensure_labels ;;
+scan) cmd_scan ;;
+reclaim-stale) lock_run "$0" __reclaim_stale ;;
+__reclaim_stale) cmd_reclaim_stale ;;
+claim)
+  shift
+  lock_run "$0" __claim "$@"
+  ;;
+__claim)
+  shift
+  cmd_claim "$@"
+  ;;
+release)
+  shift
+  lock_run "$0" __release "$@"
+  ;;
+__release)
+  shift
+  cmd_release "$@"
+  ;;
+next-round)
+  shift
+  cmd_next_round "$@"
+  ;;
+budget)
+  shift
+  cmd_budget "$@"
+  ;;
+ledger-add)
+  shift
+  lock_run "$0" __ledger_add "$@"
+  ;;
+__ledger_add)
+  shift
+  cmd_ledger_add "$@"
+  ;;
+ledger-show)
+  shift
+  cmd_ledger_show "$@"
+  ;;
+evidence-check)
+  shift
+  cmd_evidence_check "$@"
+  ;;
+raw-url)
+  shift
+  cmd_raw_url "$@"
+  ;;
+ledger-path) echo "$LEDGER" ;;
+*)
+  sed -n '2,45p' "$0"
+  ;;
 esac

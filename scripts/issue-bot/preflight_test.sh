@@ -250,7 +250,7 @@ echo "== 16. 陈旧认领必须能自愈（否则被硬杀的 issue 永久失联
 # 这里用 gh shim 注入可控的加锁时间，验证「新鲜保留 / 陈旧回收」两侧边界。
 FAKEBIN="$TMPROOT/fakebin"
 mkdir -p "$FAKEBIN"
-cat > "$FAKEBIN/gh" <<'SH'
+cat >"$FAKEBIN/gh" <<'SH'
 #!/usr/bin/env bash
 # 最小 gh shim：只为 reclaim 相关调用提供可控事实。
 state="$FAKE_GH_STATE"
@@ -297,31 +297,31 @@ PY
 }
 
 # (a) 陈旧锁（10h 前加的，阈值 6h）→ 必须回收
-printf '4242 %s\n' "$(iso_ago 36000)" > "$FAKE_GH_STATE"
+printf '4242 %s\n' "$(iso_ago 36000)" >"$FAKE_GH_STATE"
 out=$(ISSUE_AUTOFIX_STALE_CLAIM_HOURS=6 "$PREFLIGHT" reclaim-stale 2>&1)
 check "陈旧锁被回收（RECLAIMED 1）" "RECLAIMED 1" "$(printf '%s' "$out" | tail -n1)"
-check "回收后标签确实不在了" "0" "$(wc -l < "$FAKE_GH_STATE" | tr -d ' ')"
+check "回收后标签确实不在了" "0" "$(wc -l <"$FAKE_GH_STATE" | tr -d ' ')"
 
 # (b) 新鲜锁（5 秒前加的）→ 必须保留（绝不与在跑的任务抢同一条 issue）
-printf '4242 %s\n' "$(iso_ago 5)" > "$FAKE_GH_STATE"
+printf '4242 %s\n' "$(iso_ago 5)" >"$FAKE_GH_STATE"
 out=$(ISSUE_AUTOFIX_STALE_CLAIM_HOURS=6 "$PREFLIGHT" reclaim-stale 2>&1)
 check "新鲜锁被保留（RECLAIMED 0）" "RECLAIMED 0" "$(printf '%s' "$out" | tail -n1)"
-check "新鲜锁未被改动" "1" "$(wc -l < "$FAKE_GH_STATE" | tr -d ' ')"
+check "新鲜锁未被改动" "1" "$(wc -l <"$FAKE_GH_STATE" | tr -d ' ')"
 
 # (c) 边界：刚好越过阈值 → 回收；刚好未到阈值 → 保留
-printf '4242 %s\n' "$(iso_ago 21610)" > "$FAKE_GH_STATE"
+printf '4242 %s\n' "$(iso_ago 21610)" >"$FAKE_GH_STATE"
 check "刚过 6h 阈值即回收" "RECLAIMED 1" "$(ISSUE_AUTOFIX_STALE_CLAIM_HOURS=6 "$PREFLIGHT" reclaim-stale 2>/dev/null | tail -n1)"
-printf '4242 %s\n' "$(iso_ago 21590)" > "$FAKE_GH_STATE"
+printf '4242 %s\n' "$(iso_ago 21590)" >"$FAKE_GH_STATE"
 check "未到 6h 阈值则保留" "RECLAIMED 0" "$(ISSUE_AUTOFIX_STALE_CLAIM_HOURS=6 "$PREFLIGHT" reclaim-stale 2>/dev/null | tail -n1)"
 
 # (d) 无法取得加锁时间时必须**保守保留**，不得当作 0
-: > "$FAKE_GH_STATE"
-printf '4242\n' > "$FAKE_GH_STATE"   # 有该 issue 但无时间戳
+: >"$FAKE_GH_STATE"
+printf '4242\n' >"$FAKE_GH_STATE" # 有该 issue 但无时间戳
 out=$(ISSUE_AUTOFIX_STALE_CLAIM_HOURS=6 "$PREFLIGHT" reclaim-stale 2>&1)
 check "时间戳缺失时保守保留" "RECLAIMED 0" "$(printf '%s' "$out" | tail -n1)"
 
 # (e) 无锁时不得误报
-: > "$FAKE_GH_STATE"
+: >"$FAKE_GH_STATE"
 check "无锁时输出 RECLAIMED 0" "RECLAIMED 0" "$(ISSUE_AUTOFIX_STALE_CLAIM_HOURS=6 "$PREFLIGHT" reclaim-stale 2>/dev/null | tail -n1)"
 
 export PATH="$SAVED_PATH"
