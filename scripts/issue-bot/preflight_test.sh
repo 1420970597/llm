@@ -326,22 +326,34 @@ check "无锁时输出 RECLAIMED 0" "RECLAIMED 0" "$(ISSUE_AUTOFIX_STALE_CLAIM_H
 
 export PATH="$SAVED_PATH"
 
-# 不变式：陈旧阈值必须 **严格大于** 调度侧 timeoutMs，否则会把仍在正常
-# 运行的认领误判为陈旧，造成两条流程并发处理同一条 issue。
+# 不变式（两侧都要守）：
+#   (a) 陈旧阈值 > 调度侧 timeoutMs —— 否则会把仍在正常运行的认领误判为陈旧，
+#       两条流程并发处理同一条 issue（互斥失效，比锁死更危险）；
+#   (b) 陈旧阈值 < 轮次间隔 —— 否则「刚认领就被硬杀」的锁在**下一轮**时
+#       还没到阈值，永远追不上。实测：21:09 轮次死在 80min，下一轮（03:09）
+#       锁龄仅 5.92h，在 6h 阈值下会被 KEEP，三条 issue 再次锁死。
 if [ -f "$HERE/../../.pi/subagents/schedules/issue-autofix-loop/schedule.json" ]; then
-  sch_timeout_h=$(python3 -c "
+  read -r sch_timeout_h interval_h <<EOF
+$(python3 -c "
 import json
 d=json.load(open('$HERE/../../.pi/subagents/schedules/issue-autofix-loop/schedule.json'))
 t=d.get('timeoutMs')
-print(-1 if t is None else t/3600000)
+print(-1 if t is None else t/3600000, d['trigger']['everyMs']/3600000)
 ")
-  stale_h="${ISSUE_AUTOFIX_STALE_CLAIM_HOURS:-6}"
+EOF
+  stale_h="${ISSUE_AUTOFIX_STALE_CLAIM_HOURS:-5}"
   if [ "$sch_timeout_h" = "-1" ]; then
     bad "调度未设 timeoutMs（会退回 30min 默认值，实测已因此硬杀一轮并遗留 3 个死锁）"
   elif python3 -c "import sys; sys.exit(0 if $stale_h > $sch_timeout_h else 1)"; then
     ok "陈旧阈值 ${stale_h}h 严格大于调度超时 ${sch_timeout_h}h"
   else
     bad "陈旧阈值 ${stale_h}h 未大于调度超时 ${sch_timeout_h}h（会把在跑的任务误判为陈旧）"
+  fi
+  # 上界：必须小于轮次间隔，否则崩在认领点后的锁永远等不到解锁
+  if python3 -c "import sys; sys.exit(0 if $stale_h < $interval_h else 1)"; then
+    ok "陈旧阈值 ${stale_h}h 小于轮次间隔 ${interval_h}h（下一轮就能自愈）"
+  else
+    bad "陈旧阈值 ${stale_h}h 未小于轮次间隔 ${interval_h}h（刚认领就被杀的锁将永远追不上，实测已发生）"
   fi
 fi
 

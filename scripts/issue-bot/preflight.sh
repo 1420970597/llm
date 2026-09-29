@@ -51,13 +51,20 @@ MAX_ROUNDS="${ISSUE_AUTOFIX_MAX_ROUNDS:-3}"
 MIN_SHOT_BYTES="${ISSUE_AUTOFIX_MIN_SHOT_BYTES:-5120}"
 
 # 陈旧认领阈值（小时）。**为什么必须有这个值**：任何硬杀（调度超时 / OOM /
-# 机器重启 / Ctrl-C）都会把 autofix-running 永久留在 issue 上，使其再也不被任何
-# 一轮处理。实测已发生：20:23 轮次被 30min 默认超时杀死后，#191/#160/#214
-# 三条 issue 全部被锁死。
+# 机器重启 / provider 报错）都会把 autofix-running 留在 issue 上，使其再也不被
+# 任何一轮处理。实测已发生两次：
+#   - 20:23 轮次被 30min 默认超时杀死 → #191/#160/#214 锁死；
+#   - 21:09 轮次遇 upstream_error 死在 80min → 同样 3 条锁死，
+#     而当时锁龄仅 1.3h，下一轮（03:09）时也只有 5.92h，**刚好卡在 6h 阈值之下**，
+#     于是即使有了自动回收也救不回来。
 #
-# 不变式：STALE_CLAIM_HOURS 必须 **严格大于** 调度侧 timeoutMs，否则会把一个
-# 仍在正常运行的认领误判为陈旧并与之并发处理。当前取值：6h > 4h(调度超时)。
-STALE_CLAIM_HOURS="${ISSUE_AUTOFIX_STALE_CLAIM_HOURS:-6}"
+# 必须同时满足的**两条不变式**：
+#   (a) 阈值 > 调度侧 timeoutMs（4h）—— 否则会把仍在正常运行的认领误判为陈旧，
+#       与它并发处理同一条 issue（真正的互斥失效，比锁死更危险）；
+#   (b) 阈值 < 轮次间隔（6h）—— 否则「刚认领就被硬杀」的锁，在**下一轮**时
+#       还没到阈值，于是永远追不上：每轮看它都“不够旧”，直到再下一轮。
+# 因此有效窗口是开区间 (4h, 6h)，取其中点 **5h**，两侧各留 1h 余量。
+STALE_CLAIM_HOURS="${ISSUE_AUTOFIX_STALE_CLAIM_HOURS:-5}"
 
 LABEL_AUTO="autofix-auto"
 LABEL_RUN="autofix-running"
