@@ -26,7 +26,14 @@ const require = createRequire(import.meta.url)
 const { chromium } = require(process.env.PLAYWRIGHT_PATH ?? '/root/.pi/agent/npm/node_modules/playwright')
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const OUT = path.resolve(HERE, '../../docs/audit/issue-160-t29')
+// 产物目录可用环境变量覆盖。
+//
+// 为什么必须有这个开关：本脚本会写 `<名>.png` 与 `findings.json`，而第 1 轮的
+// **归档证据**用的正是同一批文件名。直接重跑会把已提交的前后对比图覆盖掉
+// （实测发生过一次），而那种覆盖不会报错 —— 它只是静默地修改了历史证据。
+const OUT = process.env.T29_OUT_DIR
+  ? path.resolve(process.env.T29_OUT_DIR)
+  : path.resolve(HERE, '../../docs/audit/issue-160-t29')
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3210'
 const EMAIL = process.env.ADMIN_EMAIL ?? 'admin@company.com'
 const PASSWORD = process.env.ADMIN_PASSWORD ?? 'admin123456'
@@ -95,6 +102,17 @@ for (const vp of viewports) {
           return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'
         })
       const tiny = interactive.filter((el) => el.getBoundingClientRect().height < 24)
+      // T29 的 CSS 目标是 **44px**（WCAG 2.5.5 的推荐尺寸），而当前门禁只按
+      // WCAG 2.5.8 的硬下限 24px 判定。这里**只测量并报告** 44px 以下有多少个，
+      // **不**把它变成失败项 —— 「44px 是验收线」需要甲方确认，本轮不擅自改门禁。
+      // 先出数字，才能把「要不要提高到 44px」变成可讨论的问题（issue #160 的第 2 轮计划）。
+      const below44 = interactive.filter((el) => el.getBoundingClientRect().height < 44)
+      // 同时给出宽度也小于 44 的（真正的「小目标」）：只有高度不够时，一个
+      // 足够宽的控件仍然好点。分开计数避免把「宽而矮」与「又小又难点」混为一谈。
+      const below44Both = interactive.filter((el) => {
+        const rect = el.getBoundingClientRect()
+        return rect.height < 44 && rect.width < 44
+      })
       // 文本溢出裁剪：scrollWidth 明显大于 clientWidth 且 overflow 不是滚动。
       //
       // 显式排除 `.sr-only`：它是**故意的** 1px 裁剪（标准无障碍模式，见
@@ -114,6 +132,11 @@ for (const vp of viewports) {
         bodyScrollHeight: document.body.scrollHeight,
         tinyTargets: tiny.length,
         tinySample: tiny.slice(0, 3).map((el) => `${el.tagName}:${(el.textContent ?? '').trim().slice(0, 20)}`),
+        // 44px 报告（信息性，不参与 pass/fail —— 见上方注释）。
+        targetsBelow44Height: below44.length,
+        targetsBelow44Both: below44Both.length,
+        interactiveTotal: interactive.length,
+        below44Sample: below44.slice(0, 3).map((el) => `${el.tagName}:${(el.textContent ?? '').trim().slice(0, 18)}@${Math.round(el.getBoundingClientRect().height)}px`),
         clippedCount: clipped.length,
         clippedSample: clipped.slice(0, 3).map((el) => `${el.tagName}.${el.className}`.slice(0, 60)),
       }
