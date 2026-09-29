@@ -174,15 +174,23 @@ cmd_probe() {
 
   # 源码工作树必须干净：脏树会让「修复前的基线证据」不可信，
   # 也会让后续 git worktree / 分支切换失败。
+  #
+  # 注意：这里**不**提前退出，而是累加到 $bad。早期版本在这里就直接 degraded()
+  # 返回，结果是：无人值守场景下操作者只能看到**第一个**故障，修完它、等 6 小时到
+  # 下一轮才发现第二个故障。实测教训：脏树掩盖了磁盘已满（100%），多浪费了一轮。
+  # 现在一次 probe 把**所有**不可信原因一次性列完。
   if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
-    degraded "源码工作树不干净，拒绝在脏基线上取证（先清理再等下一轮）"
+    echo "  ✗ 源码工作树不干净（拒绝在脏基线上取证）"
+    bad="$bad dirty-tree"
+  else
+    echo "  ✓ 工作树干净"
   fi
-  echo "  ✓ 工作树干净"
 
   if git ls-remote --exit-code origin HEAD >/dev/null 2>&1; then
     echo "  ✓ origin 可达"
   else
-    degraded "origin 不可达（无法 fetch 最新 issue / main）"
+    echo "  ✗ origin 不可达"
+    bad="$bad origin-unreachable"
   fi
 
   echo "== 运行层（真实栈）=="
@@ -268,7 +276,8 @@ cmd_probe() {
     echo "  ✓ inode 充足${avail_inode:+（剩 $avail_inode）}"
   fi
 
-  if [ -n "$bad" ]; then degraded "环境不可信：$bad"; fi
+  # 去掉累积字符串的前导空格，让降级原因可读
+  if [ -n "$bad" ]; then degraded "环境不可信：${bad# }"; fi
 
   echo "== 状态 =="
   info "台账：$LEDGER"

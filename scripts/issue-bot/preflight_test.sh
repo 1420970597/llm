@@ -345,6 +345,67 @@ print(-1 if t is None else t/3600000)
   fi
 fi
 
+echo "== 17. 磁盘/inode 门禁必须存在（实测踩过的坑）=="
+# 回归的真实缺陷：09:09 那轮通过了**其他所有**探针项，跑了 19.3 分钟后死在
+# `ENOSPC: no space left on device`，并遗留 3 个认领锁。根因是 Docker 构建缓存
+# 涨到 71.13GB（SOP §6.4 要求修复后重建镜像做同条件复现），而 probe 从不看磁盘。
+if grep -q '== 磁盘 ==' "$PREFLIGHT"; then
+  ok "probe 包含磁盘检查段"
+else
+  bad "probe 缺少磁盘检查段（环境实际不可用却会判定为可信）"
+fi
+# 用极低阈值模拟「磁盘不足」。
+# 关键：不能只断言「退出码非 0」——脏树门禁也会返回 10，那就是**假过**。
+# （第一版就踩了这个坑：磁盘检查根本没被执行，测试却绿了。）
+# 必须断言降级原因里**真的出现 disk**。
+set +e
+low_out=$(ISSUE_AUTOFIX_MIN_FREE_GB=999999 "$PREFLIGHT" probe 2>&1)
+low_exit=$?
+set -e
+if [ "$low_exit" = "10" ] && printf '%s' "$low_out" | grep -q 'disk:'; then
+  ok "磁盘不足时 probe 因 disk 降级（$low_exit）"
+else
+  bad "磁盘不足未被判定为 disk 原因（exit=$low_exit）：$(printf '%s' "$low_out" | tail -n1)"
+fi
+# 阈值可通过环境变量调整（否则无法按实际容量调优）。
+# 注意：**不能用管道**。本脚本开头开了 `set -o pipefail`，而脏树时 probe 会
+# （正确地）exit 10，pipefail 会把这个非 0 状态压过 grep 的成功，导致 `if` 走 else
+# —— 明明是功能正常，却报成失败。先把输出取到变量里再 grep，与 probe 退出码无关。
+threshold_out=$(ISSUE_AUTOFIX_MIN_FREE_GB=1 "$PREFLIGHT" probe 2>&1 || true)
+if printf '%s' "$threshold_out" | grep -q '== 磁盘 =='; then
+  ok "磁盘阈值可由 ISSUE_AUTOFIX_MIN_FREE_GB 调整"
+else
+  bad "磁盘阈值无法调整"
+fi
+# 不变式：probe 必须一次列出**所有**不可信原因，而不是只报第一个。
+# 实测教训：早期版本在脏树处就 degraded() 退出，于是脏树掩盖了磁盘已满，
+# 操作者修完第一个故障、等 6 小时后才发现第二个，白浪费一轮。
+# 脏树 + 磁盘不足同时存在时，两者都应出现在降级原因里。
+if printf '%s' "$low_out" | grep -q 'dirty-tree.*disk:\|disk:.*dirty-tree'; then
+  ok "多个故障被一次性列全（不因第一个就短路）"
+else
+  echo "  · 当前工作树干净，跳过「多故障同时列出」断言"
+fi
+
+# round.sh 必须每轮自动清理构建缓存（结构性根因，不能靠人记得手工 prune）
+if grep -q 'docker builder prune' "$ROUND"; then
+  ok "round.sh 自动清理 Docker 构建缓存"
+else
+  bad "round.sh 未清理构建缓存（会持续累积直至 ENOSPC）"
+fi
+# 清理必须有界：不能每次都全量（否则每轮重建镜像都失去缓存、拖慢修复）
+if grep -q 'until=72h' "$ROUND"; then
+  ok "清理为有界（只淘汰 3 天前旧层，保留近期缓存）"
+else
+  bad "清理无界（会每轮丢弃可用缓存）"
+fi
+# 低磁盘时必须降级为全量清理（空间优先于构建速度）
+if grep -q 'builder prune -af' "$ROUND"; then
+  ok "低磁盘时降级为全量清理"
+else
+  bad "低磁盘时未降级为全量清理"
+fi
+
 echo
 echo "通过 $PASS 项，失败 $FAIL 项"
 [ "$FAIL" -eq 0 ] || exit 1

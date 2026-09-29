@@ -74,6 +74,39 @@ info() { echo "[issue-autofix round $(date -u +%H:%M:%SZ)] $*" | tee -a "$LOG"; 
 
 info "启动：provider=$PROVIDER model=$MODEL timeout=${TIMEOUT_S}s log=$LOG"
 
+# ------------------------------------------------------- 磁盘卫生 ----
+# 结构性根因的治理：SOP §6.4 要求修复后**重建镜像**做同条件复现，因此每轮前端修复
+# 都会向 Docker 构建缓存写入新层。实测该缓存涨到 **71.13GB**（累积 10 天无人清理），
+# 最终导致 09:09 那轮 ENOSPC 死掉、遗留 3 个认领锁。
+#
+# 因此把清理做成**每轮自动执行**的有界动作，而不是依赖人记得手工 prune：
+#   --filter until=72h 只淘汰 3 天前的旧层，保留近期缓存（本轮重建同镜像仍能命中）；
+#   ENOSPC 时降级为全量 prune —— 空间可用性优先于构建速度。
+# 失败**不得**影响本轮（构建缓存清理失败不该阻断修复工作）。
+prune_build_cache() {
+  command -v docker >/dev/null 2>&1 || return 0
+  local avail_gb
+  avail_gb=$(df -Pk / 2>/dev/null | awk 'NR==2 {printf "%d", $4/1024/1024}')
+  [ -z "$avail_gb" ] && return 0
+
+  local min_gb="${ISSUE_AUTOFIX_MIN_FREE_GB:-10}"
+  if [ "$avail_gb" -lt "$min_gb" ]; then
+    # 已低于开工阈值：空间优先，全量清理（连近期缓存也不留）。
+    info "磁盘低（${avail_gb}G < ${min_gb}G）—— 全量清理构建缓存"
+    timeout 600 docker builder prune -af >/dev/null 2>&1 || true
+  else
+    # 常规：只淘汰 3 天前的旧层，避免拖慢本轮的镜像重建。
+    timeout 300 docker builder prune -f --filter until=72h >/dev/null 2>&1 || true
+  fi
+
+  local after
+  after=$(df -Pk / 2>/dev/null | awk 'NR==2 {printf "%d", $4/1024/1024}')
+  [ -n "$after" ] && info "磁盘卫生完成：可用 ${avail_gb}G → ${after}G"
+  return 0
+}
+
+prune_build_cache
+
 # 依赖探测：把「找不到命令」变成可读原因，而不是让它变成一个神秘的 127。
 # （实测教训：cron 轨道首次触发就是因为 pi 不在 PATH 而静默失败。）
 PI_BIN=$(command -v pi 2>/dev/null || true)
