@@ -1,0 +1,9 @@
+{
+  "stage": "before",
+  "provenance": "归档于 #214 第 1 轮（PR #220 之前，部署 commit 74c9153 的真实栈 + 真实 Chromium 1600x1000）。该提交只修了时间线的「事件类型」文案（#206），detail 里的 errorClass 仍渲染原始码 —— 这正是本条（#191 第 2 轮扫描发现的第三条路径）的缺陷形态。不是重跑产物：本轮的部署已含修复，无法再产出真正的「修复前」图，因此复用归档图并在此写明来源，而不是伪造。",
+  "batch": "b_1",
+  "eventRows": [
+    {"type": "批次部分失败", "typeTitle": "BatchPartialFailed", "detail": "单元 #12 · 错误类型 config_error · 不可重试"}
+  ],
+  "visibleEnumKeys": ["config_error"]
+}
