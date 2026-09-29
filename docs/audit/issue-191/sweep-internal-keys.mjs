@@ -14,6 +14,9 @@
  * 排除项（否则会产生误报，而误报的扫描器会被直接忽略）：
  *   - **资源标识**（`s_5` / `b_1`）：界面**有意**显示的对象身份（与第 1 轮复现
  *     脚本里「排除 `xxx #123` 里的 ID」同一取舍）。它不是状态机取值。
+ *   - **显式标注的机器标识**（`key=aq_actionability`）：维度 key 是导出 schema
+ *     里的字段名，管理员改维度时必须看得到；它与状态/枚举取值是两回事。
+ *     排除带的是**上下文前缀**（`key=`），因此不会掩盖真实的裸码泄漏。
  *   - **内容 hash 片段**：排查线索，刻意保留。
  *   - 技术词（`snake_case` 等）与用户自写内容。
  *
@@ -83,16 +86,52 @@ await page.getByRole('button', { name: '进入今日工作' }).click()
 await page.waitForURL(/\/today/, { timeout: 20000 })
 
 const isNoise = (value) => TECH_TOKENS.has(value) || RESOURCE_ID.test(value) || HASH_LIKE.test(value)
+
+/**
+ * 从一段可见文本里提取「真实泄漏」。
+ *
+ * 抽成函数是为了能对它做**变异自证**（见下方 selfCheck）：
+ * 「exclusion 不会掩盖真泄漏」必须是被证明的，而不是被声称的 ——
+ * 过度宽松的过滤器与没有扫描器一样危险（它给人以已受保护的错觉）。
+ */
+function extractLeaks(text) {
+  // `key=<标识>` 是**刻意展示的机器标识**（维度管理页的 `key=aq_actionability`），
+  // 与 `s_5` / `b_1` 同类：它是导出 schema 里的字段名，管理员改维度时必须看得到。
+  // 排除它带的是**上下文前缀**（`key=`），因此不会掩盖真实的裸码泄漏。
+  const labelledIdentifier = /key=\s*[a-z][a-z0-9_]*/g
+  const keyIdentifiers = new Set((text.match(labelledIdentifier) ?? []).map((m) => m.replace(/^key=\s*/, '')))
+  return [...new Set([
+    ...[...text.matchAll(SNAKE)].map((m) => m[2]),
+    ...[...text.matchAll(CAMEL_EVENT)].map((m) => m[1]),
+  ])].filter((value) => !isNoise(value) && !keyIdentifiers.has(value))
+}
+
+// ---- 变异自证：过滤器不得掩盖真泄漏 ----
+// 1. 带 `key=` 前缀的机器标识必须被排除（否则误报会把扫描器弄成永久红灯）；
+// 2. **去掉前缀后必须被捕获**（否则排除规则过宽，真泄漏会被一起吞掉）；
+// 3. 典型的真泄漏（错误码 / 事件键）在任何形式下都必须被捕获。
+const selfCheck = [
+  ['带 key= 前缀的机器标识被排除', extractLeaks('可执行性 key=aq_actionability 区间').length === 0],
+  ['去掉 key= 前缀后必须被捕获', extractLeaks('可执行性 aq_actionability 区间').includes('aq_actionability')],
+  ['裸错误码必须被捕获', extractLeaks('错误类别：config_error · 尝试 1 次').includes('config_error')],
+  ['裸事件键必须被捕获', extractLeaks('BatchResumed 2026-09-28').includes('BatchResumed')],
+  ['资源标识不被误报', extractLeaks('批次 b_1 · 样本 s_5').length === 0],
+]
+for (const [name, ok] of selfCheck) {
+  console.log(`[${ok ? 'PASS' : 'FAIL'}] 扫描器自证：${name}`)
+  if (!ok) process.exitCode = 1
+}
+if (selfCheck.some(([, ok]) => !ok)) {
+  console.error('\n扫描器自证失败：排除规则可能有误，本轮结果不可信')
+  process.exit(1)
+}
 const results = []
 for (const [key, route] of ROUTES) {
   await page.goto(`${BASE}${route}`, { waitUntil: 'networkidle' })
   await page.waitForTimeout(1200)
   // 只扫「可见文本」：用 title 属性保留原始键是**刻意**的（便于排查），不算泄漏。
   const text = await page.evaluate(() => document.body.innerText)
-  const leaks = [...new Set([
-    ...[...text.matchAll(SNAKE)].map((m) => m[2]),
-    ...[...text.matchAll(CAMEL_EVENT)].map((m) => m[1]),
-  ])].filter((value) => !isNoise(value))
+  const leaks = extractLeaks(text)
   results.push({ key, route, leaks })
   console.log(`[${leaks.length === 0 ? ' OK ' : 'LEAK'}] ${key.padEnd(26)} ${leaks.length ? leaks.join(', ') : ''}`)
 }

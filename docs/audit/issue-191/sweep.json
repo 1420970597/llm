@@ -1,6 +1,6 @@
 {
   "base": "http://127.0.0.1:3210",
-  "scannedAt": "2026-09-29T17:36:23.681Z",
+  "scannedAt": "2026-09-29T17:51:45.443Z",
   "routes": [
     {
       "key": "activity",
@@ -15,66 +15,7 @@
     {
       "key": "tools-evaluation",
       "route": "/tools/evaluation",
-      "leaks": [
-        "aq_actionability",
-        "aq_completeness",
-        "aq_concision",
-        "aq_conclusion_clarity",
-        "aq_contingency",
-        "aq_metric_definition",
-        "aq_prioritization",
-        "aq_risk_disclosure",
-        "df_common_sense",
-        "df_environment_context",
-        "df_feasibility",
-        "df_regulation",
-        "df_resource_constraint",
-        "df_scenario_fit",
-        "df_stakeholder",
-        "df_terminology",
-        "ef_early_termination",
-        "ef_key_info_ratio",
-        "ef_no_padding",
-        "ef_parallel_structure",
-        "ef_thought_density",
-        "ef_token_efficiency",
-        "fa_citation_traceability",
-        "fa_fact_consistency",
-        "fa_hallucination_control",
-        "fa_internal_consistency",
-        "fa_numeric_unit",
-        "fa_premise_no_fabrication",
-        "fa_scope_bounded",
-        "fa_source_attribution",
-        "fa_temporal_consistency",
-        "in_ambiguity_clarification",
-        "in_boundary_handling",
-        "in_completeness_all_parts",
-        "in_constraint_compliance",
-        "in_format_compliance",
-        "in_persona_role",
-        "in_question_understanding",
-        "lc_alternative_exploration",
-        "lc_assumption_explicit",
-        "lc_branch_justification",
-        "lc_causal_chain",
-        "lc_constraint_satisfaction",
-        "lc_convergence",
-        "lc_intermediate_validity",
-        "lc_redundancy_control",
-        "lc_self_correction",
-        "lc_step_coherence",
-        "lc_step_ordering",
-        "lc_step_sufficiency",
-        "rb_anti_induction",
-        "rb_bias_control",
-        "rb_consistency_across_runs",
-        "rb_data_sensitivity",
-        "rb_edge_case_resilience",
-        "rb_refusal_handling",
-        "rb_safety_compliance",
-        "rb_uncertainty_expression"
-      ]
+      "leaks": []
     },
     {
       "key": "legacy-history",
@@ -94,9 +35,7 @@
     {
       "key": "batch-detail-b1",
       "route": "/p/1/runs/b_1",
-      "leaks": [
-        "config_error"
-      ]
+      "leaks": []
     },
     {
       "key": "batch-detail-b2",
@@ -174,6 +113,6 @@
       "leaks": []
     }
   ],
-  "totalLeaks": 59,
+  "totalLeaks": 0,
   "consoleErrors": []
 }
