@@ -81,6 +81,43 @@ const (
 	ErrorClassInternal    = "internal_error"
 )
 
+// ErrorClassLabel 给出错误类别的**中文名**。
+//
+// 为什么需要与 ErrorClassAction 分开：两者用途不同 —— 类别是「这是什么错」，
+// 建议是「下一步做什么」。界面两者都要显示，而以前类别直接把内部码渲染给用户
+// （实测 `/p/1/runs/b_1/failures` 的「错误类别：config_error」）。
+// 与 #191 / #206 / #211 同一契约：未知类别也不得回传原始码。
+func ErrorClassLabel(errorClass string) string {
+	switch errorClass {
+	case ErrorClassProvider:
+		return "供应商错误"
+	case ErrorClassRateLimited:
+		return "供应商限流"
+	case ErrorClassTimeout:
+		return "请求超时"
+	case ErrorClassEmptyOutput:
+		return "模型返回空内容"
+	case ErrorClassTruncated:
+		return "输出被截断"
+	case ErrorClassInvalidJSON:
+		return "输出不是合法 JSON"
+	case ErrorClassSchema:
+		return "内容结构不符"
+	case ErrorClassConfig:
+		return "生成配置有问题"
+	case ErrorClassInternal:
+		return "系统内部错误"
+	default:
+		if errorClass == "" {
+			return "未知错误"
+		}
+		// 未知类别给中性中文 + **保留可读后缀**：错误类别是排查线索，
+		// 完全丢掉会让「新错误类别上线」变成无法诊断。
+		// 用「其他错误（xxx）」这种形态而不是裸码，避免用户误以为这是要背的术语。
+		return "其他错误（" + errorClass + "）"
+	}
+}
+
 // ErrorClassAction 给出错误类别的**可操作**建议。
 //
 // 契约与 #159 都要求「失败有可操作原因」，而不是让用户去猜。

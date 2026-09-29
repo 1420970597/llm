@@ -379,13 +379,13 @@ func TestBuildSummariesStableOrder(t *testing.T) {
 
 // TestCategoryLabelFallsBackToKey 未知分类回退为 key 本身，不返回空字符串。
 func TestCategoryLabelFallsBackToKey(t *testing.T) {
-	if got := categoryLabel("long_chain"); got != "长链思考" {
+	if got := CategoryLabel("long_chain"); got != "长链思考" {
 		t.Errorf("long_chain 应译为「长链思考」，实际 %q", got)
 	}
-	if got := categoryLabel("unknown_category"); got != "unknown_category" {
+	if got := CategoryLabel("unknown_category"); got != "unknown_category" {
 		t.Errorf("未知分类应回退为 key 本身，实际 %q", got)
 	}
-	if got := categoryLabel(""); got != "未分类" {
+	if got := CategoryLabel(""); got != "未分类" {
 		t.Errorf("空分类应显示「未分类」，实际 %q", got)
 	}
 }
@@ -396,7 +396,7 @@ func TestCategoryLabelFallsBackToKey(t *testing.T) {
 // 英文 key（如「domain_fit 类」），并回退到通用建议。
 func TestCategoryLabelCoversAllBuiltinCategories(t *testing.T) {
 	for _, category := range Categories() {
-		if got := categoryLabel(category); got == category {
+		if got := CategoryLabel(category); got == category {
 			t.Errorf("内置分类 %q 缺少中文名，结论里会直接显示英文 key", category)
 		}
 		advice := dimensionAdvice(model.EvalDimensionStat{Category: category})

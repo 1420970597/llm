@@ -193,7 +193,17 @@ func (app *application) listEvalDimensionCategories(w http.ResponseWriter, r *ht
 		app.writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	app.writeJSON(w, http.StatusOK, map[string][]string{"categories": categories})
+	// issue #191（第 2 轮全路由扫描发现）："维度管理"页以前直接渲染分类 key
+	// （实测可见 `answer_quality` / `domain_fit` 作为分组标题）。
+	//
+	// 一并下发中文名而不是让前端再写一张表：分类→中文的映射已经存在于服务端
+	// （`internal/eval` 的报告结论在用同一条），两张表必然漂移 —— 那正是 #191
+	// 反复复现的成因。`labels` 与 `categories` 同序，便于前端直接配对。
+	labels := make([]string, len(categories))
+	for index, category := range categories {
+		labels[index] = eval.CategoryLabel(category)
+	}
+	app.writeJSON(w, http.StatusOK, map[string][]string{"categories": categories, "labels": labels})
 }
 
 // decodeEvalDimension 解析请求体。零值字段由 store 层补默认值。

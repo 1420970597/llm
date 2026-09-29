@@ -718,7 +718,14 @@ export const consoleApi = {
     unwrap(client.request<EvalDimension>({ url: '/v1/eval/dimensions', method: payload.id ? 'PUT' : 'POST', data: payload })),
   deleteEvalDimension: (id: number) => unwrap(client.delete<{ deleted: boolean }>(`/v1/eval/dimensions/${id}`)),
   seedEvalDimensions: () => unwrap(client.post<{ inserted: number; total: number }>('/v1/eval/dimensions/seed')),
-  evalDimensionCategories: () => unwrap(client.get<{ categories: string[] }>('/v1/eval/dimensions/categories')),
+  /**
+   * `GET /v1/eval/dimensions/categories`：分类 key + 与它同序的中文名。
+   *
+   * 为什么要 `labels`：分类 key（`answer_quality`）是内部取值域，界面标题
+   * 必须显示中文。让前端再写一张映射表必然与服务端（报告结论用的同一条）
+   * 漂移 —— 那正是 issue #191 反复复现的成因。
+   */
+  evalDimensionCategories: () => unwrap(client.get<{ categories: string[]; labels?: string[] }>('/v1/eval/dimensions/categories')),
 
   // ---- L9 评估运行（全量 / 抽样 / 逐条多维打分） ----
   createEvalRun: (payload: {

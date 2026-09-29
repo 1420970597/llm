@@ -484,6 +484,7 @@ func (app *application) listBatchFailures(w http.ResponseWriter, r *http.Request
 			ItemID:          item.ID,
 			ItemKey:         item.ItemKey,
 			ErrorClass:      item.ErrorClass,
+			ErrorClassLabel: model.ErrorClassLabel(item.ErrorClass),
 			ErrorMessage:    item.ErrorMessage,
 			Retryable:       item.Retryable,
 			SuggestedAction: model.ErrorClassAction(item.ErrorClass),
@@ -496,9 +497,12 @@ func (app *application) listBatchFailures(w http.ResponseWriter, r *http.Request
 
 // batchFailureView 是失败项的展示视图。
 type batchFailureView struct {
-	ItemID          int64  `json:"itemId"`
-	ItemKey         string `json:"itemKey"`
+	ItemID  int64  `json:"itemId"`
+	ItemKey string `json:"itemKey"`
+	// ErrorClass 是内部错误码（`config_error` 等）。界面显示的是 errorClassLabel，
+	// 保留原码是为了让前端能把它放进 `title`（排查惯例，与 #191 / #206 一致）。
 	ErrorClass      string `json:"errorClass"`
+	ErrorClassLabel string `json:"errorClassLabel"`
 	ErrorMessage    string `json:"errorMessage"`
 	Retryable       bool   `json:"retryable"`
 	SuggestedAction string `json:"suggestedAction"`

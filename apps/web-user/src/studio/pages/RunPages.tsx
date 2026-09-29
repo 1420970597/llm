@@ -896,8 +896,16 @@ export function FailuresPage() {
                   {failure.retryable ? '可重试' : '不可自动重试'}
                 </Tag>
               </div>
+              {/*
+                issue #191（第 2 轮扫描发现）：此处以前直接渲染 `failure.errorClass`（实测可见
+                `config_error`）。错误类别是内部取值域，与 #206 的事件键同一形态。
+                改为消费服务端下发的同源中文名，原码移入 `title`（不丢排查线索）；
+                与其下方的「建议：…」一起构成「是什么错 + 下一步做什么」。
+              */}
               <Text type="tertiary" size="small" className="block mt-1">
-                错误类别：{failure.errorClass} · 尝试 {failure.attempts} 次
+                错误类别：
+                <span title={failure.errorClass}>{failure.errorClassLabel || '未知错误'}</span>
+                {' '}· 尝试 {failure.attempts} 次
               </Text>
               {/* 可操作建议：只显示机器码会让用户不知道下一步做什么。 */}
               <Text size="small" className="block mt-1">
