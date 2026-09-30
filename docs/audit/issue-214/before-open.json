@@ -1,0 +1,231 @@
+{
+  "stage": "before",
+  "base": "http://127.0.0.1:3210",
+  "tiles": {
+    "items": [
+      {
+        "key": "projects",
+        "href": "/projects",
+        "text": "数据项目 | 1 | 你可见的项目",
+        "innerLinks": []
+      },
+      {
+        "key": "running",
+        "href": "/today",
+        "text": "进行中批次 | 1 | 排队 / 运行 / 暂停请求中",
+        "innerLinks": []
+      },
+      {
+        "key": "shortfall",
+        "href": "/today",
+        "text": "产出缺口 | 1 | 计划 24 · 完成 9",
+        "innerLinks": []
+      },
+      {
+        "key": "pending",
+        "href": "/activity",
+        "text": "待人工判断 | 0 | 进入项目「审阅」处理",
+        "innerLinks": []
+      },
+      {
+        "key": "produced",
+        "href": "/today",
+        "text": "近 7 天产出 | 9 | 新增样本版本数",
+        "innerLinks": []
+      },
+      {
+        "key": "releases",
+        "href": "/deliveries",
+        "text": "交付 | 0 | 已发布 · 被挡住 1",
+        "innerLinks": []
+      }
+    ],
+    "selfLinks": [
+      "running",
+      "shortfall",
+      "produced"
+    ],
+    "blockedBadge": {
+      "key": "releases",
+      "href": "/deliveries",
+      "text": "交付 | 0 | 已发布 · 被挡住 1",
+      "innerLinks": []
+    }
+  },
+  "helpShortcutText": "审阅队列：J / K 在当前页内切换样本（保持筛选条件）",
+  "shortcuts": {
+    "start": "/p/1/data/s_5",
+    "afterJ": "/p/1/data/s_5",
+    "afterK": "/p/1/data/s_5",
+    "jWorks": false,
+    "kWorks": false
+  },
+  "activity": {
+    "rows": [
+      {
+        "source": "batch",
+        "text": "未读 |  批次请求重试（批次 1） | 2026/9/28 06:03:53 · 查看",
+        "href": "/p/1/runs/1"
+      },
+      {
+        "source": "audit",
+        "text": "未读 |  重试失败项 | 2026/9/28 06:03:53 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "batch",
+        "text": "未读 |  批次已暂停（批次 1） | 2026/9/28 06:03:51 · 查看",
+        "href": "/p/1/runs/1"
+      },
+      {
+        "source": "audit",
+        "text": "未读 |  暂停批次 | 2026/9/28 06:03:51 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "audit",
+        "text": "未读 |  提交人工判断 | 2026/9/28 05:35:13 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "batch",
+        "text": "未读 |  批次完成（批次 4） | 2026/9/28 05:34:06 · 查看",
+        "href": "/p/1/runs/4"
+      },
+      {
+        "source": "batch",
+        "text": "未读 |  批次已排队（批次 4） | 2026/9/28 05:31:00 · 查看",
+        "href": "/p/1/runs/4"
+      },
+      {
+        "source": "audit",
+        "text": "未读 |  创建批次 | 2026/9/28 05:31:00 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "batch",
+        "text": "未读 |  批次请求重试（批次 1） | 2026/9/28 05:00:52 · 查看",
+        "href": "/p/1/runs/1"
+      },
+      {
+        "source": "audit",
+        "text": "未读 |  重试失败项 | 2026/9/28 05:00:52 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "batch",
+        "text": "未读 |  批次已恢复（批次 1） | 2026/9/28 04:58:01 · 查看",
+        "href": "/p/1/runs/1"
+      },
+      {
+        "source": "audit",
+        "text": "未读 |  恢复批次 | 2026/9/28 04:58:01 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "batch",
+        "text": "未读 |  批次已暂停（批次 1） | 2026/9/28 04:42:07 · 查看",
+        "href": "/p/1/runs/1"
+      },
+      {
+        "source": "audit",
+        "text": "未读 |  暂停批次 | 2026/9/28 04:42:07 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "audit",
+        "text": "未读 |  创建发布候选 | 2026/9/28 04:21:33 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "audit",
+        "text": "未读 |  提交人工判断 | 2026/9/28 04:04:56 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "audit",
+        "text": "未读 |  保存蓝图新版本 | 2026/9/28 04:01:42 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "batch",
+        "text": "批次完成（批次 3） | 2026/9/26 06:04:44 · 查看",
+        "href": "/p/1/runs/3"
+      },
+      {
+        "source": "batch",
+        "text": "批次已排队（批次 3） | 2026/9/26 06:03:19 · 查看",
+        "href": "/p/1/runs/3"
+      },
+      {
+        "source": "audit",
+        "text": "创建批次 | 2026/9/26 06:03:19 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "audit",
+        "text": "保存蓝图新版本 | 2026/9/26 06:03:19 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "audit",
+        "text": "保存覆盖方案新版本 | 2026/9/26 06:03:19 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "audit",
+        "text": "保存蓝图新版本 | 2026/9/26 06:03:04 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "batch",
+        "text": "批次完成（批次 2） | 2026/9/24 20:51:02 · 查看",
+        "href": "/p/1/runs/2"
+      },
+      {
+        "source": "batch",
+        "text": "批次已排队（批次 2） | 2026/9/24 20:50:42 · 查看",
+        "href": "/p/1/runs/2"
+      },
+      {
+        "source": "audit",
+        "text": "创建批次 | 2026/9/24 20:50:42 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "audit",
+        "text": "保存蓝图新版本 | 2026/9/24 20:50:34 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "audit",
+        "text": "保存交付映射新版本 | 2026/9/24 20:50:18 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "audit",
+        "text": "保存质量策略新版本 | 2026/9/24 20:50:18 · 查看",
+        "href": "/p/1/overview"
+      },
+      {
+        "source": "audit",
+        "text": "保存思维标准新版本 | 2026/9/24 20:50:18 · 查看",
+        "href": "/p/1/overview"
+      }
+    ],
+    "auditToOverview": 19,
+    "auditTotal": 19,
+    "auditTargets": [
+      "/p/1/overview"
+    ]
+  },
+  "pendingReview": {
+    "overviewPendingReview": 0,
+    "queueItems": 3,
+    "queueUrl": "/api/v1/projects/1/samples?status=pending",
+    "todayStatus": 200,
+    "queueStatus": 200,
+    "matches": false
+  },
+  "consoleErrors": []
+}

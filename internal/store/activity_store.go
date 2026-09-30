@@ -190,6 +190,15 @@ func (s *ActivityStore) LoadTodos(ctx context.Context, userID, workspaceID int64
 type WorkspaceOverview struct {
 	// ProjectCount 是当前用户可见的项目数（工作区作用域）。
 	ProjectCount int `json:"projectCount"`
+	// ScopedProjectIDs 是本工作区里参与上面**全部**计数的项目 ID 集合。
+	//
+	// 为什么必须下发：总览的每个数字都是**跨项目聚合**的，而「点进去看到的是
+	// 同一份事实」要求磁贴能跳到能回答该数字的那个列表 —— 那是项目内页
+	// （`/p/{id}/runs` 等）。前端没有任何别的途径能合法得到「这个聚合恰好覆盖
+	// 哪几个项目」：去查 `/projects` 会在权限/分页上与这里的口径分叉。
+	//
+	// 恰好一个项目时前端才深链到它；多个时先去项目列表，不在界面上撞运气。
+	ScopedProjectIDs []int64 `json:"scopedProjectIds"`
 	// RunningBatches 是仍在推进的批次（queued/running/pause_requested）。
 	RunningBatches int `json:"runningBatches"`
 	// BatchesWithShortfall 是**已定稿但有产出缺口**的批次（issue #190）。
@@ -200,6 +209,12 @@ type WorkspaceOverview struct {
 	TotalPlannedUnits   int `json:"totalPlannedUnits"`
 	TotalCompletedUnits int `json:"totalCompletedUnits"`
 	// PendingReview 是等待人工判断的样本数。
+	//
+	// 口径：与「审阅」队列同一条谓词（`samples` LEFT JOIN 投影，无投影视为
+	// pending），而不是直接数 `review_projections` 的行。后者在**一次判断都
+	// 没做过的项目**上恒为 0，而队列显示 3 条 —— 同一个「待判断」事实两个读数，
+	// 且总览那个恰好是最该做的活（issue #200）。谓词共享自
+	// `latestReviewProjectionJoin` / `effectiveReviewStatusSQL`。
 	PendingReview int `json:"pendingReview"`
 	// ProducedLast7Days 是近 7 天产出的样本版本数（按 created_at）。
 	ProducedLast7Days int `json:"producedLast7Days"`
@@ -225,6 +240,10 @@ func (s *ActivityStore) LoadWorkspaceOverview(ctx context.Context, userID, works
 		return overview, err
 	}
 	overview.ProjectCount = len(scoped)
+	// 与 projectCount 同源：两处都取 `scoped`，因此不可能出现
+	// 「说 1 个项目却给了 2 个 ID」这类分叉。filterWorkspaceProjects 保证
+	// 返回非 nil 切片，因此 JSON 里是 `[]` 而不是 `null`（前端类型是数组）。
+	overview.ScopedProjectIDs = scoped
 	if len(scoped) == 0 {
 		return overview, nil
 	}
@@ -244,8 +263,8 @@ func (s *ActivityStore) LoadWorkspaceOverview(ctx context.Context, userID, works
 	}
 
 	if err := s.db.QueryRow(ctx, `
-    SELECT COUNT(*) FROM review_projections
-    WHERE project_id = ANY($1::bigint[]) AND effective_action = $2`,
+    SELECT COUNT(*) FROM samples s`+latestReviewProjectionJoin+`
+    WHERE s.project_id = ANY($1::bigint[]) AND `+effectiveReviewStatusSQL+` = $2`,
 		scoped, model.EffectivePending).Scan(&overview.PendingReview); err != nil {
 		return overview, err
 	}
@@ -269,9 +288,12 @@ func (s *ActivityStore) LoadWorkspaceOverview(ctx context.Context, userID, works
 }
 
 // filterWorkspaceProjects 只保留属于该工作区的项目。
+//
+// 返回**非 nil** 切片（空结果为 `[]int64{}`）：调用方会把它直接序列化给前端，
+// 而 `null` 与 `[]` 在 TS 侧不是同一类型，会让消费方多一个隐式分支。
 func (s *ActivityStore) filterWorkspaceProjects(ctx context.Context, workspaceID int64, projectIDs []int64) ([]int64, error) {
 	if len(projectIDs) == 0 {
-		return nil, nil
+		return []int64{}, nil
 	}
 	rows, err := s.db.Query(ctx, `
     SELECT id FROM projects WHERE workspace_id = $1 AND id = ANY($2::bigint[])`,
@@ -316,6 +338,11 @@ func (s *ActivityStore) LoadActivity(ctx context.Context, userID, workspaceID in
 	// 合并两个来源。批次的逐单元 BatchPartialFailed 先按批次聚合，避免一个
 	// 批次的 N 个失败单元在动态和未读数里被放大成 N 条通知。
 	// `source_rank` 参与排序与游标比较（见 model.ActivityCursor）。
+	//
+	// issue #210：审计类记录另外带出 `resource_type` 与两个**间接标识**
+	// （样本版本 → 样本身份、文档版本 → 版本号）。为什么在 SQL 里解：
+	// 链接必须是「能回答这条记录的那个对象页」，而前端只拿到 groupKey，
+	// 拿不到也不应该去猜内部主键；每行再查一次会是 N+1。
 	rows, err := s.db.Query(ctx, `
 	WITH batch_failures AS (
 	  SELECT '`+model.ActivitySourceBatch+`'::text AS source,
@@ -340,19 +367,37 @@ func (s *ActivityStore) LoadActivity(ctx context.Context, userID, workspaceID in
 	  WHERE e.project_id = ANY($1::bigint[]) AND e.event_type <> '`+model.BatchEventPartialFailed+`'
 	), merged AS (
 	  SELECT source, event_id, project_id, kind, actor_id, object_id, detail, created_at,
-	         source_rank, aggregate_count, aggregate_total, group_key FROM batch_failures
+	         source_rank, aggregate_count, aggregate_total, group_key,
+	         -- 批次事件没有资源取值域与两个间接标识，补空列以对齐审计分支。
+	         -- 三元组只服务于审计类的链接推导（issue #210）。
+	         ''::text AS resource_type, 0::bigint AS sample_object_id, 0::int AS document_version
+	  FROM batch_failures
 	  UNION ALL
 	  SELECT source, event_id, project_id, kind, actor_id, object_id, detail, created_at,
-	         source_rank, aggregate_count, aggregate_total, group_key FROM batch_events_regular
+	         source_rank, aggregate_count, aggregate_total, group_key,
+	         ''::text, 0::bigint, 0::int
+	  FROM batch_events_regular
 	  UNION ALL
 	  SELECT '`+model.ActivitySourceAudit+`'::text, a.id, a.project_id,
 	         a.action, a.actor_user_id, COALESCE(NULLIF(a.resource_id, '')::bigint, 0),
 	         COALESCE(NULLIF(a.reason, ''), a.detail), a.created_at, 1,
-	         0::bigint, 0::bigint, ''::text
-	  FROM audit_logs a WHERE a.project_id = ANY($1::bigint[])
+	         0::bigint, 0::bigint, ''::text,
+	         a.resource_type,
+	         COALESCE(sv.sample_id, 0),
+	         COALESCE(dv.version, 0)
+	  FROM audit_logs a
+	  LEFT JOIN LATERAL (
+	    SELECT sv.sample_id FROM sample_versions sv
+	    WHERE sv.id = COALESCE(NULLIF(a.resource_id, '')::bigint, 0) AND sv.project_id = a.project_id
+	  ) sv ON TRUE
+	  LEFT JOIN LATERAL (
+	    SELECT dv.version FROM document_versions dv
+	    WHERE dv.id = COALESCE(NULLIF(a.resource_id, '')::bigint, 0) AND dv.project_id = a.project_id
+	  ) dv ON TRUE
+	  WHERE a.project_id = ANY($1::bigint[])
 	)
 	SELECT source, event_id, project_id, kind, actor_id, object_id, detail, created_at,
-	       aggregate_count, aggregate_total, group_key
+	       aggregate_count, aggregate_total, group_key, resource_type, sample_object_id, document_version
 	FROM merged
     WHERE ($2::bigint IS NULL OR (created_at, source_rank, event_id) < (to_timestamp($2::bigint / 1000000.0), $3::int, $4::bigint))
     ORDER BY created_at DESC, source_rank ASC, event_id DESC
@@ -372,8 +417,13 @@ func (s *ActivityStore) LoadActivity(ctx context.Context, userID, workspaceID in
 		var aggregateCount int64
 		var aggregateTotal int64
 		var groupKey string
+		// 审计类专用：资源取值域与两个间接标识（issue #210）。
+		// 批次类事件一律为空，因此不需要在 Go 侧再判 source。
+		var resourceType string
+		var sampleObjectID, documentVersion int64
 		if err := rows.Scan(&item.Source, &item.EventID, &item.ProjectID, &item.Kind,
-			&actorID, &objectID, &detail, &item.CreatedAt, &aggregateCount, &aggregateTotal, &groupKey); err != nil {
+			&actorID, &objectID, &detail, &item.CreatedAt, &aggregateCount, &aggregateTotal, &groupKey,
+			&resourceType, &sampleObjectID, &documentVersion); err != nil {
 			return nil, "", err
 		}
 		item.ActorID = actorID
@@ -382,7 +432,11 @@ func (s *ActivityStore) LoadActivity(ctx context.Context, userID, workspaceID in
 		item.AggregateCount = aggregateCount
 		item.AggregateTotal = aggregateTotal
 		item.Summary = activitySummary(item.Source, item.Kind, objectID, aggregateCount, aggregateTotal)
-		item.Links = activityLinks(item.Source, item.ProjectID, objectID)
+		if item.Source == model.ActivitySourceAudit {
+			item.Links = auditActivityLink(item.ProjectID, resourceType, objectID, sampleObjectID, documentVersion)
+		} else {
+			item.Links = activityLinks(item.Source, item.ProjectID, objectID)
+		}
 		item.Unread = model.ActivityUnread(item, watermark)
 		items = append(items, item)
 	}
@@ -822,10 +876,16 @@ func (s *ActivityStore) Search(ctx context.Context, userID, workspaceID int64, k
 // ---------------------------------------------------------------------------
 
 // projectPageLink 拼项目内页面的前端路径（前端不自行拼 URL）。
+//
+// 取值来自 `apps/web-user/src/studio/routes.ts` 的 path 元数据（去掉 `:projectId` 段），
+// 因此这里是一个**闭合集合**：写错一个值会静默回退到概览（而不是报错），
+// 而那正是 issue #210 的缺陷形态。新增落点时必须同步本表与那里的路由元数据。
 func projectPageLink(projectID int64, tab string) string {
 	base := "/p/" + fmt.Sprint(projectID) + "/"
 	switch tab {
-	case "overview", "blueprint", "coverage", "standard", "pilot", "compare", "runs", "data", "quality", "review", "rules", "releases":
+	case "overview", "blueprint", "coverage", "standard", "pilot", "compare",
+		"runs", "data", "quality", "review", "rules", "releases",
+		"releases/new":
 		return base + tab
 	default:
 		return base + "overview"
@@ -886,6 +946,83 @@ func activityLinks(source string, projectID, objectID int64) model.Links {
 		return model.Links{"page": projectPageLink(projectID, "runs") + "/" + fmt.Sprint(objectID)}
 	}
 	return model.Links{"page": projectPageLink(projectID, "overview")}
+}
+
+// auditActivityLink 把一条审计记录映射到「能回答它」的对象页（issue #210）。
+//
+// 缺陷形态：审计类动态的「查看」**全部**指向项目概览（实测 19/19），点进去看不到
+// 这条记录讲的那个对象，而动态页的价值就是「从一条记录跳到那个对象」。对照批次类
+// 事件本来就能正确落到 `/p/{id}/runs/{batchId}`，说明机制存在，只是审计类没填。
+//
+// 为什么必须由服务端推导：前端只拿到 `groupKey`，`resource_id` 是**对象主键**，
+// 让前端猜（或把原始键号暴露给前端再拼 URL）会让「链接指向错对象」这类错误无法
+// 在服务端被断言。这里把取值域 `resource_type` + 标识集中在**一个函数**里，
+// 新增资源类型时只需在这里补一条，而不是散到界面里。
+//
+// 为什么回退到概览仍然是错的（因此不这样写）：无法映射时指向概览会重现本缺陷。
+// 无法映射时给 `/activity` —— 那个链接至少诚实地表达「不能跳到对象」。
+//
+// 参数：
+//   - resourceType  —— `audit_logs.resource_type`（如 `sample_version`）
+//   - objectID      —— `audit_logs.resource_id`（对象主键）
+//   - sampleObjectID —— 样本版本 → 样本身份（前端路由用的是 `s_{id}`，不是版本行 ID）
+//   - documentVersion — 文档版本行 ID → 版本号（界面用 `?version=N` 打开只读历史版）
+func auditActivityLink(projectID int64, resourceType string, objectID, sampleObjectID int64, documentVersion int64) model.Links {
+	if projectID <= 0 {
+		return model.Links{"page": "/activity"}
+	}
+	if objectID <= 0 {
+		// `resource_id` 为空/非数字：这条审计记的不是某个具体项目内对象
+		// （例如工作区成员），项目概览会冒充一个它并不持有的对象。
+		return model.Links{"page": "/activity"}
+	}
+	switch resourceType {
+	case "batch":
+		return model.Links{"page": projectPageLink(projectID, "runs") + "/b_" + fmt.Sprint(objectID)}
+	case "sample_version":
+		if sampleObjectID > 0 {
+			// 必须用 `s_{sampleId}`：审阅页路由参数是**样本身份**而不是版本行 ID。
+			return model.Links{"page": projectPageLink(projectID, "data") + "/s_" + fmt.Sprint(sampleObjectID)}
+		}
+		// 样本身份解析不到（版本行被删/跨项目）：回到**样本列表**而不是概览 ——
+		// 「数据」页正是装这些对象的地方，而概览会重现 #210 的缺陷形态。
+		return model.Links{"page": projectPageLink(projectID, "data")}
+	case "release":
+		return model.Links{"page": projectPageLink(projectID, "releases") + "/" + fmt.Sprint(objectID)}
+	}
+	// 文档版本类（蓝图/覆盖/标准/质量策略/映射）：落点用 `?version=N` 打开该历史版，
+	// 因为「保存新版本」这条记录讲的就是那一版。
+	//
+	// 映射到的是**实际渲染该文档编辑器的那个页面**，而不是按资源名的字面猜测：
+	// `quality_policy_version` 的编辑器在 `RulesPage`（`/rules`，不是 `/quality`），
+	// `mapping_version` 的在「准备发布」（`/releases/new`，不是 `/releases`）。
+	// 表里的值就是从 `useVersionedDocument(projectId, '<segment>-versions')`
+	// 的调用点反查出来的。
+	if path, isDocument := documentVersionTab[resourceType]; isDocument {
+		if documentVersion > 0 {
+			return model.Links{"page": projectPageLink(projectID, path) + "?version=" + fmt.Sprint(documentVersion)}
+		}
+		return model.Links{"page": projectPageLink(projectID, path)}
+	}
+	// 其它项目内对象（实验/规则评估/比较基线/评论/项目成员）：概览至少属于本项目，
+	// 且**不假装**能定位到对象 —— 前者比指到别处安全，后者才是本缺陷。
+	return model.Links{"page": projectPageLink(projectID, "overview")}
+}
+
+// documentVersionTab 是「文档版本的资源类型 → 项目内页面路径」的唯一映射。
+//
+// 与 `document_store.go` 写入的 `resource_type`（`string(kind) + "_version"`）
+// 一一对应。用一张表而不是一连串 `if`：新增一类文档时漏掉这里会让链接回到
+// 概览（可接受的降级），而漏掉 store 侧的写入会让文案漏出英文（有 Go 守卫拦）。
+//
+// 值必须与**实际渲染该文档编辑器的页面**一致，否则链接会指向一个不读
+// `?version=` 的页（表现为「点了历史版链接但看到的是当前版」）。
+var documentVersionTab = map[string]string{
+	"blueprint_version":      "blueprint",
+	"coverage_version":       "coverage",
+	"standard_version":       "standard",
+	"quality_policy_version": "rules",
+	"mapping_version":        "releases/new",
 }
 
 // batchEventLabels 是批次事件的展示文案（覆盖 model.BatchEvent* 的全部取值）。

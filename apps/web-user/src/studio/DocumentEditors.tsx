@@ -407,12 +407,26 @@ export function MappingPayloadEditor({ payload, disabled, onChange }: { payload:
       <span role="columnheader" id="mapping-col-required">必填</span>
       <span role="columnheader" className="document-editor__header-row--actions">操作</span>
     </div>
-    {fields.length === 0 ? <Empty description="还没有字段映射，请添加至少一个输出字段。" /> : fields.map((field, index) => <div className="document-editor__row document-editor__row--mapping" key={`${String(field.targetField)}-${index}`}>
-      <Input aria-label="交付字段" aria-labelledby="mapping-col-delivery" placeholder="question" value={String(field.targetField ?? '')} disabled={disabled} onChange={(value) => updateFields(updateAt(fields, index, { targetField: value }))} />
-      <Input aria-label="内部字段" aria-labelledby="mapping-col-source" placeholder="question" value={String(field.sourceField ?? '')} disabled={disabled} onChange={(value) => updateFields(updateAt(fields, index, { sourceField: value }))} />
-      <label className="document-editor__checkbox"><input type="checkbox" checked={Boolean(field.required)} disabled={disabled} onChange={(event) => updateFields(updateAt(fields, index, { required: event.target.checked }))} /> 必填</label>
-      <Button type="tertiary" icon={<Trash2 size={14} />} aria-label="删除字段" disabled={disabled || fields.length <= 1} onClick={() => updateFields(removeAt(fields, index))} />
-    </div>)}
+    {/*
+      issue #213：三个「必填」复选框以前**没有任何可访问名**（实测三行完全相同：
+      `aria-label: null`、`input id: ""`），屏幕阅读器只会念出三个一模一样的
+      「必填」，用户无法知道它属于哪个字段 —— 而勾选它直接改变交付文件是否被
+      发布门槛拦下。
+
+      可访问名取「行内的交付字段名」而不是行号：行号在增删字段后会变，
+      而字段名是用户真正能用来说出这个动作的标识（与列头一起表达「改哪一列的必填」）。
+      字段名未填时回退到行序（仍然可区分），而不是回退成只有「必填」。
+    */}
+    {fields.length === 0 ? <Empty description="还没有字段映射，请添加至少一个输出字段。" /> : fields.map((field, index) => {
+      const fieldName = String(field.targetField ?? '').trim()
+      const accessible = fieldName !== '' ? `交付字段 ${fieldName}` : `第 ${index + 1} 行`
+      return <div className="document-editor__row document-editor__row--mapping" key={`${String(field.targetField)}-${index}`}>
+        <Input aria-label="交付字段" aria-labelledby="mapping-col-delivery" placeholder="question" value={String(field.targetField ?? '')} disabled={disabled} onChange={(value) => updateFields(updateAt(fields, index, { targetField: value }))} />
+        <Input aria-label="内部字段" aria-labelledby="mapping-col-source" placeholder="question" value={String(field.sourceField ?? '')} disabled={disabled} onChange={(value) => updateFields(updateAt(fields, index, { sourceField: value }))} />
+        <label className="document-editor__checkbox"><input type="checkbox" aria-label={`把${accessible}设为必填`} checked={Boolean(field.required)} disabled={disabled} onChange={(event) => updateFields(updateAt(fields, index, { required: event.target.checked }))} /> 必填</label>
+        <Button type="tertiary" icon={<Trash2 size={14} />} aria-label={`删除${accessible}`} disabled={disabled || fields.length <= 1} onClick={() => updateFields(removeAt(fields, index))} />
+      </div>
+    })}
   </div>
 }
 

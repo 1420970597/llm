@@ -449,8 +449,143 @@ function problemsWithBatchTimelineLabels(runSrc, modelSrc, apiSrc, storeSrc) {
 }
 
 // ---------------------------------------------------------------------------
+// #214 第 2 轮新增的子项守卫（#200 / #205 / #207 / #210 / #213）
+//
+// 这五条的共同形态是「同一份事实在两个地方各自实现」：总览与队列各数一次、
+// 磁贴与当前页共用一个 href、文档承诺与实现分家、审计记录与「查看」目标脱钩、
+// 服务端字段错误与页面提示脱钩。因此断言的都是**接线**，而不只是「函数存在」。
+// ---------------------------------------------------------------------------
+
+/** #200：总览的待判断计数必须与审阅队列共用同一条谓词。 */
+function problemsWithOverviewQueueParity(activitySrc, sampleQuerySrc) {
+  const problems = []
+  // 队列侧提供共享常量（唯一 SQL 来源）。
+  if (!/const latestReviewProjectionJoin\s*=/.test(sampleQuerySrc)) {
+    problems.push('sample_query 缺少共享的投影连接常量（总览会各写一份）')
+  }
+  if (!/const effectiveReviewStatusSQL\s*=\s*`COALESCE\(rp\.effective_action, 'pending'\)`/.test(sampleQuerySrc)) {
+    problems.push('sample_query 缺少「无投影视为 pending」的唯一表达式')
+  }
+  // 总览侧必须**复用**它，而不是直接数 review_projections 的行。
+  if (!/latestReviewProjectionJoin/.test(activitySrc) || !/effectiveReviewStatusSQL/.test(activitySrc)) {
+    problems.push('总览没有复用队列口径（零判断项目上两者必然分叉）')
+  }
+  if (/SELECT COUNT\(\*\) FROM review_projections\b/.test(activitySrc)) {
+    problems.push('总览仍在直接数 review_projections 的行（#200 的缺陷形态）')
+  }
+  return problems
+}
+
+/** #205：总览磁贴的 href 不得指向当前页自身，且「被挡住 N」必须有独立出口。 */
+function problemsWithOverviewTileTargets(todaySrc, apiTypes) {
+  const problems = []
+  const code = stripComments(todaySrc)
+  // `studioPath('today')` 出现在磁贴的 href 上就是「点了原地不动」。
+  // 允许它出现在其它地方（例如渲染 `/today` 页自身的组件），因此只看磁贴行。
+  const tileLines = code.split('\n').filter((line) => line.includes('data-overview-tile='))
+  for (const line of tileLines) {
+    if (/href=\{studioPath\('today'\)\}/.test(line)) {
+      problems.push(`磁贴指向当前页自身：${line.trim().slice(0, 80)}`)
+    }
+  }
+  if (!/overviewProjectHref\(/.test(code)) {
+    problems.push('磁贴没有走项目内页跳转函数（会退回硬编码路径）')
+  }
+  // 「被挡住 N」必须有自己的目标：交付库按定义只显示已发布版本。
+  if (!/data-overview-blocked-link=/.test(code)) {
+    problems.push('「被挡住的候选」缺少独立出口（#205 第二条）')
+  }
+  // 深链需要一个项目 ID；它必须来自服务端（前端不得猜）。
+  if (!/scopedProjectIds/.test(apiTypes)) {
+    problems.push('WorkspaceOverview 未下发 scopedProjectIds（磁贴只能回项目列表）')
+  }
+  return problems
+}
+
+/** #207：帮助页承诺的审阅 J/K 快捷键必须在三栏审阅页真的实现。 */
+function problemsWithReviewShortcuts(reviewSrc, helpSrc) {
+  const problems = []
+  const reviewCode = stripComments(reviewSrc)
+  const helpCode = stripComments(helpSrc)
+  const promisesJK = /'J \/ K/.test(helpCode) || /J \/ K/.test(helpCode)
+  if (!promisesJK) {
+    problems.push('帮助页已不再承诺 J/K（若刻意删除，请同步更新本断言与 issue #207）')
+  }
+  if (!/addEventListener\('keydown'/.test(reviewCode)) {
+    problems.push('三栏审阅页没有 keydown 监听（帮助页承诺了不存在的功能）')
+  }
+  // 必须复用已有的相对导航（否则按钮能用、键盘不能用，且提示文案会分叉）。
+  // 允许经 ref 间接调用（`goRelativeRef.current(...)`）—— 那是为了避免把
+  // 频繁变化的 callback 放进 keydown 监听的依赖里（每次导航都重装监听器）。
+  if (!/useRef\(goRelative\)/.test(reviewCode) || !/goRelative\w*\.current\(/.test(reviewCode)) {
+    problems.push('键盘导航没有复用 goRelative（会与「上一条/下一条」按钮行为分叉）')
+  }
+  // 焦点在输入控件里时不得抢键：审阅页有判断理由输入框，抢键会吞掉用户正在写的字母。
+  if (!/INPUT'\s*\|\|\s*tag === 'TEXTAREA'/.test(reviewCode)) {
+    problems.push('键盘导航没有排除输入控件（在理由输入框里敲 j 会跳走）')
+  }
+  if (!/altKey \|\| event\.ctrlKey \|\| event\.metaKey/.test(reviewCode)) {
+    problems.push('键盘导航没有排除修饰键（会与浏览器/系统快捷键冲突）')
+  }
+  return problems
+}
+
+/** #210：审计类动态的链接必须由服务端指向对象，而不是项目概览。 */
+function problemsWithAuditActivityLinks(activitySrc) {
+  const problems = []
+  if (!/func auditActivityLink\(/.test(activitySrc)) {
+    problems.push('缺少 auditActivityLink（审计类链接没有权威实现）')
+  }
+  if (!/a\.resource_type/.test(activitySrc)) {
+    problems.push('动态查询没有带出 resource_type（服务端无法知道该跳到哪个对象）')
+  }
+  if (!/item\.Source == model\.ActivitySourceAudit/.test(activitySrc)) {
+    problems.push('审计类没有走专门的链接推导（会退回概览）')
+  }
+  // 审计分支不得直接把概览当默认值 —— 除「本项目内但未登记的资源」那一处外，
+  // 函数体里出现「无对象标识时退回概览」即为缺陷再现。
+  const body = activitySrc.match(/func auditActivityLink\([\s\S]*?\n\}/)
+  if (!body) {
+    problems.push('无法读取 auditActivityLink 函数体（本断言会空转）')
+    return problems
+  }
+  if (!/return model\.Links\{"page": "\/activity"\}/.test(body[0])) {
+    problems.push('无对象标识时没有诚实的退路（会指到一个并不持有该对象的页）')
+  }
+  return problems
+}
+
+/** #213：映射复选框必须有行内可访问名；发布表单必须按字段展示错误。 */
+function problemsWithAccessibleMappingAndFieldErrors(editorSrc, releaseSrc) {
+  const problems = []
+  const editorCode = stripComments(editorSrc)
+  const releaseCode = stripComments(releaseSrc)
+  // 复选框必须有可访问名，且名字要**含本行字段标识**，不能只是同一句「必填」。
+  if (!/aria-label=\{`把\$\{accessible\}设为必填`\}/.test(editorCode)) {
+    problems.push('映射行的「必填」复选框缺少行内可访问名（读屏只会念三个「必填」）')
+  }
+  // 发布表单：字段级提示必须真的渲染在页面上（而不是只存在于 state 里）。
+  if (!/fieldErrors\.intendedUse/.test(releaseCode)) {
+    problems.push('「用途」没有字段级错误渲染（多字段错误仍只显示最后一条）')
+  }
+  if (!/applyServerFieldErrors\(/.test(releaseCode)) {
+    problems.push('没有消费服务端 fieldErrors（结构化错误被压成一句话）')
+  }
+  if (!/aria-describedby=/.test(releaseCode)) {
+    problems.push('字段错误没有与输入框用 aria-describedby 关联（读屏拿不到）')
+  }
+  return problems
+}
+
+// ---------------------------------------------------------------------------
 // 判定
 // ---------------------------------------------------------------------------
+
+const HELP_PAGE = read('apps/web-user/src/studio/pages/SettingsPages.tsx')
+const TODAY_PAGE = read('apps/web-user/src/studio/pages/TodayPages.tsx')
+const DOCUMENT_EDITORS = read('apps/web-user/src/studio/DocumentEditors.tsx')
+const RELEASE_PAGE = read('apps/web-user/src/studio/pages/ReleasePages.tsx')
+const STUDIO_API_TYPES = read('apps/web-user/src/lib/api/studio.ts')
 
 const checks = [
   ['#190 批次容量校验（服务端事实 + 字段级拒绝）',
@@ -481,6 +616,16 @@ const checks = [
     problemsWithDatasetAnalysis(BATCH_STORE, RUN_PAGE, read('internal/studio/dataset_analysis.go'))],
   ['#192 Markdown 守卫覆盖全树而非手工清单',
     problemsWithMarkdownGuardCoverage(MARKDOWN_GUARD)],
+  ['#200 总览待判断与审阅队列同一口径',
+    problemsWithOverviewQueueParity(ACTIVITY_STORE, read('internal/store/sample_query.go'))],
+  ['#205 总览磁贴不指向当前页 + 被挡住有出口',
+    problemsWithOverviewTileTargets(TODAY_PAGE, STUDIO_API_TYPES)],
+  ['#207 帮助页承诺的审阅 J/K 快捷键已实现',
+    problemsWithReviewShortcuts(REVIEW_PAGE, HELP_PAGE)],
+  ['#210 审计类动态链接指向操作对象',
+    problemsWithAuditActivityLinks(ACTIVITY_STORE)],
+  ['#213 交付映射复选框可访问名 + 发布表单字段级错误',
+    problemsWithAccessibleMappingAndFieldErrors(DOCUMENT_EDITORS, RELEASE_PAGE)],
 ]
 
 for (const [name, problems] of checks) {
@@ -510,8 +655,7 @@ const mutations = [
       /describeReviewStatus\(sample\.reviewStatus\)/, 'sample.reviewStatus'), REVIEW_PAGE, ENUM_LABELS)],
   ['#211 让颜色/文案映射退化', problemsWithReviewStatusLabels(
     read('apps/web-user/src/studio/pages/QualityPages.tsx'),
-    REVIEW_PAGE.replace(/describeReviewStatus\(/g, 'noop('), ENUM_LABELS),
-],
+    REVIEW_PAGE.replace(/describeReviewStatus\(/g, 'noop('), ENUM_LABELS)],
   ['#206 让时间线退回原样渲染 eventType', problemsWithBatchTimelineLabels(
     RUN_PAGE.replace(/event\.eventTypeLabel \|\| '批次事件'/, 'event.eventType'),
     MODEL_BATCH, read('apps/api/routes_studio_batches.go'), ACTIVITY_STORE)],
@@ -525,7 +669,7 @@ const mutations = [
   ['#194 删掉窄屏字段名', problemsWithMobileTableLabels(
     SETTINGS_PAGE.replaceAll('data-label="名称"', ''), read('apps/web-user/src/styles.css'))],
   // 用 split/join 做**无条件**替换：`\$` 在 JS 字符串与正则里都要二次转义，
-  // 上一版正则静默不匹配 → 变异体等于原文 → 断言空转（守卫自己抓到了这一点）。
+  // 上一版正则静默不匹配 -> 变异体等于原文 -> 断言空转（守卫自己抓到了这一点）。
   ['#195 不再注入版本', problemsWithDeployVersionAttestation(
     CD_WORKFLOW.split('export GIT_SHA=\\$(git rev-parse HEAD)').join('export GIT_SHA=unknown'))],
   ['#197-15 放宽密码强度到「非空即可」', problemsWithDirectUserCreation(
@@ -539,6 +683,26 @@ const mutations = [
       .replace(/function collectSources\(/, 'function unusedCollectSources(')
       .replace('const files = collectSources(SRC_ROOT)', "const files = ['apps/web-user/src/App.tsx']"),
   )],
+  ['#200 让总览退回「直接数投影行」', problemsWithOverviewQueueParity(
+    ACTIVITY_STORE.replace('FROM samples s`+latestReviewProjectionJoin+`', 'FROM review_projections' )
+      .replace("SELECT COUNT(*) FROM review_projections\n    WHERE s.project_id", 'SELECT COUNT(*) FROM review_projections\n    WHERE project_id'),
+    read('internal/store/sample_query.go'))],
+  ['#205 让磁贴退回指向当前页', problemsWithOverviewTileTargets(
+    TODAY_PAGE.replace("href={overviewProjectHref(overview, 'project.runs')}", "href={studioPath('today')}"),
+    STUDIO_API_TYPES)],
+  ['#205 删掉「被挡住」的独立出口', problemsWithOverviewTileTargets(
+    TODAY_PAGE.replaceAll('data-overview-blocked-link=', 'data-unused='), STUDIO_API_TYPES)],
+  ['#207 摘掉 J/K 键盘监听', problemsWithReviewShortcuts(
+    REVIEW_PAGE.replace(/document\.addEventListener\('keydown', onKeyDown\)/, 'void onKeyDown'),
+    HELP_PAGE)],
+  ['#207 让键盘导航在输入框里抢键', problemsWithReviewShortcuts(
+    REVIEW_PAGE.replace(/tag === 'INPUT' \|\| tag === 'TEXTAREA'/, 'false'), HELP_PAGE)],
+  ['#210 让审计链接退回概览', problemsWithAuditActivityLinks(
+    ACTIVITY_STORE.replace(/func auditActivityLink\([\s\S]*?\n\}/, 'func auditActivityLink(projectID int64, resourceType string, objectID, sampleObjectID int64, documentVersion int64) model.Links { return model.Links{"page": projectPageLink(projectID, "overview")} }'))],
+  ['#213 摘掉复选框的行内可访问名', problemsWithAccessibleMappingAndFieldErrors(
+    DOCUMENT_EDITORS.replace(/aria-label=\{`把\$\{accessible\}设为必填`\}/, ''), RELEASE_PAGE)],
+  ['#213 让发布错误退回单行总体提示', problemsWithAccessibleMappingAndFieldErrors(
+    DOCUMENT_EDITORS, RELEASE_PAGE.replaceAll('fieldErrors.intendedUse', 'errorLines.intendedUse'))],
 ]
 
 for (const [name, problems] of mutations) {

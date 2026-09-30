@@ -482,14 +482,50 @@ func TestCreateCandidateRejectsIncompleteOrCrossProjectRange(t *testing.T) {
 		t.Fatalf("含不存在版本必须被拒，实际 %v", err)
 	}
 	// 空范围 → 拒绝。
-	if _, err := fixture.releases.CreateReleaseCandidate(ctx,
-		fixture.candidateInput("v6.1", nil)); !IsStoreValidationError(err) {
-		t.Fatalf("空范围必须被拒，实际 %v", err)
+	//
+	// 载体是**字段级**校验错误（`model.FieldErrors`），不是 `*apiStoreError`：
+	// 前端据此把提示落到「发布范围」那一区（issue #213），因此这里断言的是
+	// 「字段级载体 + 具体字段名」。用 `IsStoreValidationError` 断言会漏掉载体
+	// 变更（它只认 `*apiStoreError`），那正是本轮修复的 CI 回归。
+	_, emptyErr := fixture.releases.CreateReleaseCandidate(ctx, fixture.candidateInput("v6.1", nil))
+	fieldErrors, ok := model.HasFieldErrors(emptyErr)
+	if !ok {
+		t.Fatalf("空范围必须被拒为字段级校验错误，实际 %v", emptyErr)
+	}
+	if !hasFieldError(fieldErrors, "sampleVersionIds") {
+		t.Fatalf("空范围的字段错误必须指向 sampleVersionIds（前端据此定位提示），实际 %+v", fieldErrors)
 	}
 	// 跨项目 → 拒绝。
 	crossInput := fixture.candidateInput("v6.2", fixture.versionIDs)
 	crossInput.ProjectID = fixture.projectID + 1_000_000
 	if _, err := fixture.releases.CreateReleaseCandidate(ctx, crossInput); !IsStoreValidationError(err) {
 		t.Fatalf("跨项目范围必须被拒，实际 %v", err)
+	}
+}
+
+// TestUpdateCandidateRejectsEmptyRange 覆盖修订路径的空范围边界。
+//
+// 与创建路径同一约定：空范围是**字段级**校验错误（`model.FieldErrors`），
+// 前端据此把提示渲染到「发布范围」区。创建路径的同类断言在
+// TestCreateCandidateRejectsIncompleteOrCrossProjectRange 里，两条路径都必须被守住 ——
+// 只守一条会让另一条静默漂回「一句总体提示」。
+func TestUpdateCandidateRejectsEmptyRange(t *testing.T) {
+	fixture := newReleaseFixture(t)
+	ctx := context.Background()
+
+	release, err := fixture.releases.CreateReleaseCandidate(ctx,
+		fixture.candidateInput("v7.0", fixture.versionIDs))
+	if err != nil {
+		t.Fatalf("CreateReleaseCandidate: %v", err)
+	}
+
+	_, emptyErr := fixture.releases.UpdateReleaseCandidate(ctx, fixture.projectID, release.ID,
+		fixture.candidateInput("v7.0", nil))
+	fieldErrors, ok := model.HasFieldErrors(emptyErr)
+	if !ok {
+		t.Fatalf("修订时清空范围必须被拒为字段级校验错误，实际 %v", emptyErr)
+	}
+	if !hasFieldError(fieldErrors, "sampleVersionIds") {
+		t.Fatalf("空范围的字段错误必须指向 sampleVersionIds，实际 %+v", fieldErrors)
 	}
 }

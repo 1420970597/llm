@@ -61,6 +61,31 @@ type SampleListQuery struct {
 	Limit          int
 }
 
+// latestReviewProjectionJoin 是「样本当前采用版本的有效处置」的唯一连接来源。
+//
+// 为什么必须是**一个共享常量**而不是各查询各写一遍：同一个「待判断」事实在两个
+// 页面上给出过互相矛盾的读数（今日工作总览说 0、审阅队列说 3）。根因正是两处用了
+// 不同口径 —— 总览直接数 `review_projections` 的行（因此**一次判断都没做过的项目**
+// 永远显示 0），队列用 `LEFT JOIN` + `COALESCE(...,'pending')` 把无投影的内容也算作
+// 待判断。缺陷在界面上表现为「最该做的活显示成 0」，用户据此直接走开。
+//
+// 因此：**任何**按有效处置筛选/计数的查询都必须复用本常量与
+// effectiveReviewStatusSQL，而不是自己再写一遍连接条件。
+const latestReviewProjectionJoin = `
+    LEFT JOIN LATERAL (
+      SELECT p.effective_action, p.aggregate_review_revision, p.conflict
+      FROM review_projections p
+      JOIN sample_versions sv ON sv.id = p.sample_version_id
+      WHERE sv.sample_id = s.id AND sv.version = s.latest_version
+      LIMIT 1
+    ) rp ON TRUE`
+
+// effectiveReviewStatusSQL 是「样本当前采用版本的有效处置」的唯一表达式。
+//
+// 用 LEFT JOIN 而不是 INNER JOIN：从未判断过的内容必须按 pending 出现，
+// 而 INNER JOIN 会把它们全部排除，得到一个永远空着的队列。
+const effectiveReviewStatusSQL = `COALESCE(rp.effective_action, 'pending')`
+
 // ListSamples 按「同项目内最近」列出样本；keyset 游标（契约 §1.5）。
 //
 // 排序键是 (created_at, id)：created_at 单独不唯一（同一批次的样本往往
@@ -82,13 +107,14 @@ func (s *BatchStore) ListSamples(ctx context.Context, query SampleListQuery) ([]
 	// 与 review_projections 左连接：审阅状态是**投影**，因此没有投影行
 	// （从未被判断过）的内容其状态视为 pending —— 那正是「待审阅」。
 	//
-	// 用 LEFT JOIN 而不是 INNER JOIN：从未判断过的内容必须出现在待审阅队列里，
-	// 而 INNER JOIN 会把它们全部排除，得到一个永远空着的队列。
+	// 连接条件与「有效处置」表达式来自共享常量（见文件头的
+	// latestReviewProjectionJoin）：总览的待判断计数必须与这里**同一个口径**，
+	// 否则一次判断都没做过的项目上两者必然分叉（issue #200）。
 	rows, err := s.db.Query(ctx, `
 	SELECT s.id, s.project_id, s.sample_key, s.target_kind, s.title, s.origin_batch_id,
 	       s.latest_version, COALESCE(latest_sv.id, 0) AS latest_version_id,
 	       s.created_at, s.updated_at,
-	       COALESCE(rp.effective_action, 'pending') AS review_status,
+	       `+effectiveReviewStatusSQL+` AS review_status,
 	       COALESCE(rp.aggregate_review_revision, 0) AS aggregate_review_revision,
 	       COALESCE(rp.conflict, FALSE) AS review_conflict
     FROM samples s
@@ -98,20 +124,13 @@ func (s *BatchStore) ListSamples(ctx context.Context, query SampleListQuery) ([]
       WHERE sv.sample_id = s.id AND sv.project_id = s.project_id
         AND sv.version = s.latest_version
       LIMIT 1
-    ) latest_sv ON TRUE
-    LEFT JOIN LATERAL (
-      SELECT p.effective_action, p.aggregate_review_revision, p.conflict
-      FROM review_projections p
-      JOIN sample_versions sv ON sv.id = p.sample_version_id
-      WHERE sv.sample_id = s.id AND sv.version = s.latest_version
-      LIMIT 1
-    ) rp ON TRUE
+    ) latest_sv ON TRUE`+latestReviewProjectionJoin+`
     WHERE s.project_id = $1
       AND ($2::bigint = 0 OR s.origin_batch_id = $2::bigint)
       AND ($3 = '' OR s.target_kind = $3)
       AND ($4 = '' OR s.title ILIKE '%' || $4 || '%' OR s.sample_key ILIKE '%' || $4 || '%')
-      AND ($7 = '' OR COALESCE(rp.effective_action, 'pending') = $7)
-      AND ($8 = FALSE OR COALESCE(rp.effective_action, 'pending') <> 'accepted')
+      AND ($7 = '' OR `+effectiveReviewStatusSQL+` = $7)
+      AND ($8 = FALSE OR `+effectiveReviewStatusSQL+` <> 'accepted')
       AND ($5::timestamptz IS NULL OR (s.created_at, s.id) < ($5::timestamptz, $6::bigint))
     ORDER BY s.created_at DESC, s.id DESC
     LIMIT $9`,
