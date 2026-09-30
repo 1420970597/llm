@@ -24,7 +24,7 @@
  *   docs/audit/issue-200/<phase>.json
  */
 import { createRequire } from 'node:module'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -37,6 +37,25 @@ mkdirSync(OUT, { recursive: true })
 
 const phaseArg = process.argv.indexOf('--phase')
 const PHASE = phaseArg >= 0 ? process.argv[phaseArg + 1] : 'before'
+const FORCE = process.argv.includes('--force')
+
+// 防覆盖：已存在的证据默认**不覆盖**。
+//
+// 为什么必需（实测踩过）：本脚本默认 phase=before，而重跑时的栈往往已经装上了
+// 修复 —— 于是它会把提交过的 `before.json` 直接改写成「修复后」读数
+// （statsPendingReview 0 → 3、ok false → true），“修复前”证据当场失效，
+// 而评论里的图链指向的就是这些文件。这正是「用假证据冒充验证」的典型形态，
+// 只不过是无意的。要重新采集必须显式传 --force。
+if (!FORCE) {
+  const existing = [`${PHASE}.json`, `${PHASE}-today.png`, `${PHASE}-overview.png`]
+    .filter((name) => existsSync(path.join(OUT, name)))
+  if (existing.length > 0) {
+    console.error(`[issue-200] 拒绝覆盖已存在的证据（${PHASE}）：${existing.join(', ')}`)
+    console.error('  若确实要重采，显式传 --force（注意：重采出来的读数取决于当前栈版本，')
+    console.error('  在已修复的栈上采 “before” 会得到修复后的读数，不是修复前。）')
+    process.exit(2)
+  }
+}
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3210'
 const EMAIL = process.env.ADMIN_EMAIL ?? 'admin@company.com'
 const PASSWORD = process.env.ADMIN_PASSWORD ?? 'admin123456'
