@@ -1,0 +1,79 @@
+{
+  "stage": "after",
+  "base": "http://127.0.0.1:3210",
+  "viewport": {
+    "width": 1600,
+    "height": 1000
+  },
+  "nodes": [
+    {
+      "key": "coverage",
+      "nodeX": 256,
+      "nodeRight": 492,
+      "canvasLeft": 225,
+      "canvasRight": 1015,
+      "canvasScrollLeft": 0,
+      "activeVisible": true,
+      "activeTagged": true,
+      "inspectorTitle": "覆盖范围"
+    },
+    {
+      "key": "generation",
+      "nodeX": 778,
+      "nodeRight": 1014,
+      "canvasLeft": 225,
+      "canvasRight": 1015,
+      "canvasScrollLeft": 18,
+      "activeVisible": true,
+      "activeTagged": true,
+      "inspectorTitle": "生成"
+    },
+    {
+      "key": "evaluation",
+      "nodeX": 778,
+      "nodeRight": 1014,
+      "canvasLeft": 225,
+      "canvasRight": 1015,
+      "canvasScrollLeft": 288,
+      "activeVisible": true,
+      "activeTagged": true,
+      "inspectorTitle": "独立评估"
+    },
+    {
+      "key": "rules",
+      "nodeX": 778,
+      "nodeRight": 1014,
+      "canvasLeft": 225,
+      "canvasRight": 1015,
+      "canvasScrollLeft": 558,
+      "activeVisible": true,
+      "activeTagged": true,
+      "inspectorTitle": "规则检查"
+    },
+    {
+      "key": "human_review",
+      "nodeX": 778,
+      "nodeRight": 1014,
+      "canvasLeft": 225,
+      "canvasRight": 1015,
+      "canvasScrollLeft": 828,
+      "activeVisible": true,
+      "activeTagged": true,
+      "inspectorTitle": "人工检查点"
+    },
+    {
+      "key": "delivery",
+      "nodeX": 778,
+      "nodeRight": 1014,
+      "canvasLeft": 225,
+      "canvasRight": 1015,
+      "canvasScrollLeft": 1098,
+      "activeVisible": true,
+      "activeTagged": true,
+      "inspectorTitle": "版本交付"
+    }
+  ],
+  "invisibleActiveNodes": [],
+  "consoleErrors": [],
+  "defectPresent": false
+}

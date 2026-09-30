@@ -84,6 +84,36 @@ function stripComments(text) {
   return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
 }
 
+/**
+ * issue #204：`?node=` 是契约 §3.2 里**可分享**的参数，但画布是横向滚动
+ * 容器（`overflow-x: auto`），靠后的节点会被裁在可视区外。用户打开一个指向
+ * 「版本交付」的链接，看到的却是被截断的左端。
+ *
+ * 因此断言的是**接线**：画布节点必须被登记为 ref，并在当前节点变化时
+ * 滚入可视区（而不是只把当前节点写进 URL）。
+ *
+ * 抽成谓词是为了能被变异自证：把摘掉 ref / 摘掉 scrollIntoView 的源码喂进来，
+ * 必须返回非空问题列表。
+ */
+function problemsWithBlueprintActiveNodeReachability(src) {
+  const problems = []
+  const code = stripComments(src)
+  // 1. 节点要把自身登记进 ref 表（无 ref 就无法定位到具体节点）。
+  if (!/nodeRefs\.current\[[A-Za-z0-9_\.]+\]\s*=\s*[A-Za-z0-9_]+/.test(code)) {
+    problems.push('画布节点没有登记 DOM ref（无法把当前节点滚入可视区）')
+  }
+  // 2. 必须真的调 scrollIntoView 把当前节点带入可视区。
+  if (!/scrollIntoView\(/.test(code)) {
+    problems.push('没有把当前节点 scrollIntoView（深链后当前节点可能不可见）')
+  }
+  // 3. 滚动必须发生在当前节点变化时，且必须等节点已挂载（loading 结束）。
+  //    只在 refresh 时跑一次、或不等 loading 结束，都会在深链场景静默失效。
+  if (!/useEffect\([\s\S]{0,500}?scrollIntoView[\s\S]{0,300}?\[[^\]]*\bloading\b[^\]]*\]\)/.test(code)) {
+    problems.push('滚动 effect 没有以 loading 为依赖（加载中节点未挂载，深链下会漏滚）')
+  }
+  return problems
+}
+
 const routesSourceRaw = readFileSync(ROUTES_SOURCE, 'utf8')
 const appSourceRaw = readFileSync(APP_SOURCE_PATH, 'utf8')
 const routeStatusSource = readFileSync(ROUTE_STATUS_SOURCE_PATH, 'utf8')
@@ -570,6 +600,41 @@ record(
 /** 每个可跳转路径都能从元数据生成（前端不自行拼 URL）。 */
 const filledPath = prodRoutes.fillRoutePath('/p/:projectId/data', { projectId: 7 })
 record('路由路径可由元数据填充', filledPath === '/p/7/data', filledPath)
+
+// 变异 4：摘掉当前节点的 scrollIntoView → 深链后当前节点可能不可见，必须被捕获。
+{
+  const mutated = blueprintPageSource.replace(
+    /node\.scrollIntoView\(\{ behavior: 'auto', block: 'nearest', inline: 'nearest' \}\)/,
+    'void node',
+  )
+  const problems = problemsWithBlueprintActiveNodeReachability(mutated)
+  record(
+    '变异 4：摘掉 scrollIntoView 会被捕获',
+    problems.length > 0,
+    `摘掉滚动后捕获到 ${problems.length} 个问题`,
+  )
+}
+
+// 变异 5：把滚动 effect 的依赖退回只有 activeSpec → 加载中节点未挂载时漏滚，必须被捕获。
+{
+  const mutated = blueprintPageSource.replace(
+    /\}, \[activeSpec, loading\]\)/,
+    '}, [activeSpec])',
+  )
+  const problems = problemsWithBlueprintActiveNodeReachability(mutated)
+  record(
+    '变异 5：滚动 effect 缺少 loading 依赖会被捕获',
+    problems.length > 0,
+    `退回依赖后捕获到 ${problems.length} 个问题`,
+  )
+}
+
+record(
+  '蓝图当前节点在深链后滚入可视区（issue #204）',
+  problemsWithBlueprintActiveNodeReachability(blueprintPageSource).length === 0,
+  problemsWithBlueprintActiveNodeReachability(blueprintPageSource).join('；') ||
+    '画布节点持有 ref 并被 scrollIntoView 滚入可视区，深链当前节点可见',
+)
 
 // ---------------------------------------------------------------------------
 // 第 3 层：变异自证

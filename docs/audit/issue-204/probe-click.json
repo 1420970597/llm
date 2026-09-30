@@ -1,0 +1,83 @@
+{
+  "base": "http://127.0.0.1:3210",
+  "nodes": [
+    {
+      "index": 0,
+      "key": "coverage",
+      "label": "覆盖范围",
+      "insideCanvas": true,
+      "hitSelf": true,
+      "urlAfterClick": "coverage",
+      "inspectorTitle": "覆盖范围",
+      "urlMatchesNode": true,
+      "inspectorMatchesNode": true
+    },
+    {
+      "index": 1,
+      "key": "standard",
+      "label": "思维标准",
+      "insideCanvas": true,
+      "hitSelf": true,
+      "urlAfterClick": "standard",
+      "inspectorTitle": "思维标准",
+      "urlMatchesNode": true,
+      "inspectorMatchesNode": true
+    },
+    {
+      "index": 2,
+      "key": "generation",
+      "label": "生成",
+      "insideCanvas": true,
+      "hitSelf": true,
+      "urlAfterClick": "generation",
+      "inspectorTitle": "生成",
+      "urlMatchesNode": true,
+      "inspectorMatchesNode": true
+    },
+    {
+      "index": 3,
+      "key": "evaluation",
+      "label": "独立评估",
+      "insideCanvas": true,
+      "hitSelf": true,
+      "urlAfterClick": "evaluation",
+      "inspectorTitle": "独立评估",
+      "urlMatchesNode": true,
+      "inspectorMatchesNode": true
+    },
+    {
+      "index": 4,
+      "key": "rules",
+      "label": "规则检查",
+      "insideCanvas": true,
+      "hitSelf": true,
+      "urlAfterClick": "rules",
+      "inspectorTitle": "规则检查",
+      "urlMatchesNode": true,
+      "inspectorMatchesNode": true
+    },
+    {
+      "index": 5,
+      "key": "human_review",
+      "label": "人工检查点",
+      "insideCanvas": true,
+      "hitSelf": true,
+      "urlAfterClick": "human_review",
+      "inspectorTitle": "人工检查点",
+      "urlMatchesNode": true,
+      "inspectorMatchesNode": true
+    },
+    {
+      "index": 6,
+      "key": "delivery",
+      "label": "版本交付",
+      "insideCanvas": true,
+      "hitSelf": true,
+      "urlAfterClick": "delivery",
+      "inspectorTitle": "版本交付",
+      "urlMatchesNode": true,
+      "inspectorMatchesNode": true
+    }
+  ],
+  "failures": []
+}
