@@ -1,0 +1,573 @@
+{
+  "base": "http://127.0.0.1:3210",
+  "capturedAt": "2026-09-30T06:07:24.689Z",
+  "viewports": {
+    "mobile-390": {
+      "routes": {
+        "/today": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "bodyScrollHeight": 844,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 15,
+          "targetsBelow44Both": 3,
+          "interactiveTotal": 23,
+          "below44Sample": [
+            "BUTTON:@36px",
+            "BUTTON:搜索@36px",
+            "BUTTON:A@36px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/projects": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "bodyScrollHeight": 844,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 5,
+          "targetsBelow44Both": 3,
+          "interactiveTotal": 6,
+          "below44Sample": [
+            "BUTTON:@36px",
+            "BUTTON:搜索@36px",
+            "BUTTON:A@36px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/overview": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "bodyScrollHeight": 844,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 11,
+          "targetsBelow44Both": 3,
+          "interactiveTotal": 17,
+          "below44Sample": [
+            "BUTTON:@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/blueprint": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "bodyScrollHeight": 844,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 10,
+          "targetsBelow44Both": 3,
+          "interactiveTotal": 28,
+          "below44Sample": [
+            "BUTTON:@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/runs": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "bodyScrollHeight": 844,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 13,
+          "targetsBelow44Both": 7,
+          "interactiveTotal": 19,
+          "below44Sample": [
+            "BUTTON:@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/data": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "bodyScrollHeight": 844,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 13,
+          "targetsBelow44Both": 3,
+          "interactiveTotal": 19,
+          "below44Sample": [
+            "BUTTON:@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/review": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "bodyScrollHeight": 844,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 13,
+          "targetsBelow44Both": 4,
+          "interactiveTotal": 19,
+          "below44Sample": [
+            "BUTTON:@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/quality": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "bodyScrollHeight": 844,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 6,
+          "targetsBelow44Both": 3,
+          "interactiveTotal": 12,
+          "below44Sample": [
+            "BUTTON:@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/releases": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "bodyScrollHeight": 844,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 8,
+          "targetsBelow44Both": 3,
+          "interactiveTotal": 14,
+          "below44Sample": [
+            "BUTTON:@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        }
+      },
+      "errors": []
+    },
+    "tablet-768": {
+      "routes": {
+        "/today": {
+          "scrollWidth": 768,
+          "clientWidth": 768,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 15,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 34,
+          "below44Sample": [
+            "BUTTON:退出@36px",
+            "BUTTON:搜索@36px",
+            "BUTTON:A@36px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/projects": {
+          "scrollWidth": 768,
+          "clientWidth": 768,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 5,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 17,
+          "below44Sample": [
+            "BUTTON:退出@36px",
+            "BUTTON:搜索@36px",
+            "BUTTON:A@36px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/overview": {
+          "scrollWidth": 768,
+          "clientWidth": 768,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 11,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 28,
+          "below44Sample": [
+            "BUTTON:退出@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/blueprint": {
+          "scrollWidth": 768,
+          "clientWidth": 768,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 10,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 39,
+          "below44Sample": [
+            "BUTTON:退出@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/runs": {
+          "scrollWidth": 768,
+          "clientWidth": 768,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 13,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 30,
+          "below44Sample": [
+            "BUTTON:退出@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/data": {
+          "scrollWidth": 768,
+          "clientWidth": 768,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 13,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 30,
+          "below44Sample": [
+            "BUTTON:退出@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/review": {
+          "scrollWidth": 768,
+          "clientWidth": 768,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 13,
+          "targetsBelow44Both": 3,
+          "interactiveTotal": 30,
+          "below44Sample": [
+            "BUTTON:退出@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/quality": {
+          "scrollWidth": 768,
+          "clientWidth": 768,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 6,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 23,
+          "below44Sample": [
+            "BUTTON:退出@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/releases": {
+          "scrollWidth": 768,
+          "clientWidth": 768,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 8,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 25,
+          "below44Sample": [
+            "BUTTON:退出@36px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        }
+      },
+      "errors": []
+    },
+    "desktop-1440": {
+      "routes": {
+        "/today": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 15,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 34,
+          "below44Sample": [
+            "BUTTON:退出@34px",
+            "BUTTON:搜索@28px",
+            "BUTTON:A@32px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/projects": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 5,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 17,
+          "below44Sample": [
+            "BUTTON:退出@34px",
+            "BUTTON:搜索@28px",
+            "BUTTON:A@32px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/overview": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 11,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 28,
+          "below44Sample": [
+            "BUTTON:退出@34px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/blueprint": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 10,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 39,
+          "below44Sample": [
+            "BUTTON:退出@34px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/runs": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 13,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 30,
+          "below44Sample": [
+            "BUTTON:退出@34px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/data": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 13,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 30,
+          "below44Sample": [
+            "BUTTON:退出@34px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/review": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 13,
+          "targetsBelow44Both": 3,
+          "interactiveTotal": 30,
+          "below44Sample": [
+            "BUTTON:退出@34px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/quality": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 6,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 23,
+          "below44Sample": [
+            "BUTTON:退出@34px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        },
+        "/p/1/releases": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440,
+          "bodyScrollHeight": 1024,
+          "tinyTargets": 0,
+          "tinySample": [],
+          "targetsBelow44Height": 8,
+          "targetsBelow44Both": 2,
+          "interactiveTotal": 25,
+          "below44Sample": [
+            "BUTTON:退出@34px",
+            "A:数据项目@28px",
+            "A:甲方验收-冷链问答@28px"
+          ],
+          "clippedCount": 0,
+          "clippedSample": []
+        }
+      },
+      "errors": []
+    }
+  },
+  "findings": [
+    {
+      "id": "no-horizontal-overflow:mobile-390",
+      "ok": true,
+      "detail": "9 条路由均 scrollWidth <= 390"
+    },
+    {
+      "id": "no-5xx:mobile-390",
+      "ok": true,
+      "detail": "0 条 5xx / pageerror"
+    },
+    {
+      "id": "no-horizontal-overflow:tablet-768",
+      "ok": true,
+      "detail": "9 条路由均 scrollWidth <= 768"
+    },
+    {
+      "id": "no-5xx:tablet-768",
+      "ok": true,
+      "detail": "0 条 5xx / pageerror"
+    },
+    {
+      "id": "no-horizontal-overflow:desktop-1440",
+      "ok": true,
+      "detail": "9 条路由均 scrollWidth <= 1440"
+    },
+    {
+      "id": "no-5xx:desktop-1440",
+      "ok": true,
+      "detail": "0 条 5xx / pageerror"
+    },
+    {
+      "id": "keyboard:escape-returns-focus",
+      "ok": true,
+      "detail": "Escape 后焦点=\"打开主导航\""
+    },
+    {
+      "id": "keyboard:tab-reachable",
+      "ok": true,
+      "detail": "首次 Tab 焦点=BUTTON"
+    },
+    {
+      "id": "offline:no-success-claim",
+      "ok": true,
+      "detail": "离线提交未显示「成功/已提交」"
+    },
+    {
+      "id": "offline:network-actually-blocked",
+      "ok": true,
+      "detail": "离线期间阻断 1 个请求：POST /api/v1/projects/1/samples/s_5/versions/2/decisions"
+    },
+    {
+      "id": "offline:explicit-not-submitted",
+      "ok": true,
+      "detail": "提示=\"请求失败（如反复出现，请联系管理员并提供时间点）\" draftButton=true"
+    },
+    {
+      "id": "offline:draft-says-not-submitted",
+      "ok": true,
+      "detail": "草稿提示=\"已保存为本机草稿（待同步，未提交）：联网后需先登录并确认，系统不会后台自动提交待同步（未提交）：1 条。联网后请重新登录并确认，系统不会后台自动提交。\" error=\"请求失败（如反复出现，请联系管理员并提供时间点）\" storage=[studio.pending.v1.u1.w1]"
+    },
+    {
+      "id": "offline:draft-persisted-locally",
+      "ok": true,
+      "detail": "本机队列键已写入：studio.pending.v1.u1.w1"
+    }
+  ],
+  "keyboard": {
+    "focusAfterOpen": "",
+    "focusAfterEsc": "打开主导航"
+  },
+  "offline": {
+    "reviewPageReached": true,
+    "sampleRows": 4,
+    "reasonFieldPresent": true,
+    "state": {
+      "offlineNotice": "",
+      "submitError": "请求失败（如反复出现，请联系管理员并提供时间点）",
+      "successToast": [],
+      "draftButton": true
+    },
+    "blockedRequests": [
+      "POST /api/v1/projects/1/samples/s_5/versions/2/decisions"
+    ],
+    "draftState": {
+      "notice": "已保存为本机草稿（待同步，未提交）：联网后需先登录并确认，系统不会后台自动提交",
+      "pending": "待同步（未提交）：1 条。联网后请重新登录并确认，系统不会后台自动提交。",
+      "error": "请求失败（如反复出现，请联系管理员并提供时间点）",
+      "toast": "",
+      "queueRaw": "studio.pending.v1.u1.w1"
+    }
+  },
+  "note": "#160 第 3 轮：在 origin/main（f615353）上同条件复跑 T29 实测，13/13 通过，无回归。本轮无 UI 改动，因此不产出新的前后对比图（与第 2 轮同一取舍）。"
+}
