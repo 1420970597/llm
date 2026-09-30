@@ -81,7 +81,7 @@ func BuildConclusions(report model.EvalReport, notes AggregateNotes, status stri
 		}
 		conclusions = append(conclusions, fmt.Sprintf(
 			"最弱维度是「%s」（%s类），均分 %.2f%s。建议优先复查该维度对应的数据，%s。",
-			weakest.Name, categoryLabel(weakest.Category), weakest.Score,
+			weakest.Name, CategoryLabel(weakest.Category), weakest.Score,
 			comparison, dimensionAdvice(weakest)))
 	}
 
@@ -197,27 +197,37 @@ func dimensionAdvice(stat model.EvalDimensionStat) string {
 	}
 }
 
-// categoryLabel 把分类 key 翻译成中文。
-func categoryLabel(category string) string {
+// CategoryLabel 把维度分类 key 翻译成中文。
+//
+// 导出而不是只在包内用：分类 key 会在**两个地方**进入用户可见文本 ——
+// 报告结论（此包）与评估工作台的「维度管理」分组标题（API 下发给前端）。
+// 两边各写一张表必然漂移（#191 的成因），因此由本包提供唯一来源。
+//
+// 未知分类**原样返回**（不编造中文名）：分类是可自定义的取值域，
+// 把用户自建的分类名硬套一个中文词会让界面与库里的值不一致。
+// 内置 7 个分类的中文名有测试逐一断言（report_test.go）。
+func CategoryLabel(category string) string {
 	// 键必须与 catalog.go 的 Category* 常量一一对应。少一个键，结论里
 	// 就会把分类名原样吐给用户（例如「domain_fit 类」），中文报告里
 	// 混进英文 key 属于明显的交付缺陷。
-	labels := map[string]string{
-		CategoryLongChain:     "长链思考",
-		CategoryFaithfulness:  "事实忠实",
-		CategoryInstruction:   "指令遵循",
-		CategoryDomainFit:     "领域贴合",
-		CategoryAnswerQuality: "答案质量",
-		CategoryRobustness:    "鲁棒性",
-		CategoryEfficiency:    "推理效率",
-	}
-	if label, ok := labels[category]; ok {
+	if label, ok := categoryLabels[category]; ok {
 		return label
 	}
 	if category == "" {
 		return "未分类"
 	}
 	return category
+}
+
+// categoryLabels 是内置分类的中文名（唯一来源，见 CategoryLabel）。
+var categoryLabels = map[string]string{
+	CategoryLongChain:     "长链思考",
+	CategoryFaithfulness:  "事实忠实",
+	CategoryInstruction:   "指令遵循",
+	CategoryDomainFit:     "领域贴合",
+	CategoryAnswerQuality: "答案质量",
+	CategoryRobustness:    "鲁棒性",
+	CategoryEfficiency:    "推理效率",
 }
 
 // weakestItemsConclusion 描述最弱条目。

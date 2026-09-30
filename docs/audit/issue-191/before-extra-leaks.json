@@ -1,0 +1,101 @@
+{
+  "stage": "before",
+  "base": "http://127.0.0.1:3210",
+  "category": {
+    "hits": [
+      {
+        "tag": "strong",
+        "text": "answer_quality",
+        "title": ""
+      },
+      {
+        "tag": "strong",
+        "text": "domain_fit",
+        "title": ""
+      },
+      {
+        "tag": "strong",
+        "text": "efficiency",
+        "title": ""
+      },
+      {
+        "tag": "strong",
+        "text": "faithfulness",
+        "title": ""
+      },
+      {
+        "tag": "strong",
+        "text": "instruction",
+        "title": ""
+      },
+      {
+        "tag": "strong",
+        "text": "long_chain",
+        "title": ""
+      },
+      {
+        "tag": "strong",
+        "text": "robustness",
+        "title": ""
+      }
+    ],
+    "visibleEnumKeys": [
+      "answer_quality",
+      "domain_fit",
+      "efficiency",
+      "faithfulness",
+      "instruction",
+      "long_chain",
+      "robustness"
+    ]
+  },
+  "errorClass": {
+    "hits": [
+      {
+        "tag": "span",
+        "text": "错误类别：config_error · 尝试 1 次",
+        "title": ""
+      },
+      {
+        "tag": "span",
+        "text": "错误类别：config_error · 尝试 1 次",
+        "title": ""
+      },
+      {
+        "tag": "span",
+        "text": "错误类别：config_error · 尝试 1 次",
+        "title": ""
+      },
+      {
+        "tag": "span",
+        "text": "错误类别：config_error · 尝试 1 次",
+        "title": ""
+      },
+      {
+        "tag": "span",
+        "text": "错误类别：config_error · 尝试 1 次",
+        "title": ""
+      },
+      {
+        "tag": "span",
+        "text": "错误类别：config_error · 尝试 1 次",
+        "title": ""
+      },
+      {
+        "tag": "span",
+        "text": "错误类别：config_error · 尝试 1 次",
+        "title": ""
+      },
+      {
+        "tag": "span",
+        "text": "错误类别：config_error · 尝试 1 次",
+        "title": ""
+      }
+    ],
+    "visibleEnumKeys": [
+      "config_error"
+    ],
+    "bodyHasRawCode": false
+  },
+  "consoleErrors": []
+}

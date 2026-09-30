@@ -291,6 +291,13 @@ type BatchEvent = {
   id: number
   eventType: string
   eventTypeLabel?: string
+  /**
+   * detail 里 `errorClass` 的中文名（issue #191 第 2 轮）。
+   *
+   * 由服务端译好后下发（与 `eventTypeLabel` 同一做法）：detail 是自由 JSON，
+   * 前端只能拿到原始码。空值表示这个事件的 detail 没有 `errorClass`。
+   */
+  errorClassLabel?: string
   sequence: number
   detail?: unknown
   createdAt: string
@@ -314,7 +321,16 @@ function describeBatchEventDetail(event: BatchEvent): string {
 
   // 单元级失败：指出是哪个单元、哪类错误、能否重试。
   if (typeof d.itemId === 'number' && d.itemId > 0) parts.push(`单元 #${d.itemId}`)
-  if (typeof d.errorClass === 'string' && d.errorClass) parts.push(`错误类型 ${d.errorClass}`)
+  // 错误类型用服务端下发的同源中文名（issue #191 第 2 轮：以前显示原始码
+  // `config_error`）。不在这里再写一张映射表 —— 那张表会与 `ErrorClassLabel`
+  // 漂移。服务端未下发时**不编造**，直接省略这一段。
+  if (event.errorClassLabel) {
+    parts.push(`错误类型 ${event.errorClassLabel}`)
+  } else if (typeof d.errorClass === 'string' && d.errorClass) {
+    // 旧后端（不带 errorClassLabel）：给出中性兜底而**不回退成原始码** ——
+    // 回退等于把 #191 的缺陷形态再引回来。
+    parts.push('错误类型 其他错误')
+  }
   if (typeof d.retryable === 'boolean') parts.push(d.retryable ? '可重试' : '不可重试')
 
   // 缺口：给出可核对的数字，而不是只写「有缺口」。
@@ -896,8 +912,16 @@ export function FailuresPage() {
                   {failure.retryable ? '可重试' : '不可自动重试'}
                 </Tag>
               </div>
+              {/*
+                issue #191（第 2 轮扫描发现）：此处以前直接渲染 `failure.errorClass`（实测可见
+                `config_error`）。错误类别是内部取值域，与 #206 的事件键同一形态。
+                改为消费服务端下发的同源中文名，原码移入 `title`（不丢排查线索）；
+                与其下方的「建议：…」一起构成「是什么错 + 下一步做什么」。
+              */}
               <Text type="tertiary" size="small" className="block mt-1">
-                错误类别：{failure.errorClass} · 尝试 {failure.attempts} 次
+                错误类别：
+                <span title={failure.errorClass}>{failure.errorClassLabel || '未知错误'}</span>
+                {' '}· 尝试 {failure.attempts} 次
               </Text>
               {/* 可操作建议：只显示机器码会让用户不知道下一步做什么。 */}
               <Text size="small" className="block mt-1">

@@ -1,0 +1,87 @@
+{
+  "stage": "after",
+  "base": "http://127.0.0.1:3210",
+  "audit": {
+    "tableHead": [
+      "操作人",
+      "操作",
+      "资源",
+      "详情",
+      "时间"
+    ],
+    "resourceCells": [
+      {
+        "text": "批次 #1",
+        "title": ""
+      },
+      {
+        "text": "批次 #1",
+        "title": ""
+      },
+      {
+        "text": "样本版本 #8",
+        "title": ""
+      },
+      {
+        "text": "批次 #4",
+        "title": ""
+      },
+      {
+        "text": "工作区成员 #6",
+        "title": ""
+      },
+      {
+        "text": "批次 #1",
+        "title": ""
+      },
+      {
+        "text": "批次 #1",
+        "title": ""
+      },
+      {
+        "text": "批次 #1",
+        "title": ""
+      }
+    ],
+    "visibleEnumKeys": []
+  },
+  "timeline": {
+    "batch": "b_1",
+    "eventRows": [
+      {
+        "type": "批次请求重试",
+        "typeTitle": "BatchRetryFailedRequested"
+      },
+      {
+        "type": "批次已暂停",
+        "typeTitle": "BatchPaused"
+      },
+      {
+        "type": "批次请求重试",
+        "typeTitle": "BatchRetryFailedRequested"
+      },
+      {
+        "type": "批次已恢复",
+        "typeTitle": "BatchResumed"
+      },
+      {
+        "type": "批次已暂停",
+        "typeTitle": "BatchPaused"
+      },
+      {
+        "type": "批次请求重试",
+        "typeTitle": "BatchRetryFailedRequested"
+      },
+      {
+        "type": "批次完成",
+        "typeTitle": "BatchCompleted"
+      },
+      {
+        "type": "批次部分失败",
+        "typeTitle": "BatchPartialFailed"
+      }
+    ],
+    "visibleEnumKeys": []
+  },
+  "consoleErrors": []
+}

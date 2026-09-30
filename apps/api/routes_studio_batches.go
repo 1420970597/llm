@@ -484,6 +484,7 @@ func (app *application) listBatchFailures(w http.ResponseWriter, r *http.Request
 			ItemID:          item.ID,
 			ItemKey:         item.ItemKey,
 			ErrorClass:      item.ErrorClass,
+			ErrorClassLabel: model.ErrorClassLabel(item.ErrorClass),
 			ErrorMessage:    item.ErrorMessage,
 			Retryable:       item.Retryable,
 			SuggestedAction: model.ErrorClassAction(item.ErrorClass),
@@ -496,9 +497,12 @@ func (app *application) listBatchFailures(w http.ResponseWriter, r *http.Request
 
 // batchFailureView 是失败项的展示视图。
 type batchFailureView struct {
-	ItemID          int64  `json:"itemId"`
-	ItemKey         string `json:"itemKey"`
+	ItemID  int64  `json:"itemId"`
+	ItemKey string `json:"itemKey"`
+	// ErrorClass 是内部错误码（`config_error` 等）。界面显示的是 errorClassLabel，
+	// 保留原码是为了让前端能把它放进 `title`（排查惯例，与 #191 / #206 一致）。
 	ErrorClass      string `json:"errorClass"`
+	ErrorClassLabel string `json:"errorClassLabel"`
 	ErrorMessage    string `json:"errorMessage"`
 	Retryable       bool   `json:"retryable"`
 	SuggestedAction string `json:"suggestedAction"`
@@ -530,8 +534,14 @@ func (app *application) listBatchEvents(w http.ResponseWriter, r *http.Request) 
 	// `store.batchEventLabels`）下发。前端因此不需要第二张映射表，
 	// 也就不会出现「动态是中文、时间线是英文」这种漂移。
 	// 原始 eventType 保留不变，供排查与前端 title 使用。
+	//
+	// issue #191（第 2 轮全路由扫描）：detail 里的 `errorClass` 同样要译好后再下发
+	// —— 时间线以前会显示「错误类型 config_error」。用同一个 `ErrorClassLabel`。
 	for i := range events {
 		events[i].EventTypeLabel = store.DescribeBatchEvent(events[i].EventType)
+		if class := model.ErrorClassInDetail(events[i].Detail); class != "" {
+			events[i].ErrorClassLabel = model.ErrorClassLabel(class)
+		}
 	}
 	app.writeJSON(w, http.StatusOK, studio.NewPage(events, query.Limit, "sequence:desc",
 		func(event model.BatchEvent) studio.Cursor { return studio.Cursor{ID: int64(event.Sequence)} }))

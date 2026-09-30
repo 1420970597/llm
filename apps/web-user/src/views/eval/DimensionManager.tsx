@@ -50,6 +50,15 @@ function toDraft(dimension: EvalDimension): DimensionDraft {
 export function DimensionManager({ onChanged }: { onChanged?: () => void }) {
   const [dimensions, setDimensions] = useState<EvalDimension[]>([])
   const [categories, setCategories] = useState<string[]>([])
+  /**
+   * 分类 key → 中文名（issue #191 第 2 轮扫描发现的泄漏点）。
+   *
+   * 以前分组标题直接渲染 `item.category`，实测页面上出现 `answer_quality` /
+   * `domain_fit` 这样的内部 key。文案来自**服务端**（`internal/eval.CategoryLabel`
+   * 与报告结论同一条），前端不再自建第二张映射表 —— 两张表必然漂移，
+   * 那正是 #191 反复复现的成因。
+   */
+  const [categoryLabels, setCategoryLabels] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -66,7 +75,12 @@ export function DimensionManager({ onChanged }: { onChanged?: () => void }) {
         consoleApi.evalDimensionCategories(),
       ])
       setDimensions(list)
-      setCategories(categoryResult.categories ?? [])
+      const keys = categoryResult.categories ?? []
+      const names = categoryResult.labels ?? []
+      setCategories(keys)
+      // `labels` 与 `categories` 同序；旧后端不带该字段时退化为空表，
+      // 渲染侧会退回显示 key（不会崩），但 CI 守卫断言这一字段必须存在。
+      setCategoryLabels(Object.fromEntries(keys.map((key, index) => [key, names[index] ?? key])))
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -81,6 +95,8 @@ export function DimensionManager({ onChanged }: { onChanged?: () => void }) {
   const builtinCount = useMemo(() => dimensions.filter((item) => item.isBuiltin).length, [dimensions])
   const customCount = dimensions.length - builtinCount
   const grouped = useMemo(() => groupByCategory(dimensions, (item) => item.category), [dimensions])
+  /** 分类 key → 界面标题。未知/自定义分类原样显示（它们是用户自建的取值域）。 */
+  const categoryTitle = useCallback((category: string) => categoryLabels[category] || category || '未分类', [categoryLabels])
 
   const categoryOptions = useMemo(() => {
     const merged = new Set<string>([...categories, ...dimensions.map((item) => item.category)])
@@ -207,7 +223,7 @@ export function DimensionManager({ onChanged }: { onChanged?: () => void }) {
         {grouped.map(([category, items]) => (
           <div key={category} className="console-record-card">
             <div className="flex items-center justify-between gap-3">
-              <Text strong>{category}</Text>
+              <Text strong>{categoryTitle(category)}</Text>
               <Text className="console-caption">{items.length} 个维度</Text>
             </div>
             <div className="console-record-list mt-3">

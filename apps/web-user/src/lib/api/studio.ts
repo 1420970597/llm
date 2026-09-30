@@ -417,7 +417,11 @@ export type BatchDetail = {
 export type BatchFailure = {
   itemId: number
   itemKey: string
+  /** 内部错误码（`config_error` 等）。界面显示的是 `errorClassLabel`；
+   *  原码只用于 `title`（排查惯例，与 #191 / #206 一致）。 */
   errorClass: string
+  /** 错误类别的中文名（服务端下发，与 `model.ErrorClassLabel` 同源）。 */
+  errorClassLabel?: string
   errorMessage: string
   retryable: boolean
   suggestedAction: string
