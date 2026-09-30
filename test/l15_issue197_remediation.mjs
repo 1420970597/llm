@@ -46,6 +46,11 @@ const ENUM_LABELS = read('apps/web-user/src/lib/enumLabels.ts')
 const APP_TSX = read('apps/web-user/src/App.tsx')
 const ADMIN_PAGE = read('apps/web-user/src/studio/pages/AdminWorkspacePage.tsx')
 const CLEANING_META = read('apps/web-user/src/views/cleaning/cleaningMeta.ts')
+// #191 第 2 轮扫描发现的 3 条渲染路径（当时只有「人工跑一次」的浏览器扫描器覆盖）。
+const EVAL_DIMENSION_MANAGER = read('apps/web-user/src/views/eval/DimensionManager.tsx')
+const EVAL_REPORT = read('internal/eval/report.go')
+const EVAL_CATEGORY_ROUTE = read('apps/api/routes_eval_dimensions.go')
+const BATCH_FAILURE_VIEW = read('apps/api/routes_studio_batches.go')
 const CD_WORKFLOW = read('.github/workflows/cd.yml')
 const MARKDOWN_GUARD = read('test/l15_markdown_ui.mjs')
 
@@ -118,6 +123,55 @@ function problemsWithHonestBatchStatus(storeSrc, runnerSrc) {
   }
   if (!/shortfall/i.test(runnerSrc)) {
     problems.push('runner 终态事件没有带上缺口数字')
+  }
+  return problems
+}
+
+/**
+ * #191 第 2 轮扫描发现的 3 条渲染路径的**源码级**守卫。
+ *
+ * 为什么必须把它们从「浏览器扫描器」提到源码级：第 2 轮的扫描器
+ *（`docs/audit/issue-191/sweep-internal-keys.mjs`）需要真实栈 + 真实 Chromium，
+ * 而 CI 的 stack job **既没有浏览器也没有种子数据**（新栈上 `/p/1/...` 全是空页，
+ * 扫描会平凡返回 0 处泄漏）。把扫描器直接接进一个没有前提的 job 会造出一个
+ * ****永远绿的空转守卫** —— 它给人「已受保护」的错觉，比没有守卫更危险
+ *（本仓在 #192 已经因「手工清单空转」踩过一次）。
+ *
+ * 因此这里只断言扫描器当时抓到的**那三条具体路径**的接线不变式（代码形态），
+ * 它们是可判定且不需容器的；而扫描器本身保留为人工/lane 的**枚举工具**。
+ */
+function problemsWithSweepDiscoveredPaths(dimensionSrc, evalSrc, categoryRouteSrc, failureSrc, runSrc) {
+  const problems = []
+  const dimensionCode = stripComments(dimensionSrc)
+  const failureCode = stripComments(failureSrc)
+
+  // 路径 A：评估工作台「维度管理」的分组标题以前直接渲染 `item.category`（
+  // 实测暴露 answer_quality / domain_fit 等 7 个内置 key）。
+  if (/{?\s*item\.category\s*}?/.test(dimensionCode) && !/categoryLabels/.test(dimensionCode)) {
+    problems.push('DimensionManager 直接渲染 item.category（分组标题会露出内部 key）')
+  }
+  if (!/categoryLabels\[/.test(dimensionCode)) {
+    problems.push('DimensionManager 没有消费服务端下发的 categoryLabels（会诱发前端第二张表）')
+  }
+  // 文案的**唯一来源**必须在服务端，且经 categories 接口与 key 同序下发。
+  if (!/func CategoryLabel\(/.test(evalSrc)) {
+    problems.push('internal/eval 缺少 CategoryLabel（分类文案没有单一来源）')
+  }
+  if (!/json:"labels"/.test(categoryRouteSrc) && !/"labels"/.test(categoryRouteSrc)) {
+    problems.push('categories 接口没有下发 labels 字段（前端拿不到中文分类名）')
+  }
+
+  // 路径 B：批次失败卡的「错误类别」以前直接渲染 error_class（实测 config_error）。
+  if (!/ErrorClassLabel:\s*model\.ErrorClassLabel\(/.test(failureCode)) {
+    problems.push('失败卡没有经 model.ErrorClassLabel 下发中文类别（会露出内部码）')
+  }
+
+  // 路径 C：事件时间线的 detail 摘要（#191 第 2 轮第三条，与 #206 同形态）。
+  // 完整细节由 problemsWithBatchTimelineLabels 覆盖；这里只保证 errorClassLabel
+  // 是**消费**的而不是又落回原始码。
+  const runCode = stripComments(runSrc)
+  if (/d\.errorClass\s*}/.test(runCode) || /\$\{d\.errorClass\}/.test(runCode)) {
+    problems.push('时间线 detail 直接插值 d.errorClass（会露出内部码）')
   }
   return problems
 }
@@ -599,6 +653,9 @@ const checks = [
   ['#211 审阅状态不再裸渲染 + 说明未审阅内容口径',
     problemsWithReviewStatusLabels(read('apps/web-user/src/studio/pages/QualityPages.tsx'),
       REVIEW_PAGE, ENUM_LABELS)],
+  ['#191 扫描发现的 3 条渲染路径接线不变式',
+    problemsWithSweepDiscoveredPaths(EVAL_DIMENSION_MANAGER, EVAL_REPORT, EVAL_CATEGORY_ROUTE,
+      BATCH_FAILURE_VIEW, RUN_PAGE)],
   ['#206 批次事件时间线不再漏出内部事件键',
     problemsWithBatchTimelineLabels(RUN_PAGE, MODEL_BATCH, read('apps/api/routes_studio_batches.go'),
       ACTIVITY_STORE)],
@@ -656,6 +713,14 @@ const mutations = [
   ['#211 让颜色/文案映射退化', problemsWithReviewStatusLabels(
     read('apps/web-user/src/studio/pages/QualityPages.tsx'),
     REVIEW_PAGE.replace(/describeReviewStatus\(/g, 'noop('), ENUM_LABELS)],
+  ['#191 摘掉维度管理的分类中文映射', problemsWithSweepDiscoveredPaths(
+    EVAL_DIMENSION_MANAGER.replace(/categoryLabels\[/g, 'categoryKeys['), EVAL_REPORT,
+    EVAL_CATEGORY_ROUTE, BATCH_FAILURE_VIEW, RUN_PAGE)],
+  ['#191 让失败卡退回原始 error_class', problemsWithSweepDiscoveredPaths(
+    EVAL_DIMENSION_MANAGER, EVAL_REPORT, EVAL_CATEGORY_ROUTE,
+    BATCH_FAILURE_VIEW.replace(/ErrorClassLabel:\s*model\.ErrorClassLabel\(/,
+      'ErrorClassLabel: item.ErrorClass(').replace(
+      /[A-Za-z.]*ErrorClassLabel:/, 'ErrorClassRaw:'), RUN_PAGE)],
   ['#206 让时间线退回原样渲染 eventType', problemsWithBatchTimelineLabels(
     RUN_PAGE.replace(/event\.eventTypeLabel \|\| '批次事件'/, 'event.eventType'),
     MODEL_BATCH, read('apps/api/routes_studio_batches.go'), ACTIVITY_STORE)],

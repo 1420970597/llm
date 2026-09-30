@@ -1,0 +1,118 @@
+{
+  "base": "http://127.0.0.1:3210",
+  "scannedAt": "2026-09-30T06:01:02.349Z",
+  "routes": [
+    {
+      "key": "activity",
+      "route": "/activity",
+      "leaks": []
+    },
+    {
+      "key": "tools-cleaning",
+      "route": "/tools/cleaning",
+      "leaks": []
+    },
+    {
+      "key": "tools-evaluation",
+      "route": "/tools/evaluation",
+      "leaks": []
+    },
+    {
+      "key": "legacy-history",
+      "route": "/legacy/history",
+      "leaks": []
+    },
+    {
+      "key": "legacy-console-audit",
+      "route": "/console/admin/audit",
+      "leaks": []
+    },
+    {
+      "key": "legacy-console-operations",
+      "route": "/console/operations",
+      "leaks": []
+    },
+    {
+      "key": "batch-detail-b1",
+      "route": "/p/1/runs/b_1",
+      "leaks": []
+    },
+    {
+      "key": "batch-detail-b2",
+      "route": "/p/1/runs/b_2",
+      "leaks": []
+    },
+    {
+      "key": "batch-failures-b1",
+      "route": "/p/1/runs/b_1/failures",
+      "leaks": []
+    },
+    {
+      "key": "runs",
+      "route": "/p/1/runs",
+      "leaks": []
+    },
+    {
+      "key": "data",
+      "route": "/p/1/data",
+      "leaks": []
+    },
+    {
+      "key": "review",
+      "route": "/p/1/review",
+      "leaks": []
+    },
+    {
+      "key": "sample-detail",
+      "route": "/p/1/data/s_5",
+      "leaks": []
+    },
+    {
+      "key": "quality",
+      "route": "/p/1/quality",
+      "leaks": []
+    },
+    {
+      "key": "quality-new",
+      "route": "/p/1/quality/new",
+      "leaks": []
+    },
+    {
+      "key": "rules",
+      "route": "/p/1/rules",
+      "leaks": []
+    },
+    {
+      "key": "releases",
+      "route": "/p/1/releases",
+      "leaks": []
+    },
+    {
+      "key": "release-new",
+      "route": "/p/1/releases/new",
+      "leaks": []
+    },
+    {
+      "key": "today",
+      "route": "/today",
+      "leaks": []
+    },
+    {
+      "key": "projects",
+      "route": "/projects",
+      "leaks": []
+    },
+    {
+      "key": "settings-team",
+      "route": "/settings/team",
+      "leaks": []
+    },
+    {
+      "key": "help",
+      "route": "/help",
+      "leaks": []
+    }
+  ],
+  "totalLeaks": 0,
+  "consoleErrors": []
+}
