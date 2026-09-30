@@ -526,9 +526,112 @@ const batchListSQL = `
     ORDER BY created_at DESC, id DESC
     LIMIT $6`
 
+// ListDivergentBatchIDs 返回「状态与单元事实不符」的批次 ID。
+//
+// 为什么需要它（issue #201/#202）：收敛逻辑只在 `RefreshBatchCounts` 被调用时生效，
+// 而它此前只有两个调用点 —— runner 跑完、以及控制命令。一个已经跑完的历史批次
+// （b_1 永远是 running、b_2 永远是 completed+缺口）**没有任何路径**会再次触发它，
+// 于是修复只对未来的批次有效，已存在的矛盾状态永久保留。
+//
+// 本查询把「哪几条需要重算」变成可扫描的事实，由 worker 的维护循环定期调用。
+// 只用**已落库的列**判定，不回表算 batch_items：维护循环每 30 秒跑一次，
+// 让它随批次数量增长而变慢会拖垮整个 worker。两种形态各自都极小：
+//   - `completed` 但 `completed_units < planned_units`（#201 的静默少交付）；
+//   - `running` 但既无在途/待执行单元、也无活作业（#202 的僵尸）。
+//
+// 第二个条件里的「无活作业」与 `RefreshBatchCounts` 里的 activeJobs 判定
+// **必须一致**：否则会把一个刚被派发、还没建单元的正在跑的批次误判为僵尸
+// （维护循环空转），或者把真正的僵尸判成「正在跑」而永远不收。
+func (s *BatchStore) ListDivergentBatchIDs(ctx context.Context, limit int) ([]int64, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(ctx, `
+    SELECT id FROM batches
+    WHERE (status = 'completed' AND completed_units < planned_units)
+       OR (status = 'running'
+             AND NOT EXISTS (
+               SELECT 1 FROM batch_items i
+               WHERE i.batch_id = batches.id AND i.status IN ('pending', 'running'))
+             AND NOT EXISTS (
+               SELECT 1 FROM jobs j
+               WHERE j.batch_id = batches.id AND j.job_kind = $2
+                 AND j.status IN ('pending', 'leased', 'running')))
+    ORDER BY id
+    LIMIT $1`, limit, model.JobKindBatchGenerate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // GetBatch 读取单个批次；不存在返回 pgx.ErrNoRows。
 func (s *BatchStore) GetBatch(ctx context.Context, batchID int64) (model.Batch, error) {
-	return scanBatch(s.db.QueryRow(ctx, batchSelectByIDSQL, batchID))
+	batch, err := scanBatch(s.db.QueryRow(ctx, batchSelectByIDSQL, batchID))
+	if err != nil {
+		return model.Batch{}, err
+	}
+	// 失败原因不在批次行上（行里只有计数），必须在读取时从 batch_items 的事实分布
+	// 补上，否则缺口文案只能写死 —— 那正是 #208 的误导来源。
+	if batch.FailedUnits > 0 {
+		class, err := dominantItemFailureClass(ctx, s.db, batchID)
+		if err != nil {
+			return model.Batch{}, err
+		}
+		batch.DominantFailureClass = class
+	}
+	return batch, nil
+}
+
+// dominantItemFailureClass 返回失败单元里占比最高的 error_class（无失败项时为空串）。
+//
+// 用「占比最高」而不是「第一条」：一个批次可能同时有 config_error 与 rate_limited，
+// 而用户需要的是「主要原因是什么」，不是碰巧先写入的那条。
+// 并列时按 error_class 升序取第一个，保证同一份事实每次都得到同一个答案（可重放）。
+func dominantItemFailureClass(ctx context.Context, q queryable, batchID int64) (string, error) {
+	var class string
+	err := q.QueryRow(ctx, `
+    SELECT error_class FROM batch_items
+    WHERE batch_id = $1 AND status = 'failed' AND error_class <> ''
+    GROUP BY error_class
+    ORDER BY COUNT(*) DESC, error_class ASC
+    LIMIT 1`, batchID).Scan(&class)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return class, nil
+}
+
+// maxInt 返回两个整数里较大的一个（缺口计算用）。
+//
+// 需要它是因为缺口的分母有两个来源：`planned_units` 是用户意图，而实际写入
+// 的单元数可能更多（扩量、手动补单元）。两者取大就是「本来应该产出多少」。
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// queryable 是 pgxpool.Pool 与 pgx.Tx 的共同查询面。
+//
+// 抽出来是为了让 dominantItemFailureClass 同时服务「事务内重算」（RefreshBatchCounts）
+// 与「普通读取」（GetBatch），而不必写两份 SQL。
+type queryable interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 // BatchListQuery 是批次列表条件。
@@ -735,10 +838,14 @@ func (s *BatchStore) controlBatch(ctx context.Context, projectID, batchID, actor
 
 	// SELECT ... FOR UPDATE：两个并发控制命令必须串行，
 	// 否则「暂停 + 恢复」会以任意顺序生效，用户看到的最终状态取决于网络时序。
+	//
+	// planned_units 与这里一起读：resume 的缺口判定需要同一个快照下的
+	// 计划量（分两条语句读会与状态判定之间产生不一致的窗口）。
 	var status, controlState string
+	var planned int
 	if err := tx.QueryRow(ctx, `
-    SELECT status, control_state FROM batches WHERE id = $1 AND project_id = $2 FOR UPDATE`,
-		batchID, projectID).Scan(&status, &controlState); err != nil {
+    SELECT status, control_state, planned_units FROM batches WHERE id = $1 AND project_id = $2 FOR UPDATE`,
+		batchID, projectID).Scan(&status, &controlState, &planned); err != nil {
 		return model.Batch{}, err
 	}
 
@@ -748,6 +855,14 @@ func (s *BatchStore) controlBatch(ctx context.Context, projectID, batchID, actor
 	}
 
 	var nextStatus, nextControl string
+	// shouldEnqueue 表示本次控制动作**真的产生了待办工作**，因此需要派作业。
+	//
+	// issue #202：不区分这一点会派一个什么都不做的作业 —— 例如 b_1 的 12 个单元
+	// 全部已定稿、只剩不可重试失败，resume 无法产生任何新工作，入队只是空转一轮
+	// （还会多写一条事件，污染时间线）。
+	shouldEnqueue := false
+	// pendingUnits 已落库、但还没执行的单元数（runner 会处理它们）。
+	pendingUnits := 0
 	switch action {
 	case "pause":
 		if controlState == model.BatchControlPaused || controlState == model.BatchControlPauseRequested {
@@ -756,22 +871,52 @@ func (s *BatchStore) controlBatch(ctx context.Context, projectID, batchID, actor
 		nextControl = model.BatchControlPauseRequested
 		nextStatus = model.BatchStatusPauseRequested
 	case "resume":
-		if controlState == model.BatchControlRun {
+		// issue #201：暂停恢复之外，`resume` 还承载「补齐缺口」。
+		//
+		// b_2 的形态是 planned=4 / completed=1 / failed=0：既不在暂停、也不是
+		// 「重试失败项」（一个失败都没有），却少了 3 个从未被创建的单元。
+		// 旧实现只允许 `controlState != run` 的批次恢复，因此这条缺口在界面上
+		// 根本无路可走。现在 partial_failed（已定稿但产出不足）也允许走本路径。
+		gapBatch := status == model.BatchStatusPartialFailed
+		if controlState == model.BatchControlRun && !gapBatch {
 			return model.Batch{}, fmt.Errorf("%w：批次没有处于暂停状态", ErrBatchNotControllable)
 		}
 		nextControl = model.BatchControlRun
-		// 恢复后的状态取决于是否已经有失败项：有就是 partial_failed
-		//（界面据此继续显示「恢复失败项」入口）。
-		var failedCount int
+		var failedCount, counted int
 		if err := tx.QueryRow(ctx, `
-      SELECT COUNT(*) FROM batch_items WHERE batch_id = $1 AND status = 'failed'`,
-			batchID).Scan(&failedCount); err != nil {
+      SELECT COUNT(*) FILTER (WHERE status = 'failed'), COUNT(*)
+      FROM batch_items WHERE batch_id = $1`,
+			batchID).Scan(&failedCount, &counted); err != nil {
 			return model.Batch{}, err
 		}
-		if failedCount > 0 {
-			nextStatus = model.BatchStatusPartialFailed
-		} else {
+		if err := tx.QueryRow(ctx, `
+      SELECT COUNT(*) FROM batch_items WHERE batch_id = $1 AND status IN ('pending', 'running')`,
+			batchID).Scan(&pendingUnits); err != nil {
+			return model.Batch{}, err
+		}
+		// uncreated 是「计划里有、但库里连一行单元都没有」的个数。
+		//
+		// 它才是 resume 能创造的**新**工作（runner 的 ensureItems 会把缺失的键补出来）。
+		// 已存在的失败行不在其中 —— 那些只有 `retry-failed`（重置可重试项）能处理，
+		// 而把不可重试的失败当作「待办」只会重复得到同样的失败并再花一次钱。
+		uncreated := planned - counted
+		if uncreated < 0 {
+			uncreated = 0
+		}
+		switch {
+		case pendingUnits > 0 || uncreated > 0:
+			// 有待办或有待创建的单元：回到运行态并派作业（runner 是幂等的，
+			// 已成功的单元不会被重跑）。
 			nextStatus = model.BatchStatusRunning
+			shouldEnqueue = true
+		case failedCount > 0:
+			// 没有任何待办但仍有失败项（含不可重试）：落到「部分完成」，
+			// 缺口可见。旧实现无条件声明 running，于是「继续」把批次变成
+			// 一个永远不会推进的僵尸（这正是 #202 的实测形态）。
+			nextStatus = model.BatchStatusPartialFailed
+		default:
+			// 既无待办也无缺口也无失败：产出已全部定稿。
+			nextStatus = model.BatchStatusCompleted
 		}
 	default:
 		return model.Batch{}, fmt.Errorf("%w：不支持的控制动作", ErrBatchNotControllable)
@@ -806,9 +951,22 @@ func (s *BatchStore) controlBatch(ctx context.Context, projectID, batchID, actor
 		Resource:   "batch",
 		ResourceID: strconv.FormatInt(batchID, 10),
 		ProjectID:  projectID,
-		Reason:     fmt.Sprintf("status=%s control=%s", nextStatus, nextControl),
+		Reason:     fmt.Sprintf("status=%s control=%s pending=%d", nextStatus, nextControl, pendingUnits),
 	}); err != nil {
 		return model.Batch{}, err
+	}
+
+	// issue #202(a)：resume 必须**同时**建新作业，而不只是改状态。
+	//
+	// 旧实现只改 status/control_state 并写事件，不创建 job、也不写 outbox，
+	// 因此对一个「作业早已 succeeded 结束」的批次点「继续」等于把状态指针拨回
+	// running 后什么都不做 —— 状态说在跑，事实一条都不会再跑。
+	// 入队必须与状态变更在**同一事务**：分两次写会留下「状态回运行但作业丢了」
+	// 的半成品，而那正是本条缺陷的形态。
+	if action == "resume" && shouldEnqueue {
+		if err := enqueueBatchGenerateTx(ctx, tx, projectID, batchID, actorID, "resume"); err != nil {
+			return model.Batch{}, err
+		}
 	}
 
 	batch, err := scanBatch(tx.QueryRow(ctx, batchSelectByIDSQL, batchID))
@@ -827,6 +985,39 @@ func controlVerb(action string) string {
 		return "恢复"
 	}
 	return "暂停"
+}
+
+// enqueueBatchGenerateTx 为批次派发一个新的生成作业（与调用方的事务同生共死）。
+//
+// issue #202(a)：`resume` 以前只改状态不建作业，因此对「作业早已 succeeded 结束」
+// 的批次点「继续」等于什么都不做 —— 状态指针拨回 running，而没有任何东西会再跑。
+//
+// 幂等键取「该批次已有生成作业数 + 1」：它在本函数调用时已被调用方
+// `SELECT ... FOR UPDATE` 锁住的批次事务里求值，因此并发恢复不会得到同一个序号；
+// 而同一个事务重放时会得到同一个键，于是不会派发两个作业。
+// 直接复用批次 ID 当键是错的 —— 后续每次恢复都会被 ON CONFLICT DO NOTHING 吞掉。
+func enqueueBatchGenerateTx(ctx context.Context, tx pgx.Tx, projectID, batchID, actorID int64, reason string) error {
+	var sequence int
+	if err := tx.QueryRow(ctx, `
+    SELECT COUNT(*) + 1 FROM jobs WHERE batch_id = $1 AND job_kind = $2`,
+		batchID, model.JobKindBatchGenerate).Scan(&sequence); err != nil {
+		return err
+	}
+	project := projectID
+	batch := batchID
+	actor := actorID
+	_, _, err := EnqueueJobTx(ctx, tx, EnqueueJobInput{
+		ProjectID:      &project,
+		BatchID:        &batch,
+		Kind:           model.JobKindBatchGenerate,
+		IdempotencyKey: fmt.Sprintf("batch:%d:generate:%d", batchID, sequence),
+		CreatedBy:      &actor,
+		Payload: map[string]any{
+			"batchId": batchID,
+			"reason":  reason,
+		},
+	})
+	return err
 }
 
 // MarkRetryableItemsPending 把失败且可重试的单元重置为待执行。
@@ -865,18 +1056,24 @@ func (s *BatchStore) MarkRetryableItemsPending(ctx context.Context, projectID, b
 	}
 	reset := int(tag.RowsAffected())
 
-	// 批次回到运行态（或 partial_failed，取决于是否还有其它失败项）。
-	if _, err := tx.Exec(ctx, `
-    UPDATE batches
-    SET status = CASE
-          WHEN status = 'failed' THEN 'partial_failed'
-          WHEN status = 'completed' THEN status
-          ELSE 'running'
-        END,
-        control_state = 'run',
-        updated_at = NOW()
-    WHERE id = $1`, batchID); err != nil {
-		return 0, err
+	// issue #202：重置 0 项时**不能**把批次丢回 running。
+	//
+	// 真实形态（b_1）：12 个单元全是 `config_error` 且 `retryable=false`，
+	// 因此这里重置 0 条，而旧实现仍无条件把状态改成 running —— 批次于是成为
+	// 「状态说在跑、事实一条都不会再跑」的僵尸，用户只能反复点控制按钮
+	//（每点一次多写一条事件，污染时间线）。
+	//
+	// 修法：只有真的重置出待执行项才回到 running；否则**不动状态**（不回声明
+	// 一个事实不支持的运行态，收敛由计数重算与 resume 路径负责）。
+	if reset > 0 {
+		if _, err := tx.Exec(ctx, `
+      UPDATE batches
+      SET status = CASE WHEN status = 'failed' THEN 'partial_failed' ELSE 'running' END,
+          control_state = 'run',
+          updated_at = NOW()
+      WHERE id = $1`, batchID); err != nil {
+			return 0, err
+		}
 	}
 
 	if err := appendBatchEventTx(ctx, tx, batchID, projectID, model.BatchEventRetryRequested, actorID, map[string]any{
@@ -898,6 +1095,14 @@ func (s *BatchStore) MarkRetryableItemsPending(ctx context.Context, projectID, b
 		Reason:     fmt.Sprintf("resetItems=%d", reset),
 	}); err != nil {
 		return 0, err
+	}
+
+	// issue #202(a) 的同形态：重置出待执行单元却**不派作业**，一样会让批次成为
+	// 僵尸（状态说在跑、事实一条都不会再跑）。只有真的重置出单元时才入队。
+	if reset > 0 {
+		if err := enqueueBatchGenerateTx(ctx, tx, projectID, batchID, actorID, "retry-failed"); err != nil {
+			return 0, err
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -1561,28 +1766,68 @@ func (s *BatchStore) RefreshBatchCounts(ctx context.Context, batchID int64) (mod
 		return model.Batch{}, err
 	}
 
-	// 状态聚合：终态由「所有单元都定稿」推导，而不是由调用方声明。
-	// 这样「worker 崩在最后一步」不会留下一个永远 running 的批次。
+	// activeJobs 是「本批次是否还有一个活作业」。
 	//
-	// issue #190："completed" 只允许在"计划量真的都产出了"时出现。
-	// 以前 completed_units 在 planned_units 之内就置 completed，于是
-	// 「计划 12、完成 1」的批次会显示绿色「已完成」，用户据此以为方案已验证 ——
-	// 那是比直接失败更危险的静默少交付。现在两者不相等就降级为 partial_failed，
-	// 并让界面显示「部分完成（1/12）」。
+	// 为什么聚合需要知道它（issue #202）：一个 `running` 但还没落任何单元的批次
+	// 有两种完全不同的含义 —— 「runner 刚被派发、还没建单元」（正常，不能动）
+	// 与「没有任何东西会再跑」（僵尸，必须收敛）。两者的唯一区别就是有没有活作业。
+	// 把它写进**推导本身**（而不是依靠调用方先过滤）是为了让不变式自洽：
+	// 以后新增调用点也不会把正在跑的批次误判为僵尸。
+	var activeJobs int
+	if err := tx.QueryRow(ctx, `
+    SELECT COUNT(*) FROM jobs
+    WHERE batch_id = $1 AND job_kind = $2
+      AND status IN ('pending', 'leased', 'running')`,
+		batchID, model.JobKindBatchGenerate).Scan(&activeJobs); err != nil {
+		return model.Batch{}, err
+	}
+
+	// 状态聚合：终态由「事实是否已定稿」推导，而不是由调用方声明。
+	//
+	// issue #190："completed" 只允许在"计划量真的都产出了"时出现 ——
+	// 「计划 12、完成 1」显示绿色「已完成」是比直接失败更危险的静默少交付。
+	//
+	// issue #201/#202：聚合必须**收敛**，不能把不一致的状态当作不可变的历史事实。
+	//   - #201：`completed` 且 `planned > completed`（b_2 计划 4 只产出 1）永远停在
+	//     「已完成」，而 BatchCapabilitiesFor 对 completed 返回全 false —— 用户连
+	//     一个可点的按钮都没有。终态必须**仍然复核缺口**。
+	//   - #202：所有单元已定稿、无在途作业，状态却仍是 `running`（b_1 12/12 失败），
+	//     批次成为「状态说在跑、事实一条都不会再跑」的僵尸。
+	//
+	// 两个前提决定了推导的形态：
+	//   1. 只有「无活作业且无在途单元」时才允许判终态。否则会把一个刚被派发、
+	//      runner 还没建单元的正在跑的批次抢先判死 —— 这是本函数最危险的误判方向。
+	//   2. 推导必须是**幂等的不动点**：对同一份事实重复调用必须得到同一个状态，
+	//      否则维护循环会每 30 秒改一次状态而永远不收敛（本函数的第一版就犯过这个错，
+	//      被 TestListDivergentBatchIDsFindsStaleStates 抓出）。
 	nextStatus := status
 	switch {
-	case status == model.BatchStatusCompleted || status == model.BatchStatusFailed:
-		// 终态不被计数刷新改写（历史事实）。
 	case status == model.BatchStatusPauseRequested || status == model.BatchStatusPaused:
-		// 暂停态保持：控制意图高于计数推导。
-	case total > 0 && completed+failed == total && failed > 0:
-		nextStatus = model.BatchStatusPartialFailed
-	case total > 0 && completed == total && completed >= planned:
-		nextStatus = model.BatchStatusCompleted
-	case total > 0 && completed+failed == total && completed < planned:
-		// 所有单元都已定稿，但产出少于计划：缺口必须可见，不能叫「已完成」。
-		nextStatus = model.BatchStatusPartialFailed
-	case total > 0 && failed > 0:
+		// 暂停态保持：控制意图高于计数推导（在途请求仍会完成，见 §2.4）。
+	case status == model.BatchStatusFailed:
+		// failed 是**致命**终态（继续重试没有意义）。completed 不在这里 ——
+		// 它必须复核缺口（#201）。
+	case activeJobs == 0 && inFlight == 0:
+		// 已定稿：按已完成/失败/缺口三个事实分叉。这一支是幂等的 ——
+		// 同样的事实每次得到同样的结果。
+		settled := completed + failed
+		switch {
+		case failed > 0:
+			// 有失败项（含不可重试的）永远是 partial_failed，缺口可见。
+			nextStatus = model.BatchStatusPartialFailed
+		case planned == 0 && settled == 0:
+			// 计划量为 0 的空批次没有待办工作，「已完成」才是诚实描述。
+			nextStatus = model.BatchStatusCompleted
+		case completed >= planned && settled >= planned:
+			nextStatus = model.BatchStatusCompleted
+		default:
+			// 产出少于计划（或计划单元从未被创建）：缺口必须可见，
+			// 不能叫「已完成」。
+			nextStatus = model.BatchStatusPartialFailed
+		}
+	case failed > 0 && status != model.BatchStatusQueued:
+		// 还有在途/待执行单元且有失败：缺口已成立（queued 除外 —— 那是刚创建、
+		// 还没开始跑，不应在第一个单元就把它标成「部分失败」）。
 		nextStatus = model.BatchStatusPartialFailed
 	}
 
@@ -1602,9 +1847,44 @@ func (s *BatchStore) RefreshBatchCounts(ctx context.Context, batchID int64) (mod
 		return model.Batch{}, err
 	}
 
+	// 状态被修正时必须留一条事件（issue #201）。
+	//
+	// b_2 的实测形态是：时间线只有 BatchQueued + BatchCompleted 两条，而实际上
+	// 只产出了 1/4。用户看到「已完成」，时间线里又找不到任何解释缺口的记录 ——
+	// 界面因此自相矛盾。静默地从 completed 改成 partial_failed 同样不够：
+	// 下一轮看到旧截图的人依然不知道发生了什么。事件是这里唯一的解释载体。
+	//
+	// 只在**推导出的终态与原状态不同且原状态已是终态**时写：正常路径
+	// （running → completed）由 runner 自己的终态事件负责，不要写两条。
+	prevTerminal := status == model.BatchStatusCompleted || status == model.BatchStatusFailed ||
+		status == model.BatchStatusPartialFailed
+	if nextStatus != status && prevTerminal && nextStatus == model.BatchStatusPartialFailed {
+		if err := appendBatchEventTx(ctx, tx, batchID, projectID, model.BatchEventPartialFailed, 0, map[string]any{
+			"batchId":      batchID,
+			"previous":     status,
+			"planned":      maxInt(planned, total),
+			"completed":    completed,
+			"failed":       failed,
+			"shortfall":    maxInt(planned, total) - completed,
+			"correctionOf": status,
+			"reason":       "状态与单元事实不符：计划量未被产出，已从终态修正为部分完成",
+		}); err != nil {
+			return model.Batch{}, err
+		}
+	}
+
 	batch, err := scanBatch(tx.QueryRow(ctx, batchSelectByIDSQL, batchID))
 	if err != nil {
 		return model.Batch{}, err
+	}
+	// 缺口原因必须随聚合一起刷新：调用方（runner、控制命令）拿到返回值后
+	// 直接渲染缺口文案，若这里不填，它就只能退化成中性描述（#208）。
+	if batch.FailedUnits > 0 {
+		class, err := dominantItemFailureClass(ctx, tx, batchID)
+		if err != nil {
+			return model.Batch{}, err
+		}
+		batch.DominantFailureClass = class
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return model.Batch{}, err

@@ -239,6 +239,12 @@ type Batch struct {
 	LeaseOwner    string          `json:"leaseOwner,omitempty"`
 	LeaseUntil    *time.Time      `json:"leaseUntil,omitempty"`
 
+	// DominantFailureClass 是失败单元里占比最高的 error_class（读取层填入）。
+	//
+	// 它**不是**持久列：批次行只存计数，原因来自 batch_items 的事实分布。
+	// issue #208：缺口文案必须由失败事实推导，而不是写死一句「覆盖率不足」。
+	DominantFailureClass string `json:"dominantFailureClass,omitempty"`
+
 	CreatedBy  *int64     `json:"createdBy,omitempty"`
 	StartedAt  *time.Time `json:"startedAt,omitempty"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
@@ -262,6 +268,13 @@ func (batch Batch) Shortfall() int {
 //
 // 只有**已定稿**的批次才允许宣称缺口：把还在跑的批次标成「缺口」会让用户
 // 以为已经跑完了。
+//
+// issue #208：以前对**所有**缺口都写「覆盖率不足或无素材接地」，而能落到运行期的
+// 缺口绝大多数来自失败事实（实测 b_1 的 12 条单元全是 config_error 缺模型连接）。
+// 那句文案把用户指向覆盖矩阵，真正的修复动作却在「生成」节点的模型连接 ——
+// 照着错提示改配额是无效操作，且会让人怀疑系统。因此原因改为从
+// DominantFailureClass（失败单元的 error_class 分布）推导，且与「异常恢复」页
+// 用的是**同一个** ErrorClassAction，两处不会各说一套。
 func (batch Batch) ShortfallNote() string {
 	shortfall := batch.Shortfall()
 	if shortfall == 0 {
@@ -272,8 +285,20 @@ func (batch Batch) ShortfallNote() string {
 	if !terminal {
 		return ""
 	}
-	return fmt.Sprintf("计划 %d，实际产出 %d，缺口 %d：覆盖率不足或无素材接地，请补充方向配额/素材后重跑",
-		batch.PlannedUnits, batch.CompletedUnits, shortfall)
+	head := fmt.Sprintf("计划 %d，实际产出 %d，缺口 %d", batch.PlannedUnits, batch.CompletedUnits, shortfall)
+	switch {
+	case batch.FailedUnits > 0 && batch.DominantFailureClass != "":
+		// 与失败详情页同源：直接给出可操作的下一步。
+		return head + "：" + ErrorClassAction(batch.DominantFailureClass)
+	case batch.FailedUnits > 0:
+		return fmt.Sprintf("%s：有 %d 个单元失败，请到「异常恢复」页按失败原因修复后新建批次",
+			head, batch.FailedUnits)
+	default:
+		// 一条失败都没有却有缺口：说明计划单元从未被创建或被跳过。
+		// 不能断言是覆盖率问题 —— 那条断言正是 #208 的误导来源。
+		return fmt.Sprintf("%s：有 %d 个计划单元没有产出（未创建或被跳过），请先查看批次事件确认原因后再新建批次",
+			head, shortfall)
+	}
 }
 
 // BatchStep 是一个阶段的进度。

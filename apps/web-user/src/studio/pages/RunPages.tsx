@@ -665,10 +665,37 @@ export function BatchDetailPage() {
             产出缺口：计划 {detail.batch.plannedUnits}，实际产出 {detail.batch.completedUnits}，缺口{' '}
             {detail.batch.shortfallUnits ?? detail.batch.plannedUnits - detail.batch.completedUnits}
           </Text>
-          <Text type="tertiary" size="small">
-            {detail.batch.shortfallNote ||
-              '覆盖矩阵的方向配额或素材接地不足；补齐后再启动下一批，不要把它当作已完成。'}
-          </Text>
+          {/* 原因来自服务端（#208）：它按失败单元的 error_class 分布推导，
+              与「异常恢复」页给出的是同一句建议。这里**不再**写第二份文案 ——
+              写死的「覆盖率不足」曾把用户指向覆盖矩阵，而真因是缺模型连接。 */}
+          {detail.batch.shortfallNote ? (
+            <Text type="tertiary" size="small">
+              {detail.batch.shortfallNote}
+            </Text>
+          ) : (
+            <Text type="tertiary" size="small">
+              原因尚未确定：请打开「异常恢复」查看失败单元，或查看事件时间线。
+            </Text>
+          )}
+          {/* issue #201：缺口必须**有出口**。b_2（计划 4/产出 1/失败 0）以前同时
+              显示「已完成」与「缺口 3」却无任何可点按钮 —— 用户拿不到任何动作。
+              这里给出「补齐缺口」：它走批次 resume（同一快照、幂等），
+              由服务端的 PlanUnits 把从未被创建的单元补出来。 */}
+          {capabilities.canResume && status === 'partial_failed' ? (
+            <div className="mt-3">
+              <Button
+                size="small"
+                icon={<Play size={13} />}
+                loading={busy}
+                onClick={() => void control('resume')}
+              >
+                补齐缺口（继续本批次）
+              </Button>
+              <Text type="tertiary" size="small" className="ml-2">
+                同一批次、同一快照；已成功的内容不会被重跑
+              </Text>
+            </div>
+          ) : null}
         </Card>
       ) : null}
 
