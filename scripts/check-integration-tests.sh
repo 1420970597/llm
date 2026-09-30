@@ -31,6 +31,10 @@ fi
 #   api         createDataset 的 provider/storage 前置校验（真实 DB 才有意义）
 required="TestRunAppliesAllMigrationsAndIsIdempotent
 TestCreateExperimentFreezesSnapshot
+TestRefreshBatchCountsCorrectsStaleCompletedWithShortfall
+TestRefreshBatchCountsConvergesZombieRunningBatch
+TestResumeBatchEnqueuesJobWithoutClaimingZombie
+TestListDivergentBatchIDsFindsStaleStates
 TestMissingScoreIsNotZero
 TestResumeDoesNotOverwriteScoredItems
 TestCreateExperimentRejectsSelfJudgingAndGRPO

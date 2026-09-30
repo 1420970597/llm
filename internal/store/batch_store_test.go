@@ -1535,3 +1535,340 @@ func TestRefreshBatchCountsNeverClaimsCompletedWithShortfall(t *testing.T) {
 		t.Fatalf("无缺口时不得报告缺口：%d / %q", final.Shortfall(), final.ShortfallNote())
 	}
 }
+
+// TestRefreshBatchCountsCorrectsStaleCompletedWithShortfall 覆盖 issue #201：
+// **历史终态路径**必须能被计数刷新纠正。
+//
+// 与 TestRefreshBatchCountsNeverClaimsCompletedWithShortfall 的区别：
+// 那条覆盖「推导路径」（状态还在 running 时就不置 completed），
+// 本条覆盖「状态已经是 completed 但事实只产出 1/4」的真实形态（实测 b_2）。
+// 旧实现在终态分支直接提前返回，于是这类批次永远显示绿色「已完成」、
+// 同时挂着「缺口 3」，而 BatchCapabilitiesFor 对 completed 返回全 false ——
+// 用户拿不到任何出口。
+func TestRefreshBatchCountsCorrectsStaleCompletedWithShortfall(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+
+	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 4))
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	item, _, _ := fixture.batches.EnsureBatchItem(ctx, batch.ID, fixture.projectID, "d/d#1", nil)
+	if _, _, err := fixture.batches.CommitBatchItemSuccess(ctx, batch.ID, fixture.projectID, item.ID, AppendSampleVersionInput{
+		SampleKey: "d/d#1", TargetKind: model.TargetKindSFT, Payload: sftPayload("唯一产出"),
+	}); err != nil {
+		t.Fatalf("commit success: %v", err)
+	}
+
+	// 手工构造 b_2 的历史形态：状态被写成 completed，而事实只有 1/4。
+	if _, err := fixture.pool.Exec(ctx, `
+    UPDATE batches SET status = 'completed', completed_units = 1, finished_at = NOW()
+    WHERE id = $1`, batch.ID); err != nil {
+		t.Fatalf("手工置为历史终态: %v", err)
+	}
+
+	// 修复前：这条 UPDATE 之后状态仍是 completed（终态分支提前返回）。
+	refreshed, err := fixture.batches.RefreshBatchCounts(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("RefreshBatchCounts: %v", err)
+	}
+	if refreshed.Status == model.BatchStatusCompleted {
+		t.Fatal("产出 1/4 的历史终态必须被纠正为 partial_failed，而不是继续显示「已完成」")
+	}
+	if refreshed.Status != model.BatchStatusPartialFailed {
+		t.Fatalf("应纠正为 partial_failed，实际 %s", refreshed.Status)
+	}
+	if refreshed.Shortfall() != 3 {
+		t.Fatalf("缺口必须是 4-1=3，实际 %d", refreshed.Shortfall())
+	}
+	// 缺口文案必须指出真实原因（这里无失败项，因此是「未创建/被跳过」而非覆盖率）。
+	if note := refreshed.ShortfallNote(); note == "" {
+		t.Fatal("定稿批次有缺口时必须给出中文原因")
+	} else if strings.Contains(note, "覆盖率不足") {
+		t.Fatalf("无失败项的缺口不得断言是覆盖率问题（#208 的误导来源），实际 %q", note)
+	}
+
+	// 时间线必须留下纠正记录，否则界面自相矛盾（只有 BatchQueued + BatchCompleted）。
+	events, err := fixture.batches.ListBatchEvents(ctx, batch.ID, 20)
+	if err != nil {
+		t.Fatalf("ListBatchEvents: %v", err)
+	}
+	corrected := false
+	for _, event := range events {
+		if event.EventType != model.BatchEventPartialFailed {
+			continue
+		}
+		var detail map[string]any
+		if err := json.Unmarshal(event.Detail, &detail); err != nil {
+			t.Fatalf("event detail 必须是 JSON: %v", err)
+		}
+		if detail["correctionOf"] == model.BatchStatusCompleted {
+			corrected = true
+		}
+	}
+	if !corrected {
+		t.Fatal("状态被纠正时必须写一条带 correctionOf 的事件，否则时间线无法解释为什么从「已完成」变成了「部分完成」")
+	}
+
+	// 边界：无缺口的历史 completed 不得被改写（正常路径不能被打扰）。
+	whole, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1))
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	wholeItem, _, _ := fixture.batches.EnsureBatchItem(ctx, whole.ID, fixture.projectID, "d/d#1", nil)
+	if _, _, err := fixture.batches.CommitBatchItemSuccess(ctx, whole.ID, fixture.projectID, wholeItem.ID, AppendSampleVersionInput{
+		SampleKey: "d/d#1", TargetKind: model.TargetKindSFT, Payload: sftPayload("完整产出"),
+	}); err != nil {
+		t.Fatalf("commit success: %v", err)
+	}
+	kept, err := fixture.batches.RefreshBatchCounts(ctx, whole.ID)
+	if err != nil {
+		t.Fatalf("RefreshBatchCounts: %v", err)
+	}
+	if kept.Status != model.BatchStatusCompleted {
+		t.Fatalf("产出齐全的批次必须保持 completed，实际 %s", kept.Status)
+	}
+}
+
+// TestRefreshBatchCountsConvergesZombieRunningBatch 覆盖 issue #202(c)：
+// 「全部单元失败 + 无在途作业 + 无待执行作业」不得停留在 running。
+//
+// 实测形态（b_1）：12/12 单元 config_error，status=running，jobs 表没有对应作业。
+// 批次成为「状态说在跑、事实一条都不会再跑」的僵尸，/today 的「进行中批次」
+// 会长期挂着它。
+func TestRefreshBatchCountsConvergesZombieRunningBatch(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+
+	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 3))
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	for _, key := range []string{"d/d#1", "d/d#2", "d/d#3"} {
+		item, _, err := fixture.batches.EnsureBatchItem(ctx, batch.ID, fixture.projectID, key, nil)
+		if err != nil {
+			t.Fatalf("ensure %s: %v", key, err)
+		}
+		// retryable=false 正是实测形态（config_error 被 runner 标成不可重试）。
+		if _, err := fixture.batches.CommitBatchItemFailure(ctx, batch.ID, item.ID,
+			model.ErrorClassConfig, "missing model connection", false); err != nil {
+			t.Fatalf("commit failure %s: %v", key, err)
+		}
+	}
+
+	refreshed, err := fixture.batches.RefreshBatchCounts(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("RefreshBatchCounts: %v", err)
+	}
+	if refreshed.Status == model.BatchStatusRunning {
+		t.Fatal("全部单元已定稿且无在途作业时不得停留在 running（#202 的僵尸形态）")
+	}
+	if refreshed.Status != model.BatchStatusPartialFailed {
+		t.Fatalf("全部失败必须收敛为 partial_failed，实际 %s", refreshed.Status)
+	}
+	if refreshed.ShortfallNote() == "" {
+		t.Fatal("僵尸批次收敛后必须能解释缺口原因")
+	}
+	// 缺口原因必须来自失败事实（#208），并且与失败详情页同源。
+	if refreshed.DominantFailureClass != model.ErrorClassConfig {
+		t.Fatalf("缺口原因必须来自失败单元的 error_class 分布，实际 %q", refreshed.DominantFailureClass)
+	}
+	note := refreshed.ShortfallNote()
+	if !strings.Contains(note, "模型连接") {
+		t.Fatalf("缺口文案必须指向真实修复动作（选择模型连接），而不是覆盖率/配额，实际 %q", note)
+	}
+}
+
+// TestListDivergentBatchIDsFindsStaleStates 覆盖 #201/#202 的**可达性**：
+// 收敛逻辑只有在能被触达时才有意义。
+//
+// 实测教训：`RefreshBatchCounts` 此前只由 runner 跑完与控制命令调用，因此
+// 已经跑完的历史批次永远走不到它 —— 修复只对未来的批次有效。
+// 本查询把「哪几条与事实不符」变成可扫描的事实，由 worker 维护循环定期调用。
+func TestListDivergentBatchIDsFindsStaleStates(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+
+	// 正常批次（completed 且产出齐全）：不得出现在结果里。
+	healthy, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1))
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	okItem, _, _ := fixture.batches.EnsureBatchItem(ctx, healthy.ID, fixture.projectID, "d/d#1", nil)
+	if _, _, err := fixture.batches.CommitBatchItemSuccess(ctx, healthy.ID, fixture.projectID, okItem.ID, AppendSampleVersionInput{
+		SampleKey: "d/d#1", TargetKind: model.TargetKindSFT, Payload: sftPayload("完整"),
+	}); err != nil {
+		t.Fatalf("commit success: %v", err)
+	}
+	if _, err := fixture.batches.RefreshBatchCounts(ctx, healthy.ID); err != nil {
+		t.Fatalf("RefreshBatchCounts: %v", err)
+	}
+
+	// 不一致 1：completed 但产出不足（#201）。
+	stale, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 4))
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	if _, err := fixture.pool.Exec(ctx,
+		`UPDATE batches SET status = 'completed', completed_units = 1 WHERE id = $1`, stale.ID); err != nil {
+		t.Fatalf("构造不一致 completed: %v", err)
+	}
+
+	// 不一致 2：running 但没有任何在途/待执行单元（#202 的僵尸）。
+	zombie, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 2))
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	zombieItem, _, _ := fixture.batches.EnsureBatchItem(ctx, zombie.ID, fixture.projectID, "d/d#1", nil)
+	if _, err := fixture.batches.CommitBatchItemFailure(ctx, zombie.ID, zombieItem.ID,
+		model.ErrorClassConfig, "missing model connection", false); err != nil {
+		t.Fatalf("commit failure: %v", err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `UPDATE batches SET status = 'running' WHERE id = $1`, zombie.ID); err != nil {
+		t.Fatalf("构造僵尸 running: %v", err)
+	}
+
+	ids, err := fixture.batches.ListDivergentBatchIDs(ctx, 100)
+	if err != nil {
+		t.Fatalf("ListDivergentBatchIDs: %v", err)
+	}
+	found := map[int64]bool{}
+	for _, id := range ids {
+		found[id] = true
+	}
+	if !found[stale.ID] {
+		t.Fatal("completed 但产出不足的批次必须被扫出来（#201），否则收敛逻辑不可达")
+	}
+	if !found[zombie.ID] {
+		t.Fatal("running 但无待执行单元的批次必须被扫出来（#202）")
+	}
+	if found[healthy.ID] {
+		t.Fatal("产出齐全的正常批次不得被扫出来（否则每 30 秒做一次无意义的重算）")
+	}
+
+	// 收敛后必须**不再**出现在结果里 —— 否则维护循环会永远重复处理同一条。
+	for _, id := range []int64{stale.ID, zombie.ID} {
+		if _, err := fixture.batches.RefreshBatchCounts(ctx, id); err != nil {
+			t.Fatalf("RefreshBatchCounts(%d): %v", id, err)
+		}
+	}
+	after, err := fixture.batches.ListDivergentBatchIDs(ctx, 100)
+	if err != nil {
+		t.Fatalf("ListDivergentBatchIDs: %v", err)
+	}
+	for _, id := range after {
+		if id == stale.ID || id == zombie.ID {
+			t.Fatalf("批次 %d 收敛后仍被判定为不一致（维护循环会空转）", id)
+		}
+	}
+}
+
+// TestResumeBatchEnqueuesJobWithoutClaimingZombie 覆盖 issue #202(a)：
+// `resume` 必须**真的派作业**，且不得把无待办工作的批次声明成 running。
+//
+// 实测形态：b_1 的 12 个单元全部 config_error 且 retryable=false，作业早已
+// succeeded 结束。旧实现在点「继续」时只改状态、不建作业 —— 状态回到 running
+// 而没有任何东西会再跑，批次成为僵尸。
+//
+// 两条断言分别覆盖两种恢复场景，它们**必须给出不同结果**：
+//  1. 无待办（全部已定稿、只剩不可重试失败）→ partial_failed 且**不**派作业
+//     （派了也是空转一轮，还会多写事件污染时间线）；
+//  2. 有未创建的单元（#201 的缺口形态）→ running 且**恰好**派一个新作业。
+func TestResumeBatchEnqueuesJobWithoutClaimingZombie(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+
+	countGenerateJobs := func(batchID int64) int {
+		t.Helper()
+		var count int
+		if err := fixture.pool.QueryRow(ctx, `
+      SELECT COUNT(*) FROM jobs WHERE batch_id = $1 AND job_kind = $2`,
+			batchID, model.JobKindBatchGenerate).Scan(&count); err != nil {
+			t.Fatalf("count jobs: %v", err)
+		}
+		return count
+	}
+
+	// 场景 1：全部单元已定稿、只剩不可重试失败（b_1 的形态）。
+	zombie, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 2))
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	for _, key := range []string{"d/d#1", "d/d#2"} {
+		item, _, err := fixture.batches.EnsureBatchItem(ctx, zombie.ID, fixture.projectID, key, nil)
+		if err != nil {
+			t.Fatalf("ensure %s: %v", key, err)
+		}
+		if _, err := fixture.batches.CommitBatchItemFailure(ctx, zombie.ID, item.ID,
+			model.ErrorClassConfig, "missing model connection", false); err != nil {
+			t.Fatalf("commit failure: %v", err)
+		}
+	}
+	// 先让聚合收敛，再模拟用户点「继续」。
+	if _, err := fixture.batches.RefreshBatchCounts(ctx, zombie.ID); err != nil {
+		t.Fatalf("RefreshBatchCounts: %v", err)
+	}
+	beforeJobs := countGenerateJobs(zombie.ID)
+	if _, err := fixture.batches.ResumeBatch(ctx, fixture.projectID, zombie.ID, fixture.editorID); err != nil {
+		t.Fatalf("ResumeBatch(僵尸批次): %v", err)
+	}
+	after, err := fixture.batches.GetBatch(ctx, zombie.ID)
+	if err != nil {
+		t.Fatalf("GetBatch: %v", err)
+	}
+	if after.Status == model.BatchStatusRunning {
+		t.Fatal("无待办工作的批次点「继续」后不得停在 running（#202 的僵尸形态）")
+	}
+	if after.Status != model.BatchStatusPartialFailed {
+		t.Fatalf("应保持 partial_failed，实际 %s", after.Status)
+	}
+	if got := countGenerateJobs(zombie.ID); got != beforeJobs {
+		t.Fatalf("没有产生任何待办工作却派了作业（空转一轮）：之前 %d，之后 %d", beforeJobs, got)
+	}
+
+	// 场景 2：计划 4 但只落库 1 行（b_2 的形态）→ 「补齐缺口」必须派作业。
+	gap, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 4))
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	only, _, _ := fixture.batches.EnsureBatchItem(ctx, gap.ID, fixture.projectID, "d/d#1", nil)
+	if _, _, err := fixture.batches.CommitBatchItemSuccess(ctx, gap.ID, fixture.projectID, only.ID, AppendSampleVersionInput{
+		SampleKey: "d/d#1", TargetKind: model.TargetKindSFT, Payload: sftPayload("唯一产出"),
+	}); err != nil {
+		t.Fatalf("commit success: %v", err)
+	}
+	if _, err := fixture.batches.RefreshBatchCounts(ctx, gap.ID); err != nil {
+		t.Fatalf("RefreshBatchCounts: %v", err)
+	}
+	beforeGap := countGenerateJobs(gap.ID)
+	resumed, err := fixture.batches.ResumeBatch(ctx, fixture.projectID, gap.ID, fixture.editorID)
+	if err != nil {
+		t.Fatalf("ResumeBatch(缺口批次): %v", err)
+	}
+	if resumed.Status != model.BatchStatusRunning {
+		t.Fatalf("有未创建单元的批次恢复后应回到 running，实际 %s", resumed.Status)
+	}
+	if got := countGenerateJobs(gap.ID); got != beforeGap+1 {
+		t.Fatalf("「补齐缺口」必须恰好派一个新作业，之前 %d 之后 %d", beforeGap, got)
+	}
+	// 派出的作业必须能被执行侧认领（kind/batch_id 都要对）。
+	var kind string
+	var batchID int64
+	if err := fixture.pool.QueryRow(ctx, `
+    SELECT job_kind, batch_id FROM jobs
+    WHERE batch_id = $1 AND status = 'pending' ORDER BY id DESC LIMIT 1`, gap.ID).
+		Scan(&kind, &batchID); err != nil {
+		t.Fatalf("读取派出的作业: %v", err)
+	}
+	if kind != model.JobKindBatchGenerate || batchID != gap.ID {
+		t.Fatalf("派出的作业必须指向本批次的生成作业，实际 kind=%s batch=%d", kind, batchID)
+	}
+}

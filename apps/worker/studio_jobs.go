@@ -585,6 +585,39 @@ func (rt *studioRuntime) maintainOnce(ctx context.Context) {
 	} else if rearmed > 0 {
 		log.Printf("studio.maintain.rearmed count=%d reason=undelivered_dispatch", rearmed)
 	}
+
+	// issue #201/#202：批次的聚合状态必须能自我纠正。
+	//
+	// 以前 `RefreshBatchCounts` 只由 runner 跑完与控制命令触发，因此一个已经跑完
+	// 的历史批次永远不会被重算：b_1 永远是 running、b_2 永远是 completed+缺口。
+	// 把「哪几条与事实不符」扫出来并重算是**唯一**能让旧数据收敛的路径 ——
+	// 否则修复只对未来的批次生效。
+	rt.reconcileDivergentBatches(ctx)
+}
+
+// reconcileDivergentBatches 重算「状态与单元事实不符」的批次。
+//
+// 与 `ReclaimExpiredJobs` 同一个维护循环：两者都是「让库里的状态向事实收敛」，
+// 分开两个循环只会多一处需要记得启动的地方。
+//
+// 不回退、不封顶：单次扫描上限 100 条，一轮没处理完的下一轮继续（它们仍是
+// 不符状态，因而必然再次被扫到）。
+func (rt *studioRuntime) reconcileDivergentBatches(ctx context.Context) {
+	batches := store.NewBatchStore(rt.env.Pool)
+	ids, err := batches.ListDivergentBatchIDs(ctx, 100)
+	if err != nil {
+		log.Printf("studio.maintain.divergence_scan_failed err=%v", err)
+		return
+	}
+	for _, id := range ids {
+		batch, err := batches.RefreshBatchCounts(ctx, id)
+		if err != nil {
+			log.Printf("studio.maintain.divergence_refresh_failed batch=%d err=%v", id, err)
+			continue
+		}
+		log.Printf("studio.maintain.divergence_corrected batch=%d status=%s completed=%d planned=%d",
+			id, batch.Status, batch.CompletedUnits, batch.PlannedUnits)
+	}
 }
 
 // ---------------------------------------------------------------------------

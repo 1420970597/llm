@@ -1,0 +1,85 @@
+{
+  "zombie": {
+    "route": "/p/1/runs/b_1",
+    "api": {
+      "status": "running",
+      "controlState": "run",
+      "plannedUnits": 12,
+      "completedUnits": 0,
+      "failedUnits": 12,
+      "inFlightUnits": 0,
+      "shortfallUnits": 12,
+      "shortfallNote": "",
+      "capabilities": {
+        "canPause": true,
+        "canResume": false,
+        "canRetryFailed": false
+      }
+    },
+    "capabilities": {
+      "canPause": true,
+      "canResume": false,
+      "canRetryFailed": false
+    },
+    "clickableActionButtons": [
+      "搜索",
+      "A",
+      "暂停",
+      "异常恢复"
+    ],
+    "shortfallCardText": "产出缺口：计划 12，实际产出 0，缺口 12\n覆盖矩阵的方向配额或素材接地不足；补齐后再启动下一批，不要把它当作已完成。",
+    "noteBlamesCoverage": true,
+    "showsCompletedDespiteShortfall": true
+  },
+  "shortfall": {
+    "route": "/p/1/runs/b_2",
+    "api": {
+      "status": "completed",
+      "controlState": "run",
+      "plannedUnits": 4,
+      "completedUnits": 1,
+      "failedUnits": 0,
+      "inFlightUnits": 0,
+      "shortfallUnits": 3,
+      "shortfallNote": "计划 4，实际产出 1，缺口 3：覆盖率不足或无素材接地，请补充方向配额/素材后重跑",
+      "capabilities": {
+        "canPause": false,
+        "canResume": false,
+        "canRetryFailed": false
+      }
+    },
+    "capabilities": {
+      "canPause": false,
+      "canResume": false,
+      "canRetryFailed": false
+    },
+    "clickableActionButtons": [
+      "搜索",
+      "A",
+      "异常恢复"
+    ],
+    "shortfallCardText": "产出缺口：计划 4，实际产出 1，缺口 3\n计划 4，实际产出 1，缺口 3：覆盖率不足或无素材接地，请补充方向配额/素材后重跑",
+    "noteBlamesCoverage": true,
+    "showsCompletedDespiteShortfall": true
+  },
+  "failureTruth": [
+    {
+      "errorClass": "config_error",
+      "errorClassLabel": "生成配置有问题",
+      "suggestedAction": "生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次",
+      "retryable": false
+    },
+    {
+      "errorClass": "config_error",
+      "errorClassLabel": "生成配置有问题",
+      "suggestedAction": "生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次",
+      "retryable": false
+    },
+    {
+      "errorClass": "config_error",
+      "errorClassLabel": "生成配置有问题",
+      "suggestedAction": "生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次",
+      "retryable": false
+    }
+  ]
+}

@@ -102,15 +102,41 @@ function problemsWithBatchCapacityValidation(modelSrc, storeSrc) {
   return problems
 }
 
-/** #190：`completed < planned` 一律不得聚合为 completed。 */
+/** #190 / #201 / #202：批次状态的聚合必须**诚实**且**收敛**。 */
 function problemsWithHonestBatchStatus(storeSrc, runnerSrc) {
   const problems = []
+  const code = stripComments(storeSrc)
   // 状态推导里必须存在「完成数达到计划数」这个条件，而不是只看 total。
-  if (!/completed\s*>=\s*planned/.test(storeSrc)) {
+  if (!/completed\s*>=\s*planned/.test(code)) {
     problems.push('状态聚合没有比较 completed 与 planned，缺口会被当成已完成')
   }
-  if (!/completed\+failed == total && completed < planned/.test(storeSrc)) {
-    problems.push('缺少「全部定稿但产出少于计划」的分支')
+  // 终态只能在没有东西会再推进批次时判定。少了这道闸，
+  // 一个刚被派发、runner 还没建单元的批次会被抢先判死。
+  if (!/activeJobs\s*==\s*0\s*&&\s*inFlight\s*==\s*0/.test(code)) {
+    problems.push('终态推导没有要求「无活作业且无在途单元」，正在跑的批次会被误判为终态')
+  }
+  // 「全部定稿但产出少于计划」必须落到 partial_failed（#190 的静默少交付），
+  // 而且必须**同时**存在 completed 与 partial_failed 两个出口 —— 只有一个出口
+  // 意味着要么缺口被当成完成、要么完成永远不可能。
+  const settled = code.match(/activeJobs == 0 && inFlight == 0[\s\S]{0,700}/)
+  if (!settled) {
+    problems.push('找不到「已定稿」聚合分支，无法断言缺口处理')
+  } else {
+    if (!/BatchStatusCompleted/.test(settled[0])) {
+      problems.push('已定稿分支没有 completed 出口（产出齐全也无法进入已完成）')
+    }
+    if (!/BatchStatusPartialFailed/.test(settled[0])) {
+      problems.push('已定稿分支没有 partial_failed 出口（产出少于计划仍会被当成已完成）')
+    }
+  }
+  // #201：历史终态必须被复核。旧实现在 `completed || failed` 时直接提前返回，
+  // 于是「已完成但只产出 1/4」永远无法自我纠正。
+  if (/case status == model\.BatchStatusCompleted \|\| status == model\.BatchStatusFailed:/.test(code)) {
+    problems.push('终态分支把 completed 与 failed 一起提前返回（#201：completed 的缺口永不纠正）')
+  }
+  // #202：僵尸批次必须能收敛（无活作业的运行态不能留在 running）。
+  if (!/BatchStatusRunning/.test(code)) {
+    problems.push('聚合里没有 running 相关处理，僵尸批次无法收敛')
   }
   // 终态事件必须能区分「完成」与「有缺口」。
   if (!/BatchEventPartialFailed/.test(runnerSrc)) {
@@ -640,7 +666,12 @@ const mutations = [
   ['#190 删掉入口容量校验', problemsWithBatchCapacityValidation(MODEL_DOCS,
     BATCH_STORE.replace(/CoverageCapacity\(coverage\)/, 'len(coverage.Domains)'))],
   ['#190 把状态比较退回只看 total', problemsWithHonestBatchStatus(
-    BATCH_STORE.replace(/completed\+failed == total && completed < planned/, 'false'), BATCH_RUNNER)],
+    BATCH_STORE.replace(/completed >= planned && settled >= planned/, 'settled >= planned'), BATCH_RUNNER)],
+  ['#190/#202 去掉「无活作业且无在途」闸门', problemsWithHonestBatchStatus(
+    BATCH_STORE.replace(/activeJobs == 0 && inFlight == 0/, 'total >= 0'), BATCH_RUNNER)],
+  ['#201 让 completed 与 failed 一起提前返回', problemsWithHonestBatchStatus(
+    BATCH_STORE.replace(/case status == model\.BatchStatusFailed:/,
+      'case status == model.BatchStatusCompleted || status == model.BatchStatusFailed:'), BATCH_RUNNER)],
   ['#191 让兜底回传原始 action code', problemsWithEnumLabelLeaks(ACTIVITY_STORE.replace(
     /func auditActionFallback\(action string\) string \{[\s\S]*?\n\}/, 'func auditActionFallback(action string) string { return action }'),
     ENUM_LABELS, CLEANING_META)],
