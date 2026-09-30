@@ -1,6 +1,6 @@
 {
   "base": "http://127.0.0.1:3210",
-  "scannedAt": "2026-09-30T06:01:02.349Z",
+  "scannedAt": "2026-09-30T06:05:37.701Z",
   "routes": [
     {
       "key": "activity",
@@ -114,5 +114,6 @@
     }
   ],
   "totalLeaks": 0,
-  "consoleErrors": []
+  "consoleErrors": [],
+  "note": "#191 第 3 轮：在**已合并的 main** 上复跑全路由扫描，确认缺陷类消失（22 条路由 0 处泄漏）。这是「修复已合入 main」的直接证据。"
 }
