@@ -569,5 +569,12 @@
       "queueRaw": "studio.pending.v1.u1.w1"
     }
   },
-  "note": "#160 第 3 轮：在 origin/main（f615353）上同条件复跑 T29 实测，13/13 通过，无回归。本轮无 UI 改动，因此不产出新的前后对比图（与第 2 轮同一取舍）。"
+  "note": "#160 第 3 轮：在 origin/main（f615353）上同条件复跑 T29 实测，13/13 通过，无回归。本轮无 UI 改动，因此不产出新的前后对比图（与第 2 轮同一取舍）。",
+  "screenshots": [
+    "round3/mobile-390.png",
+    "round3/tablet-768.png",
+    "round3/desktop-1440.png",
+    "round3/offline-submit.png",
+    "round3/offline-draft.png"
+  ]
 }
