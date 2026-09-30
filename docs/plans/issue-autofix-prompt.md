@@ -391,6 +391,7 @@ scripts/issue-bot/preflight.sh release <编号> --blocked
 | 无 pi 进程时补跑 | `scripts/issue-bot/round.sh --due-only`（只拉活 pi 内定时器，不重复跑整轮） |
 | 强制独立跑一整轮 | `scripts/issue-bot/round.sh`（会单独执行一次 SOP，请确认不会与定时器重复） |
 | 调整每轮条数 / 最大轮数 | 环境变量 `ISSUE_AUTOFIX_MAX_PER_ROUND` / `ISSUE_AUTOFIX_MAX_ROUNDS` |
+| 调整开工所需磁盘阈值 | 环境变量 `ISSUE_AUTOFIX_MIN_FREE_GB`（默认 10G） |
 | 调整调度用的模型 | 环境变量 `ISSUE_AUTOFIX_PROVIDER` / `ISSUE_AUTOFIX_MODEL` |
 
 ---

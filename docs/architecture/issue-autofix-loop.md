@@ -568,6 +568,7 @@ flowchart LR
 | `ISSUE_AUTOFIX_MAX_PER_ROUND` | `3` | 每轮认领上限 |
 | `ISSUE_AUTOFIX_MAX_ROUNDS` | `3` | 单 issue 最大迭代轮数（**由代码执行**） |
 | `ISSUE_AUTOFIX_MIN_SHOT_BYTES` | `5120` | 截图最小字节数（防白图） |
+| `ISSUE_AUTOFIX_MIN_FREE_GB` | `10` | 开工所需最小可用磁盘（GB）；不足即降级 |
 | `ISSUE_AUTOFIX_STALE_CLAIM_HOURS` | `6` | 陈旧认领阈值；**必须严格大于调度侧 `timeoutMs`（4h）** |
 | `ISSUE_AUTOFIX_PROVIDER` | `my-custom-provider` | 调度用 provider |
 | `ISSUE_AUTOFIX_MODEL` | `deepseek-v4.1-flash` | 调度用 model |
