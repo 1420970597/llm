@@ -1,0 +1,30 @@
+{
+  "stage": "before",
+  "base": "http://127.0.0.1:3210",
+  "projectId": "1",
+  "freezeButtonText": "按当前筛选冻结并准备发布（服务端解析）",
+  "freezeRequest": "{\"purpose\":\"release\",\"fromFilter\":{}}",
+  "afterFreezeUrl": "http://127.0.0.1:3210/p/1/releases/new?selection=7",
+  "rangeHeading": "发布范围（已接纳的内容版本）",
+  "rangeNotice": null,
+  "snapshot": {
+    "snapshotId": 7,
+    "filter": {
+      "search": "",
+      "source": "filter",
+      "batchId": null,
+      "reviewStatus": ""
+    },
+    "itemCount": 9,
+    "composition": null,
+    "exists": true,
+    "pendingSamples": 3
+  },
+  "defect": {
+    "claimsAccepted": true,
+    "filterReviewStatus": "",
+    "pendingInRange": null,
+    "present": true
+  },
+  "consoleErrors": []
+}
