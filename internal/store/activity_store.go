@@ -99,10 +99,20 @@ func (s *ActivityStore) LoadTodos(ctx context.Context, userID, workspaceID int64
 	}
 	specs := []spec{
 		{
+			// 待判断必须与审阅队列、总览磁贴**同一个谓词**：直接数
+			// `review_projections` 的行会在「一次判断都没做过的项目」上恒为 0
+			// （没有投影行），而队列把所有未判断内容都算作待判断。issue #200
+			// 的形态正是如此：磁贴说 3、队列说 3，而本节「需要你的决定」里
+			// 根本没有「待判断」这一行 —— 用户在最重要的待办列表里看不到
+			// 最该做的活，而本页明文承诺「待办由事实派生（待判断/失败恢复/
+			// 候选阻塞）」。
+			//
+			// 连接与表达式复用 `sample_query.go` 的共享常量（唯一来源），
+			// 计数单位因此与队列页一致：**样本**，不是内容版本数。
 			kind: model.TodoPendingReview,
-			sql: `SELECT project_id, COUNT(*), MAX(updated_at) FROM review_projections
-            WHERE project_id = ANY($1::bigint[]) AND effective_action = '` + model.EffectivePending + `'
-            GROUP BY project_id ORDER BY 2 DESC`,
+			sql: `SELECT s.project_id, COUNT(*), MAX(s.updated_at) FROM samples s` + latestReviewProjectionJoin + `
+            WHERE s.project_id = ANY($1::bigint[]) AND ` + effectiveReviewStatusSQL + ` = '` + model.EffectivePending + `'
+            GROUP BY s.project_id ORDER BY 2 DESC`,
 			summary: func(count int64) string { return fmt.Sprintf("%d 条内容等待你判断", count) },
 			link:    "review",
 		},

@@ -70,6 +70,14 @@ func (app *application) projectOverview(w http.ResponseWriter, r *http.Request) 
 	} else {
 		app.logInternal(r, "count samples failed", err)
 	}
+	// 待判断与审阅队列、`/today` 磁贴同一条谓词（issue #200）。以前这个字段
+	// 从未被赋值，于是概览页「待处理决定」恒为 0，而队列里躺着待判断样本 ——
+	// 同一个事实两个读数，且这个 0 会让用户以为没有活要干。
+	if pending, err := app.studio.Batches.CountPendingReviewSamplesByProject(r.Context(), projectID); err == nil {
+		stats.PendingReview = pending
+	} else {
+		app.logInternal(r, "count pending review samples failed", err)
+	}
 	// 纳入检查（inspected）由实验结果定义（T14），因此现在保持 0 且
 	// 接纳率显示「无结论」—— 伪造一个分母会让「可以发布」看起来成立。
 	rate, display := studio.AcceptanceRateOf(stats.Accepted, stats.Inspected)
