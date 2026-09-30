@@ -209,6 +209,9 @@ scripts/issue-bot/preflight.sh evidence-check \
 # 后端门禁（唯一推荐入口；已按输出判定）
 docker run --rm -v $PWD:/w -w /w golang:1.24-alpine sh /w/scripts/go-gate.sh
 
+# 集成门禁（真实 Postgres）—— **改了 store/迁移/SQL 时必跑**
+bash scripts/go-test-postgres.sh
+
 # 前端类型安全 + 构建
 npm run build
 ```
@@ -216,6 +219,19 @@ npm run build
 > **`go-gate.sh` 为什么必须用**：`gofmt -l` 在**列出未格式化文件时仍返回 exit 0**，
 > 所以 `gofmt -l ... && go test ./...` 会在有格式问题时继续往下跑、看起来「本地全绿」，
 > 而 CI 是显式判断输出后 `exit 1`。本仓库已因此漏过两次（#94 与 PR #151）。
+>
+> **但 `go-gate.sh` 不是完整的「CI 等价」——它有一个已实测的盲区**：
+> 本仓库有 **35 个测试文件 / 38 处** `t.Skip` 依赖 `LLM_TEST_POSTGRES_DSN`；
+> 而 `go-gate.sh` 不设该变量，这些集成测试会**静默 skip 并报 `ok`**。
+>
+> 实测教训：PR #225 在本机 `go-gate.sh` **全绿**，却在 CI 的
+> `Integration (real Postgres + migrations)` job **失败** —— 因为该缺陷只在设了 DSN 时才暴露。
+> 复现方式：同一代码，设 DSN 前 `ok`，设 DSN 后 `FAIL`。
+>
+> 因此：**只要改动触及 `internal/store/`、`sql/migrations/`、或任何带 SQL 的路径，
+> 就必须额外跑 `scripts/go-test-postgres.sh`**（它负责起临时 Postgres、套迁移、再注入 DSN）。
+> 只跑 `go-gate.sh` 会把「集成测试未执行」误当成「集成测试通过」——
+> 这与把「无证据」当成「已验证」是同一类错误。
 
 ### 6.3 自测闭环
 
@@ -371,6 +387,8 @@ scripts/issue-bot/preflight.sh release <编号> --blocked
 - [ ] `evidence-check` 对「修复前 + 修复后」两张图返回 `EVIDENCE OK`
 - [ ] 评论含两张截图，且链接是 `raw-url` 生成的**固定 40 位 SHA**
 - [ ] 门禁结果如实填写（`go-gate.sh` + `npm run build`），未通过的不许写成通过
+- [ ] 若改动触及 `internal/store/`、`sql/migrations/` 或含 SQL 的路径，**额外跑了**
+      `scripts/go-test-postgres.sh`（否则 38 处集成测试静默 skip，等于未验证）
 - [ ] 未收口项已在评论中列出
 - [ ] issue 状态与 §8.3 判定一致
 - [ ] 台账已写、`release` 返回 0（含复核）
