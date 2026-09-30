@@ -174,6 +174,21 @@ func (s *BatchStore) CountSampleVersionsByProject(ctx context.Context, projectID
 	return count, err
 }
 
+// CountPendingReviewSamplesByProject 统计项目里**当前待人工判断**的样本数。
+//
+// 口径与审阅队列、`/today` 磁贴完全一致：复用 `latestReviewProjectionJoin` /
+// `effectiveReviewStatusSQL`，因此「一次判断都没做过的项目」也会正确计数，
+// 而直数 `review_projections` 的行在那里恒为 0（issue #200 的缺陷形态）。
+// 计数单位是**样本**（与审阅队列页一致），不是内容版本数。
+func (s *BatchStore) CountPendingReviewSamplesByProject(ctx context.Context, projectID int64) (int, error) {
+	var count int
+	err := s.db.QueryRow(ctx, `
+    SELECT COUNT(*) FROM samples s`+latestReviewProjectionJoin+`
+    WHERE s.project_id = $1 AND `+effectiveReviewStatusSQL+` = $2`,
+		projectID, model.EffectivePending).Scan(&count)
+	return count, err
+}
+
 // GetSampleVersionByID 按**样本版本行 ID** 读取内容（Issue #160 T14 的执行侧需要）。
 //
 // 为什么需要它：`experiment_items` 冻结的是 `sample_version_id`（行 ID），

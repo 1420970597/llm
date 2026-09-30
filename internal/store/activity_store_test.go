@@ -583,6 +583,161 @@ func TestOverviewPendingReviewMatchesQueue(t *testing.T) {
 	}
 }
 
+// TestTodosPendingReviewMatchesQueue 覆盖 issue #200 的**第二条**渲染路径：
+// 「今日工作」DECISIONS「需要你的决定」列表里的「待判断」待办。
+//
+// 缺陷形态（实测）：总览磁贴与审阅队列都按共享谓词算（PR #225 已修），
+// 但 `LoadTodos` 的 `pending_review` 规格**仍**在数 `review_projections` 的行 ——
+// 零判断项目里那永远是 0 行，于是磁贴说 3、队列说 3，而「需要你的决定」里
+// 根本没有「待判断」这一行。用户在最重要的待办列表里看不到最该做的活，
+// 而本页明文承诺「待办由事实派生（待判断/失败恢复/候选阻塞）」。
+//
+// 本测试刻意覆盖**零判断**这条路径：`TestOverviewPendingReviewMatchesQueue`
+// 只断言总览数字，因此从未暴露待办列表的分叉。
+func TestTodosPendingReviewMatchesQueue(t *testing.T) {
+	fixture := newActivityFixture(t)
+	ctx := context.Background()
+
+	// 一个样本、两个内容版本，且不下任何判断：这正是「新建项目」的形态。
+	// 之所以要两个版本：计数单位必须是**样本**（与队列页一致）。若实现按
+	// 内容版本数计，这里会得到 2，而队列只显示 1 条。
+	key := "activity-todo-zero-judgement-" + fixture.suffix
+	sample, err := fixture.batches.EnsureSample(ctx, fixture.projectA, key, model.TargetKindSFT, key, nil)
+	if err != nil {
+		t.Fatalf("EnsureSample: %v", err)
+	}
+	for version := 1; version <= 2; version++ {
+		if _, _, err := fixture.batches.AppendSampleVersion(ctx, AppendSampleVersionInput{
+			ProjectID: fixture.projectA, SampleKey: sample.SampleKey, TargetKind: model.TargetKindSFT,
+			Title: key, Payload: map[string]any{"question": "q", "reasoning": "r", "answer": "a"},
+		}); err != nil {
+			t.Fatalf("AppendSampleVersion #%d: %v", version, err)
+		}
+	}
+	// 再加一条**已接纳**的：它必须被排除，否则「待判断」会包含已经处理完的内容。
+	acceptedVersionID := fixture.seedPendingReview(t, fixture.projectA)
+	projection, err := fixture.reviews.GetProjection(ctx, fixture.projectA, acceptedVersionID)
+	if err != nil {
+		t.Fatalf("GetProjection: %v", err)
+	}
+	if _, err := fixture.reviews.SubmitDecision(ctx, fixture.projectA, fixture.ownerID, model.SubmitDecisionInput{
+		SampleVersionID: acceptedVersionID, EvidenceRevision: projection.EvidenceRevision,
+		ReviewerRevision: 1, Action: model.DecisionAccept, Reason: "初始判断",
+	}); err != nil {
+		t.Fatalf("SubmitDecision: %v", err)
+	}
+
+	queue, err := fixture.batches.ListSamples(ctx, SampleListQuery{
+		ProjectID: fixture.projectA, UnreviewedOnly: true, Limit: 100,
+	})
+	if err != nil {
+		t.Fatalf("ListSamples: %v", err)
+	}
+	if len(queue) != 1 {
+		t.Fatalf("队列应只有 1 条待判断（1 个未判断样本 + 1 条已接纳），实际 %d", len(queue))
+	}
+
+	todos, err := fixture.activity.LoadTodos(ctx, fixture.ownerID, fixture.workspaceID, 3)
+	if err != nil {
+		t.Fatalf("LoadTodos: %v", err)
+	}
+	var pending *model.TodoItem
+	for index := range todos {
+		if todos[index].Kind == model.TodoPendingReview {
+			pending = &todos[index]
+		}
+	}
+	if pending == nil {
+		t.Fatalf("零判断项目必须出现「待判断」待办（issue #200：磁贴/队列非零而待办缺失），实际 %+v", todos)
+	}
+	if pending.Count != int64(len(queue)) {
+		t.Fatalf("待办待判断 %d 与审阅队列 %d 必须一致（issue #200 的口径分叉）",
+			pending.Count, len(queue))
+	}
+	if got := pending.Links["page"]; got != projectPageLink(fixture.projectA, "review") {
+		t.Fatalf("待判断待办必须链到审阅页，实际 %q", got)
+	}
+}
+
+// TestCountPendingReviewSamplesByProjectMatchesQueue 覆盖 issue #200 的**第三条**
+// 渲染路径：项目概览页的「待处理决定」指标（`stats.pendingReview`）。
+//
+// 缺陷形态（实测）：`apps/api/routes_studio_read.go` 从未给这个字段赋值，
+// 于是 `/p/{id}/overview` 恒显示 0，而同一项目的审阅队列里有待判断样本 ——
+// 「同一个事实两个读数」，且这个 0 恰好出现在概览页最重要的指标位上。
+//
+// 与总览磁贴、待办列表一样，计数必须走**共享谓词**且单位是**样本**。
+func TestCountPendingReviewSamplesByProjectMatchesQueue(t *testing.T) {
+	fixture := newActivityFixture(t)
+	ctx := context.Background()
+
+	// 零判断项目：一个样本两个版本，不下任何判断。
+	key := "activity-count-pending-" + fixture.suffix
+	sample, err := fixture.batches.EnsureSample(ctx, fixture.projectA, key, model.TargetKindSFT, key, nil)
+	if err != nil {
+		t.Fatalf("EnsureSample: %v", err)
+	}
+	for version := 1; version <= 2; version++ {
+		if _, _, err := fixture.batches.AppendSampleVersion(ctx, AppendSampleVersionInput{
+			ProjectID: fixture.projectA, SampleKey: sample.SampleKey, TargetKind: model.TargetKindSFT,
+			Title: key, Payload: map[string]any{"question": "q", "reasoning": "r", "answer": "a"},
+		}); err != nil {
+			t.Fatalf("AppendSampleVersion #%d: %v", version, err)
+		}
+	}
+	// 另一个项目也应各自计数（避免实现把两个项目算成一个）。
+	otherKey := "activity-count-pending-b-" + fixture.suffix
+	if _, err := fixture.batches.EnsureSample(ctx, fixture.projectB, otherKey, model.TargetKindSFT, otherKey, nil); err != nil {
+		t.Fatalf("EnsureSample(projectB): %v", err)
+	}
+
+	count, err := fixture.batches.CountPendingReviewSamplesByProject(ctx, fixture.projectA)
+	if err != nil {
+		t.Fatalf("CountPendingReviewSamplesByProject: %v", err)
+	}
+	queue, err := fixture.batches.ListSamples(ctx, SampleListQuery{
+		ProjectID: fixture.projectA, UnreviewedOnly: true, Limit: 100,
+	})
+	if err != nil {
+		t.Fatalf("ListSamples: %v", err)
+	}
+	if count != len(queue) {
+		t.Fatalf("概览待判断 %d 与审阅队列 %d 必须一致（issue #200 的口径分叉）", count, len(queue))
+	}
+	if count != 1 {
+		t.Fatalf("零判断项目里一个样本（含 2 个内容版本）=> 待判断应为 1，实际 %d", count)
+	}
+
+	// 已接纳之后必须不再计入。
+	versionID := fixture.seedPendingReview(t, fixture.projectA)
+	projection, err := fixture.reviews.GetProjection(ctx, fixture.projectA, versionID)
+	if err != nil {
+		t.Fatalf("GetProjection: %v", err)
+	}
+	if _, err := fixture.reviews.SubmitDecision(ctx, fixture.projectA, fixture.ownerID, model.SubmitDecisionInput{
+		SampleVersionID: versionID, EvidenceRevision: projection.EvidenceRevision,
+		ReviewerRevision: 1, Action: model.DecisionAccept, Reason: "初始判断",
+	}); err != nil {
+		t.Fatalf("SubmitDecision: %v", err)
+	}
+	count, err = fixture.batches.CountPendingReviewSamplesByProject(ctx, fixture.projectA)
+	if err != nil {
+		t.Fatalf("CountPendingReviewSamplesByProject(接纳后): %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("已接纳的样本不得计入待判断，期望 1，实际 %d", count)
+	}
+
+	// 另一个项目的计数不受影响。
+	otherCount, err := fixture.batches.CountPendingReviewSamplesByProject(ctx, fixture.projectB)
+	if err != nil {
+		t.Fatalf("CountPendingReviewSamplesByProject(projectB): %v", err)
+	}
+	if otherCount != 1 {
+		t.Fatalf("项目 B 待判断应为 1（项目隔离），实际 %d", otherCount)
+	}
+}
+
 // TestAuditActivityLinkPointsAtObject 覆盖 issue #210：
 // 审计类动态的「查看」必须指向**该操作的对象**，而不是项目概览。
 //
