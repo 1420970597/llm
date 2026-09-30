@@ -93,20 +93,27 @@ report.snapshot = await page.evaluate(async (projectId) => {
   }
 }, PROJECT_ID)
 
-// 缺陷判定：标题声称「已接纳」，但快照 filter 未声明 accepted（或构成里有 pending）。
+// 缺陷判定：标题必须如实披露范围构成。
+//
+// 旧形态的两条硬信号（任一命中即缺陷）：
+//   (a) 标题写死「已接纳的内容版本」——把整个范围断言为已接纳；
+//   (b) 范围里确有未审阅内容（pending > 0），而标题没有露任何「未审阅」字样。
 const heading = report.rangeHeading ?? ''
-const claimsAccepted = heading.includes('已接纳')
 const filterReviewStatus = report.snapshot?.filter?.reviewStatus ?? null
 const composition = report.snapshot?.composition ?? null
+const pendingInRange = composition?.pending ?? null
 report.defect = {
-  claimsAccepted,
+  hardcodedAcceptedHeading: /已接纳的内容版本/.test(heading),
   filterReviewStatus,
-  pendingInRange: composition?.pending ?? null,
-  // 缺陷成立：标题声称已接纳，且范围内确有未审阅内容。
-  present: claimsAccepted && (composition ? (composition.pending ?? 0) > 0 : filterReviewStatus !== 'accepted'),
+  pendingInRange,
+  headingDisclosesUnreviewed: /未审阅/.test(heading + (report.rangeNotice ?? '')),
+  present: /已接纳的内容版本/.test(heading) ||
+    (pendingInRange !== null && pendingInRange > 0 && !/未审阅/.test(heading)),
 }
 report.consoleErrors = consoleErrors
 
+await page.locator('[data-range-picker="true"]').scrollIntoViewIfNeeded().catch(() => {})
+await page.waitForTimeout(400)
 await page.screenshot({ path: resolve(here, `${KEY}-freeze-scope.png`), fullPage: false })
 writeFileSync(resolve(here, `${stage}-freeze-scope.json`), `${JSON.stringify(report, null, 2)}\n`)
 await browser.close()
