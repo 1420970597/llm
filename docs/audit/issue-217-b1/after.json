@@ -1,0 +1,19 @@
+{
+  "issue": 217,
+  "item": "B1",
+  "phase": "after",
+  "appliedMigrations": 39,
+  "appliedFirst": "sql/migrations/0001_phase1_foundation.sql",
+  "publicTableCount": 76,
+  "coreTables": {
+    "datasets": true,
+    "samples": true,
+    "sample_versions": true,
+    "batches": true,
+    "review_projections": true,
+    "legacy_imports": true
+  },
+  "missingCoreTables": [],
+  "allCoreTablesPresent": true,
+  "ok": true
+}
