@@ -95,6 +95,15 @@ type BlueprintChoice = {
   label: string
   meta?: string
   version?: number
+  /**
+   * 该选项不可选（issue #209）。
+   *
+   * 只用于**配置不完整**的连接：它们在服务端一定不能用（选中后会在批次
+   * 已开跑时才报 `model connection unavailable`），因此在下拉里灰显并禁止选择。
+   * 「已停用」刻意不在此列：保留可选性，因为已有蓝图可能正引用它，
+   * 用户需要能重新指回那条连接（文案已标「已停用」）。
+   */
+  disabled?: boolean
 }
 
 type BlueprintChoices = {
@@ -219,9 +228,10 @@ export function BlueprintPage() {
           value: String(item.id),
           // issue #209：名称为空的连接以前渲染成一个**没有任何文字**的选项。
           // 这里给可读兼底 + 把服务端下发的配置问题拼进标签，
-          // 用户在**选择前**就能看出哪个不能用。
+          // 用户在**选择前**就能看出哪个不能用，且不可选（灰显）。
           label: item.name || `未命名连接 #${item.id}`,
           meta: connectionMeta(item),
+          disabled: (item.configIssues?.length ?? 0) > 0,
         })),
       })
 
@@ -763,7 +773,7 @@ function NodeFields({
                 value={selectValue as string | string[] | undefined}
                 placeholder={options.length > 0 ? '选择已保存版本' : '暂无可选版本'}
                 disabled={disabled}
-                optionList={options.map((option) => ({ value: option.value, label: option.label, extra: option.meta }))}
+                optionList={options.map((option) => ({ value: option.value, label: option.label, extra: option.meta, disabled: option.disabled }))}
                 onChange={(next) => {
                   if (field.kind === 'idList') {
                     onChange(field.name, Array.isArray(next) ? next.map(Number) : [])

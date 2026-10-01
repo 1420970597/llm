@@ -589,6 +589,14 @@ function problemsWithProviderConfigIssues(validationSrc, storeSrc, settingsRoute
   if (!/connectionMeta\(/.test(blueprint)) {
     problems.push('蓝图下拉没有把配置问题拼进选项（用户选择前仍看不出哪个不可用）')
   }
+  // 配置不完整的连接必须**灰显不可选**（#209 建议方向 2 的「灰显 + 不可用」）。
+  if (!/disabled:\s*\(item\.configIssues\?\.length \?\? 0\) > 0/.test(blueprint)) {
+    problems.push('配置不完整的连接仍可被选择（选中后会在批次开跑时才报错）')
+  }
+  // 选项必须真的把 disabled 传给 Select，否则上面那行等于没接。
+  if (!/disabled:\s*option\.disabled/.test(blueprint)) {
+    problems.push('optionList 没有把 disabled 传给 Select（灰显不会生效）')
+  }
   // 连接列表必须有显式标记，而不是留一个只能靠推断的空行。
   const settingsPage = stripComments(settingsPageSrc)
   if (!/配置不完整，不可用于生成/.test(settingsPage)) {
@@ -872,6 +880,10 @@ const mutations = [
   ['#209 让蓝图下拉退回 label: item.name', problemsWithProviderConfigIssues(
     ADMIN_VALIDATION, ADMIN_STORE, SETTINGS_ROUTES,
     BLUEPRINT_PAGE.replace(/label: item\.name \|\| `未命名连接 #\$\{item\.id\}`/, 'label: item.name'), SETTINGS_PAGE)],
+  ['#209 让不完整连接重新可选', problemsWithProviderConfigIssues(
+    ADMIN_VALIDATION, ADMIN_STORE, SETTINGS_ROUTES,
+    BLUEPRINT_PAGE.replace('disabled: (item.configIssues?.length ?? 0) > 0', 'disabled: false'),
+    SETTINGS_PAGE)],
 ]
 
 for (const [name, problems] of mutations) {

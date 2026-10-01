@@ -60,7 +60,7 @@ func TestProviderConfigIssuesReportEveryBrokenField(t *testing.T) {
 	invalidURL.BaseURL = "not-a-url"
 	issues = ProviderConfigIssues(invalidURL)
 	if len(issues) != 1 || !strings.Contains(issues[0], "http") {
-		t.Fatalf("not-a-url 应报且只报「基础 URL 不是完整的 http(s) 地址」，实际 %v", issues)
+		t.Fatalf("not-a-url 应报且只报基础 URL 不是完整的 http(s) 地址，实际 %v", issues)
 	}
 }
 

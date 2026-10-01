@@ -320,16 +320,14 @@ export function ConnectionsPage() {
                         {provider.isActive ? '启用' : '停用'}
                       </Tag>
                       {/* issue #209：配置不完整的连接必须显式标出「不能用于生成」，
-                          而不是留一个只能靠推断的空行。原因由服务端下发（与保存校验同源）。 */}
+                          而不是留一个只能靠推断的空行。原因由服务端下发（与保存校验同源），
+                          逐条清单放 title（Semi 的 Tag 不接 title，用 span 包住是本仓既有写法）。 */}
                       {provider.configIssues.length > 0 ? (
-                        <Tag
-                          size="small"
-                          color="red"
-                          data-connection-config-issues="true"
-                          title={provider.configIssues.join('；')}
-                        >
-                          配置不完整，不可用于生成
-                        </Tag>
+                        <span title={provider.configIssues.join('；')}>
+                          <Tag size="small" color="red" data-connection-config-issues="true">
+                            配置不完整，不可用于生成
+                          </Tag>
+                        </span>
                       ) : null}
                     </span>
                     {/* issue #197 第 8 条：列表项必须有**元素级**编辑按钮。
