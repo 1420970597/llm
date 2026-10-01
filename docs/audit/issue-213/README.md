@@ -28,9 +28,9 @@ issue 当时未被关闭，因此本轮的工作是**同条件复跑取证 + 守
 | 3 | `checkbox "必填" [checked]` | `checkbox "把交付字段 answer设为必填" [checked]` |
 | 可区分数 | **1 / 3** | **3 / 3** |
 
-![修复前：三个「必填」复选框的可访问名完全相同，读屏无法区分](https://raw.githubusercontent.com/1420970597/llm/6f12faa6fa932c7c073ef43edc2b4f95d9a0ca92/docs/audit/issue-213/before-mapping-a11y.png)
+![修复前：三个「必填」复选框的可访问名完全相同，读屏无法区分](https://raw.githubusercontent.com/1420970597/llm/0ddba90d2259a9648c43bbc34882953638454143/docs/audit/issue-213/before-mapping-a11y.png)
 
-![修复后：每个复选框的可访问名带本行交付字段名](https://raw.githubusercontent.com/1420970597/llm/6f12faa6fa932c7c073ef43edc2b4f95d9a0ca92/docs/audit/issue-213/after-mapping-a11y.png)
+![修复后：每个复选框的可访问名带本行交付字段名](https://raw.githubusercontent.com/1420970597/llm/0ddba90d2259a9648c43bbc34882953638454143/docs/audit/issue-213/after-mapping-a11y.png)
 
 > 可访问名是**不可见**的事实：只截产品界面的话前后两张图会完全相同，而
 > `evidence-check` 会（正确地）判定「无法证明缺陷发生变化」。
@@ -51,9 +51,9 @@ issue 当时未被关闭，因此本轮的工作是**同条件复跑取证 + 守
                    "ariaInvalid": "true", "ariaDescribedBy": "intended-use-error" } }
 ```
 
-![修复前：错误只在页底一行，输入框上没有提示也没有 ARIA 关联](https://raw.githubusercontent.com/1420970597/llm/6f12faa6fa932c7c073ef43edc2b4f95d9a0ca92/docs/audit/issue-213/before-field-errors.png)
+![修复前：错误只在页底一行，输入框上没有提示也没有 ARIA 关联](https://raw.githubusercontent.com/1420970597/llm/0ddba90d2259a9648c43bbc34882953638454143/docs/audit/issue-213/before-field-errors.png)
 
-![修复后：「必须填写用途」渲染在用途输入框正下方，并带 aria-describedby](https://raw.githubusercontent.com/1420970597/llm/6f12faa6fa932c7c073ef43edc2b4f95d9a0ca92/docs/audit/issue-213/after-field-errors.png)
+![修复后：「必须填写用途」渲染在用途输入框正下方，并带 aria-describedby](https://raw.githubusercontent.com/1420970597/llm/0ddba90d2259a9648c43bbc34882953638454143/docs/audit/issue-213/after-field-errors.png)
 
 ## 修复前证据的取法（同条件保证）
 
