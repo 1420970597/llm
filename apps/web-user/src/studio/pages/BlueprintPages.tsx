@@ -878,6 +878,17 @@ function getNodeHealth(spec: NodeSpec, values: Record<string, unknown>, choices:
     if (connection?.meta?.includes('已停用')) {
       return { state: 'blocked', label: '模型服务已停用', detail: '当前引用的模型服务已停用，请换一个可用连接。', missing: [] }
     }
+    // issue #209：已保存的蓝图可能引用了一条配置不完整的连接（历史数据）。
+    // 必须在**保存/执行之前**就说清楚，而不是等到批次已开跑才报
+    // `model connection unavailable` —— 那时已经花掉了真实的时间与额度。
+    if (connection?.disabled) {
+      return {
+        state: 'blocked',
+        label: '模型服务配置不完整',
+        detail: `当前引用的模型服务不能用于生成（${connection.meta ?? '配置不完整'}）。请到“连接设置”补齐必填字段，或换一个可用连接。`,
+        missing: [],
+      }
+    }
   }
   if (missing.length > 0) {
     return { state: 'incomplete', label: `待补齐 ${missing.length} 项`, detail: `还需要设置：${missing.join('、')}。`, missing }
