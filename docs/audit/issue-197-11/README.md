@@ -38,9 +38,9 @@ m 1 × n 2 × z 4 = 4
 | 结果 == 可产出量(4) | true | true |
 | `pageerror` / 5xx | 0 | 0 |
 
-![修复前：公式 `m 1 × n 2 × z 4 = 4`，算术不成立](https://raw.githubusercontent.com/1420970597/llm/REPLACE_README_SHA/docs/audit/issue-197-11/before-coverage.png)
+![修复前：公式 `m 1 × n 2 × z 4 = 4`，算术不成立](https://raw.githubusercontent.com/1420970597/llm/66ec6f95f2ffa66a8cac973651ea56fb59b43810/docs/audit/issue-197-11/before-coverage.png)
 
-![修复后：公式 `m 1 × n 2 × z 2 = 4`，算术成立且等于可产出量](https://raw.githubusercontent.com/1420970597/llm/REPLACE_README_SHA/docs/audit/issue-197-11/after-coverage.png)
+![修复后：公式 `m 1 × n 2 × z 2 = 4`，算术成立且等于可产出量](https://raw.githubusercontent.com/1420970597/llm/66ec6f95f2ffa66a8cac973651ea56fb59b43810/docs/audit/issue-197-11/after-coverage.png)
 
 ## 根因
 
