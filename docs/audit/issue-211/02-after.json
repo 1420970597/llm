@@ -1,0 +1,27 @@
+{
+  "stage": "after",
+  "base": "http://127.0.0.1:3210",
+  "project": "1",
+  "viewport": {
+    "width": 1600,
+    "height": 1000
+  },
+  "pageLevelNotice": "其中 3 个内容版本尚未人工判断。评测可以纳入它们（评测只是度量），但未审阅内容的结论不作为发布证据，发布时仍会被门槛拦截。",
+  "selectedPendingRow": {
+    "index": 0,
+    "statusText": "待判断",
+    "rowText": "方向二（难度 normal）：第 2 题 · v2（版本 ID 9） 待判断 未审阅：结论不作为发布证据",
+    "inlineUnreviewedTag": 1
+  },
+  "selectedCountText": "已选 1 个内容版本。",
+  "submit": {
+    "clicked": true,
+    "confirmModalAppeared": true,
+    "confirmText": "本次将纳入 1 个尚未人工判断的内容版本 评测可以纳入未审阅内容（评测只是度量），实验照常创建与冻结。 但这些版本的结论不作为发布证据：发布时仍会被未审阅门槛（PENDING_REVIEW）拦住。 若希望评测结论能直接支撑发布，请先到「审阅」页完成判断。 返回先审阅 仍然创建实验",
+    "blockedRequests": [],
+    "postAttemptedWithoutConfirm": false
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+}
