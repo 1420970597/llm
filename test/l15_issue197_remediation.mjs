@@ -21,12 +21,21 @@
  * 是被证明的，而不是被声称的（与 `l15_app_ux.mjs` 同一约定）。
  */
 
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relative) => readFileSync(path.join(REPO_ROOT, relative), 'utf8')
+
+// #197 第 11 条 §A：覆盖矩阵 m×n×z 结构读数必须在**真实模块**里可调用，
+// 因此这里用 esbuild 打包生产模块 src/studio/coverageStructure.ts，
+// 让「公式算术是否成立」成为可核对的读数，而不是匹配固定字符串。
+const webRequire = createRequire(path.join(REPO_ROOT, 'apps', 'web-user', 'package.json'))
+const esbuild = webRequire('esbuild')
+const COVERAGE_STRUCTURE_SOURCE = path.join(REPO_ROOT, 'apps', 'web-user', 'src', 'studio', 'coverageStructure.ts')
 
 const MODEL_DOCS = read('internal/model/studio_docs.go')
 // #206：批次事件模型（eventTypeLabel 字段的落点）。
@@ -432,6 +441,38 @@ function problemsWithMarkdownGuardCoverage(guardSrc) {
 }
 
 /**
+ * #197 第 11 条 §A：覆盖矩阵的 `m × n × z` 公式必须**算术自洽**。
+ *
+ * 缺陷形态（实测）：`DocumentEditors.tsx` 里 `z` 渲染成 Σquota、结果又复用同一个数，
+ * 得到 `m 1 × n 2 × z 4 = 4`（`1 × 2 × 4 ≠ 4`）。一个自称「数据集结构」的公式
+ * 自己算不通，用户就无法用它预判「改方向数/配额会不会影响产出量」。
+ * 根因是把「每方向题数」与「Σ配额」混为一个 z。
+ *
+ * 这里做两层断言：
+ *   1）源码层：公式推导必须来自共享模块（`coverageStructure.ts`），不得在组件里
+ *      重新内联一套（否则下次又会有第二份口径）；
+ *   2）真实模块层：直接打包模块，断言生产形态的读数正确、且**乘积成立**。
+ */
+function problemsWithCoverageStructureFormula(editorSrc) {
+  const problems = []
+  const editorCode = stripComments(editorSrc)
+  if (!/from '[^']*coverageStructure'/.test(editorCode)) {
+    problems.push('覆盖编辑器没有引用共享结构模块（推导会再次内联，产生第二份口径）')
+  }
+  if (!/deriveCoverageStructure\(/.test(editorCode)) {
+    problems.push('覆盖编辑器没有使用 deriveCoverageStructure（结构读数无法被直接核验）')
+  }
+  if (!/formatCoverageFormula\(/.test(editorCode)) {
+    problems.push('覆盖编辑器没有使用 formatCoverageFormula（公式仍是内联拼接）')
+  }
+  // 旧缺陷形态：`× z {capacity} = {capacity}`（z 与结果复用同一个数）。
+  if (/×\s*z\s*\{\s*\w+\s*\}\s*=\s*\{\s*\w+\s*\}/.test(editorCode)) {
+    problems.push('公式把同一个数同时当作 z 与结果（`× z {x} = {x}`），算术必然不自洽')
+  }
+  return problems
+}
+
+/**
  * #211：审阅状态（`review_projections.effective_action`）不得裸渲染。
  *
  * 缺陷形态：新建质量实验的「检查范围」直接渲染 `sample.reviewStatus`，
@@ -699,6 +740,8 @@ const checks = [
     problemsWithDatasetAnalysis(BATCH_STORE, RUN_PAGE, read('internal/studio/dataset_analysis.go'))],
   ['#192 Markdown 守卫覆盖全树而非手工清单',
     problemsWithMarkdownGuardCoverage(MARKDOWN_GUARD)],
+  ['#197-11 覆盖矩阵 m×n×z 公式算术自洽（结构推导来自共享模块）',
+    problemsWithCoverageStructureFormula(DOCUMENT_EDITORS)],
   ['#200 总览待判断与审阅队列同一口径',
     problemsWithOverviewQueueParity(ACTIVITY_STORE, read('internal/store/sample_query.go'))],
   ['#205 总览磁贴不指向当前页 + 被挡住有出口',
@@ -779,6 +822,8 @@ const mutations = [
       .replace(/function collectSources\(/, 'function unusedCollectSources(')
       .replace('const files = collectSources(SRC_ROOT)', "const files = ['apps/web-user/src/App.tsx']"),
   )],
+  ['#197-11 公式退回内联 z=Σ配额', problemsWithCoverageStructureFormula(
+    DOCUMENT_EDITORS.replace(/from '[^']*coverageStructure'/, "from './coverageInline'"))],
   ['#200 让总览退回「直接数投影行」', problemsWithOverviewQueueParity(
     ACTIVITY_STORE.replace('FROM samples s`+latestReviewProjectionJoin+`', 'FROM review_projections' )
       .replace("SELECT COUNT(*) FROM review_projections\n    WHERE s.project_id", 'SELECT COUNT(*) FROM review_projections\n    WHERE project_id'),
@@ -808,6 +853,106 @@ for (const [name, problems] of mutations) {
     problems.length > 0 ? `捕获到 ${problems.length} 个问题` : '断言空转（改坏了却仍然通过）',
   )
 }
+
+// ---------------------------------------------------------------------------
+// 第 2 层：真实模块调用（#197 第 11 条 §A）
+//
+// 为什么要打到真实模块：§A 的缺陷不是「字符串没写对」，而是**算术不成立**。
+// 只匹配源码字符串的断言会在格式化/重命名后静默失效；这里直接打包
+// `coverageStructure.ts`，把「m×n×z 与结果是否相等」变成可重算的事实。
+// 与 `l15_studio_wizard.mjs` 同一约守：默认路径不需要容器/浏览器。
+// ---------------------------------------------------------------------------
+
+const coverageWorkDir = mkdtempSync(path.join(tmpdir(), 'l15-coverage-structure-'))
+
+/** 打包一个生产模块（或变异后的临时模块），返回它的导出。 */
+async function bundleCoverageModule(sourceFile) {
+  const outfile = path.join(coverageWorkDir, `out-${path.basename(sourceFile)}.cjs`)
+  await esbuild.build({ entryPoints: [sourceFile], outfile, bundle: true, format: 'cjs', platform: 'node', logLevel: 'silent' })
+  const mod = webRequire(outfile)
+  return mod.default ?? mod
+}
+
+/** 从公式文本 `m A × n B × z C = D` 里把四个数字读回来。 */
+function readProductFormula(formula) {
+  const match = formula.match(/^m (\d+) × n (\d+) × z (\d+) = (\d+)$/)
+  return match ? { m: Number(match[1]), n: Number(match[2]), z: Number(match[3]), result: Number(match[4]) } : null
+}
+
+{
+  const coverage = await bundleCoverageModule(COVERAGE_STRUCTURE_SOURCE)
+
+  // 生产形态：1 领域 × 2 方向（各配额 2）→ 可产出 4。
+  const product = coverage.deriveCoverageStructure({
+    schemaVersion: 'coverage.v1',
+    domains: [{ stableId: 'domain-1', name: '冷链领域', directions: [
+      { stableId: 'direction-1', name: '方向一', quota: 2, source: 'manual' },
+      { stableId: 'direction-2', name: '方向二', quota: 2, source: 'manual' },
+    ] }],
+  })
+  const formula = coverage.formatCoverageFormula(product)
+  const parsed = readProductFormula(formula)
+  record(
+    '#197-11 乘积成立时公式算术自洽（m×n×z == 可产出量）',
+    parsed !== null && parsed.m * parsed.n * parsed.z === parsed.result && parsed.result === product.capacity,
+    parsed !== null && parsed.m * parsed.n * parsed.z === parsed.result
+      ? `${formula}（${parsed.m}×${parsed.n}×${parsed.z}=${parsed.result}）`
+      : `公式不是自洽乘积，实际：${formula}`,
+  )
+  // 后端 `model.CoverageCapacity` 的口径：quota ≤ 0 视为 1。
+  const zeroQuota = coverage.deriveCoverageStructure({
+    domains: [{ stableId: 'd', name: '领域', directions: [
+      { stableId: 'z', name: '零配额', quota: 0 },
+      { stableId: 'n', name: '负配额', quota: -5 },
+    ] }],
+  })
+  record(
+    '#197-11 quota ≤ 0 视为 1（与后端 CoverageCapacity 同口径）',
+    zeroQuota.capacity === 2,
+    `容量=${zeroQuota.capacity}（期望 2）`,
+  )
+  // 非乘积形态：各方向配额不等时**不得**编造 `m×n×z = 结果` 等式。
+  const mixed = coverage.deriveCoverageStructure({
+    domains: [{ stableId: 'd', name: '领域', directions: [{ stableId: 'a', name: '方向一', quota: 1 }, { stableId: 'b', name: '方向二', quota: 3 }] }],
+  })
+  const mixedFormula = coverage.formatCoverageFormula(mixed)
+  record(
+    '#197-11 配额不一致时不编造乘积等式',
+    readProductFormula(mixedFormula) === null && mixedFormula.includes('计划单元合计 4'),
+    `实际表述：${mixedFormula}`,
+  )
+  // 空覆盖不得报错，也不得给出非零容量。
+  const empty = coverage.deriveCoverageStructure({ domains: [] })
+  record(
+    '#197-11 空覆盖容量为 0（不编造）',
+    empty.capacity === 0 && empty.uniformQuotaPerDirection === null,
+    `容量=${empty.capacity}，uniformQuota=${String(empty.uniformQuotaPerDirection)}`,
+  )
+
+  // 变异自证：把 z 退回「Σ配额」的旧缺陷形态，断言算术自洽检查**真的**会失败。
+  const buggySource = readFileSync(COVERAGE_STRUCTURE_SOURCE, 'utf8').replace(
+    /return `m \$\{domainCount\} × n \$\{uniformDirectionsPerDomain\} × z \$\{uniformQuotaPerDirection\} = \$\{capacity\}`/,
+    'return `m ${domainCount} × n ${uniformDirectionsPerDomain} × z ${capacity} = ${capacity}`',
+  )
+  const buggyFile = path.join(coverageWorkDir, 'buggyCoverageStructure.ts')
+  writeFileSync(buggyFile, buggySource)
+  const buggy = await bundleCoverageModule(buggyFile)
+  const buggyFormula = buggy.formatCoverageFormula(buggy.deriveCoverageStructure({
+    domains: [{ stableId: 'domain-1', directions: [
+      { stableId: 'direction-1', quota: 2 }, { stableId: 'direction-2', quota: 2 },
+    ] }],
+  }))
+  const buggyParsed = readProductFormula(buggyFormula)
+  record(
+    '变异：#197-11 退回 z 为 Σ配额 -> 算术自洽断言必须失败',
+    buggyParsed !== null && buggyParsed.m * buggyParsed.n * buggyParsed.z !== buggyParsed.result,
+    buggyParsed !== null && buggyParsed.m * buggyParsed.n * buggyParsed.z !== buggyParsed.result
+      ? `复现原缺陷：${buggyFormula}（${buggyParsed.m}×${buggyParsed.n}×${buggyParsed.z}≠${buggyParsed.result}）`
+      : `变异未生效：${buggyFormula}`,
+  )
+}
+
+rmSync(coverageWorkDir, { recursive: true, force: true })
 
 if (failures.length > 0) {
   console.error(`\nIssue #197 回归守卫失败：${failures.length} 项`)
