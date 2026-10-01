@@ -8,11 +8,11 @@
   },
   "prepared": {
     "savedStatus": 201,
-    "savedBody": "{\"id\":\"dv_17\",\"status\":\"saved\",\"revision\":4,\"updatedAt\":\"2026-10-01T04:40:36Z\",\"capabilities\":{\"canEdit\":true,\"canRun\":true,\"canReview\":true,\"canPublish\":true,\"canDownload\":true,\"canManageMembers\":tru",
+    "savedBody": "{\"id\":\"dv_18\",\"status\":\"saved\",\"revision\":5,\"updatedAt\":\"2026-10-01T04:49:31Z\",\"capabilities\":{\"canEdit\":true,\"canRun\":true,\"canReview\":true,\"canPublish\":true,\"canDownload\":true,\"canManageMembers\":tru",
     "connection": 19
   },
   "health": {
-    "inspectorText": "今日工作 | 数据项目 | 方案库 | 交付库 | 评估工作台 | 清洗工作台 | 历史资产 | 动态 | 连接设置 | 成员与角色 | 帮助 | 数据项目 | 209-verify-incomplete-conn | 设计 | 搜索 | A | 已进入设计 | 209-verify-incomplete-conn | 蓝图节点、覆盖矩阵与思维标准 | 概览 | 设计 | 生产 | 数据 | 质量 | 发布 | DESIGN / BLUEPRINT | 生产蓝图 | 先确认每一步需要什么，再保存为新的配置版本。已经运行的批次不会被覆盖。 | 小批试制 → | ATELIER / PRODUCTION BLUEPRINT / v3 | 流程从左到右：先定范围与标准，再生成，最后评估与交付。点任一节点在右侧配置它。 | 覆盖范围 | 确定要覆盖哪些领域和方向，以及每个方向要产出多少内容 | 可执行 | 思维标准 | 定义内容应该怎样思考，以及每一步完成前要检查什么 | 可执行 | 生成 | 决定系统使用哪个模型服务，以及每次生成的数量和边界 | 模型服务配置不完整 | 独立评估 | 用独立的模型服务检查生成结果，并按量表抽取样本 | 待补齐 2 项 | 规则检查 | 设置哪些问题需要拦截、提醒或进入人工判断 | 可执行 | 人工检查点 | 决定哪些内容需要人工确认，以及确认时必须提供什",
+    "inspectorText": "今日工作 | 数据项目 | 方案库 | 交付库 | 评估工作台 | 清洗工作台 | 历史资产 | 动态 | 连接设置 | 成员与角色 | 帮助 | 数据项目 | 209-verify-incomplete-conn | 设计 | 搜索 | A | 已进入设计 | 209-verify-incomplete-conn | 蓝图节点、覆盖矩阵与思维标准 | 概览 | 设计 | 生产 | 数据 | 质量 | 发布 | DESIGN / BLUEPRINT | 生产蓝图 | 先确认每一步需要什么，再保存为新的配置版本。已经运行的批次不会被覆盖。 | 小批试制 → | ATELIER / PRODUCTION BLUEPRINT / v4 | 流程从左到右：先定范围与标准，再生成，最后评估与交付。点任一节点在右侧配置它。 | 覆盖范围 | 确定要覆盖哪些领域和方向，以及每个方向要产出多少内容 | 可执行 | 思维标准 | 定义内容应该怎样思考，以及每一步完成前要检查什么 | 可执行 | 生成 | 决定系统使用哪个模型服务，以及每次生成的数量和边界 | 模型服务配置不完整 | 独立评估 | 用独立的模型服务检查生成结果，并按量表抽取样本 | 待补齐 2 项 | 规则检查 | 设置哪些问题需要拦截、提醒或进入人工判断 | 可执行 | 人工检查点 | 决定哪些内容需要人工确认，以及确认时必须提供什",
     "selectedLabel": "未命名连接 #19"
   },
   "consoleErrors": [
