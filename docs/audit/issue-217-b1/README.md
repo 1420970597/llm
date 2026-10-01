@@ -120,8 +120,8 @@ bash scripts/db-migrate-smoke.sh: 退出码 0
 | #217 子项 | 状态 |
 | --- | --- |
 | **B1 迁移验证补齐** | **已修复（本轮）** |
-| A1/A2/A3 目标结构树与容量校验（服务端类型/配额校验、结构树页面） | 未开始。A2 的「批次创建前可产出量校验」已由 #190 的 `CoverageCapacity` 落地（`internal/store/batch_store.go:268`），但 A1 的 `sourceChunkIds`/`source` 取值集合与 A3 的 `TargetStructurePage.tsx` **不存在** |
-| B2–B7 素材来源（第六类文档、分块引擎、上传端点、采集台账扩展、worker job、前端页面） | 未开始（`internal/import/`、`internal/store/source_chunk_store.go`、`0040_studio_source_documents.sql` 均不存在） |
+| A1/A2/A3 目标结构树与容量校验（服务端类型/配额校验、结构树页面） | 未开始。A2 的「批次创建前可产出量校验」已由 #190 的 `CoverageCapacity` 落地（`internal/store/batch_store.go:268`），但 A1 的 `sourceChunkIds`/`source` 取值集合与 A3 的结构树页面（`apps/web-user/src/studio/pages/` 下的 TargetStructurePage.tsx）**不存在** |
+| B2–B7 素材来源（第六类文档、分块引擎、上传端点、采集台账扩展、worker job、前端页面） | 未开始（`internal/import/source_document.go`、`internal/store/source_chunk_store.go`、`sql/migrations/0040_studio_source_documents.sql` 均不存在） |
 | C1–C4 成品导入（格式映射、导入端点、导入向导、契约文档） | 未开始 |
 | D1–D3 存量盘点与 `questionFor` 接地替换 | 未开始。D2 指出的 `questionFor` / `grpoQuestionFor` 两份副本仍在（`apps/worker/studio_batch.go:210` 与 `studio_grpo.go:236`） |
 | E1–E3 质量门与证据 | 未开始 |
@@ -129,7 +129,7 @@ bash scripts/db-migrate-smoke.sh: 退出码 0
 - 其余 19 项是**成体系的产品功能**（涉及新表、新端点、新页面与 LLM 接线），
   与本轮「迁移验证补齐」不是同一量级；按 SOP §8.3，本轮记 `partial` 并保持开启，
   由后续轮次/人工按计划推进，不在本轮擅自扩张范围。
-- `docs/plans/external-source-import-plan.md`（#217 自称的「权威正文」）**在 `main` 上不存在**：
+- #217 自称的「权威正文」（仓库根的 `docs/plans/` 下的 external-source-import-plan.md）**在 `main` 上不存在**：
   它只存在于 `docs/TASK-165-197-blueprint-workflow-rearchitecture` 分支（提交 `3fc7ce2`）。
   issue 正文因此目前是唯一权威；这不影响 B1 的修复，但计划「双层结构」的文档侧链接暂时悬空。
 
