@@ -21,12 +21,34 @@
  * 是被证明的，而不是被声称的（与 `l15_app_ux.mjs` 同一约定）。
  */
 
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relative) => readFileSync(path.join(REPO_ROOT, relative), 'utf8')
+
+/**
+ * 递归收集 `apps/web-user/src` 下全部 `.ts` / `.tsx`（#211 方向 3）。
+ *
+ * 为什么要递归而不是手工清单：#211 的成因就是「同一取值域有**第四条**渲染路径没被覆盖」
+ * —— 清单式守卫只能证明「我列出的那些文件是好的」，证明不了「没有第五处」。
+ * 这与 #192（Markdown 星号守卫退回手工清单）是同一教训。
+ */
+function collectFrontendSources(directory) {
+  const found = []
+  for (const entry of readdirSync(directory).sort()) {
+    const full = path.join(directory, entry)
+    if (statSync(full).isDirectory()) {
+      found.push(...collectFrontendSources(full))
+      continue
+    }
+    if (entry.endsWith('.ts') || entry.endsWith('.tsx')) {
+      found.push(full)
+    }
+  }
+  return found
+}
 
 const MODEL_DOCS = read('internal/model/studio_docs.go')
 // #206：批次事件模型（eventTypeLabel 字段的落点）。
@@ -479,6 +501,60 @@ function problemsWithReviewStatusLabels(qualitySrc, reviewSrc, enumSrc) {
   if (!/unreviewedScopeNotice/.test(qualitySrc)) {
     problems.push('QualityPages 未说明「未审阅内容能否纳入评测」（#211 第 2 项要求）')
   }
+  // #211 方向 2：行内标记 + 提交前提示。只有页顶一句背景说明是不够的 ——
+  // 用户点「创建并冻结实验」时不会再读一遍背景文案。
+  if (!/data-scope-unreviewed-row/.test(qualitySrc)) {
+    problems.push('已勾选的未审阅内容没有行内标记（用户无法回答「我刚勾的这条算不算已验证」）')
+  }
+  if (!/Modal\.confirm\(/.test(qualitySrc) || !/selectedUnreviewedCount/.test(qualitySrc)) {
+    problems.push('提交前没有针对「本次纳入了未审阅内容」的确认（#211 方向 2 的提交前提示）')
+  }
+  return problems
+}
+
+/**
+ * #211 方向 3：审阅枚举不得在**任何**前端渲染点裸渲染（全树递归扫描）。
+ *
+ * 为什么必须是递归扫描而不是手工清单：#211 的成因就是「同一个取值域有
+ * **第四条**渲染路径没被覆盖」（前三条已由 #191 修）。清单式断言只能证明
+ * 「我列出的文件是好的」，证明不了「没有第五处」—— 这正是 #192 的教训
+ * （Markdown 守卫退回手工清单后星号又漏了 5 个页面）。
+ *
+ * 裸渲染的形态：JSX 子节点直接输出枚举字段
+ * （`>{sample.reviewStatus}<` / `>{item.effectiveAction}<`）。
+ * 以下用法**不**算裸渲染，不得误报（误报会让人直接关掉守卫）：
+ *   - `title={x.reviewStatus}`     —— 刻意保留原值供排查（守卫只认 `>{...}` 形式）；
+ *   - `describeReviewStatus(x)`    —— 正确走单一来源；
+ *   - `reviewStatusColor(x)`       —— 颜色映射；
+ *   - `x.reviewStatus === 'pending'` —— 比较，不是渲染。
+ * 因此用 `>{` 前缀锚定「JSX 子节点位置」，而不是只要出现字段名就报错。
+ *
+ * sources 是 `{ name, source }` 列表（由调用方递归收集）：把「扫什么」与
+ * 「怎么判」分开，变异自证才能把伪造源码喂进来。
+ */
+function problemsWithBareReviewStatusRender(sources) {
+  const problems = []
+  if (!Array.isArray(sources) || sources.length === 0) {
+    problems.push('没有可扫描的前端源码（守卫会空转）')
+    return problems
+  }
+  // 字尾边界（\b）让 `reviewStatusColor(` / `describeReviewStatus(` 不被当成裸渲染；
+  // `(?:[A-Za-z_$][\w$]*\.)*` 允许 `sample.` / `detail.sample.` 这类前缀。
+  const bare = />\{\s*(?:[A-Za-z_$][\w$]*\.)*(reviewStatus|effectiveAction)\b\s*\}/g
+  let scanned = 0
+  for (const entry of sources) {
+    scanned++
+    const code = stripComments(entry.source)
+    code.split('\n').forEach((line, index) => {
+      bare.lastIndex = 0
+      if (bare.test(line)) {
+        problems.push(`${entry.name}:${index + 1} 裸渲染审阅枚举（应用 describeReviewStatus）：${line.trim().slice(0, 90)}`)
+      }
+    })
+  }
+  if (scanned < 40) {
+    problems.push(`只扫到 ${scanned} 个前端源码文件（递归收集可能失效）`)
+  }
   return problems
 }
 
@@ -666,6 +742,10 @@ const TODAY_PAGE = read('apps/web-user/src/studio/pages/TodayPages.tsx')
 const DOCUMENT_EDITORS = read('apps/web-user/src/studio/DocumentEditors.tsx')
 const RELEASE_PAGE = read('apps/web-user/src/studio/pages/ReleasePages.tsx')
 const STUDIO_API_TYPES = read('apps/web-user/src/lib/api/studio.ts')
+// #211 方向 3：递归收集全部前端源码（不是手工清单）。
+const FRONTEND_SOURCES = collectFrontendSources(path.join(REPO_ROOT, 'apps/web-user/src')).map(
+  (absolute) => ({ name: path.relative(REPO_ROOT, absolute), source: readFileSync(absolute, 'utf8') }),
+)
 
 const checks = [
   ['#190 批次容量校验（服务端事实 + 字段级拒绝）',
@@ -679,6 +759,8 @@ const checks = [
   ['#211 审阅状态不再裸渲染 + 说明未审阅内容口径',
     problemsWithReviewStatusLabels(read('apps/web-user/src/studio/pages/QualityPages.tsx'),
       REVIEW_PAGE, ENUM_LABELS)],
+  ['#211 全树递归：审计/审阅枚举无旁枝裸渲染点',
+    problemsWithBareReviewStatusRender(FRONTEND_SOURCES)],
   ['#191 扫描发现的 3 条渲染路径接线不变式',
     problemsWithSweepDiscoveredPaths(EVAL_DIMENSION_MANAGER, EVAL_REPORT, EVAL_CATEGORY_ROUTE,
       BATCH_FAILURE_VIEW, RUN_PAGE)],
@@ -744,6 +826,16 @@ const mutations = [
   ['#211 让颜色/文案映射退化', problemsWithReviewStatusLabels(
     read('apps/web-user/src/studio/pages/QualityPages.tsx'),
     REVIEW_PAGE.replace(/describeReviewStatus\(/g, 'noop('), ENUM_LABELS)],
+  ['#211 摘掉行内未审阅标记与提交前提示', problemsWithReviewStatusLabels(
+    read('apps/web-user/src/studio/pages/QualityPages.tsx')
+      .replaceAll('data-scope-unreviewed-row', 'data-removed')
+      .replace(/Modal\.confirm\(/, 'noopConfirm('), REVIEW_PAGE, ENUM_LABELS)],
+  ['#211 让某条渲染路径退回裸枚举', problemsWithBareReviewStatusRender(
+    [...FRONTEND_SOURCES, { name: 'injected/Leak.tsx', source: 'export const A = () => <span>{sample.reviewStatus}</span>' }])],
+  ['#211 让全树扫描退化成手工清单', (() => {
+    const only = FRONTEND_SOURCES.filter((entry) => entry.name.endsWith('QualityPages.tsx'))
+    return problemsWithBareReviewStatusRender(only)
+  })()],
   ['#191 摘掉维度管理的分类中文映射', problemsWithSweepDiscoveredPaths(
     EVAL_DIMENSION_MANAGER.replace(/categoryLabels\[/g, 'categoryKeys['), EVAL_REPORT,
     EVAL_CATEGORY_ROUTE, BATCH_FAILURE_VIEW, RUN_PAGE)],
