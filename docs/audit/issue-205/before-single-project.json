@@ -1,0 +1,91 @@
+{
+  "issue": 205,
+  "phase": "before",
+  "base": "http://127.0.0.1:3210",
+  "viewport": "1600x1000",
+  "account": "admin@company.com",
+  "deployedVersion": {
+    "version": "91e7e1a-before-nopatch",
+    "buildTime": "2026-10-01T10:52:01Z",
+    "source": "apps/web-user"
+  },
+  "controlledInput": "stub: /api/v1/today overview → projectCount=1, scopedProjectIds=[1]",
+  "evidenceName": "before-single-project",
+  "tiles": [
+    {
+      "key": "projects",
+      "tag": "a",
+      "href": "/projects",
+      "text": "数据项目 | 1 | 你可见的项目",
+      "innerLinks": []
+    },
+    {
+      "key": "running",
+      "tag": "a",
+      "href": "/today",
+      "text": "进行中批次 | 0 | 排队 / 运行 / 暂停请求中",
+      "innerLinks": []
+    },
+    {
+      "key": "shortfall",
+      "tag": "a",
+      "href": "/today",
+      "text": "产出缺口 | 2 | 计划 24 · 完成 9",
+      "innerLinks": []
+    },
+    {
+      "key": "pending",
+      "tag": "a",
+      "href": "/activity",
+      "text": "待人工判断 | 3 | 进入项目「审阅」处理",
+      "innerLinks": []
+    },
+    {
+      "key": "produced",
+      "tag": "a",
+      "href": "/today",
+      "text": "近 7 天产出 | 9 | 新增样本版本数",
+      "innerLinks": []
+    },
+    {
+      "key": "releases",
+      "tag": "a",
+      "href": "/deliveries",
+      "text": "交付 | 0 | 已发布 · 被挡住 1",
+      "innerLinks": []
+    }
+  ],
+  "currentPath": "/today",
+  "selfLinks": [
+    "running",
+    "shortfall",
+    "produced"
+  ],
+  "overview": {
+    "status": 200,
+    "projectCount": 1,
+    "scopedProjectIds": [
+      1
+    ],
+    "blockedReleases": 1
+  },
+  "multiProject": false,
+  "pendingTarget": "/activity",
+  "pendingPointsToActivity": true,
+  "pendingReachable": false,
+  "blocked": {
+    "tileText": "交付 | 0 | 已发布 · 被挡住 1",
+    "innerLinks": [],
+    "hasDedicatedExit": false,
+    "dedicatedExitHref": null
+  },
+  "blockedCountInTile": 1,
+  "consoleErrors": [],
+  "verdict": {
+    "selfLinkCount": 3,
+    "pendingWrongTarget": true,
+    "pendingReachable": false,
+    "blockedWithoutExit": true
+  },
+  "ok": false
+}
