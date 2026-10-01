@@ -1,0 +1,66 @@
+{
+  "issue": 213,
+  "phase": "before",
+  "base": "http://127.0.0.1:3210",
+  "viewport": "1600x1000",
+  "account": "admin@company.com",
+  "deployedVersion": {
+    "version": "91e7e1a-before-nopatch",
+    "buildTime": "2026-10-01T11:17:37Z",
+    "source": "apps/web-user"
+  },
+  "checkboxes": [
+    {
+      "id": "",
+      "ariaLabel": "",
+      "labelText": "必填",
+      "accessibleName": "必填"
+    },
+    {
+      "id": "",
+      "ariaLabel": "",
+      "labelText": "必填",
+      "accessibleName": "必填"
+    },
+    {
+      "id": "",
+      "ariaLabel": "",
+      "labelText": "必填",
+      "accessibleName": "必填"
+    }
+  ],
+  "checkboxNames": [
+    "必填",
+    "必填",
+    "必填"
+  ],
+  "accessibleNameIssues": 0,
+  "duplicateNames": true,
+  "distinctNames": 1,
+  "a11ySnapshotAll": [
+    "- checkbox \"必填\" [checked] - text: 必填",
+    "- checkbox \"必填\" [checked] - text: 必填",
+    "- checkbox \"必填\" [checked] - text: 必填"
+  ],
+  "emptySubmit": {
+    "rangeErrorText": "",
+    "rangeAnchorCount": 0,
+    "bodyHasRangeMessage": true
+  },
+  "intendedUse": {
+    "errorText": "",
+    "errorCount": 0,
+    "ariaInvalid": null,
+    "ariaDescribedBy": null,
+    "bodyHasRangeMessage": false,
+    "bodyHasUseMessage": true
+  },
+  "consoleErrors": [],
+  "verdict": {
+    "checkboxWithoutName": 0,
+    "checkboxNamesIndistinct": true,
+    "fieldErrorNotAnchored": true,
+    "fieldErrorNotDescribed": true
+  },
+  "ok": false
+}
