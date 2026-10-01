@@ -751,18 +751,25 @@ export function BatchDetailPage() {
           </div>
         </Card>
 
-        <Card className="console-card" bodyStyle={{ padding: 16 }}>
+        <Card className="console-card" bodyStyle={{ padding: 16 }} data-batch-steps="true">
           <Text strong className="block mb-2">
             阶段进度（按单位，不编造总体百分比）
           </Text>
+          {/* issue #212：以前这里对所有批次都显示「还没有阶段记录」——
+              对已跑完的批次，那句空态等于断言「这次没有执行任何阶段」，
+              而同一页上方的分析面板却有完整数据。服务端现在把阶段做成
+              batch_items 的投影，因此正常批次一定有行；保留的兜底文案
+              也只能陈述「记录缺失」，不得再暗示「没执行」。 */}
           {detail.steps.length === 0 ? (
-            <Text type="tertiary" size="small">
-              还没有阶段记录。
+            <Text type="tertiary" size="small" data-batch-steps-empty="true">
+              阶段记录缺失（服务端未返回阶段投影），请刷新重试；这不表示本批没有执行阶段。
             </Text>
           ) : (
             <ul className="batch-steps">
+              {/* key 用 phase 而不是 id：投影在尚未落盘时 id 为 0，
+                  用 id 做 key 会让两行撞 key 并互相复渲染。 */}
               {detail.steps.map((step) => (
-                <li key={step.id}>
+                <li key={step.phase} data-batch-step={step.phase} data-batch-step-status={step.status}>
                   <span>{step.unitLabel || step.phase}</span>
                   <span>
                     {step.doneUnits} / {step.totalUnits}
