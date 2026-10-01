@@ -3,19 +3,25 @@ package model
 import "time"
 
 type ModelProvider struct {
-	ID              int64     `json:"id"`
-	Name            string    `json:"name"`
-	BaseURL         string    `json:"baseUrl"`
-	Model           string    `json:"model"`
-	ProviderType    string    `json:"providerType"`
-	ReasoningEffort string    `json:"reasoningEffort"`
-	MaxConcurrency  int       `json:"maxConcurrency"`
-	TimeoutSeconds  int       `json:"timeoutSeconds"`
-	IsActive        bool      `json:"isActive"`
-	APIKey          string    `json:"apiKey,omitempty"`
-	APIKeyMasked    string    `json:"apiKeyMasked"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	ID              int64  `json:"id"`
+	Name            string `json:"name"`
+	BaseURL         string `json:"baseUrl"`
+	Model           string `json:"model"`
+	ProviderType    string `json:"providerType"`
+	ReasoningEffort string `json:"reasoningEffort"`
+	MaxConcurrency  int    `json:"maxConcurrency"`
+	TimeoutSeconds  int    `json:"timeoutSeconds"`
+	IsActive        bool   `json:"isActive"`
+	APIKey          string `json:"apiKey,omitempty"`
+	APIKeyMasked    string `json:"apiKeyMasked"`
+	// ConfigIssues 是「这条连接当前不能用于生成」的原因清单（issue #209）。
+	//
+	// 与 APIKeyMasked 同样是**由服务端派生**的字段：配置完整性的权威判据只有一份
+	// （store.providerFieldRules，与保存路径共用），前端不该自己重算。
+	// 空切片表示配置完整；它不包含 isActive（停用是显式意图，不是配置错误）。
+	ConfigIssues []string  `json:"configIssues"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 type ProviderModelInfo struct {

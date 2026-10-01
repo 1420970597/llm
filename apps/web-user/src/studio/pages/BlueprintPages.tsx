@@ -112,6 +112,25 @@ function versionFromResponse(body: unknown): DocumentVersion {
   return body as DocumentVersion
 }
 
+/**
+ * 模型连接选项的副标题（issue #209）。
+ *
+ * 为什么把「已停用」与「配置不完整」分开写：它们是**两种不同的阻断原因**，
+ * 用户的下一步动作也不同 —— 停用要「启用」，配置不完整要「去连接设置补必填字段」。
+ * 混成一句话会让用户按错的提示去操作。
+ *
+ * `configIssues` 由服务端下发（与保存校验同一份规则），前端**不重算**。
+ */
+function connectionMeta(item: { model: string; isActive: boolean; configIssues?: string[] }): string {
+  const parts: string[] = []
+  if (item.model) parts.push(item.model)
+  if (!item.isActive) parts.push('已停用')
+  if ((item.configIssues?.length ?? 0) > 0) {
+    parts.push(`配置不完整，不可用于生成（${item.configIssues?.join('；')}）`)
+  }
+  return parts.join(' · ')
+}
+
 /** 节点 payload 的读写：按 payloadField 取该节点在 Nodes 下的对象。 */
 function nodeValues(payload: Record<string, unknown> | null, spec: NodeSpec): Record<string, unknown> {
   if (!payload) return {}
@@ -172,7 +191,7 @@ export function BlueprintPage() {
         client.get<VersionsResponse>(`${projectPath(scope.projectId)}/standard-versions?limit=50`),
         client.get<VersionsResponse>(`${projectPath(scope.projectId)}/quality-policy-versions?limit=50`),
         client.get<VersionsResponse>(`${projectPath(scope.projectId)}/mapping-versions?limit=50`),
-        client.get<{ providers?: Array<{ id: number; name: string; model: string; isActive: boolean }> }>('/v1/settings/connection-options'),
+        client.get<{ providers?: Array<{ id: number; name: string; model: string; isActive: boolean; configIssues?: string[] }> }>('/v1/settings/connection-options'),
       ])
       setSpecs(nodesResponse.data.items ?? [])
       const list = versionsResponse.data.items ?? []
@@ -198,8 +217,11 @@ export function BlueprintPage() {
         },
         connections: (connectionsResponse.data.providers ?? []).map((item) => ({
           value: String(item.id),
-          label: item.name,
-          meta: `${item.model}${item.isActive ? '' : ' · 已停用'}`,
+          // issue #209：名称为空的连接以前渲染成一个**没有任何文字**的选项。
+          // 这里给可读兼底 + 把服务端下发的配置问题拼进标签，
+          // 用户在**选择前**就能看出哪个不能用。
+          label: item.name || `未命名连接 #${item.id}`,
+          meta: connectionMeta(item),
         })),
       })
 
