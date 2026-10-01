@@ -4,6 +4,7 @@ import { Button, Card, Empty, Input, Select, TextArea, Typography } from '@douyi
 import { ChevronDown, ChevronUp, Copy, Plus, Save, Trash2 } from 'lucide-react'
 import { client } from '../lib/api'
 import { newIdempotencyKey, projectPath, type ProjectResourceId } from '../lib/api/studio'
+import { describeCoverageFormula, deriveCoverageStructure, formatCoverageFormula } from './coverageStructure'
 
 const Text = Typography.Text
 
@@ -231,33 +232,24 @@ export function CoveragePayloadEditor({ payload, disabled, onChange }: { payload
    * 心算 m×n×z；而且「计划量」与「可产出量」从不并列，于是 #190 的
    * 「计划 12、实际只能产 1」在界面上完全看不出来。
    *
-   * 这里把三者（领域数 m / 每领域方向 n / 每方向题数 z）与乘积、
-   * **以及本版本的最大可产出量**并列显示。可产出量由
-   * `sum(direction.quota)` 得出 —— 与后端 `model.CoverageCapacity`
-   * 是同一个口径（后端在启动批次时用它做拒绝校验）。
+   * 推导抽到 `coverageStructure.ts`（无 React 依赖，可被守卫直接调用）：
+   * 以前这里把 `z` 渲染成 Σquota 却复用同一个数当结果，得到
+   * `m 1 × n 2 × z 4 = 4` —— 公式自己算不通。只有「各领域方向数相同、
+   * 各方向配额相同」时 m×n×z 才是成立的乘积，模块对此显式建模。
+   * 可产出量与后端 `model.CoverageCapacity` 同一口径。
    */
-  const directionCount = domains.reduce((total, domain) => total + asArray(domain.directions).length, 0)
-  const capacity = domains.reduce(
-    (total, domain) =>
-      total +
-      asArray(domain.directions).reduce((subtotal, direction) => {
-        const quota = Number(direction.quota)
-        return subtotal + (Number.isFinite(quota) && quota > 0 ? quota : 1)
-      }, 0),
-    0,
-  )
+  const structure = deriveCoverageStructure(payload)
   return (
     <div className="document-editor document-editor--coverage">
       <div className="document-editor__intro"><Text strong>覆盖范围编辑器</Text><Text type="tertiary" size="small">把领域拆成可执行方向，并为每个方向设置计划数量。稳定 ID 用于让历史批次继续指向原版本。</Text></div>
       <div className="coverage-tree" data-coverage-tree="true">
         <div className="coverage-tree__formula">
           <span className="eyebrow">数据集结构</span>
-          <strong data-coverage-formula="true">
-            m {domains.length} × n {directionCount} × z {capacity} = {capacity}
+          <strong data-coverage-formula="true" data-coverage-formula-product={structure.uniformDirectionsPerDomain !== null && structure.uniformQuotaPerDirection !== null ? 'true' : 'false'}>
+            {formatCoverageFormula(structure)}
           </strong>
           <Text type="tertiary" size="small" className="block">
-            领域数 × 方向数 × 每个方向的题数。公式里的结果就是<strong>本版本最多能产出的单元数</strong>；
-            启动批次时填的计划量不能超过它（否则会被拒绝，避免静默少交付）。
+            {describeCoverageFormula(structure)}
           </Text>
         </div>
         <ul className="coverage-tree__list">
