@@ -1872,3 +1872,161 @@ func TestResumeBatchEnqueuesJobWithoutClaimingZombie(t *testing.T) {
 		t.Fatalf("派出的作业必须指向本批次的生成作业，实际 kind=%s batch=%d", kind, batchID)
 	}
 }
+
+// TestBatchStepsProjectedFromItemFacts 覆盖 issue #212 的核心验收口径。
+//
+// 缺陷形态（实测 b_4）：`batch_steps` 全库 0 行，已完成 4/4 的批次详情显示
+// 「还没有阶段记录。」—— 用空态宣称「这次没有执行任何阶段」。
+//
+// 断言的是 issue 明确要求的那条不变式：
+// **跑完一个真实批次后 `batch_steps` 不为空，且各阶段 done_units == total_units**。
+// 同时覆盖两条边界路径：
+//   - 有失败单元时「生成」阶段必须 partial_failed 且失败数可见（**不得**宣称完成）；
+//   - 维护循环的可达性：一个从未被 runner 碰过的存量批次也能被补出阶段行
+//     （只修 runner 无法修好历史批次，#201/#202 的同一教训）。
+func TestBatchStepsProjectedFromItemFacts(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+
+	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 3))
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+
+	// 未执行的批次也必须给出阶段行（否则区块会退回「还没有阶段记录」）。
+	initial, err := fixture.batches.RefreshBatchSteps(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("RefreshBatchSteps(初始): %v", err)
+	}
+	if len(initial) != 2 {
+		t.Fatalf("阶段投影必须恰好给出 2 行（规划/生成），实际 %d", len(initial))
+	}
+	for _, step := range initial {
+		if step.UnitLabel == "" || strings.Contains(step.UnitLabel, step.Phase) {
+			t.Fatalf("阶段 %q 的中文单位名不合法：%q", step.Phase, step.UnitLabel)
+		}
+	}
+
+	// 正常路径：3 个单元全部产出成功。
+	for _, key := range []string{"d/d#1", "d/d#2", "d/d#3"} {
+		item, _, err := fixture.batches.EnsureBatchItem(ctx, batch.ID, fixture.projectID, key, nil)
+		if err != nil {
+			t.Fatalf("ensure %s: %v", key, err)
+		}
+		if _, _, err := fixture.batches.CommitBatchItemSuccess(ctx, batch.ID, fixture.projectID, item.ID,
+			AppendSampleVersionInput{SampleKey: key, TargetKind: model.TargetKindSFT, Payload: sftPayload(key)}); err != nil {
+			t.Fatalf("commit %s: %v", key, err)
+		}
+	}
+	if _, err := fixture.batches.RefreshBatchCounts(ctx, batch.ID); err != nil {
+		t.Fatalf("RefreshBatchCounts: %v", err)
+	}
+	steps, err := fixture.batches.RefreshBatchSteps(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("RefreshBatchSteps: %v", err)
+	}
+	byPhase := map[string]model.BatchStep{}
+	for _, step := range steps {
+		byPhase[step.Phase] = step
+	}
+	generate, ok := byPhase[model.BatchStepGenerate]
+	if !ok {
+		t.Fatal("缺少「生成」阶段行（#212 的实测形态就是这行为空）")
+	}
+	if generate.DoneUnits != generate.TotalUnits {
+		t.Fatalf("全部产出后 生成阶段必须 done == total，实际 %d/%d",
+			generate.DoneUnits, generate.TotalUnits)
+	}
+	if generate.Status != model.StepStatusCompleted {
+		t.Fatalf("全部产出后生成阶段必须 completed，实际 %q", generate.Status)
+	}
+	// 落盘的事实也必须存在：表空 = #212 缺陷本题。
+	var storedCount int
+	if err := fixture.pool.QueryRow(ctx, `
+    SELECT COUNT(*) FROM batch_steps WHERE batch_id = $1`, batch.ID).Scan(&storedCount); err != nil {
+		t.Fatalf("读取 batch_steps: %v", err)
+	}
+	if storedCount != 2 {
+		t.Fatalf("batch_steps 必须落盘 2 行，实际 %d（全库 0 行正是本 issue 的缺陷形态）", storedCount)
+	}
+
+	// 边界路径：把其中一个单元改成失败重试后，阶段必须显式报告缺口。
+	if _, err := fixture.pool.Exec(ctx, `
+    UPDATE batch_items SET status = 'failed', error_class = 'timeout', error_message = '超时'
+    WHERE batch_id = $1 AND item_key = 'd/d#3'`, batch.ID); err != nil {
+		t.Fatalf("构造失败单元: %v", err)
+	}
+	if _, err := fixture.batches.RefreshBatchCounts(ctx, batch.ID); err != nil {
+		t.Fatalf("RefreshBatchCounts(失败后): %v", err)
+	}
+	afterFailure, err := fixture.batches.RefreshBatchSteps(ctx, batch.ID)
+	if err != nil {
+		t.Fatalf("RefreshBatchSteps(失败后): %v", err)
+	}
+	var failedStep model.BatchStep
+	for _, step := range afterFailure {
+		if step.Phase == model.BatchStepGenerate {
+			failedStep = step
+		}
+	}
+	if failedStep.FailedUnits != 1 {
+		t.Fatalf("失败数必须可见，实际 %d", failedStep.FailedUnits)
+	}
+	if failedStep.Status != model.StepStatusPartialFailed {
+		t.Fatalf("有失败的阶段不得宣称完成，实际 %q", failedStep.Status)
+	}
+	if strings.TrimSpace(failedStep.ErrorSummary) == "" {
+		t.Fatal("有失败的阶段必须给出可展示的中文说明")
+	}
+}
+
+// TestListBatchIDsWithStaleStepsFindsHistoricalBatches 覆盖 #212 的**可达性**：
+// 只修 runner 无法修好已经跑完的历史批次（它们永远不会再被 runner 碰到）。
+func TestListBatchIDsWithStaleStepsFindsHistoricalBatches(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+
+	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1))
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	item, _, _ := fixture.batches.EnsureBatchItem(ctx, batch.ID, fixture.projectID, "d/d#1", nil)
+	if _, _, err := fixture.batches.CommitBatchItemSuccess(ctx, batch.ID, fixture.projectID, item.ID,
+		AppendSampleVersionInput{SampleKey: "d/d#1", TargetKind: model.TargetKindSFT, Payload: sftPayload("完成")}); err != nil {
+		t.Fatalf("commit success: %v", err)
+	}
+	if _, err := fixture.batches.RefreshBatchCounts(ctx, batch.ID); err != nil {
+		t.Fatalf("RefreshBatchCounts: %v", err)
+	}
+
+	// 缺陷形态：批次已定稿、batch_steps 仍是空的（历史批次就是这样）。
+	ids, err := fixture.batches.ListBatchIDsWithStaleSteps(ctx, 500)
+	if err != nil {
+		t.Fatalf("ListBatchIDsWithStaleSteps: %v", err)
+	}
+	found := false
+	for _, id := range ids {
+		if id == batch.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("阶段表为空的历史批次必须被扫出来，否则维护循环永远修不到它")
+	}
+
+	if _, err := fixture.batches.RefreshBatchSteps(ctx, batch.ID); err != nil {
+		t.Fatalf("RefreshBatchSteps: %v", err)
+	}
+	// 收敛之后不得再命中：否则维护循环每 30 秒改写一次而永不收敛（#202 的同一约束）。
+	idsAfter, err := fixture.batches.ListBatchIDsWithStaleSteps(ctx, 500)
+	if err != nil {
+		t.Fatalf("ListBatchIDsWithStaleSteps(after): %v", err)
+	}
+	for _, id := range idsAfter {
+		if id == batch.ID {
+			t.Fatal("阶段已收敛的批次不得再被扫出（会导致维护循环永不收敛）")
+		}
+	}
+}

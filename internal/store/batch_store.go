@@ -575,6 +575,52 @@ func (s *BatchStore) ListDivergentBatchIDs(ctx context.Context, limit int) ([]in
 	return ids, rows.Err()
 }
 
+// ListBatchIDsWithStaleSteps 返回「阶段投影缺失或落后」的批次 ID。
+//
+// 为什么需要它（issue #212）：阶段投影只在 runner 跑完时落盘，而 runner 碰不到
+// 已经跑完的历史批次 —— 因此只修 runner 并不能修好实测的那条（b_4 已完成、
+// batch_steps 仍然 0 行）。把「哪几条需要补写阶段行」变成可扫描的事实，
+// 由 worker 的维护循环定期调用，投影才能对存量数据也生效。
+//
+// 判据只用**已落库的列**（不回表算 batch_items）：维护循环每 30 秒跑一次，
+// 让它随批次数量增长而变慢会拖垮整个 worker。两个形态各自都极小：
+//   - `batch_steps` 里一行都没有（本 issue 的实测形态）；
+//   - 有行但状态与批次状态矛盾（阶段还停在 pending/running，批次已定稿）——
+//     那正是读取层从 batch_items 重算得到的投影会与表里不一致的时刻。
+//
+// 已收敛的批次不再命中：两侧状态字串相等时两个条件都为假，因此维护循环
+// 不会每 30 秒改写一次（与 #202 的幂等不动点同一约束）。
+func (s *BatchStore) ListBatchIDsWithStaleSteps(ctx context.Context, limit int) ([]int64, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(ctx, `
+    SELECT b.id FROM batches b
+    WHERE NOT EXISTS (
+            SELECT 1 FROM batch_steps s WHERE s.batch_id = b.id)
+       OR EXISTS (
+            SELECT 1 FROM batch_steps s
+            WHERE s.batch_id = b.id
+              AND b.status IN ('completed', 'failed', 'partial_failed')
+              AND s.status NOT IN ('completed', 'failed', 'skipped', 'partial_failed'))
+    ORDER BY b.id
+    LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // GetBatch 读取单个批次；不存在返回 pgx.ErrNoRows。
 func (s *BatchStore) GetBatch(ctx context.Context, batchID int64) (model.Batch, error) {
 	batch, err := scanBatch(s.db.QueryRow(ctx, batchSelectByIDSQL, batchID))
@@ -682,34 +728,163 @@ func (s *BatchStore) ListBatches(ctx context.Context, query BatchListQuery) ([]m
 	return items, rows.Err()
 }
 
-// ListBatchSteps 读取批次的所有阶段。
+// ListBatchSteps 读取批次的阶段进度。
+//
+// issue #212：此前的实现只读 `batch_steps` 表，而 T05 只建了表、T12/T13 从未写入
+// 任何一行 —— 于是「阶段进度」区块对**所有**批次恒为空，对已跑完的批次等于用空态
+// 宣称「这次没有执行任何阶段」。
+//
+// 修法是让阶段进度成为 `batch_items` 的**投影**（唯一事实来源），而不是又一份
+// 需要有人记得去写的计数：规划阶段看「计划量落成了多少单元」，生成阶段看
+// 「这些单元里有多少产出了样本版本」。这与 #201 的教训同构 —— 声明式的进度
+// 会与事实漂移，而投影不会。
+//
+// 读取**不写库**：投影每次从事实重算，因此不存在「读取顺手改写状态」的副作用；
+// `batch_steps` 的持久化由 RefreshBatchSteps 负责（runner 跑完、维护循环收敛）。
+//
+// 持久化行里的 id / started_at / finished_at 会被叠加回来：它们是投影算不出的
+// 历史时刻（T05 的表设计意图），丢掉它们等于让那张表变成死数据。
 func (s *BatchStore) ListBatchSteps(ctx context.Context, batchID int64) ([]model.BatchStep, error) {
+	steps, err := s.derivedBatchSteps(ctx, s.db, batchID)
+	if err != nil {
+		return nil, err
+	}
+	return s.overlayPersistedStepTimes(ctx, batchID, steps)
+}
+
+// overlayPersistedStepTimes 把 batch_steps 里已落库的身份与时刻叠回投影结果。
+//
+// 按 phase 对齐（DB 的 UNIQUE (batch_id, phase) 保证了唯一性）。缺失对应行时
+// 保留零值：读取路径不得因为「表里没有这行」而假装阶段不存在。
+func (s *BatchStore) overlayPersistedStepTimes(ctx context.Context, batchID int64, steps []model.BatchStep) ([]model.BatchStep, error) {
 	rows, err := s.db.Query(ctx, `
-    SELECT id, batch_id, phase, unit_label, status, total_units, done_units, failed_units,
-           error_summary, started_at, finished_at, created_at, updated_at
-    FROM batch_steps WHERE batch_id = $1 ORDER BY id`, batchID)
+    SELECT id, phase, started_at, finished_at, created_at, updated_at
+    FROM batch_steps WHERE batch_id = $1`, batchID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	steps := []model.BatchStep{}
+	type persisted struct {
+		id                    int64
+		startedAt, finishedAt *time.Time
+		createdAt, updatedAt  time.Time
+	}
+	byPhase := map[string]persisted{}
 	for rows.Next() {
-		var step model.BatchStep
-		if err := rows.Scan(&step.ID, &step.BatchID, &step.Phase, &step.UnitLabel, &step.Status,
-			&step.TotalUnits, &step.DoneUnits, &step.FailedUnits, &step.ErrorSummary,
-			&step.StartedAt, &step.FinishedAt, &step.CreatedAt, &step.UpdatedAt); err != nil {
+		var phase string
+		var item persisted
+		if err := rows.Scan(&item.id, &phase, &item.startedAt, &item.finishedAt,
+			&item.createdAt, &item.updatedAt); err != nil {
 			return nil, err
 		}
-		steps = append(steps, step)
+		byPhase[phase] = item
 	}
-	return steps, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for index := range steps {
+		item, ok := byPhase[steps[index].Phase]
+		if !ok {
+			continue
+		}
+		steps[index].ID = item.id
+		steps[index].StartedAt = item.startedAt
+		steps[index].FinishedAt = item.finishedAt
+		steps[index].CreatedAt = item.createdAt
+		steps[index].UpdatedAt = item.updatedAt
+	}
+	return steps, nil
+}
+
+// RefreshBatchSteps 把阶段投影落盘进 `batch_steps` 并返回投影结果。
+//
+// 为什么仍然持久化：T05 的表设计里 started_at / finished_at 是**历史事实**
+// （第一次进入该阶段、以及该阶段定稿的时刻），投影算不出来。
+//
+// 调用点必须覆盖两种批次：#212 的缺陷形态是**历史批次**（已经跑完、不会再被
+// runner 碰到），因此除了 runner 跑完，维护循环也必须收敛它们 ——
+// 否则修复只对未来的批次生效（#201 的同一教训）。
+func (s *BatchStore) RefreshBatchSteps(ctx context.Context, batchID int64) ([]model.BatchStep, error) {
+	steps, err := s.derivedBatchSteps(ctx, s.db, batchID)
+	if err != nil {
+		return nil, err
+	}
+	for _, step := range steps {
+		if err := s.UpsertBatchStep(ctx, batchID, step); err != nil {
+			return nil, err
+		}
+	}
+	return steps, nil
+}
+
+// derivedBatchSteps 从 batch_items 的事实算出两个阶段行。
+//
+// 只取 batches 与 batch_items 两处已落库的列：阶段进度会被批次详情页
+// 与维护循环调用，不能随 batch_items 的数量线性变慢。
+func (s *BatchStore) derivedBatchSteps(ctx context.Context, q queryable, batchID int64) ([]model.BatchStep, error) {
+	var batchStatus string
+	var planned int
+	if err := q.QueryRow(ctx, `
+    SELECT status, planned_units FROM batches WHERE id = $1`, batchID).
+		Scan(&batchStatus, &planned); err != nil {
+		return nil, err
+	}
+
+	// COUNT(*) 是规划落库的单元数；FILTER 分出已把样本版本推进完的单元。
+	// 用 `sample_version_id IS NOT NULL` 而不是 `status = 'succeeded'`：
+	// 前者是「内容真的产出了」的唯一证据，后者是同一事实的状态镜像。
+	var plannedDone, produced, failed, skipped int
+	if err := q.QueryRow(ctx, `
+    SELECT COUNT(*),
+           COUNT(*) FILTER (WHERE sample_version_id IS NOT NULL),
+           COUNT(*) FILTER (WHERE status = 'failed'),
+           COUNT(*) FILTER (WHERE status = 'skipped')
+    FROM batch_items WHERE batch_id = $1`, batchID).
+		Scan(&plannedDone, &produced, &failed, &skipped); err != nil {
+		return nil, err
+	}
+
+	if planned < plannedDone {
+		// 计划量是本阶段的**用户意图**（与 #190 的同一口径：不用已落库数覆盖它）。
+		// 但它不能小于已落库单元数 —— 那时界面会显示「12 / 4」这种倒退的分数。
+		planned = plannedDone
+	}
+	if planned < 0 {
+		planned = 0
+	}
+
+	plan := model.BatchStep{
+		BatchID:    batchID,
+		Phase:      model.BatchStepPlan,
+		UnitLabel:  model.BatchStepLabel(model.BatchStepPlan),
+		TotalUnits: planned,
+		DoneUnits:  plannedDone,
+		Status:     model.StepStatusFor(batchStatus, plannedDone, 0, planned),
+	}
+	generate := model.BatchStep{
+		BatchID:     batchID,
+		Phase:       model.BatchStepGenerate,
+		UnitLabel:   model.BatchStepLabel(model.BatchStepGenerate),
+		TotalUnits:  planned,
+		DoneUnits:   produced,
+		FailedUnits: failed,
+		Status:      model.StepStatusFor(batchStatus, produced, failed, planned),
+	}
+	if failed > 0 {
+		// 只记计数，原因不在这里推导：批次已经通过 DominantFailureClass /
+		// ShortfallNote 给出**单一**原因来源（#208），阶段行再写一份会分叉。
+		generate.ErrorSummary = fmt.Sprintf("有 %d 个单元未产出（其中跳过 %d）", failed, skipped)
+	}
+	return []model.BatchStep{plan, generate}, nil
 }
 
 // UpsertBatchStep 创建或更新一个阶段（按 (batch_id, phase) 唯一）。
 //
-// 只允许在批次活跃时更新：终态批次的阶段进度是历史事实，
-// 改它会让「事件时间线」与「阶段进度」互相矛盾。
+// 已定稿批次的阶段行**不再改写**：那是历史事实，改它会让「事件时间线」与
+// 「阶段进度」互相矛盾（终态批次的时间线解释的是当时发生的事）。
+// 这条约束由 SQL 谓词实现，而不是靠调用方自觉：维护循环与 runner 都会走到这里。
 func (s *BatchStore) UpsertBatchStep(ctx context.Context, batchID int64, step model.BatchStep) error {
 	_, err := s.db.Exec(ctx, `
     INSERT INTO batch_steps (batch_id, phase, unit_label, status, total_units, done_units, failed_units, error_summary)
@@ -722,9 +897,20 @@ func (s *BatchStore) UpsertBatchStep(ctx context.Context, batchID int64, step mo
       failed_units = EXCLUDED.failed_units,
       error_summary = EXCLUDED.error_summary,
       started_at = COALESCE(batch_steps.started_at, NOW()),
-      finished_at = CASE WHEN EXCLUDED.status IN ('completed', 'failed', 'skipped') THEN NOW() ELSE batch_steps.finished_at END,
+      finished_at = CASE WHEN EXCLUDED.status IN ('completed', 'failed', 'skipped')
+                         THEN COALESCE(batch_steps.finished_at, NOW())
+                         ELSE batch_steps.finished_at END,
       updated_at = NOW()
-    WHERE EXISTS (SELECT 1 FROM batches b WHERE b.id = $1 AND b.status NOT IN ('completed', 'failed'))`,
+    WHERE
+      -- 只在批次活跃时写：终态批次的阶段进度是历史事实。
+      EXISTS (SELECT 1 FROM batches b WHERE b.id = $1 AND b.status NOT IN ('completed', 'failed', 'partial_failed'))
+      -- 缺口收敛：批次已定稿而库里这条阶段行还落后（'running'）时，
+      -- 允许再写**一次**（否则历史批次会永远显示「正在推进」，与批次状态矛盾）。
+      -- 收敛只发生一次（收敛后两边的状态字串相等，不再命中），因此维护循环
+      -- 不会每 30 秒改写一次而永不收敛 —— 与 #202 的幂等不动点同一约束。
+      OR EXISTS (SELECT 1 FROM batch_steps s WHERE s.batch_id = $1 AND s.phase = $2
+                   AND s.status NOT IN ('completed', 'failed', 'skipped', 'partial_failed')
+                   AND EXCLUDED.status IN ('completed', 'failed', 'skipped', 'partial_failed'))`,
 		batchID, step.Phase, step.UnitLabel, step.Status,
 		step.TotalUnits, step.DoneUnits, step.FailedUnits, step.ErrorSummary)
 	return err
