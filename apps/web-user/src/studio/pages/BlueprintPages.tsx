@@ -95,6 +95,17 @@ type BlueprintChoice = {
   label: string
   meta?: string
   version?: number
+  /**
+   * 该选项不可选（issue #209）。
+   *
+   * 只用于**配置不完整**的连接：它们在服务端一定不能用（选中后会在批次
+   * 已开跑时才报 `model connection unavailable`），因此在下拉里灰显并禁止选择。
+   * 「已停用」刻意不在此列：保留可选性，因为已有蓝图可能正引用它，
+   * 用户需要能重新指回那条连接（文案已标「已停用」）。
+   */
+  disabled?: boolean
+  /** 配置不完整的具体原因（与服务端 configIssues 同源，供节点健康直接引用）。 */
+  configIssues?: string[]
 }
 
 type BlueprintChoices = {
@@ -110,6 +121,25 @@ function versionFromResponse(body: unknown): DocumentVersion {
     if (record.data) return record.data
   }
   return body as DocumentVersion
+}
+
+/**
+ * 模型连接选项的副标题（issue #209）。
+ *
+ * 为什么把「已停用」与「配置不完整」分开写：它们是**两种不同的阻断原因**，
+ * 用户的下一步动作也不同 —— 停用要「启用」，配置不完整要「去连接设置补必填字段」。
+ * 混成一句话会让用户按错的提示去操作。
+ *
+ * `configIssues` 由服务端下发（与保存校验同一份规则），前端**不重算**。
+ */
+function connectionMeta(item: { model: string; isActive: boolean; configIssues?: string[] }): string {
+  const parts: string[] = []
+  if (item.model) parts.push(item.model)
+  if (!item.isActive) parts.push('已停用')
+  if ((item.configIssues?.length ?? 0) > 0) {
+    parts.push(`配置不完整，不可用于生成（${item.configIssues?.join('；')}）`)
+  }
+  return parts.join(' · ')
 }
 
 /** 节点 payload 的读写：按 payloadField 取该节点在 Nodes 下的对象。 */
@@ -172,7 +202,7 @@ export function BlueprintPage() {
         client.get<VersionsResponse>(`${projectPath(scope.projectId)}/standard-versions?limit=50`),
         client.get<VersionsResponse>(`${projectPath(scope.projectId)}/quality-policy-versions?limit=50`),
         client.get<VersionsResponse>(`${projectPath(scope.projectId)}/mapping-versions?limit=50`),
-        client.get<{ providers?: Array<{ id: number; name: string; model: string; isActive: boolean }> }>('/v1/settings/connection-options'),
+        client.get<{ providers?: Array<{ id: number; name: string; model: string; isActive: boolean; configIssues?: string[] }> }>('/v1/settings/connection-options'),
       ])
       setSpecs(nodesResponse.data.items ?? [])
       const list = versionsResponse.data.items ?? []
@@ -198,8 +228,13 @@ export function BlueprintPage() {
         },
         connections: (connectionsResponse.data.providers ?? []).map((item) => ({
           value: String(item.id),
-          label: item.name,
-          meta: `${item.model}${item.isActive ? '' : ' · 已停用'}`,
+          // issue #209：名称为空的连接以前渲染成一个**没有任何文字**的选项。
+          // 这里给可读兼底 + 把服务端下发的配置问题拼进标签，
+          // 用户在**选择前**就能看出哪个不能用，且不可选（灰显）。
+          label: item.name || `未命名连接 #${item.id}`,
+          meta: connectionMeta(item),
+          disabled: (item.configIssues?.length ?? 0) > 0,
+          configIssues: item.configIssues ?? [],
         })),
       })
 
@@ -741,7 +776,7 @@ function NodeFields({
                 value={selectValue as string | string[] | undefined}
                 placeholder={options.length > 0 ? '选择已保存版本' : '暂无可选版本'}
                 disabled={disabled}
-                optionList={options.map((option) => ({ value: option.value, label: option.label, extra: option.meta }))}
+                optionList={options.map((option) => ({ value: option.value, label: option.label, extra: option.meta, disabled: option.disabled }))}
                 onChange={(next) => {
                   if (field.kind === 'idList') {
                     onChange(field.name, Array.isArray(next) ? next.map(Number) : [])
@@ -842,6 +877,22 @@ function getNodeHealth(spec: NodeSpec, values: Record<string, unknown>, choices:
     const connection = choices.connections.find((item) => item.value === String(connectionID))
     if (!hasValue(connectionID)) {
       return { state: 'blocked', label: '缺少模型服务', detail: '先在“连接设置”启用模型服务，生成步骤才能执行。', missing: ['模型服务'] }
+    }
+    // issue #209：已保存的蓝图可能引用了一条配置不完整的连接（历史数据）。
+    // 必须在**保存/执行之前**就说清楚，而不是等到批次已开跑才报
+    // `model connection unavailable` —— 那时已经花掉了真实的时间与额度。
+    //
+    // 这道判定必须排在「已停用」**之前**：不完整的连接在迁移 0040 之后
+    // 同时是停用的（我们把它停用了），而那种情况下「请启用」是错误的指引 ——
+    // 保存路径会直接拒掉启用（必填字段还是空的）。真正的下一步是补齐字段。
+    if (connection?.disabled) {
+      return {
+        state: 'blocked',
+        label: '模型服务配置不完整',
+        detail: `当前引用的模型服务不能用于生成：${(connection.configIssues ?? []).join('；')}。`
+          + '请到“连接设置”补齐必填字段，或换一个可用连接。',
+        missing: [],
+      }
     }
     if (connection?.meta?.includes('已停用')) {
       return { state: 'blocked', label: '模型服务已停用', detail: '当前引用的模型服务已停用，请换一个可用连接。', missing: [] }
@@ -1277,20 +1328,32 @@ function parseJSONField(text: string): { ok: boolean; value: unknown } {
 }
 
 /**
+ * JSONValue 是 JSON 文档可取的值的封闭集合。
+ *
+ * 存在的理由：编辑器草稿来自 `JSON.parse`，其形状是 JSON 的取值域，
+ * 而不是「任意 unknown」。把返回类型写成 `unknown` 会让调用方（提交路径）
+ * 失去类型提示，也无法断言「清理后的东西仍然是合法 JSON 结构」。
+ */
+type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue }
+
+/**
  * stripInvalidJSONMarkers 递归去掉编辑器临时标记 `__invalid`。
  *
  * 为什么必须清理：它是「用户输到一半」的中间态，直接提交会让服务端看到一个
  * 契约里不存在的字段。放在提交路径上只出现一次，避免漏清。
+ *
+ * 参数保持 `unknown`（实参类型各异），但**返回**是封闭的 JSONValue：
+ * 本函数的契约就是「输入任意 JSON 形状，输出同形状的合法 JSON」。
  */
-function stripInvalidJSONMarkers(value: unknown): unknown {
+function stripInvalidJSONMarkers(value: unknown): JSONValue {
   if (Array.isArray(value)) return value.map(stripInvalidJSONMarkers)
   if (value && typeof value === 'object') {
-    const result: Record<string, unknown> = {}
+    const result: Record<string, JSONValue> = {}
     for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
       if (key === '__invalid') continue
       result[key] = stripInvalidJSONMarkers(item)
     }
     return result
   }
-  return value
+  return value as JSONValue
 }
