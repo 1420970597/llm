@@ -55,13 +55,13 @@
 
 ## 前后对比图
 
-![修复前：概览「待处理决定」显示 0，而审阅队列为 3](https://raw.githubusercontent.com/1420970597/llm/REPLACE_README_SHA/docs/audit/issue-200/verify-before-overview.png)
+![修复前：概览「待处理决定」显示 0，而审阅队列为 3](https://raw.githubusercontent.com/1420970597/llm/d0a19b7edded402c183f3961efefb1f061f90771/docs/audit/issue-200/verify-before-overview.png)
 
-![修复后：概览「待处理决定」显示 3，与队列一致](https://raw.githubusercontent.com/1420970597/llm/REPLACE_README_SHA/docs/audit/issue-200/verify-after-overview.png)
+![修复后：概览「待处理决定」显示 3，与队列一致](https://raw.githubusercontent.com/1420970597/llm/d0a19b7edded402c183f3961efefb1f061f90771/docs/audit/issue-200/verify-after-overview.png)
 
-![修复前：今日工作 DECISIONS「需要你的决定」里没有「待判断」这一行](https://raw.githubusercontent.com/1420970597/llm/REPLACE_README_SHA/docs/audit/issue-200/verify-before-today.png)
+![修复前：今日工作 DECISIONS「需要你的决定」里没有「待判断」这一行](https://raw.githubusercontent.com/1420970597/llm/d0a19b7edded402c183f3961efefb1f061f90771/docs/audit/issue-200/verify-before-today.png)
 
-![修复后：DECISIONS 出现「待判断 3 条内容等待你判断」，与队列一致](https://raw.githubusercontent.com/1420970597/llm/REPLACE_README_SHA/docs/audit/issue-200/verify-after-today.png)
+![修复后：DECISIONS 出现「待判断 3 条内容等待你判断」，与队列一致](https://raw.githubusercontent.com/1420970597/llm/d0a19b7edded402c183f3961efefb1f061f90771/docs/audit/issue-200/verify-after-today.png)
 
 ## 修复前证据的取法（同条件保证）
 
