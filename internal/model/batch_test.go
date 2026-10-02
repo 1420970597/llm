@@ -57,3 +57,57 @@ func containsHan(text string) bool {
 	}
 	return false
 }
+
+// TestBatchStepLabelsAndStatusFollowFacts 覆盖 issue #212 的阶段投影口径。
+//
+// 缺陷形态（实测 b_4）：已完成 4/4 的批次详情显示「还没有阶段记录」，
+// 用空态宣称「这次没有执行任何阶段」。修法是把阶段进度做成 batch_items 的
+// 投影，因此这两条纯函数必须：
+//
+//  1. 永不把内部阶段键回传成界面文案（#191/#206/#211 的同一契约）；
+//  2. 状态能同时表达「全部产出」「部分产出但有缺口」「还在推进」三种事实，
+//     且已定稿批次不得显示成「正在推进」。
+func TestBatchStepLabelsAndStatusFollowFacts(t *testing.T) {
+	// 正常路径：已定稿且产出齐全 → completed。
+	if got := StepStatusFor(BatchStatusCompleted, 4, 0, 4); got != StepStatusCompleted {
+		t.Fatalf("已完成 4/4 的阶段必须是 completed，实际 %q", got)
+	}
+	// 边界/异常路径 1：批次已定稿但这一阶段只产出 1/4（b_2 的实测形态）。
+	// 显示成 running 会让「已完成」的批次里出现一个永远在跑的阶段。
+	if got := StepStatusFor(BatchStatusCompleted, 1, 0, 4); got != StepStatusPartialFailed {
+		t.Fatalf("已定稿但产出不足的阶段必须是 partial_failed，实际 %q", got)
+	}
+	// 边界/异常路径 2：还在推进的批次必须显示 running。
+	if got := StepStatusFor(BatchStatusRunning, 1, 0, 4); got != StepStatusRunning {
+		t.Fatalf("推进中的阶段必须是 running，实际 %q", got)
+	}
+	// 边界/异常路径 3：零计划量的空批次没有待办工作，「已完成」才是诚实描述
+	//（与 #190 对空批次的判定同一口径）。
+	if got := StepStatusFor(BatchStatusCompleted, 0, 0, 0); got != StepStatusCompleted {
+		t.Fatalf("零计划量的阶段必须是 completed，实际 %q", got)
+	}
+	// 边界/异常路径 4：全部定稿但有失败 → partial_failed（失败必须可见）。
+	if got := StepStatusFor(BatchStatusPartialFailed, 3, 1, 4); got != StepStatusPartialFailed {
+		t.Fatalf("有失败的阶段必须是 partial_failed，实际 %q", got)
+	}
+	// 边界/异常路径 5：失败为致命终态。
+	if got := StepStatusFor(BatchStatusFailed, 0, 2, 2); got != StepStatusPartialFailed {
+		t.Fatalf("全部定稿且有失败的阶段是 partial_failed，实际 %q", got)
+	}
+
+	// 中文文案：内置阶段必须是纯中文，且不得包含内部键。
+	for _, phase := range []string{BatchStepPlan, BatchStepGenerate} {
+		label := BatchStepLabel(phase)
+		if !containsHan(label) {
+			t.Fatalf("阶段 %q 的文案 %q 不含汉字", phase, label)
+		}
+		if strings.Contains(label, phase) {
+			t.Fatalf("阶段 %q 的文案 %q 仍包含内部键", phase, label)
+		}
+	}
+	// 未知阶段不得裸回传原始键（否则中文界面会中英混杂）。
+	unknown := BatchStepLabel("some_new_phase")
+	if !containsHan(unknown) || unknown == "some_new_phase" {
+		t.Fatalf("未知阶段必须给可读中文文案而不是裸键，实际 %q", unknown)
+	}
+}

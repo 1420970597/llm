@@ -618,6 +618,32 @@ func (rt *studioRuntime) reconcileDivergentBatches(ctx context.Context) {
 		log.Printf("studio.maintain.divergence_corrected batch=%d status=%s completed=%d planned=%d",
 			id, batch.Status, batch.CompletedUnits, batch.PlannedUnits)
 	}
+
+	rt.reconcileBatchSteps(ctx, batches)
+}
+
+// reconcileBatchSteps 把「阶段投影缺失或落后」的批次补写一遍（issue #212）。
+//
+// 与 reconcileDivergentBatches 同一个维护循环：两者都是「让库里的读模型
+// 向事实收敛」。分开两个循环只会多一处需要记得启动的地方。
+//
+// 为什么必须有这条可达性（而不是在 runner 里写一次就够）：阶段投影原来只在
+// runner 跑完时写，而 runner 碰不到已经跑完的历史批次 —— 实测的 b_4 是导入后
+// 早就结束的批次，永远走不到那个调用点。这正是 #201/#202 的同一教训。
+func (rt *studioRuntime) reconcileBatchSteps(ctx context.Context, batches *store.BatchStore) {
+	ids, err := batches.ListBatchIDsWithStaleSteps(ctx, 100)
+	if err != nil {
+		log.Printf("studio.maintain.steps_scan_failed err=%v", err)
+		return
+	}
+	for _, id := range ids {
+		steps, err := batches.RefreshBatchSteps(ctx, id)
+		if err != nil {
+			log.Printf("studio.maintain.steps_refresh_failed batch=%d err=%v", id, err)
+			continue
+		}
+		log.Printf("studio.maintain.steps_corrected batch=%d steps=%d", id, len(steps))
+	}
 }
 
 // ---------------------------------------------------------------------------

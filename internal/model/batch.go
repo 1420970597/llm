@@ -301,6 +301,67 @@ func (batch Batch) ShortfallNote() string {
 	}
 }
 
+// 批次阶段键（issue #212）。
+//
+// 一个批次只做两件**可分别观测**的事，因此阶段只有两个：
+//  1. `plan`：把计划量落成 `batch_items`（规划单元）；
+//  2. `generate`：把已规划的单元推进到样本版本（生成单元）。
+//
+// 为什么不多写几个阶段：批次的提交（写入 sample_versions）发生在生成单元内部，
+// 单独列一个「落库」阶段会是一个永远与「生成」同时完成的伪阶段 ——
+// 那正是 issue #212 要消除的「用一个区块表达错误事实」。
+const (
+	BatchStepPlan     = "plan"
+	BatchStepGenerate = "generate"
+)
+
+// BatchStepLabel 给出阶段的中文单位名（界面直接展示，不从 phase 反推）。
+//
+// 未知阶段**不得**回传原始键（#191/#206/#211 的同一契约）：
+// 裸英文键会让中文界面自相矛盾，而允许带可读后缀才能保住排查线索。
+func BatchStepLabel(phase string) string {
+	switch phase {
+	case BatchStepPlan:
+		return "规划单元"
+	case BatchStepGenerate:
+		return "生成单元"
+	}
+	return fmt.Sprintf("阶段（%s）", phase)
+}
+
+// StepStatusFor 从一个阶段**自身的**进度事实推导它的状态（issue #212）。
+//
+// 为什么状态必须由事实推导：`batch_steps` 是 `batch_items` 的投影，
+// 而声明式的状态会在「批次已收敛、阶段行还停在 running」时自相矛盾 ——
+// 那正是 #201 修掉的同一类漂移（同一份事实两个读数）。
+//
+// batchStatus 只用于区分「还在推进」与「已定稿但没做全」：
+// 阶段自己的 done/failed/total 不足以判断后者（缺口可能来自从未创建的单元）。
+func StepStatusFor(batchStatus string, done, failed, total int) string {
+	if total <= 0 {
+		// 计划量为 0 的空批次没有待办工作，「已完成」才是诚实描述
+		//（与 #190 对空批次的判定同一口径）。
+		return StepStatusCompleted
+	}
+	switch {
+	case failed > 0 && done+failed >= total:
+		// 全部定稿但有失败：这一阶段是部分完成，而不是「还在跑」。
+		return StepStatusPartialFailed
+	case done >= total:
+		return StepStatusCompleted
+	case batchStatus == BatchStatusFailed:
+		return StepStatusFailed
+	case batchStatus == BatchStatusPaused || batchStatus == BatchStatusPauseRequested:
+		return StepStatusPaused
+	case batchStatus == BatchStatusCompleted || batchStatus == BatchStatusPartialFailed:
+		// 批次已定稿而这个阶段没做全：缺口必须在阶段行上可见，
+		// 而不是显示成「仍在推进」。
+		return StepStatusPartialFailed
+	default:
+		return StepStatusRunning
+	}
+}
+
 // BatchStep 是一个阶段的进度。
 type BatchStep struct {
 	ID           int64      `json:"id"`
