@@ -22,7 +22,7 @@ import (
 
 func TestSummarizePayloadReportsPerFieldLengths(t *testing.T) {
 	payload, err := json.Marshal(map[string]any{
-		"question":  "冷链断链怎么处理？", // 9 字符
+		"question":  "冷链断链怎么处理？",  // 9 字符
 		"reasoning": "先识别约束，再推导。", // 10 字符
 		"answer":    "结论：回滚批次。",   // 8 字符
 	})
