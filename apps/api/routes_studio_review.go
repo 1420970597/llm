@@ -407,10 +407,18 @@ func (app *application) getSelectionSnapshot(w http.ResponseWriter, r *http.Requ
 		app.writeStudioError(w, r, err)
 		return
 	}
+	// issue #203：候选页必须按**实际构成**渲染（而不是写死「已接纳」）。
+	// 构成由服务端的审阅投影表统计，与筛选解析同一口径。
+	composition, err := app.studio.Selections.Composition(r.Context(), projectID, snapshotID)
+	if err != nil {
+		app.writeStudioError(w, r, err)
+		return
+	}
 	app.writeJSON(w, http.StatusOK, map[string]any{
-		"snapshot": snapshot,
-		"items":    items,
-		"count":    len(items),
+		"snapshot":    snapshot,
+		"items":       items,
+		"count":       len(items),
+		"composition": composition,
 	})
 }
 

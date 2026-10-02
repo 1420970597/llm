@@ -1,0 +1,21 @@
+{
+  "deployedVersion": {
+    "version": "a889b43ba00d1f9b1d6fccbdea735b04ca13e299",
+    "buildTime": "2026-10-02T11:05:02Z",
+    "source": "apps/web-user"
+  },
+  "originMainContentProof": "git show origin/main:apps/web-user/src/studio/pages/ReleasePages.tsx | sed -n 616p",
+  "freezeRequest": {
+    "status": 201,
+    "fromFilter": {
+      "purpose": "release",
+      "fromFilter": {}
+    }
+  },
+  "resolvedScopeComposition": {
+    "pending": 3,
+    "accepted": 1
+  },
+  "candidatePageRangeTitle": "发布范围（已接纳的内容版本）",
+  "defectPresent": true
+}
