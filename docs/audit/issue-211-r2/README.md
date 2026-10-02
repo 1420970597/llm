@@ -5,7 +5,7 @@
 > 本目录的职责是：证明**部署中的 `main` 仍然存在该缺陷**（行内无未审阅标记 + 提交前无知情确认）。
 
 - 验证环境：真实栈 `127.0.0.1:3210`（`/version.json` = `a889b43` = 当前 `origin/main`）+ 真实 Chromium 1600×1000
-- 复现脚本：`repro-main.mjs`（与 PR #240 的 `repro-scope-notice.mjs` 同选择器、同视口、同账号）
+- 复现脚本：`repro-main.mjs`（与 PR #240 分支上的复现脚本同选择器、同视口、同账号）
 - 产物：`01-before-scope-selected.png` · `01-before-submit.png` · `01-before.json`
 
 ## 候选栈验证（本轮新增）
