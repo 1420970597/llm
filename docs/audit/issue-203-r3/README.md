@@ -4,7 +4,7 @@
 > 本目录证明**部署中的 `main`（`a889b43`）仍然把含未审阅内容的冻结范围称作「已接纳」**。
 
 - 验证环境：真实栈 `127.0.0.1:3210`（`/version.json` = `a889b43` = 当前 `origin/main`）+ 真实 Chromium 1600×1000
-- 复现脚本：`repro-main.mjs`（取自 PR #234 的 `repro-freeze-scope.mjs`，同选择器/视口/账号）
+- 复现脚本：`repro-main.mjs`（取自 PR #234 分支上的复现脚本，同选择器/视口/账号）
 - 产物：`01-main-buggy-title.png` · `before-freeze-scope.json`
 
 ## 候选栈验证（本轮新增）
