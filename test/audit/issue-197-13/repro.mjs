@@ -88,12 +88,16 @@ await page.goto(`${BASE}/p/${PROJECT_ID}/runs/${BATCH_ID}`, { waitUntil: 'networ
 await page.waitForTimeout(2500)
 
 const tile = page.locator('[data-stat-tile*="长度"]').first()
+const scopeEl = page.locator('[data-analysis-length-scope="true"]').first()
 const ui = {
   route: `/p/${PROJECT_ID}/runs/${BATCH_ID}`,
   analysisCardPresent: await page.locator('[data-batch-analysis="true"]').count(),
   lengthTileLabel: (await tile.innerText().catch(() => '')).replace(/\n+/g, ' | ').trim(),
+  // 专用元素而不是「卡片里有没有字段二字」：后者会被别处的文案碰巧命中，
+  // 断言空转正是我们要避免的（与守卫的变异自证同一取向）。
+  lengthScopeElementCount: await page.locator('[data-analysis-length-scope="true"]').count(),
+  lengthScopeText: (await scopeEl.innerText().catch(() => '')).trim(),
   notesText: '',
-  // 口径是否在界面上可见：hint 或口径说明里出现「字段」类表述才算。
   lengthScopeDisclosedOnUi: false,
 }
 ui.notesText = (await page.locator('[data-batch-analysis="true"]').innerText().catch(() => ''))
@@ -101,11 +105,10 @@ ui.notesText = (await page.locator('[data-batch-analysis="true"]').innerText().c
 
 const length = analysis.data?.length ?? null
 const notes = analysis.data?.notes ?? []
-const combined = [
-  ui.lengthTileLabel,
-  ...notes,
-].join(' ')
-ui.lengthScopeDisclosedOnUi = /字段|合计|之和/.test(combined)
+// 界面可见性只认专用元素（且文案确实点出了字段）：卡片里出现「字段」二字
+// 但没点出**是哪几个**字段，等于没有口径。
+ui.lengthScopeDisclosedOnUi = ui.lengthScopeElementCount === 1
+  && /问题|推理过程|答案/.test(ui.lengthScopeText)
 
 // 字段数这一事实：SFT 的 payload 参与长度统计的字段（question/reasoning/answer）。
 const fieldCountClaimed = length?.fieldCount ?? null

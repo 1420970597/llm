@@ -1,7 +1,7 @@
 {
   "issue": 197,
   "subitem": "13-length-scope",
-  "phase": "before",
+  "phase": "after",
   "base": "http://127.0.0.1:3210",
   "viewport": "1600x1000",
   "account": "admin@company.com",
@@ -14,7 +14,12 @@
     "p50": 1082,
     "p90": 1699,
     "meanChars": 1235,
-    "fieldCount": 1
+    "fieldCount": 3,
+    "fields": [
+      "question",
+      "reasoning",
+      "answer"
+    ]
   },
   "notes": [
     "长度按字符数统计（中文 1 字 = 1 字符），分位用最近秩法。",
@@ -25,13 +30,13 @@
     "route": "/p/1/runs/b_3",
     "analysisCardPresent": 1,
     "lengthTileLabel": "长度中位 / P90 | 1082 / 1699 | 最短 1052 · 最长 1699 · 均值 1235（字符数）",
-    "lengthScopeElementCount": 0,
-    "lengthScopeText": "",
+    "lengthScopeElementCount": 1,
+    "lengthScopeText": "长度是 问题 + 推理过程 + 答案 的字符数合计（共 3 个字段）；不是单条内容的长度。",
     "notesText": "口径说明：长度按字符数统计（中文 1 字 = 1 字符），分位用最近秩法。 | 口径说明：重复率按内容指纹统计，只说明「内容完全相同」，不代表语义重复。 | 口径说明：接地率是「这条内容的生成输入里有素材块」的比例；无素材来源的项目恒为 0。",
-    "lengthScopeDisclosedOnUi": false
+    "lengthScopeDisclosedOnUi": true
   },
-  "fieldCountClaimed": 1,
-  "fieldBreakdownPresent": false,
-  "ok": false,
+  "fieldCountClaimed": 3,
+  "fieldBreakdownPresent": true,
+  "ok": true,
   "pageErrors": []
 }
