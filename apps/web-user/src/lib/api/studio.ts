@@ -389,6 +389,9 @@ export type DatasetAnalysis = {
     p50: number
     p90: number
     meanChars: number
+    fieldCount: number
+    /** 实际参与长度统计的字段键（顺序来自服务端）。空集合表示没有可分析内容。 */
+    fields: string[]
   } | null
   difficulty: Array<{ key: string; label: string; count: number; share: number; expected?: number | null }>
   reviewStatus: Array<{ key: string; label: string; count: number; share: number }>

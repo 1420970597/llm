@@ -415,6 +415,47 @@ function problemsWithDatasetAnalysis(storeSrc, pageSrc, analysisSrc) {
   return problems
 }
 
+/** #197-13（第 2 轮残余）：长度口径必须是事实且对用户可见。 */
+function problemsWithDisclosedLengthScope(modelDocsSrc, storeSrc, analysisSrc, pageSrc, labelSrc) {
+  const problems = []
+  // 1. 字段清单必须有唯一权威，而不是各文件各写一份。
+  if (!/func SampleLengthFields\(\) \[\]string/.test(modelDocsSrc)) {
+    problems.push('model 缺少长度字段口径的单一权威（SampleLengthFields）')
+  }
+  // 2. store 必须带出逐字段事实：只给一个合计字符串，上层无法诚实标注口径。
+  if (!/LengthByField map\[string\]int/.test(storeSrc)) {
+    problems.push('样本事实没有带出逐字段长度（上层只能硬编码字段数）')
+  }
+  // 3. 读模型不得再硬编码字段数。
+  if (/FieldCount:\s*1\b/.test(analysisSrc)) {
+    problems.push('长度字段数仍在硬编码为 1（读数与事实不符）')
+  }
+  if (!/FieldCount:\s*len\(fields\)/.test(analysisSrc)) {
+    problems.push('字段数没有从真实字段集推导')
+  }
+  // 4. 字段清单必须真的带出来（否则界面只能猜）。
+  if (!/Fields\s+\[\]string/.test(analysisSrc)) {
+    problems.push('读数没有返回参与统计的字段集')
+  }
+  // 5. 界面必须把口径显示出来，而不是只给数字。
+  if (!/data-analysis-length-scope/.test(pageSrc)) {
+    problems.push('批次分析卡片没有展示长度口径')
+  }
+  if (!/describeLengthScope\(/.test(pageSrc)) {
+    problems.push('前端没有使用共享的长度口径文案函数')
+  }
+  // 6. 口径文案不得回传原始英文键（#191 的同一形态）。
+  if (!/SAMPLE_FIELD_LABELS/.test(labelSrc)) {
+    problems.push('缺少字段键 → 中文的集中映射')
+  }
+  // 仅断言「函数存在」不够：把函数体改成 `return raw` 后仍会通过（变异自证拓出来的）。
+  // 必须断言它**真的查了映射表**。
+  if (!/SAMPLE_FIELD_LABELS\[raw\]/.test(labelSrc)) {
+    problems.push('describeSampleField 没有查映射表（未登记键会漏出英文）')
+  }
+  return problems
+}
+
 /** #192：Markdown 守卫必须是全树扫描，而不是手工文件清单。 */
 function problemsWithMarkdownGuardCoverage(guardSrc) {
   const problems = []
@@ -697,6 +738,9 @@ const checks = [
     problemsWithMigrationStatusHonesty(LEGACY_STORE, LEGACY_PAGE)],
   ['#197-13 数据集分析由服务端计算且区分空集',
     problemsWithDatasetAnalysis(BATCH_STORE, RUN_PAGE, read('internal/studio/dataset_analysis.go'))],
+  ['#197-13 长度口径是事实且对用户可见',
+    problemsWithDisclosedLengthScope(MODEL_DOCS, BATCH_STORE, read('internal/studio/dataset_analysis.go'),
+      RUN_PAGE, ENUM_LABELS)],
   ['#192 Markdown 守卫覆盖全树而非手工清单',
     problemsWithMarkdownGuardCoverage(MARKDOWN_GUARD)],
   ['#200 总览待判断与审阅队列同一口径',
@@ -774,6 +818,16 @@ const mutations = [
     LEGACY_PAGE.replace(/migrationStatus\.note/g, '尚未迁移</strong>'))],
   ['#197-13 删掉 P90 计算', problemsWithDatasetAnalysis(BATCH_STORE, RUN_PAGE,
     read('internal/studio/dataset_analysis.go').replace(/nearestRank\(0\.9\)/, '0'))],
+  ['#197-13 把长度字段数退回硬编码 1', problemsWithDisclosedLengthScope(MODEL_DOCS, BATCH_STORE,
+    read('internal/studio/dataset_analysis.go').replace(/FieldCount:\s*len\(fields\)/, 'FieldCount: 1'),
+    RUN_PAGE, ENUM_LABELS)],
+  ['#197-13 让界面只给数字不给口径', problemsWithDisclosedLengthScope(MODEL_DOCS, BATCH_STORE,
+    read('internal/studio/dataset_analysis.go'),
+    RUN_PAGE.replace('data-analysis-length-scope', 'data-unused'), ENUM_LABELS)],
+  ['#197-13 让口径文案回传原始英文键', problemsWithDisclosedLengthScope(MODEL_DOCS, BATCH_STORE,
+    read('internal/studio/dataset_analysis.go'), RUN_PAGE,
+    ENUM_LABELS.replace(/export function describeSampleField\(raw: string\): string \{[\s\S]*?\n\}/,
+      'export function describeSampleField(raw: string): string { return raw }'))],
   ['#192 退回手工文件清单', problemsWithMarkdownGuardCoverage(
     MARKDOWN_GUARD
       .replace(/function collectSources\(/, 'function unusedCollectSources(')

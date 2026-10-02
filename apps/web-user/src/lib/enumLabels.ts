@@ -226,6 +226,50 @@ export function unreviewedScopeNotice(unreviewedCount: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// 内容长度口径（issue #197 第 13 条）
+// ---------------------------------------------------------------------------
+
+/**
+ * 样本 payload 字段键 → 中文文案。
+ *
+ * 契约与 `REVIEW_EFFECTIVE_ACTION_LABELS` 一致：**永不把原始键当文案**。
+ * 这些键来自服务端长度口径（`model.SampleLengthFields`），若直接拼接就会在
+ * 「数据集结构与内容分析」里漏出 `question + reasoning + answer` 这样的内部英文
+ * —— 那正是 #191 的同一形态缺陷。
+ */
+export const SAMPLE_FIELD_LABELS: Record<string, string> = {
+  question: '问题',
+  reasoning: '推理过程',
+  answer: '答案',
+  teacherPrompt: '教师提示词',
+  judge_prompt: '评判提示词',
+  rewardRubric: '奖励判据',
+}
+
+/** 单个字段键 → 中文（未登记时给中性中文而不是回传英文键）。 */
+export function describeSampleField(raw: string): string {
+  if (!raw) return '未命名字段'
+  return SAMPLE_FIELD_LABELS[raw] ?? '其它字段'
+}
+
+/**
+ * 长度口径的**一句话说明**：「长度中位」到底是谁的长度。
+ *
+ * 为什么必须在界面上给出（issue #197 第 13 条）：`length.p50` 是多个文本字段的
+ * **合计**，而卡片上只有「长度中位 / P90」这个标签。用户无法从数字本身分辨
+ * 「这是问题+推理+答案之和」还是「只是问题的长度」—— 数字可见但口径不可见，
+ * 与把内部键当文案是同一类失败（读得懂数字，读不懂含义）。
+ *
+ * 字段清单来自服务端本次统计的真实事实（`length.fields`），因此不会与实现漂移。
+ */
+export function describeLengthScope(fields: readonly string[]): string {
+  if (fields.length === 0) return ''
+  const names = fields.map(describeSampleField)
+  if (names.length === 1) return `长度是「${names[0]}」的字符数；不是整条内容的长度。`
+  return `长度是 ${names.join(' + ')} 的字符数合计（共 ${names.length} 个字段）；不是单条内容的长度。`
+}
+
+// ---------------------------------------------------------------------------
 // audit.action（issue #191）
 // ---------------------------------------------------------------------------
 
