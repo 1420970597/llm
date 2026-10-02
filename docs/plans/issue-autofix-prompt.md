@@ -440,6 +440,8 @@ scripts/issue-bot/preflight.sh release <编号> --blocked
       `scripts/go-test-postgres.sh`（否则 38 处集成测试静默 skip，等于未验证）
 - [ ] 未收口项已在评论中列出
 - [ ] issue 状态与 §8.3 判定一致
+- [ ] **若本轮打算 `close`：已用 `gh pr view <N> --json state` 确认载体 PR 是 `MERGED`**
+      （不是 `--is-ancestor`，本仓库 squash 合并）—— 否则只能走「已修复待人工合并」并保持开启
 - [ ] 台账已写、`release` 返回 0（含复核）
 - [ ] 若本轮是 `blocked`，已加 `autofix-blocked` 标签
 - [ ] **工作树干净**（`git status --porcelain` 为空）—— 否则崩后残留的脏工作树
