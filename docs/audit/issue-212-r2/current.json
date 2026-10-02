@@ -1,0 +1,15 @@
+{
+  "apiStatus": 200,
+  "apiStepCount": 2,
+  "progressCardText": "阶段进度（按单位，不编造总体百分比） 规划单元 4 / 4 生成单元 4 / 4 批次预算：上限 0 分 · 在途 0 · 已结算 0 · 未知 0",
+  "deployedVersion": {
+    "version": "a889b43ba00d1f9b1d6fccbdea735b04ca13e299",
+    "buildTime": "2026-10-02T11:05:02Z",
+    "source": "apps/web-user"
+  },
+  "sourceFactOnMain": {
+    "fixSymbolsOnMain": 0,
+    "upsertCallSiteOnMain": "none (only definition)",
+    "emptyStateAssertion": "apps/web-user/src/studio/pages/RunPages.tsx:760 \"还没有阶段记录。\""
+  }
+}
