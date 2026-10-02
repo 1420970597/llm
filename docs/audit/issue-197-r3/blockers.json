@@ -1,0 +1,19 @@
+{
+  "item6": {
+    "changeReasonFieldPresent": true,
+    "changeReasonLabel": "变更理由（必填，方便团队回溯）",
+    "requiredInLabel": true,
+    "saveButtonText": "保存为新版本"
+  },
+  "item11": {
+    "canvasFlexDirection": "row",
+    "nodeCount": 7,
+    "draggableCount": 0,
+    "hasConnectorSvg": true
+  },
+  "deployedVersion": {
+    "version": "a889b43ba00d1f9b1d6fccbdea735b04ca13e299",
+    "buildTime": "2026-10-02T11:05:02Z",
+    "source": "apps/web-user"
+  }
+}
