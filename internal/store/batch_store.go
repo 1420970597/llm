@@ -2012,7 +2012,15 @@ type SampleVersionFact struct {
 	ReviewStatus      string
 	ContentHash       string
 	PayloadChars      int
-	Grounded          bool
+	// LengthByField 是真正参与长度统计的字段 → 字符数（键取自 model.SampleLengthFields）。
+	//
+	// 为什么必须带出来（issue #197 第 13 条残余）：`PayloadChars` 是多个文本字段的
+	// **合计**，而「合计了哪几个」此前只存在于本文件的实现细节里 —— 读模型只能
+	// 硬编码一个字段数，界面上也没有任何口径说明，于是用户看到「长度中位 1082」
+	// 会以为是单条内容（例如只算问题）的长度。让事实随读数一起出来，
+	// 是上层能诚实标注口径、并给出逐字段分列的前提。
+	LengthByField map[string]int
+	Grounded      bool
 }
 
 // ListSampleVersionFacts 读取某批次产出的样本版本分析事实。
@@ -2062,7 +2070,7 @@ func (s *BatchStore) ListSampleVersionFacts(ctx context.Context, projectID, batc
 			return nil, err
 		}
 		fact.DomainStableID, fact.DirectionStableID = splitItemKey(itemKey)
-		fact.Difficulty, fact.PayloadChars, fact.Grounded = summarizePayload(payload)
+		fact.Difficulty, fact.PayloadChars, fact.LengthByField, fact.Grounded = summarizePayload(payload)
 		facts = append(facts, fact)
 	}
 	return facts, rows.Err()
@@ -2087,17 +2095,28 @@ func splitItemKey(itemKey string) (string, string) {
 	return parts[0], parts[1]
 }
 
-// summarizePayload 从内容 payload 里取出分析需要的三个值。
+// payloadLengthFields 是参与「内容长度」统计的字段键。
+//
+// 取 `model.SampleLengthFields()` 而不是在本文件重写一份：长度口径已经跨
+// store / studio / 前端三处使用，第二份清单必然漂移（AGENTS.md §3.1）。
+// 这里只是把它取一次以避开循环内的反复分配。
+var payloadLengthFields = model.SampleLengthFields()
+
+// summarizePayload 从内容 payload 里取出分析需要的四个值。
 //
 // 用解析后的字符串长度而不是 JSON 字节数：JSON 里的转义（`\n` 占两个字节）
 // 会让「长度」变成存储大小的度量，而不是用户看到的文本长度。
-func summarizePayload(payload []byte) (difficulty string, chars int, grounded bool) {
+//
+// 第三个返回值是**逐字段的字符数**（只含真正出现且有内容的字段）：空串贡献
+// 0 个字符，因此不算参与 —— 这样「长度 = 哪些字段之和」才能被上层如实标注，
+// 而不用猜一套硬编码的字段数（issue #197 第 13 条）。
+func summarizePayload(payload []byte) (difficulty string, chars int, byField map[string]int, grounded bool) {
 	if len(payload) == 0 {
-		return "", 0, false
+		return "", 0, nil, false
 	}
 	var record map[string]any
 	if err := json.Unmarshal(payload, &record); err != nil {
-		return "", 0, false
+		return "", 0, nil, false
 	}
 	for _, key := range []string{"difficulty", "difficultyLevel"} {
 		if value, ok := record[key].(string); ok && strings.TrimSpace(value) != "" {
@@ -2105,10 +2124,17 @@ func summarizePayload(payload []byte) (difficulty string, chars int, grounded bo
 			break
 		}
 	}
-	for _, key := range []string{"question", "reasoning", "answer", "teacherPrompt"} {
-		if value, ok := record[key].(string); ok {
-			chars += len([]rune(value))
+	for _, key := range payloadLengthFields {
+		value, ok := record[key].(string)
+		if !ok || value == "" {
+			continue
 		}
+		fieldChars := len([]rune(value))
+		chars += fieldChars
+		if byField == nil {
+			byField = map[string]int{}
+		}
+		byField[key] = fieldChars
 	}
 	for _, key := range []string{"sourceChunkIds", "sourceChunks", "groundedFrom"} {
 		value, ok := record[key]
@@ -2122,5 +2148,5 @@ func summarizePayload(payload []byte) (difficulty string, chars int, grounded bo
 			grounded = grounded || strings.TrimSpace(typed) != ""
 		}
 	}
-	return difficulty, chars, grounded
+	return difficulty, chars, byField, grounded
 }
