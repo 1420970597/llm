@@ -1,18 +1,16 @@
 /**
- * issue #197 第 3 轮：两个未收口子项的**当前 main 事实取证**（真实栈 + 真实 Chromium）。
+ * issue #197 第 3 轮：**当前 origin/main 事实取证**（真实栈 + 真实 Chromium）。
  *
- * 本轮不提交任何修复：第 6 条（变更理由必填 / 乐观锁）与第 11 条（拖拽式流程画布）
- * 都是**未获批的产品决策**。本脚本只做一件事 —— 把「它们现在仍然存在」变成可核对的读数，
- * 而不是复述上一轮的结论。
- *
- * 读数来源：
- *   #6  蓝图右侧检查器的「变更理由（必填…）」标签 + 空理由保存被拦（服务端契约）
- *   #11 设计画布 `.blueprint-nodes` 的 flex-direction 与节点 `draggable`
+ * 本轮不提交任何修复，只把「哪些子项在 main 上仍未收口」变成可核对的读数：
+ *   - 第 6 条（变更理由必填 / 乐观锁）：未获批的产品决策；
+ *   - 第 11 条（拖拽式流程画布 + 参数 schema 先行）：未获批的产品定位级改造；
+ *   - **第 11 条 §A（m×n×z 公式算术）**与**第 13 条（长度口径）**：修复本体分别在
+ *     PR #245 / #247，二者**均未合并**，因此这两个缺陷在 main 上**依然存在**。
+ *     这一点必须由本轮自己复核，不能因为上一轮评论写了「已修复」就采信。
  *
  * 运行：node docs/audit/issue-197-r3/repro.mjs
- * 产物：docs/audit/issue-197-r3/01-change-reason.png
- *       docs/audit/issue-197-r3/02-canvas-drag.png
- *       docs/audit/issue-197-r3/blockers.json
+ * 产物：01-change-reason.png / 02-canvas-drag.png / 03-coverage-formula.png / 04-length-scope.png
+ *       blockers.json
  */
 import { createRequire } from 'node:module'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -25,39 +23,35 @@ const { chromium } = require('/root/.pi/agent/npm/node_modules/playwright')
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 mkdirSync(HERE, { recursive: true })
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3210'
-const EMAIL = process.env.ADMIN_EMAIL ?? 'admin@company.com'
-const PASSWORD = process.env.ADMIN_PASSWORD ?? 'admin123456'
 const PROJECT = process.env.PROJECT_ID ?? '1'
 
 const browser = await chromium.launch({ headless: true })
 const ctx = await browser.newContext({ viewport: { width: 1600, height: 1000 }, locale: 'zh-CN' })
 const page = await ctx.newPage()
-
 await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' })
-await page.getByPlaceholder('请输入邮箱').fill(EMAIL)
-await page.getByPlaceholder('请输入密码').fill(PASSWORD)
+await page.getByPlaceholder('请输入邮箱').fill(process.env.ADMIN_EMAIL ?? 'admin@company.com')
+await page.getByPlaceholder('请输入密码').fill(process.env.ADMIN_PASSWORD ?? 'admin123456')
 await page.getByRole('button', { name: '进入今日工作' }).click()
 await page.waitForURL(/\/today/, { timeout: 20000 })
 await page.waitForTimeout(1200)
 
 const report = {}
+report.deployedVersion = await page.evaluate(async () => (await fetch('/version.json')).json())
 
-// ---- 第 6 条：变更理由必填（只读快照，不改任何东西） ----
+// ---- 第 6 条：变更理由必填（只读快照） ----
 await page.goto(`${BASE}/p/${PROJECT}/blueprint?node=standard`, { waitUntil: 'networkidle' })
 await page.waitForTimeout(1500)
 report.item6 = await page.evaluate(() => {
   const reason = document.querySelector('[data-field="blueprint-change-reason"]')
-  const labelText = Array.from(document.querySelectorAll('*'))
+  const labels = Array.from(document.querySelectorAll('*'))
     .filter((el) => el.children.length === 0 && /变更理由/.test(el.textContent ?? ''))
     .map((el) => el.textContent.trim())
-  const saveBtn = Array.from(document.querySelectorAll('button'))
-    .find((b) => /保存为新版本/.test(b.textContent ?? ''))
+  const saveBtn = Array.from(document.querySelectorAll('button')).find((b) => /保存为新版本/.test(b.textContent ?? ''))
   return {
     changeReasonFieldPresent: Boolean(reason),
-    changeReasonLabel: labelText[0] ?? null,
-    requiredInLabel: labelText.some((t) => /必填/.test(t)),
+    changeReasonLabel: labels[0] ?? null,
+    requiredInLabel: labels.some((t) => /必填/.test(t)),
     saveButtonText: saveBtn?.textContent.trim() ?? null,
-    // 空理由时保存是否被拦，取决于前端校验 + 服务端契约（reason 为契约 §2.2 一部分）
   }
 })
 await page.screenshot({ path: path.join(HERE, '01-change-reason.png'), fullPage: true })
@@ -77,7 +71,34 @@ report.item11 = await page.evaluate(() => {
 })
 await page.screenshot({ path: path.join(HERE, '02-canvas-drag.png'), fullPage: true })
 
-report.deployedVersion = await page.evaluate(async () => (await fetch('/version.json')).json())
+// ---- 第 11 条 §A：覆盖公式在 main 上是否仍不自洽（PR #245 未合并） ----
+await page.goto(`${BASE}/p/${PROJECT}/coverage`, { waitUntil: 'networkidle' })
+await page.waitForTimeout(1500)
+report.item11a = await page.evaluate(() => {
+  const formula = Array.from(document.querySelectorAll('*'))
+    .filter((el) => el.children.length === 0 && /^\s*m \d+ × n \d+ × z \d+ = \d+\s*$/.test(el.textContent ?? ''))
+    .map((el) => el.textContent.trim())[0] ?? null
+  const nums = (formula ?? '').match(/\d+/g)?.map(Number) ?? []
+  // 公式形如 m×n×z = 结果：算术是否成立
+  const arithmeticOk = nums.length === 4 ? nums[0] * nums[1] * nums[2] === nums[3] : null
+  return { formula, arithmeticOk }
+})
+await page.screenshot({ path: path.join(HERE, '03-coverage-formula.png'), fullPage: true })
+
+// ---- 第 13 条：长度口径在 main 上是否仍不可见（PR #247 未合并） ----
+await page.goto(`${BASE}/p/${PROJECT}/runs/b_3`, { waitUntil: 'networkidle' })
+await page.waitForTimeout(1800)
+report.item13 = await page.evaluate(() => {
+  const scope = document.querySelector('[data-analysis-length-scope]')
+  const analysis = document.querySelector('[data-batch-analysis="true"]')
+  return {
+    hasLengthScopeElement: Boolean(scope),
+    lengthScopeText: scope?.textContent?.trim() ?? null,
+    analysisSnippet: (analysis?.innerText ?? '').replace(/\s+/g, ' ').slice(0, 220),
+  }
+})
+await page.screenshot({ path: path.join(HERE, '04-length-scope.png'), fullPage: true })
+
 writeFileSync(path.join(HERE, 'blockers.json'), JSON.stringify(report, null, 2))
 console.log(JSON.stringify(report, null, 2))
 await browser.close()

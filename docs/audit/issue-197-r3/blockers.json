@@ -1,4 +1,9 @@
 {
+  "deployedVersion": {
+    "version": "a889b43ba00d1f9b1d6fccbdea735b04ca13e299",
+    "buildTime": "2026-10-02T11:05:02Z",
+    "source": "apps/web-user"
+  },
   "item6": {
     "changeReasonFieldPresent": true,
     "changeReasonLabel": "变更理由（必填，方便团队回溯）",
@@ -11,9 +16,13 @@
     "draggableCount": 0,
     "hasConnectorSvg": true
   },
-  "deployedVersion": {
-    "version": "a889b43ba00d1f9b1d6fccbdea735b04ca13e299",
-    "buildTime": "2026-10-02T11:05:02Z",
-    "source": "apps/web-user"
+  "item11a": {
+    "formula": "m 1 × n 2 × z 4 = 4",
+    "arithmeticOk": false
+  },
+  "item13": {
+    "hasLengthScopeElement": false,
+    "lengthScopeText": null,
+    "analysisSnippet": "数据集结构与内容分析 已产出内容 4 参与以下统计的样本版本数 长度中位 / P90 1082 / 1699 最短 1052 · 最长 1699 · 均值 1235（字符数） 素材接地率 0% 生成输入里带素材块的比例；无素材项目恒为 0 重复率 0% 内容指纹完全相同的比例（不代表语义重复） 待人工判断 75% 仍需你判断的比例；去「审阅」处理 结构预览（领域 › 方向 → 计划 / 已产出） 领域方向计划已产出缺口 冷链领域方向一2"
   }
 }
