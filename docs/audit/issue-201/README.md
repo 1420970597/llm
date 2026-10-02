@@ -24,7 +24,7 @@
           计划 4，实际产出 1，缺口 3：覆盖率不足或无素材接地，请补充方向配额/素材后重跑"
 ```
 
-![修复前：b_2 状态「已完成」，缺口 3，没有任何补齐入口](https://raw.githubusercontent.com/1420970597/llm/PLACEHOLDER_SHA/docs/audit/issue-201/before-b2-detail.png)
+![修复前：b_2 状态「已完成」，缺口 3，没有任何补齐入口](https://raw.githubusercontent.com/1420970597/llm/c13e5f60b15afb9a19b44fd850a8c66c5d814192/docs/audit/issue-201/before-b2-detail.png)
 
 实测读数：`b_2` 计划 4 / 完成 1 / `batch_items` 只有 1 行，状态 **`completed`**；
 等满一个维护轮次（45s）后状态**没有任何变化**，时间线也没有新增纠正事件 ——
@@ -59,7 +59,7 @@
   归因覆盖率=false 本次新增纠正事件=1 ok=true
 ```
 
-![修复后：b_2 收敛为「部分完成」，出现「补齐缺口（继续本批次）」入口](https://raw.githubusercontent.com/1420970597/llm/PLACEHOLDER_SHA/docs/audit/issue-201/after-b2-detail.png)
+![修复后：b_2 收敛为「部分完成」，出现「补齐缺口（继续本批次）」入口](https://raw.githubusercontent.com/1420970597/llm/c13e5f60b15afb9a19b44fd850a8c66c5d814192/docs/audit/issue-201/after-b2-detail.png)
 
 | 判定（机器事实） | 修复前（`f615353`） | 修复后（`a889b43`） |
 | --- | --- | --- |
