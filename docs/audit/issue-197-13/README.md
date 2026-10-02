@@ -33,7 +33,7 @@ fieldCount 声称=1 · 字段明细=缺失
 界面读到的长度磁贴=长度中位 / P90 | 1082 / 1699 | 最短 1052 · 最长 1699 · 均值 1235（字符数）
 ```
 
-![修复前：长度读数只有数字，没有口径；fieldCount 恒为 1](https://raw.githubusercontent.com/1420970597/llm/5df6bdc0a2dd62d3d3464e87f26c53113e9d6404/docs/audit/issue-197-13/before-analysis.png)
+![修复前：长度读数只有数字，没有口径；fieldCount 恒为 1](https://raw.githubusercontent.com/1420970597/llm/acc221097fd573073ff302d22756865544384a09/docs/audit/issue-197-13/before-analysis.png)
 
 **为什么这是实质缺陷**：第 13 条的原文诉求是「加入分析数据集的长度、数量、占比等指标」，
 目标是「使用户清晰可见」。数字本身算对了（读数是真实的字符数），
@@ -76,7 +76,7 @@ fieldCount 声称=1 · 字段明细=缺失
 
 `node test/audit/issue-197-13/repro.mjs --phase after`（部署版本 `5df6bdc`，同脚本同条件）：
 
-![修复后：长度读数下给出字段合计口径](https://raw.githubusercontent.com/1420970597/llm/5df6bdc0a2dd62d3d3464e87f26c53113e9d6404/docs/audit/issue-197-13/after-analysis.png)
+![修复后：长度读数下给出字段合计口径](https://raw.githubusercontent.com/1420970597/llm/acc221097fd573073ff302d22756865544384a09/docs/audit/issue-197-13/after-analysis.png)
 
 | 判定（机器事实） | 修复前 | 修复后 |
 | --- | --- | --- |
