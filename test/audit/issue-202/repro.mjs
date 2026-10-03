@@ -102,9 +102,14 @@ function armDefect() {
   }
 }
 
-/** 本**次运行内**worker 维护循环是否纠正了该批次（而不是历史遗留的日志）。 */
+/**
+ * 本**次运行内**worker 维护循环是否纠正了该批次（而不是历史遗留的日志）。
+ *
+ * 必须 `2>&1` 合并 stderr：Go 的 `log` 包默认写 stderr，而 `execFileSync` 只返回
+ * stdout —— 只收 stdout 会永远数到 0 条，把「维护循环真的纠正了」误报成「没纠正」。
+ */
 function divergenceCorrections() {
-  const logs = execFileSync('docker', ['logs', WORKER_CONTAINER], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const logs = execFileSync('sh', ['-c', `docker logs ${WORKER_CONTAINER} 2>&1`], { encoding: 'utf8' })
   return (logs.match(new RegExp(`studio\\.maintain\\.divergence_corrected batch=${BATCH_ID}\\b`, 'g')) ?? []).length
 }
 
