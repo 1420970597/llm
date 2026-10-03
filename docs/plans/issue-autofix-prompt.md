@@ -258,6 +258,29 @@ npm run build
 > 就必须额外跑 `scripts/go-test-postgres.sh`**（它负责起临时 Postgres、套迁移、再注入 DSN）。
 > 只跑 `go-gate.sh` 会把「集成测试未执行」误当成「集成测试通过」——
 > 这与把「无证据」当成「已验证」是同一类错误。
+>
+> **第二个已实测的假绿陷阱：在 worktree 里跑了主 checkout 的脚本。**
+> 第 3 轮实测：`scripts/check-docs.mjs` 用 `path.dirname(import.meta.url)` 推导 `REPO_ROOT`
+> （见其 `:30`），因此**脚本文件在哪，校验的就是那棵树**。在证据 worktree 里写成
+> `node /root/llm/scripts/check-docs.mjs` 时，脚本会把 `REPO_ROOT` 解析成**主 checkout**，
+> 于是「本轮新写的证据文档」**根本没被检查**，而输出仍是「全部通过」——
+> 本地假绿、CI 的 `Docs consistency (links + anchors)` 立刻 `exit 1`。
+>
+> 实测复现（在 worktree 内故意写坏一条相对链接）：
+>
+> ```text
+> $ node /root/llm/scripts/check-docs.mjs    # 主 checkout 的脚本 → 只查主 checkout
+> 全部通过：相对链接可解析、同文档锚点有对应标题、代码引用路径真实存在。   exit=0   ← 假绿
+> $ node scripts/check-docs.mjs              # worktree 内的脚本 → 查当前树
+>   ✗ docs/audit/issue-212-r3/README.md: 相对链接指向不存在的路径 -> BROKEN.png   exit=1  ← 与 CI 一致
+> ```
+>
+> **规则：门禁脚本一律用「当前工作树内的相对路径」调用**（先 `cd` 进工作树，
+> 再 `node scripts/check-docs.mjs` / `bash scripts/go-test-postgres.sh`），
+> **绝不用主 checkout 的绝对路径**。任何按 `import.meta.url` / `$0` / `BASH_SOURCE`
+> 推导仓库根的脚本都受此约束。
+> 这与上一段的 `go-gate.sh` 盲区是同一类错误：**本地门禁与 CI 不等价时，
+> 「本地全绿」是一个没有证据力的结论**。
 
 ### 6.3 自测闭环
 
@@ -419,6 +442,9 @@ scripts/issue-bot/preflight.sh release <编号> --blocked
 - [ ] issue 状态与 §8.3 判定一致
 - [ ] 台账已写、`release` 返回 0（含复核）
 - [ ] 若本轮是 `blocked`，已加 `autofix-blocked` 标签
+- [ ] **门禁脚本用当前工作树内的相对路径跑**（不是主 checkout 的绝对路径）——
+      否则 `check-docs.mjs` 一类按 `import.meta.url` 推导仓库根的脚本会去查**另一棵树**，
+      给出假绿而 CI 直接红（§6.2 第二个假绿陷阱）
 - [ ] **工作树干净**（`git status --porcelain` 为空）—— 否则崩后残留的脏工作树
       会让下一轮 `probe` 返回 10 而**持续空转**
 
