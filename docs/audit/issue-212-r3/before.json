@@ -1,0 +1,35 @@
+{
+  "issue": 212,
+  "phase": "before",
+  "base": "http://127.0.0.1:3311",
+  "batch": "b_4",
+  "viewport": "1600x1000",
+  "account": "admin@company.com",
+  "deployedVersion": {
+    "version": "a889b43ba00d1f9b1d6fccbdea735b04ca13e299",
+    "buildTime": "2026-10-03T03:58:06Z",
+    "source": "apps/web-user"
+  },
+  "page": {
+    "cardFound": true,
+    "cardText": "阶段进度（按单位，不编造总体百分比） 还没有阶段记录。 批次预算：上限 0 分 · 在途 0 · 已结算 0 · 未知 0",
+    "stepRows": []
+  },
+  "detail": {
+    "found": true,
+    "status": 200,
+    "batchId": 4,
+    "batchStatus": "completed",
+    "plannedUnits": 4,
+    "completedUnits": 4,
+    "steps": []
+  },
+  "stepCount": 0,
+  "stepRowsFromApi": [],
+  "consoleErrors": [],
+  "verdict": {
+    "emptyStepBlock": true,
+    "completedBatchWithEmptyProgress": true,
+    "progressMatches": false
+  }
+}
