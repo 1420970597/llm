@@ -43,7 +43,7 @@ $ git show origin/main:apps/web-user/src/studio/pages/RunPages.tsx | sed -n 760p
 | 批次状态 / 计划 / 完成 | `completed` / 4 / 4 |
 | 判定 | `completedBatchWithEmptyProgress = true` —— **缺陷成立** |
 
-![修复前：已完成 4/4 的批次，阶段进度仍是「还没有阶段记录。」](01-before-batch-steps.png)
+![修复前：已完成 4/4 的批次，阶段进度仍是「还没有阶段记录。」](before-batch-steps.png)
 
 > 对照语义：这不是中性空态，而是一句**关于事实的断言** —— 它宣称「这次没有执行任何阶段」，
 > 而事实是它执行完了全部 4 个单元。
@@ -75,7 +75,7 @@ order[241 240 238] -> CONFLICT at #240 ; files=[test/l15_issue197_remediation.mj
 本轮把三条 PR 合成一棵候选树，并**人工消解**那 3 处冲突（两侧守卫都保留 ——
 它们是不同 issue 的独立断言，不存在语义冲突，只是落点重叠）。
 
-![修复后：阶段进度显示「规划单元 4 / 4」「生成单元 4 / 4」](02-after-batch-steps.png)
+![修复后：阶段进度显示「规划单元 4 / 4」「生成单元 4 / 4」](after-batch-steps.png)
 
 同条件重跑读数：
 
