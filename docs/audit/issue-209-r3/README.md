@@ -15,7 +15,7 @@
 | 端口 | `:3311` | `:3310` |
 | 数据库 | `llm_before` | `llm_after`（**同一份** live 快照） |
 | 账号 / 视口 / 路由 | `admin@company.com` · 1600×1000 · `/settings/connections` 与 `/p/1/blueprint?node=generation` | 完全相同 |
-| 复现脚本 | `repro.mjs`（`repro-live.mjs` 抄本，仅 `BASE_URL` 不同） | 同一脚本，参数 `after` |
+| 复现脚本 | `repro.mjs`（取自第 2 轮同名复现脚本，仅 `BASE_URL` 不同） | 同一脚本，参数 `after` |
 
 ## 1. 复现（修复前）——当前 `main`
 
