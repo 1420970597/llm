@@ -1,0 +1,44 @@
+{
+  "issue": 202,
+  "phase": "after",
+  "base": "http://127.0.0.1:3210",
+  "viewport": "1600x1000",
+  "account": "admin@company.com",
+  "deployedVersion": "a889b43ba00d1f9b1d6fccbdea735b04ca13e299",
+  "maintenanceWaitMs": 45000,
+  "armed": {
+    "armedRow": "running|run|12|0|12|0|t",
+    "failedItems": 12,
+    "retryableItems": 0,
+    "activeJobs": 0
+  },
+  "batch": {
+    "status": "partial_failed",
+    "controlState": "run",
+    "plannedUnits": 12,
+    "completedUnits": 0,
+    "failedUnits": 12,
+    "inFlightUnits": 0,
+    "shortfallUnits": 12,
+    "shortfallNote": "计划 12，实际产出 0，缺口 12：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次",
+    "capabilities": {
+      "canPause": false,
+      "canResume": true,
+      "canRetryFailed": true
+    }
+  },
+  "clickableActionButtons": [
+    "搜索",
+    "A",
+    "恢复失败项",
+    "异常恢复",
+    "补齐缺口（继续本批次）"
+  ],
+  "shortfallCardText": "产出缺口：计划 12，实际产出 0，缺口 12\n计划 12，实际产出 0，缺口 12：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次\n补齐缺口（继续本批次）\n同一批次、同一快照；已成功的内容不会被重跑",
+  "showsRunningWhileSettled": false,
+  "correctionsBefore": 2,
+  "correctionsAfter": 3,
+  "newCorrectionLogs": 1,
+  "pageErrors": [],
+  "ok": true
+}
