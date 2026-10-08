@@ -1,11 +1,117 @@
 package llm
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/1420970597/llm/internal/model"
 )
+
+func TestGenerateGrpoPromptPreservesCustomLevelsAndRejectsInvalidRubrics(t *testing.T) {
+	levels := []string{"不合格", "合格", "优秀"}
+	for _, test := range []struct {
+		name        string
+		change      func([]map[string]string) []map[string]string
+		valid       bool
+		placeholder bool
+	}{
+		{"custom-levels-with-short-criteria", nil, true, false},
+		{"reject-case-only-is-valid", func(rows []map[string]string) []map[string]string {
+			rows[0]["acceptCase"] = ""
+			rows[0]["rejectCase"] = "记录齐全"
+			return rows
+		}, true, false},
+		{"hardcoded-numeric-levels", func(rows []map[string]string) []map[string]string { rows[0]["level"] = "-1"; return rows }, false, false},
+		{"blank-extra-level", func(rows []map[string]string) []map[string]string {
+			return append(rows, map[string]string{"level": "", "criteria": "核对时限"})
+		}, false, false},
+		{"duplicate-level", func(rows []map[string]string) []map[string]string { return append(rows, rows[0]) }, false, false},
+		{"missing-level", func(rows []map[string]string) []map[string]string { return rows[:2] }, false, false},
+		{"placeholder-criteria", func(rows []map[string]string) []map[string]string { rows[0]["criteria"] = "..."; return rows }, false, true},
+		{"placeholder-example", func(rows []map[string]string) []map[string]string { rows[0]["acceptCase"] = "待补充"; return rows }, false, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rows := make([]map[string]string, len(levels))
+			for index, level := range levels {
+				rows[index] = map[string]string{"level": level, "criteria": "核对时限", "acceptCase": "超期申请", "rejectCase": ""}
+			}
+			if test.change != nil {
+				rows = test.change(rows)
+			}
+			body, err := json.Marshal(map[string]any{"sceneSummary": "检查冷链退货条件", "levelRubrics": rows})
+			if err != nil {
+				t.Fatal(err)
+			}
+			calls := 0
+			server := payloadProvider(t, string(body), &calls)
+			output, err := GenerateGrpoPrompt(context.Background(), payloadProviderConfig(server), GrpoPromptInput{
+				Question: "冷链异常如何审核？", Levels: levels,
+			})
+			if calls != 1 {
+				t.Fatalf("actual provider calls=%d, want=1", calls)
+			}
+			if !test.valid {
+				if err == nil || errors.Is(err, ErrInvalidContent) != test.placeholder {
+					t.Fatalf("invalid rubric output=%+v err=%v", output, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := model.ValidateGRPOSamplePayload(levels, output.LevelRubrics); err != nil {
+				t.Fatalf("valid one-sided boundary example violated native contract: %v", err)
+			}
+			for index, rubric := range output.LevelRubrics {
+				if rubric.Level != levels[index] || rubric.Criteria != "核对时限" {
+					t.Fatalf("custom level or short criterion was rewritten: %+v", rubric)
+				}
+			}
+		})
+	}
+}
+
+func TestRubricPromptDescribesActualLevelFieldsWithoutCopyableExample(t *testing.T) {
+	levels := []string{"不合格", "合格", "优秀"}
+	prompt := buildRubricUserPrompt(GrpoPromptInput{Question: "退货时限如何判定？"}, levels)
+	if strings.Contains(prompt, `"level":"-1"`) || strings.Contains(prompt, `"criteria":"..."`) {
+		t.Fatalf("custom-level prompt still contains a conflicting example: %s", prompt)
+	}
+	for _, required := range []string{"不合格、合格、优秀", "逐字使用用户给定的档次标识", "数字字符串或中文标识都逐字保留", "至少提供一个实际边界例", "不得复制格式示例"} {
+		if !strings.Contains(prompt, required) {
+			t.Fatalf("prompt missing contract %q", required)
+		}
+	}
+}
+
+func TestGenerateGrpoPromptPreservesNumericIdentifiers(t *testing.T) {
+	levels := []string{"-1", "0", "1"}
+	rows := make([]map[string]string, len(levels))
+	for index, level := range levels {
+		rows[index] = map[string]string{"level": level, "criteria": "核对时限", "rejectCase": "记录缺失"}
+	}
+	body, err := json.Marshal(map[string]any{"levelRubrics": rows})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := payloadProvider(t, string(body), nil)
+	output, err := GenerateGrpoPrompt(context.Background(), payloadProviderConfig(server), GrpoPromptInput{Question: "退货时限如何核查？", Levels: levels})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, rubric := range output.LevelRubrics {
+		if rubric.Level != levels[index] {
+			t.Fatalf("numeric string identity changed: %+v", output.LevelRubrics)
+		}
+	}
+	prompt := buildRubricUserPrompt(GrpoPromptInput{Question: "退货时限如何核查？"}, levels)
+	if !strings.Contains(prompt, "-1、0、1") || !strings.Contains(prompt, "数字字符串或中文标识都逐字保留") {
+		t.Fatalf("numeric identity contract missing: %s", prompt)
+	}
+}
 
 func TestNormalizeLevelsDropsBlanksAndDuplicatesKeepingOrder(t *testing.T) {
 	got := NormalizeLevels([]string{" -1 ", "", "0", "-1", "  1  "})

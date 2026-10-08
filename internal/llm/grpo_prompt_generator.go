@@ -125,13 +125,34 @@ func generateLevelRubrics(ctx context.Context, provider ProviderConfig, input Gr
 // 缺少任何一档都必须报错，不得用占位文本补齐——那会让教师模型拿到无判据的档次。
 func mapRubricsToLevels(generated grpoRubricPayload, levels []string) ([]model.GrpoLevelRubric, error) {
 	byLevel := make(map[string]model.GrpoLevelRubric, len(generated.LevelRubrics))
+	expected := make(map[string]bool, len(levels))
+	for _, level := range levels {
+		expected[level] = true
+	}
 	for _, item := range generated.LevelRubrics {
 		key := strings.TrimSpace(item.Level)
 		if key == "" {
-			continue
+			return nil, fmt.Errorf("schema violation: provider returned an empty reward level")
+		}
+		if !expected[key] {
+			return nil, fmt.Errorf("schema violation: provider returned reward level %q outside requested levels: %s", key, strings.Join(levels, ", "))
 		}
 		if _, exists := byLevel[key]; exists {
-			continue
+			return nil, fmt.Errorf("schema violation: provider returned duplicate reward level %q", key)
+		}
+		if assessment := assessNonPlaceholderText("levelRubrics["+key+"].criteria", item.Criteria); !assessment.Valid {
+			return nil, newInvalidContentError(assessment)
+		}
+		for _, field := range []struct{ name, text string }{
+			{"label", item.Label}, {"acceptCase", item.AcceptCase}, {"rejectCase", item.RejectCase},
+		} {
+			// Empty examples retain the established optional-field contract;
+			// native GRPO schema still requires at least one boundary example.
+			if strings.TrimSpace(field.text) != "" {
+				if assessment := assessNonPlaceholderText("levelRubrics["+key+"]."+field.name, field.text); !assessment.Valid {
+					return nil, newInvalidContentError(assessment)
+				}
+			}
 		}
 		byLevel[key] = model.GrpoLevelRubric{
 			Level:      key,
@@ -156,7 +177,7 @@ func mapRubricsToLevels(generated grpoRubricPayload, levels []string) ([]model.G
 		result = append(result, item)
 	}
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("provider did not return usable criteria for reward levels: %s", strings.Join(missing, ", "))
+		return nil, fmt.Errorf("schema violation: provider did not return usable criteria for reward levels: %s", strings.Join(missing, ", "))
 	}
 	return result, nil
 }
@@ -297,8 +318,9 @@ func buildRubricUserPrompt(input GrpoPromptInput, levels []string) string {
 	builder.WriteString("- rejectCase 给出一个不应判为该档的具体情形\n")
 	builder.WriteString("- label 是该档次的简短中文名称，不超过 8 个字\n")
 	builder.WriteString("- sceneSummary 用一句话概括该问题的具体场景，不超过 60 字\n\n")
-	builder.WriteString("只输出 JSON：\n")
-	builder.WriteString("{\"sceneSummary\":\"...\",\"levelRubrics\":[{\"level\":\"-1\",\"label\":\"...\",\"criteria\":\"...\",\"acceptCase\":\"...\",\"rejectCase\":\"...\"}]}\n")
+	builder.WriteString("只输出 JSON 对象，包含 sceneSummary 字符串和 levelRubrics 对象数组。\n")
+	builder.WriteString("每个判据对象包含 level、label、criteria、acceptCase、rejectCase 五个字符串字段。level 必须逐字使用用户给定的档次标识；数字字符串或中文标识都逐字保留，不得自行转换档位标识。\n")
+	builder.WriteString("criteria 必须是实际判据；acceptCase 与 rejectCase 至少提供一个实际边界例，未提供的一项返回空字符串。不得复制格式示例或使用省略号、待补充等占位符。\n")
 	fmt.Fprintf(&builder, "levelRubrics 必须恰好包含这 %d 个档次：%s，顺序一致，不得增删。\n",
 		len(levels), strings.Join(levels, "、"))
 

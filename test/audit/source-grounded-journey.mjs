@@ -5,7 +5,7 @@
  * they do not constitute human acceptance or independent quality evaluation.
  */
 import { createRequire } from 'node:module'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
 
@@ -20,9 +20,21 @@ const generationMaxTokens = Number(process.env.JOURNEY_MAX_TOKENS || 8192)
 assert(Number.isInteger(generationMaxTokens) && generationMaxTokens > 0, 'JOURNEY_MAX_TOKENS must be a positive integer')
 const api = await request.newContext({ baseURL, timeout: 30000 })
 const runID = new Date().toISOString().replace(/[:.]/g, '-')
-const evidence = { runID, baseURL, webURL, generationMaxTokens, sourceRevision: process.env.JOURNEY_SHA || 'working-tree', projects: [], checks: [] }
+const evidence = { runID, baseURL, webURL, generationMaxTokens, sourceRevision: process.env.JOURNEY_SHA || 'working-tree', productSourceRunID: runID, projects: [], checks: [] }
 const outputDir = `output/playwright/grounding-${runID}`
 mkdirSync(outputDir, { recursive: true })
+if (process.env.JOURNEY_RESUME_EVIDENCE) {
+  const previous = JSON.parse(readFileSync(process.env.JOURNEY_RESUME_EVIDENCE, 'utf8'))
+  assert.equal(previous.baseURL, baseURL, 'Resume evidence must belong to this isolated API')
+  const sft = previous.projects.find(project => project.targetKind === 'sft' && project.releaseID && project.artifactHash)
+  assert(sft, 'Resume evidence must contain a previously verified SFT release')
+  evidence.projects.push(structuredClone(sft))
+  evidence.resumedFromRun = previous.runID
+  evidence.reusedSFTFromRun = previous.reusedSFTFromRun || previous.runID
+  evidence.reusedSFTScope = previous.reusedSFTScope || { sourceRevision: previous.sourceRevision, generationMaxTokens: previous.generationMaxTokens }
+  evidence.productSourceRunID = previous.productSourceRunID || previous.runID
+  evidence.checks.push(...previous.checks.filter(check => check.startsWith('sft:')))
+}
 
 async function call(method, path, data, expected = [200, 201, 202]) {
   const digest = createHash('sha256').update(`${path}:${JSON.stringify(data)}`).digest('hex')
@@ -104,11 +116,15 @@ async function runTarget(targetKind) {
   const blueprintPayload = structuredClone(blueprintOld.payload)
   blueprintPayload.nodes.coverage.coverageVersionId = coverage.id
   Object.assign(blueprintPayload.nodes.generation, { sourceVersionId: source.id, modelConnectionId: providerID, concurrency: 1, maxTokens: generationMaxTokens })
+  if (targetKind === 'grpo') {
+    blueprintPayload.nodes.generation.jsonSchema = { ...blueprintPayload.nodes.generation.jsonSchema, levels: ['不合格', '合格', '优秀'] }
+    result.levels = [...blueprintPayload.nodes.generation.jsonSchema.levels]
+  }
   const blueprint = await save(projectID, 'blueprint', blueprintOld, blueprintPayload)
   const batch = await call('POST', `${prefix}/batches`, { purpose: 'pilot', unitCount: 1, blueprintVersionId: blueprint.id })
   result.batchID = Number(batch.id.replace(/^b_/, ''))
   await waitFor(`${prefix}/batches/b_${result.batchID}`, ['completed'], 'real model generation')
-  const listed = await call('GET', `${prefix}/samples?reviewStatus=all&limit=20`)
+  const listed = await call('GET', `${prefix}/samples?status=all&limit=20`)
   assert.equal(listed.items.length, 1)
   const sampleID = listed.items[0].resourceId || `s_${listed.items[0].sampleId}`
   const detail = await call('GET', `${prefix}/samples/${sampleID}`)
@@ -188,7 +204,7 @@ async function verifyProducts() {
     jsonl: [{ question: '产物验收：何时退款？', reasoning: '以验收通过时间为起点。', answer: '验收通过后3个工作日内。' }],
   }
   for (const [format, rows] of Object.entries(formats)) {
-    const payload = { format, sourceKey: `${runID}-${format}`, targetKind: 'sft', content: rows.map(row => JSON.stringify(row)).join('\n'), changeReason: 'EasyDataset公开产物格式真实导入验收' }
+    const payload = { format, sourceKey: `${evidence.productSourceRunID}-${format}`, targetKind: 'sft', content: rows.map(row => JSON.stringify(row)).join('\n'), changeReason: 'EasyDataset公开产物格式真实导入验收' }
     const preview = await call('POST', `${prefix}/source-import-products/preview`, payload)
     assert.equal(preview.validItems, 1)
     const queued = await call('POST', `${prefix}/source-import-products`, payload)
@@ -201,7 +217,7 @@ async function verifyProducts() {
     assert.equal(replay.importId, queued.importId)
     evidence.checks.push(`${format}:product-preview-import-replay-and-failures`)
   }
-  const samples = await call('GET', `${prefix}/samples?reviewStatus=all&limit=20`)
+  const samples = await call('GET', `${prefix}/samples?status=all&limit=20`)
   assert.equal(samples.items.length, 4)
   for (const item of samples.items.filter(item => item.resourceId !== project.sampleID)) {
     const detail = await call('GET', `${prefix}/samples/${item.resourceId}`)
@@ -209,8 +225,15 @@ async function verifyProducts() {
     assert.equal(detail.data.version.source.sourceChunkIds?.length || 0, 0)
   }
   const card = await call('GET', `${prefix}/releases/${project.releaseID}`)
-  assert.equal(card.data.artifacts.find(item => item.state === 'verified').artifactHash, project.artifactHash)
+  const artifact = card.data.artifacts.find(item => item.state === 'verified')
+  assert.equal(artifact.artifactHash, project.artifactHash)
   assert.equal(card.data.manifest.itemCount, 1)
+  const downloaded = await api.get(`${prefix}/releases/${project.releaseID}/artifacts/${artifact.id}/download`)
+  assert.equal(downloaded.status(), 200)
+  const bytes = await downloaded.body()
+  assert.equal(`sha256:${createHash('sha256').update(bytes).digest('hex')}`, project.artifactHash)
+  writeFileSync(`${outputDir}/sft.jsonl`, bytes)
+  writeFileSync(`${outputDir}/sft-manifest.json`, JSON.stringify(card.data.manifest, null, 2))
   evidence.checks.push('external-imports-do-not-change-frozen-release-or-claim-grounding')
 }
 
@@ -221,8 +244,12 @@ try {
     outputPriceMinorPerMillion: 1000, isFree: false, isEstimated: true,
     note: '隔离技术验收保守估计，非官方价格或实际账单',
   })
-  for (const target of ['sft', 'grpo']) await runTarget(target)
-  await verifyProducts()
+  if (!evidence.projects.some(project => project.targetKind === 'sft' && project.artifactHash)) await runTarget('sft')
+  // Product import and the independent GRPO project can finish even when the
+  // other phase fails. Stable source keys make resumed imports idempotent.
+  const phases = await Promise.allSettled([runTarget('grpo'), verifyProducts()])
+  evidence.phaseErrors = phases.flatMap((phase, index) => phase.status === 'rejected' ? [{ phase: ['grpo', 'products'][index], error: phase.reason.message }] : [])
+  if (evidence.phaseErrors.length) throw new Error(evidence.phaseErrors.map(item => `${item.phase}: ${item.error}`).join('\n'))
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] })
   try {
     const context = await browser.newContext({ storageState: await api.storageState(), viewport: { width: 1440, height: 1024 } })
