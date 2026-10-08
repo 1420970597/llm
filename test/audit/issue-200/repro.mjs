@@ -32,7 +32,12 @@ const require = createRequire('/root/llm/package.json')
 const { chromium } = require('/root/.pi/agent/npm/node_modules/playwright')
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const OUT = path.resolve(HERE, '../../../docs/audit/issue-200')
+// 复核轮允许把证据写到独立目录/前缀，避免覆盖修复轮已提交的归档证据
+// （docs/audit/issue-200/ 下已有修复轮的 before/after）。默认行为与修复轮一致。
+const OUT = process.env.OUT_DIR
+  ? path.resolve(process.env.OUT_DIR)
+  : path.resolve(HERE, '../../../docs/audit/issue-200')
+const PREFIX = process.env.FILE_PREFIX ?? ''
 mkdirSync(OUT, { recursive: true })
 
 const phaseArg = process.argv.indexOf('--phase')
@@ -47,7 +52,7 @@ const FORCE = process.argv.includes('--force')
 // 而评论里的图链指向的就是这些文件。这正是「用假证据冒充验证」的典型形态，
 // 只不过是无意的。要重新采集必须显式传 --force。
 if (!FORCE) {
-  const existing = [`${PHASE}.json`, `${PHASE}-today.png`, `${PHASE}-overview.png`]
+  const existing = [`${PREFIX}${PHASE}.json`, `${PREFIX}${PHASE}-today.png`, `${PREFIX}${PHASE}-overview.png`]
     .filter((name) => existsSync(path.join(OUT, name)))
   if (existing.length > 0) {
     console.error(`[issue-200] 拒绝覆盖已存在的证据（${PHASE}）：${existing.join(', ')}`)
@@ -101,7 +106,7 @@ const today = await page.evaluate(async (projectId) => {
   }
 }, PROJECT_ID)
 
-await page.screenshot({ path: path.join(OUT, `${PHASE}-today.png`), fullPage: true })
+await page.screenshot({ path: path.join(OUT, `${PREFIX}${PHASE}-today.png`), fullPage: true })
 
 // ---- 路径 3：/p/{id}/overview（待处理决定指标） ----
 await page.goto(`${BASE}/p/${PROJECT_ID}/overview`, { waitUntil: 'networkidle' })
@@ -119,7 +124,7 @@ const overview = await page.evaluate(async (projectId) => {
   }
 }, PROJECT_ID)
 
-await page.screenshot({ path: path.join(OUT, `${PHASE}-overview.png`), fullPage: true })
+await page.screenshot({ path: path.join(OUT, `${PREFIX}${PHASE}-overview.png`), fullPage: true })
 
 const pendingTodo = today.todos.find((todo) => todo.kind === 'pending_review') ?? null
 const tileMatchesQueue =
@@ -162,7 +167,7 @@ const report = {
   ok: tileMatchesQueue && pendingTodoMatchesQueue && cardRendersPending && overviewMatchesQueue,
 }
 
-writeFileSync(path.join(OUT, `${PHASE}.json`), `${JSON.stringify(report, null, 2)}\n`)
+writeFileSync(path.join(OUT, `${PREFIX}${PHASE}.json`), `${JSON.stringify(report, null, 2)}\n`)
 await browser.close()
 
 console.log(`[issue-200] phase=${PHASE}`)
