@@ -865,6 +865,47 @@ function problemsWithAuditActivityLinks(activitySrc) {
   return problems
 }
 
+/** #212：批次详情「阶段进度」必须是 batch_items 的事实投影，而不是恒空的表。 */
+function problemsWithBatchStepProgress(batchStoreSrc, workerSrc, runPageSrc) {
+  const problems = []
+  const store = stripComments(batchStoreSrc)
+  const run = stripComments(runPageSrc)
+  // 阶段读数必须来自 batch_items（唯一事实来源），不得退回读 batch_steps 表。
+  const listSteps = store.match(/func \(s \*BatchStore\) ListBatchSteps[\s\S]*?\n\}/)
+  const derived = store.match(/func \(s \*BatchStore\) derivedBatchSteps[\s\S]*?\n\}/)
+  if (!listSteps || !derived) {
+    problems.push('找不到阶段投影函数（本断言会空转）')
+    return problems
+  }
+  if (!/RefreshBatchSteps|derivedBatchSteps/.test(listSteps[0])) {
+    problems.push('ListBatchSteps 没有走事实投影（会退回「batch_steps 恒空」的缺陷形态）')
+  }
+  if (!/FROM batch_items/.test(derived[0])) {
+    problems.push('阶段投影没有从 batch_items 取事实（恒空区块的同一形态）')
+  }
+  if (!/sample_version_id IS NOT NULL/.test(derived[0])) {
+    problems.push('阶段进度的「已产出」口径不是样本版本事实')
+  }
+  if (/FROM batch_steps WHERE batch_id = \$1 ORDER BY id/.test(store)) {
+    problems.push('阶段进度仍直接读 batch_steps 表（T12/T13 从未写入该表）')
+  }
+  // 可达性：历史批次不会再被 runner 碰到，必须由维护循环收敛。
+  if (!/ListBatchIDsWithStaleSteps/.test(store)) {
+    problems.push('缺少存量批次的可扫描依据（历史批次永远补不出阶段行）')
+  }
+  if (!/ListBatchIDsWithStaleSteps/.test(workerSrc)) {
+    problems.push('维护循环没有调用阶段收敛（修复只对未来批次生效）')
+  }
+  // 前端不得再无条件声明「还没有阶段记录」（那是用空态断言「没执行任何阶段」）。
+  if (/还没有阶段记录/.test(run)) {
+    problems.push('页面仍用「还没有阶段记录」声明一个并不成立的事实')
+  }
+  if (!/data-batch-steps=/.test(run)) {
+    problems.push('阶段进度区块缺少可断言的锚点')
+  }
+  return problems
+}
+
 /** #213：映射复选框必须有行内可访问名；发布表单必须按字段展示错误。 */
 function problemsWithAccessibleMappingAndFieldErrors(editorSrc, releaseSrc) {
   const problems = []
@@ -896,6 +937,8 @@ const TODAY_PAGE = read('apps/web-user/src/studio/pages/TodayPages.tsx')
 const DOCUMENT_EDITORS = read('apps/web-user/src/studio/DocumentEditors.tsx')
 const RELEASE_PAGE = read('apps/web-user/src/studio/pages/ReleasePages.tsx')
 const STUDIO_API_TYPES = read('apps/web-user/src/lib/api/studio.ts')
+// #212：维护循环的收敛点（只修 runner 修不到已经跑完的历史批次）。
+const STUDIO_JOBS = read('apps/worker/studio_jobs.go')
 // #211 方向 3：递归收集全部前端源码（不是手工清单）。
 const FRONTEND_SOURCES = collectFrontendSources(path.join(REPO_ROOT, 'apps/web-user/src')).map(
   (absolute) => ({ name: path.relative(REPO_ROOT, absolute), source: readFileSync(absolute, 'utf8') }),
@@ -950,6 +993,8 @@ const checks = [
     problemsWithAuditActivityLinks(ACTIVITY_STORE)],
   ['#213 交付映射复选框可访问名 + 发布表单字段级错误',
     problemsWithAccessibleMappingAndFieldErrors(DOCUMENT_EDITORS, RELEASE_PAGE)],
+  ['#212 阶段进度是 batch_items 的事实投影且存量批次可收敛',
+    problemsWithBatchStepProgress(BATCH_STORE, STUDIO_JOBS, RUN_PAGE)],
   ['#209 连接可用性单一来源 + 下拉不出现无字选项',
     problemsWithProviderConfigIssues(ADMIN_VALIDATION, ADMIN_STORE, SETTINGS_ROUTES, BLUEPRINT_PAGE, SETTINGS_PAGE)],
 ]
@@ -1064,6 +1109,16 @@ const mutations = [
     DOCUMENT_EDITORS.replace(/aria-label=\{`把\$\{accessible\}设为必填`\}/, ''), RELEASE_PAGE)],
   ['#213 让发布错误退回单行总体提示', problemsWithAccessibleMappingAndFieldErrors(
     DOCUMENT_EDITORS, RELEASE_PAGE.replaceAll('fieldErrors.intendedUse', 'errorLines.intendedUse'))],
+  ['#212 让阶段进度退回读恒空的 batch_steps 表', problemsWithBatchStepProgress(
+    BATCH_STORE.replace(/func \(s \*BatchStore\) derivedBatchSteps[\s\S]*?\n\}/,
+      'func (s *BatchStore) derivedBatchSteps(ctx context.Context, q queryable, batchID int64) ([]model.BatchStep, error) {\n\treturn nil, nil\n}'),
+    STUDIO_JOBS, RUN_PAGE)],
+  ['#212 摘掉存量批次的阶段收敛', problemsWithBatchStepProgress(
+    BATCH_STORE.replaceAll('ListBatchIDsWithStaleSteps', 'RemovedStaleStepsScan'),
+    STUDIO_JOBS, RUN_PAGE)],
+  ['#212 让页面退回「还没有阶段记录」', problemsWithBatchStepProgress(
+    BATCH_STORE, STUDIO_JOBS,
+    RUN_PAGE.replace(/data-batch-steps-empty="true">[\s\S]*?<\/Text>/, 'data-batch-steps-empty="true">还没有阶段记录。</Text>'))],
   ['#209 让连接判定退回两处各自实现', problemsWithProviderConfigIssues(
     ADMIN_VALIDATION.replace(/for _, rule := range providerFieldRules \{\n\t\tif !rule\.Invalid\(input\) \{\n\t\t\tcontinue\n\t\t\}/, 'if true {'),
     ADMIN_STORE, SETTINGS_ROUTES, BLUEPRINT_PAGE, SETTINGS_PAGE)],
