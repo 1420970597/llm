@@ -54,6 +54,7 @@ try {
   await save(); await page.getByRole('alert').filter({ hasText: '价格保存暂时失败' }).waitFor()
   assert.equal(await page.getByRole('textbox', { name: '新价格版本名', exact: true }).inputValue(), 'new-price')
   await save(); await page.locator('[data-model-price-form]').waitFor({ state: 'hidden' })
+  await page.getByRole('dialog').waitFor({ state: 'hidden' })
   assert.equal(fixture.current.isFree, true); assert.equal(fixture.current.isEstimated, false)
   await page.getByRole('button', { name: '价格配置', exact: true }).click()
   await page.locator('[data-model-price-form]').waitFor()
@@ -66,11 +67,13 @@ try {
   mkdirSync('output/playwright', { recursive: true })
   await page.screenshot({ path: 'output/playwright/model-pricing-mobile.png', fullPage: true })
   await save(); await page.locator('[data-model-price-form]').waitFor({ state: 'hidden' })
+  await page.getByRole('dialog').waitFor({ state: 'hidden' })
   assert.equal(fixture.current.inputPriceMinorPerMillion, 123); assert.equal(fixture.current.outputPriceMinorPerMillion, 456); assert.equal(fixture.current.isEstimated, true)
   fixture.current = null
   await page.getByRole('button', { name: '价格配置', exact: true }).click()
   await page.getByText('当前没有价格配置，请填写实际单价或明确标记免费。', { exact: true }).waitFor()
   await page.getByRole('button', { name: '取消价格配置', exact: true }).click()
+  await page.getByRole('dialog').waitFor({ state: 'hidden' })
   fixture.role = 'user'
   await page.reload(); await page.locator('[data-connection-id="5"]').waitFor()
   assert.equal(await page.getByRole('button', { name: '价格配置', exact: true }).count(), 0)
