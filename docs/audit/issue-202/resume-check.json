@@ -1,0 +1,15 @@
+{
+  "issue": 202,
+  "check": "suggested-direction-1b-resume-does-not-requeue-zombie",
+  "base": "http://127.0.0.1:3210",
+  "deployedVersion": "a889b43ba00d1f9b1d6fccbdea735b04ca13e299",
+  "resumeHttpStatus": 202,
+  "resumeError": null,
+  "statusAfterResume": "partial_failed",
+  "capabilitiesAfterResume": null,
+  "generateJobsBefore": 1,
+  "generateJobsAfter": 1,
+  "noOpJobsCreated": 0,
+  "resumedEventsTotal": 4,
+  "ok": true
+}
