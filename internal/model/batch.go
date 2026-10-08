@@ -399,14 +399,15 @@ type Sample struct {
 // 「不可变」是契约而不是约定：没有 UPDATE 路径，判断/规则/发布都不得改写它
 // （§4.1 与 T05 验收项「内容/来源不随旧表更新」）。
 type SampleVersion struct {
-	ID            int64           `json:"id"`
-	SampleID      int64           `json:"sampleId"`
-	ProjectID     int64           `json:"projectId"`
-	Version       int             `json:"version"`
-	TargetKind    string          `json:"targetKind"`
-	SchemaVersion string          `json:"schemaVersion"`
-	Payload       json.RawMessage `json:"payload"`
-	ContentHash   string          `json:"contentHash"`
+	SourceChunkIDs []int64         `json:"sourceChunkIds"`
+	ID             int64           `json:"id"`
+	SampleID       int64           `json:"sampleId"`
+	ProjectID      int64           `json:"projectId"`
+	Version        int             `json:"version"`
+	TargetKind     string          `json:"targetKind"`
+	SchemaVersion  string          `json:"schemaVersion"`
+	Payload        json.RawMessage `json:"payload"`
+	ContentHash    string          `json:"contentHash"`
 
 	BatchID         *int64          `json:"batchId,omitempty"`
 	BatchItemID     *int64          `json:"batchItemId,omitempty"`

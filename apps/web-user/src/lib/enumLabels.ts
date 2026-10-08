@@ -348,6 +348,7 @@ const AUDIT_RESOURCE_LABELS: Record<string, string> = {
   recipe_version: '方案版本',
   blueprint_version: '蓝图版本',
   coverage_version: '覆盖方案版本',
+  source_version: '来源文档版本',
   standard_version: '思维标准版本',
   quality_policy_version: '质量策略版本',
   mapping_version: '交付映射版本',
