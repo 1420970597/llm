@@ -224,17 +224,9 @@ export function QualityNewPage() {
       ).length,
     [samples, selected],
   )
-  const [judgeID, setJudgeID] = useState('')
+  const formContext = `${scope.projectId}:${blueprintId ?? 'manual'}`
+  const [judgeSelection, setJudgeSelection] = useState<{ context: string; value: string } | null>(null)
   const [judgeMaxTokens, setJudgeMaxTokens] = useState(4096)
-  const [blueprintJudges, setBlueprintJudges] = useState<number[]>([])
-  // Keep user edits separate from values temporarily retained while React
-  // disposes a removed blueprint deep-link.  A browser history transition can
-  // render once before the blueprint-loading effect clears its state; submit
-  // must still use the unscoped form defaults during that transition.
-  const manualJudgeTouchedRef = useRef(false)
-  const [missingScorePolicy, setMissingScorePolicy] = useState<'exclude' | 'fail_experiment'>('exclude')
-  const [blueprintRubric, setBlueprintRubric] = useState<CreateExperimentRequest['rubric']>()
-  const [blueprintPolicyError, setBlueprintPolicyError] = useState<string | null>(null)
   /**
    * 裁判模型候选（issue #197 第 14 条）。
    *
@@ -265,30 +257,31 @@ export function QualityNewPage() {
       cancelled = true
     }
   }, [])
-  const [seed, setSeed] = useState('42')
-  const manualSeedTouchedRef = useRef(false)
-  useEffect(() => {
-    if (!blueprint.current) {
-      setBlueprintJudges([]); setJudgeID(''); setSeed('42')
-      manualJudgeTouchedRef.current = false
-      manualSeedTouchedRef.current = false
-      setMissingScorePolicy('exclude'); setBlueprintRubric(undefined); setBlueprintPolicyError(null)
-      return
-    }
-    const nodes = blueprint.current.payload.nodes as Record<string, Record<string, unknown>> | undefined
+  const [seedSelection, setSeedSelection] = useState<{ context: string; value: number } | null>(null)
+  const hasBlueprintSelection = Boolean(blueprintId && String(blueprint.current?.id) === blueprintId)
+  // 蓝图配置直接从当前冻结版本派生，手动输入绑定当前上下文。
+  // 避免用 effect / ref 清空旧值时让显示、提交和用户刚做的选择发生竞态。
+  const blueprintConfig = useMemo(() => {
+    const nodes = (hasBlueprintSelection ? blueprint.current?.payload.nodes : undefined) as Record<string, Record<string, unknown>> | undefined
     const config = nodes?.evaluation ?? {}
     const judges = Array.isArray(config.judgeConnectionIds) ? config.judgeConnectionIds.filter((value): value is number => typeof value === 'number' && value > 0) : []
-    setBlueprintJudges(judges); setJudgeID(judges[0] ? String(judges[0]) : '')
-    manualJudgeTouchedRef.current = false
-    setSeed(String(config.samplingSeed ?? 42))
-    manualSeedTouchedRef.current = false
-    setMissingScorePolicy(config.missingScorePolicy === 'fail_experiment' ? 'fail_experiment' : 'exclude')
-    setBlueprintPolicyError(config.missingScorePolicy && !['exclude', 'fail_experiment'].includes(String(config.missingScorePolicy)) ? '所选蓝图的缺分策略尚不支持质量实验。请在蓝图中选择“排除缺分”后保存新版本，避免改变评测含义。' : null)
     const weights = config.weights && typeof config.weights === 'object' ? config.weights as Record<string, number> : {}
     const labels: Record<string, string> = { accuracy: '准确', reasoning: '推理', completeness: '完整', relevance: '相关', consistency: '一致' }
     const dimensions = Object.entries(weights).map(([key, weight]) => ({ key, label: labels[key] ?? '自定义维度', weight, min: 0, max: 10 }))
-    setBlueprintRubric(dimensions.length ? { dimensions } : undefined)
-  }, [blueprint.current])
+    return {
+      judges, seed: Number(config.samplingSeed ?? 42) || 0,
+      missingScorePolicy: config.missingScorePolicy === 'fail_experiment' ? 'fail_experiment' as const : 'exclude' as const,
+      policyError: config.missingScorePolicy && !['exclude', 'fail_experiment'].includes(String(config.missingScorePolicy)) ? '所选蓝图的缺分策略尚不支持质量实验。请在蓝图中选择“排除缺分”后保存新版本，避免改变评测含义。' : null,
+      rubric: dimensions.length ? { dimensions } : undefined,
+    }
+  }, [blueprint.current, hasBlueprintSelection])
+  const hasJudgeOverride = judgeSelection?.context === formContext
+  const effectiveJudgeID = hasJudgeOverride ? judgeSelection.value : blueprintConfig.judges[0] ? String(blueprintConfig.judges[0]) : ''
+  const blueprintJudges = hasJudgeOverride ? [] : blueprintConfig.judges
+  const effectiveSeed = seedSelection?.context === formContext ? seedSelection.value : blueprintConfig.seed
+  const missingScorePolicy = blueprintConfig.missingScorePolicy
+  const blueprintRubric = blueprintConfig.rubric
+  const blueprintPolicyError = blueprintConfig.policyError
   const [teacherPromptVersion, setTeacherPromptVersion] = useState('')
   const [baselineAnswerVersion, setBaselineAnswerVersion] = useState('')
   const [boundaryReferenceJSON, setBoundaryReferenceJSON] = useState('')
@@ -346,7 +339,7 @@ export function QualityNewPage() {
 
   const submit = useCallback(async () => {
     setError(null)
-    if (blueprintId && (!blueprint.current || blueprint.loading || blueprint.error || blueprintPolicyError || grpoBlueprintError)) {
+    if (blueprintId && (!hasBlueprintSelection || blueprint.loading || blueprint.error || blueprintPolicyError || grpoBlueprintError)) {
       setError(blueprintPolicyError ?? grpoBlueprintError ?? '请先成功读取所选蓝图版本，再创建实验'); return
     }
     if (!canRun) {
@@ -357,12 +350,6 @@ export function QualityNewPage() {
       setError('实验范围不能为空：请至少选择一个样本版本（空数据集无法得出任何结论）')
       return
     }
-    if (judgeID.trim() === '') {
-      setError('实验至少需要一名裁判；请填写裁判连接 ID（独立性由服务端校验）')
-      return
-    }
-    const hasBlueprintSelection = Boolean(blueprintId && blueprint.current)
-    const effectiveJudgeID = hasBlueprintSelection || manualJudgeTouchedRef.current ? judgeID : ''
     if (effectiveJudgeID.trim() === '') {
       setError('实验至少需要一名裁判；请填写裁判连接 ID（独立性由服务端校验）')
       return
@@ -394,7 +381,7 @@ export function QualityNewPage() {
       const experiment = await studioApi.createExperiment(scope.projectId, {
         // 提交的是**样本版本**（内容版本），不是样本：同一题的两版内容是两件事。
         sampleVersionIds: selected,
-        samplingSeed: hasBlueprintSelection || manualSeedTouchedRef.current ? Number(seed) || 0 : 42,
+        samplingSeed: effectiveSeed,
         // GRPO 省略量表 → 服务端用内置 GRPO 量表（档位覆盖 / 边界稳定性 /
         // 评分解释一致性）。SFT 必须显式给出。
         rubric: isGRPO
@@ -413,7 +400,7 @@ export function QualityNewPage() {
     } finally {
       setBusy(false)
     }
-  }, [baselineAnswerVersion, batchID, blueprint.current, blueprint.error, blueprint.loading, blueprintId, blueprintJudges, blueprintPolicyError, blueprintRubric, boundaryReferenceJSON, canRun, grpoBlueprintError, isGRPO, judgeID, judgeMaxTokens, missingScorePolicy, navigate, scope.projectId, seed, selected, teacherPromptVersion])
+  }, [baselineAnswerVersion, batchID, blueprint.error, blueprint.loading, blueprintId, blueprintJudges, blueprintPolicyError, blueprintRubric, boundaryReferenceJSON, canRun, effectiveJudgeID, effectiveSeed, grpoBlueprintError, hasBlueprintSelection, isGRPO, judgeMaxTokens, missingScorePolicy, navigate, scope.projectId, selected, teacherPromptVersion])
 
   /**
    * #211 方向 2：勾选了未审阅内容时，**提交前**显式提示一次。
@@ -593,14 +580,15 @@ export function QualityNewPage() {
 
       <Card className="console-card mb-3" bodyStyle={{ padding: 16 }}>
         <div className="wizard-fields">
-          <div className="wizard-field" data-field="judge-connection">
+          <div className="wizard-field" data-field="judge-connection" data-selected-judge={effectiveJudgeID}>
             <label className="wizard-field__label" htmlFor="judge-connection">
               裁判模型
             </label>
             {/* 只列**已启用**的连接：停用的连接选了也跑不起来。 */}
             <Select
+              key={formContext}
               id="judge-connection"
-              value={judgeID || undefined}
+              value={effectiveJudgeID}
               style={{ width: '100%' }}
               placeholder={
                 judgeOptionsLoading
@@ -614,7 +602,7 @@ export function QualityNewPage() {
                 value: String(provider.id),
                 label: `${provider.name}（${provider.model}）`,
               }))}
-              onChange={(value) => { manualJudgeTouchedRef.current = true; setJudgeID(String(value ?? '')); setBlueprintJudges([]) }}
+              onChange={(value) => setJudgeSelection({ context: formContext, value: String(value ?? '') })}
               data-judge-connection-select="true"
             />
             {judgeOptionsError ? (
@@ -642,8 +630,8 @@ export function QualityNewPage() {
             </label>
             <InputNumber
               id="sampling-seed"
-              value={Number(seed) || 0}
-              onChange={(value) => { manualSeedTouchedRef.current = true; setSeed(String(value ?? 0)) }}
+              value={effectiveSeed}
+              onChange={(value) => setSeedSelection({ context: formContext, value: Number(value ?? 0) })}
               disabled={!canRun}
             />
           </div>
@@ -843,20 +831,21 @@ export function RulesPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  const blueprintNodes = blueprint.current?.payload.nodes as Record<string, Record<string, unknown>> | undefined
+  const referencedPolicyID = Number(blueprintNodes?.rules?.qualityPolicyVersionId)
+  const selectedPolicyVersionID = blueprintId ? (referencedPolicyID > 0 ? String(referencedPolicyID) : '') : policyVersionID
+
   useEffect(() => {
-    if (blueprintId && blueprint.current) {
-      const nodes = blueprint.current.payload.nodes as Record<string, Record<string, unknown>> | undefined
-      const referenced = Number(nodes?.rules?.qualityPolicyVersionId)
-      setPolicyVersionID(referenced > 0 ? String(referenced) : '')
-    } else if (!blueprintId && documentState.current && policyVersionID === '') {
+    if (!blueprintId && documentState.current && policyVersionID === '') {
       setPolicyVersionID(String(documentState.current.id))
     }
-  }, [blueprint.current, blueprintId, documentState.current, policyVersionID])
+  }, [blueprintId, documentState.current, policyVersionID])
 
   const runPreview = useCallback(async () => {
     setError(null)
     if (blueprintId && (!blueprint.current || blueprint.loading || blueprint.error)) { setError('请先成功读取所选蓝图版本，再预览规则'); return }
-    if (!documentState.versions.some((version) => String(version.id) === policyVersionID)) { setError('请选择当前项目可用的规则版本；蓝图引用的策略可能尚未配置。'); return }
+    // 目录只有最近一页。历史蓝图的冻结引用由服务端校验项目归属，不能因不在这一页而拒绝。
+    if (!Number.isSafeInteger(Number(selectedPolicyVersionID)) || Number(selectedPolicyVersionID) <= 0 || (!blueprintId && !documentState.versions.some((version) => String(version.id) === selectedPolicyVersionID))) { setError('请选择当前项目可用的规则版本；蓝图引用的策略可能尚未配置。'); return }
     setBusy(true)
     try {
       const ids = sampleVersionIDs
@@ -864,7 +853,7 @@ export function RulesPage() {
         .map((value) => Number(value.trim()))
         .filter((value) => Number.isFinite(value) && value > 0)
       const result = await studioApi.previewRules(scope.projectId, {
-        qualityPolicyVersionId: Number(policyVersionID),
+        qualityPolicyVersionId: Number(selectedPolicyVersionID),
         sampleVersionIds: ids,
       })
       setPreview(result)
@@ -873,7 +862,7 @@ export function RulesPage() {
     } finally {
       setBusy(false)
     }
-  }, [blueprint.current, blueprint.error, blueprint.loading, blueprintId, documentState.versions, policyVersionID, sampleVersionIDs, scope.projectId])
+  }, [blueprint.current, blueprint.error, blueprint.loading, blueprintId, documentState.versions, selectedPolicyVersionID, sampleVersionIDs, scope.projectId])
 
   return (
     <div className="console-page" data-studio-page="rules">
@@ -905,7 +894,10 @@ export function RulesPage() {
             <label className="wizard-field__label" htmlFor="policy-version">
               用于预览的规则版本
             </label>
-            <Select id="policy-version" aria-label="用于预览的规则版本" value={policyVersionID || undefined} onChange={(value) => setPolicyVersionID(String(value))} optionList={documentState.versions.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))} placeholder="选择规则版本" disabled={documentState.versions.length === 0 || Boolean(blueprintId)} />
+            <Select id="policy-version" aria-label="用于预览的规则版本" value={selectedPolicyVersionID || undefined} onChange={(value) => setPolicyVersionID(String(value))} optionList={[
+              ...documentState.versions.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` })),
+              ...(blueprintId && selectedPolicyVersionID && !documentState.versions.some((version) => String(version.id) === selectedPolicyVersionID) ? [{ value: selectedPolicyVersionID, label: `蓝图冻结策略（版本 ID ${selectedPolicyVersionID}）` }] : []),
+            ]} placeholder="选择规则版本" disabled={documentState.versions.length === 0 || Boolean(blueprintId)} />
           </div>
           <div className="wizard-field">
             <label className="wizard-field__label" htmlFor="preview-versions">

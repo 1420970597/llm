@@ -26,7 +26,8 @@ export async function verifyProjectTools(page, baseURL) {
     else if (path.endsWith('/blueprint-versions')) body = { items: [document(102, 2, 66), document(101, 1, 55)] }
     else if (path.endsWith('/blueprint-versions/1')) body = { version: document(101, 1, 55) }
     else if (path.endsWith('/blueprint-versions/2')) body = { version: document(102, 2, 66) }
-    else if (path.endsWith('/quality-policy-versions')) body = { items: [{ id: 66, version: 2 }, { id: 55, version: 1 }], document: { revision: 2 }, canEdit: true }
+    // 冻结策略 55 已不在最近一页中；有效历史引用仍应提交给服务端校验。
+    else if (path.endsWith('/quality-policy-versions')) body = { items: [{ id: 66, version: 2 }], nextCursor: '2', document: { revision: 2 }, canEdit: true }
     else if (path.endsWith('/quality-policy-versions/2')) body = { version: { id: 66, version: 2, projectId: 7, documentId: 2, kind: 'quality_policy', schemaVersion: 'quality_policy.v1', contentHash: 'policy66', changeReason: '策略 2', createdAt: '2026-10-08T00:00:00Z', payload: { schemaVersion: 'quality_policy.v1', rules: [] } } }
     else if (path.endsWith('/settings/connection-options')) body = { providers: [21, 22].map((id) => ({ id, name: `裁判 ${id}`, model: 'judge', isActive: true, configIssues: [] })) }
     else if (path.endsWith('/samples')) body = { items: [{ sampleId: 1, resourceId: 's_1', sampleKey: 'sample', title: '蓝图样本', latestVersion: 1, latestVersionId: 301, reviewStatus: 'accepted', capabilities }] }
@@ -37,6 +38,7 @@ export async function verifyProjectTools(page, baseURL) {
     await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
   })
   for (const kind of ['evaluation', 'cleaning']) {
+    console.log(`Project tools: ${kind} states, frozen blueprint and requests`)
     mode = 'empty'
     await page.goto(`${baseURL}/tools/${kind}`)
     await page.getByText('还没有项目。创建项目后配置蓝图，再运行评估或规则预览。', { exact: true }).waitFor()
@@ -56,8 +58,11 @@ export async function verifyProjectTools(page, baseURL) {
     if (kind === 'evaluation') {
       await page.locator('[data-quality-blueprint-context]').getByText(/已带入 2 名裁判/).waitFor()
       await page.getByRole('checkbox', { name: '选择 蓝图样本', exact: true }).check()
+      const blueprintExperiment = page.waitForResponse((response) => response.url().endsWith('/experiments') && response.request().method() === 'POST')
       await page.getByRole('button', { name: '创建并冻结实验', exact: true }).click()
+      await blueprintExperiment
       await page.getByRole('alert').waitFor()
+      console.log('Project tools: manual judge after SPA context removal')
       assert.deepEqual(experiment.judgeConnectionIds, [21, 22])
       assert.equal(experiment.samplingSeed, 88)
       assert.equal(experiment.missingScorePolicy, 'exclude')
@@ -69,7 +74,10 @@ export async function verifyProjectTools(page, baseURL) {
       await page.getByRole('alert').getByText('实验至少需要一名裁判；请填写裁判连接 ID（独立性由服务端校验）', { exact: true }).waitFor()
       await page.locator('[data-judge-connection-select]').click()
       await page.getByText('裁判 21（judge）', { exact: true }).last().click()
+      await page.locator('[data-field="judge-connection"][data-selected-judge="21"]').waitFor()
+      const manualExperiment = page.waitForResponse((response) => response.url().endsWith('/experiments') && response.request().method() === 'POST')
       await page.getByRole('button', { name: '创建并冻结实验', exact: true }).click()
+      await manualExperiment
       await page.getByRole('alert').waitFor()
       assert.deepEqual(experiment.judgeConnectionIds, [21])
       assert.equal(experiment.samplingSeed, 42)
@@ -84,6 +92,7 @@ export async function verifyProjectTools(page, baseURL) {
     }
   }
   for (const state of ['empty', 'partial', 'complete', 'error', 'unscoped']) {
+    console.log(`Project tools: migration menu ${state}`)
     migrationMode = state
     const statusRead = page.waitForResponse((response) => response.url().endsWith('/legacy/migration-status'))
     await page.goto(`${baseURL}/tools/evaluation?projectId=7&blueprintVersionId=101`)
@@ -103,7 +112,7 @@ export async function verifyProjectTools(page, baseURL) {
   assert.equal(experiment, undefined, 'unsupported GRPO weights cannot be ignored silently')
   targetKind = 'sft'
   await page.goto(`${baseURL}/tools/evaluation?projectId=7&blueprintVersionId=999`)
-  await page.getByText('所选蓝图版本不在当前项目中，请重新选择。', { exact: true }).waitFor()
+  await page.getByRole('alert').filter({ hasText: '所选蓝图版本不在当前项目中，请重新选择。' }).waitFor()
   assert.equal(await page.locator('[data-tool-blueprint-context]').count(), 0)
   for (const kind of ['evaluation', 'cleaning']) {
     await page.setViewportSize({ width: 390, height: 844 })

@@ -44,10 +44,13 @@ func TestDocumentVersionHTTPPaginationAndInvalidCursor(t *testing.T) {
 	if second.Code != 200 || json.Unmarshal(second.Body.Bytes(), &page) != nil || len(page.Items) != 1 || page.Items[0].Version != 1 || page.NextCursor != "" {
 		t.Fatalf("第二页不得重复且正确到底: %d %s", second.Code, second.Body.String())
 	}
-	for _, cursor := range []string{"nope", "0", "-1", "999999999999999999999999"} {
+	for _, cursor := range []string{"nope", "0", "-1", "2147483648", "4294967295", "999999999999999999999999"} {
 		if response := read("cursor="+cursor, f.actor); response.Code != 400 {
 			t.Fatalf("非法游标 %s: %d %s", cursor, response.Code, response.Body.String())
 		}
+	}
+	if response := read("cursor=2147483647", f.actor); response.Code != 200 {
+		t.Fatalf("最大合法 PostgreSQL integer 游标: %d %s", response.Code, response.Body.String())
 	}
 	if response := read("limit=2", f.secondOwner); response.Code != 404 {
 		t.Fatalf("分页不能暴露其他项目: %d %s", response.Code, response.Body.String())

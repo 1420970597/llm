@@ -136,8 +136,11 @@ export async function verify(page, baseURL = 'http://127.0.0.1:13212') {
   await page.getByRole('textbox', { name: '导入名称', exact: true }).fill('改名后预览应失效')
   assert.equal(await page.locator('[data-source-import-preview]').count(), 0)
   await page.getByRole('button', { name: '校验并预览', exact: true }).click()
+  const replayLedger = page.waitForResponse((response) => response.url().endsWith('/source-imports/88') && response.status() === 200)
   await page.getByRole('button', { name: '确认导入 1 条有效记录' }).click()
-  await page.getByText('第 3 条：缺少答案', { exact: true }).waitFor()
+  await replayLedger
+  // 预览也显示同名失败，必须确认实际账本已读到结果页，避免命中尚未卸载的预览。
+  await page.locator('[data-source-import-state="result"]').getByText('第 3 条：缺少答案', { exact: true }).waitFor()
   assert.equal(fixture.ledgerReads, 1, 'completed replay must read failure details')
   for (const path of ['/p/7/sources', '/p/7/coverage']) {
     console.log(`Source UI: five states ${path}`)

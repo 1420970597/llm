@@ -220,12 +220,14 @@ func (app *application) listDocumentVersions(kind model.DocumentKind) http.Handl
 		}
 		before := 0
 		if rawCursor := r.URL.Query().Get("cursor"); rawCursor != "" {
-			var err error
-			before, err = strconv.Atoi(rawCursor)
-			if err != nil || before <= 0 {
+			// document_versions.version is a PostgreSQL integer. Parse its exact
+			// range here so an oversized cursor is a client error, not a query 500.
+			parsedCursor, err := strconv.ParseInt(rawCursor, 10, 32)
+			if err != nil || parsedCursor <= 0 {
 				app.writeAPIError(w, r, http.StatusBadRequest, codeValidation, "版本分页游标必须为正整数", nil)
 				return
 			}
+			before = int(parsedCursor)
 		}
 
 		versions, err := app.documents.ListVersions(r.Context(), project.ID, kind, logicalID, limit+1, before)
