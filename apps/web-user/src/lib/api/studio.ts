@@ -1584,6 +1584,15 @@ export type ConnectionProviderOption = {
   isActive: boolean
   /** 掩码后的标识：**永远不是密钥本体**。 */
   apiKeyMasked: string
+  /**
+   * 「这条连接当前不能用于生成」的原因清单（issue #209）。
+   *
+   * 服务端下发（与保存校验同一份规则）。空数组 = 配置完整。
+   * 蓝图「模型服务」下拉用它在选项标签里标出不可用的连接 ——
+   * 否则空名称的连接会渲染成一个**没有任何文字**的选项，
+   * 用户无法判断该选哪个，选中后要到批次已开跑才报错（issue #209 的实测损耗）。
+   */
+  configIssues: string[]
 }
 
 export type ConnectionStorageOption = {

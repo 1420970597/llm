@@ -83,6 +83,11 @@ const EVAL_CATEGORY_ROUTE = read('apps/api/routes_eval_dimensions.go')
 const BATCH_FAILURE_VIEW = read('apps/api/routes_studio_batches.go')
 const CD_WORKFLOW = read('.github/workflows/cd.yml')
 const MARKDOWN_GUARD = read('test/l15_markdown_ui.mjs')
+// #209：连接配置完整性的两个消费方（判定表、两条读路径、蓝图下拉）。
+const ADMIN_VALIDATION = read('internal/store/admin_validation.go')
+const ADMIN_STORE = read('internal/store/admin_store.go')
+const SETTINGS_ROUTES = read('apps/api/routes_studio_settings.go')
+const BLUEPRINT_PAGE = read('apps/web-user/src/studio/pages/BlueprintPages.tsx')
 
 const failures = []
 const results = []
@@ -693,6 +698,74 @@ function problemsWithBatchTimelineLabels(runSrc, modelSrc, apiSrc, storeSrc) {
 // 服务端字段错误与页面提示脱钩。因此断言的都是**接线**，而不只是「函数存在」。
 // ---------------------------------------------------------------------------
 
+/**
+ * #209：模型连接的「配置完整性」必须只有一份权威判据，且两个消费方都用它。
+ *
+ * 缺陷形态：连接的**可用性**在保存路径（校验）与展示路径（列表/下拉）各自实现，
+ * 于是 6 条完全空的连接（含 2 条 is_active=true）既混进了蓝图「模型服务」下拉
+ * （选不到懂哪个是可用的），又能在被选中后跑到批次开跑才报
+ * `model connection unavailable`。
+ *
+ * 断言三条：
+ *   1. `providerFieldRules` 是唯一规则表，且**两个**导出函数都按它驱动；
+ *   2. 服务端在两条读路径上都派生 `configIssues`（admin 列表 + 连接选项），
+ *      否则前端只能自己判空字符串（就是漂移的起点）；
+ *   3. 蓝图下拉不得再把 `item.name` 直接当选项文案（空名 → 无字选项）。
+ */
+function problemsWithProviderConfigIssues(validationSrc, storeSrc, settingsRoutesSrc, blueprintSrc, settingsPageSrc) {
+  const problems = []
+  const validation = stripComments(validationSrc)
+  if (!/var providerFieldRules = \[\]providerFieldRule\{/.test(validation)) {
+    problems.push('缺少 providerFieldRules 规则表（判定会重新分家）')
+  }
+  // 两个消费方都必须遍历同一张表。
+  const validateBody = validation.match(/func ValidateProviderInput\([\s\S]*?\n\}/)
+  if (!validateBody || !/for _, rule := range providerFieldRules/.test(validateBody[0])) {
+    problems.push('ValidateProviderInput 没有按规则表驱动（保存与展示会漂移）')
+  }
+  const issuesBody = validation.match(/func ProviderConfigIssues\([\s\S]*?\n\}/)
+  if (!issuesBody || !/for _, rule := range providerFieldRules/.test(issuesBody[0])) {
+    problems.push('ProviderConfigIssues 没有按规则表驱动（会退回各自实现）')
+  }
+  // 展示口径不得把「停用」混进配置问题（停用是显式意图）。
+  if (issuesBody && /IsActive/.test(issuesBody[0])) {
+    problems.push('ProviderConfigIssues 把「停用」当成了配置问题')
+  }
+  // 两条读路径都要派生 configIssues。
+  if (!/item\.ConfigIssues = ProviderConfigIssues\(item\)/.test(stripComments(storeSrc))) {
+    problems.push('ListProviders 没有派生 configIssues（同名列表与下拉口径会分叉）')
+  }
+  if (!/ConfigIssues: store\.ProviderConfigIssues\(provider\)/.test(stripComments(settingsRoutesSrc))) {
+    problems.push('connection-options 端点没有下发 configIssues（蓝图下拉拿不到可用性）')
+  }
+  const blueprint = stripComments(blueprintSrc)
+  // 缺陷形态：`label: item.name` —— 名称为空时选项没有任何文字。
+  if (/label:\s*item\.name\s*,/.test(blueprint)) {
+    problems.push('蓝图下拉仍把空名称直接当选项文案（#209 的实测形态）')
+  }
+  if (!/connectionMeta\(/.test(blueprint)) {
+    problems.push('蓝图下拉没有把配置问题拼进选项（用户选择前仍看不出哪个不可用）')
+  }
+  // 配置不完整的连接必须**灰显不可选**（#209 建议方向 2 的「灰显 + 不可用」）。
+  if (!/disabled:\s*\(item\.configIssues\?\.length \?\? 0\) > 0/.test(blueprint)) {
+    problems.push('配置不完整的连接仍可被选择（选中后会在批次开跑时才报错）')
+  }
+  // 选项必须真的把 disabled 传给 Select，否则上面那行等于没接。
+  if (!/disabled:\s*option\.disabled/.test(blueprint)) {
+    problems.push('optionList 没有把 disabled 传给 Select（灰显不会生效）')
+  }
+  // 连接列表必须有显式标记，而不是留一个只能靠推断的空行。
+  const settingsPage = stripComments(settingsPageSrc)
+  if (!/配置不完整，不可用于生成/.test(settingsPage)) {
+    problems.push('连接列表没有标出「配置不完整，不可用于生成」')
+  }
+  // 空名称不得渲染成一个**空单元格**（用户无法区分「暂未配置」与「配置坏了」）。
+  if (!/未命名连接/.test(settingsPage)) {
+    problems.push('连接列表没有给空名称任何可读兼底')
+  }
+  return problems
+}
+
 /** #200：总览的待判断计数必须与审阅队列共用同一条谓词。 */
 function problemsWithOverviewQueueParity(activitySrc, sampleQuerySrc) {
   const problems = []
@@ -877,6 +950,8 @@ const checks = [
     problemsWithAuditActivityLinks(ACTIVITY_STORE)],
   ['#213 交付映射复选框可访问名 + 发布表单字段级错误',
     problemsWithAccessibleMappingAndFieldErrors(DOCUMENT_EDITORS, RELEASE_PAGE)],
+  ['#209 连接可用性单一来源 + 下拉不出现无字选项',
+    problemsWithProviderConfigIssues(ADMIN_VALIDATION, ADMIN_STORE, SETTINGS_ROUTES, BLUEPRINT_PAGE, SETTINGS_PAGE)],
 ]
 
 for (const [name, problems] of checks) {
@@ -989,6 +1064,16 @@ const mutations = [
     DOCUMENT_EDITORS.replace(/aria-label=\{`把\$\{accessible\}设为必填`\}/, ''), RELEASE_PAGE)],
   ['#213 让发布错误退回单行总体提示', problemsWithAccessibleMappingAndFieldErrors(
     DOCUMENT_EDITORS, RELEASE_PAGE.replaceAll('fieldErrors.intendedUse', 'errorLines.intendedUse'))],
+  ['#209 让连接判定退回两处各自实现', problemsWithProviderConfigIssues(
+    ADMIN_VALIDATION.replace(/for _, rule := range providerFieldRules \{\n\t\tif !rule\.Invalid\(input\) \{\n\t\t\tcontinue\n\t\t\}/, 'if true {'),
+    ADMIN_STORE, SETTINGS_ROUTES, BLUEPRINT_PAGE, SETTINGS_PAGE)],
+  ['#209 让蓝图下拉退回 label: item.name', problemsWithProviderConfigIssues(
+    ADMIN_VALIDATION, ADMIN_STORE, SETTINGS_ROUTES,
+    BLUEPRINT_PAGE.replace(/label: item\.name \|\| `未命名连接 #\$\{item\.id\}`/, 'label: item.name'), SETTINGS_PAGE)],
+  ['#209 让不完整连接重新可选', problemsWithProviderConfigIssues(
+    ADMIN_VALIDATION, ADMIN_STORE, SETTINGS_ROUTES,
+    BLUEPRINT_PAGE.replace('disabled: (item.configIssues?.length ?? 0) > 0', 'disabled: false'),
+    SETTINGS_PAGE)],
 ]
 
 for (const [name, problems] of mutations) {

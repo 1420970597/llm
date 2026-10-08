@@ -34,6 +34,9 @@ func (s *AdminStore) ListProviders(ctx context.Context) ([]model.ModelProvider, 
 		if err := rows.Scan(&item.ID, &item.Name, &item.BaseURL, &item.Model, &item.ProviderType, &item.ReasoningEffort, &item.MaxConcurrency, &item.TimeoutSeconds, &item.IsActive, &item.APIKeyMasked, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
+		// issue #209：配置完整性由服务端标注（判据与保存路径同源），
+		// 否则列表与蓝图下拉各自判断，必然出现「能存进去但没人能用」。
+		item.ConfigIssues = ProviderConfigIssues(item)
 		providers = append(providers, item)
 	}
 	return providers, rows.Err()
