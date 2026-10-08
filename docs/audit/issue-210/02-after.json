@@ -1,0 +1,115 @@
+{
+  "base": "http://127.0.0.1:3210",
+  "viewport": {
+    "width": 1600,
+    "height": 1000
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "scan": {
+    "total": 18,
+    "withLink": 18,
+    "toOverview": 0,
+    "byTarget": {
+      "/p/2/blueprint?version=4": 1,
+      "/p/2/blueprint?version=3": 1,
+      "/p/2/blueprint?version=2": 1,
+      "/p/2/blueprint?version=1": 1,
+      "/p/2/releases/new?version=1": 1,
+      "/p/2/rules?version=1": 1,
+      "/p/2/standard?version=1": 1,
+      "/p/2/coverage?version=1": 1,
+      "/p/1/runs/b_1": 8,
+      "/p/1/data/s_4": 1,
+      "/p/1/runs/b_4": 1
+    },
+    "entries": [
+      {
+        "text": "未读 保存蓝图新版本 2026/10/1 04:49:31 · 查看",
+        "href": "/p/2/blueprint?version=4"
+      },
+      {
+        "text": "未读 保存蓝图新版本 2026/10/1 04:40:36 · 查看",
+        "href": "/p/2/blueprint?version=3"
+      },
+      {
+        "text": "未读 保存蓝图新版本 2026/10/1 04:37:31 · 查看",
+        "href": "/p/2/blueprint?version=2"
+      },
+      {
+        "text": "未读 保存蓝图新版本 2026/10/1 04:36:08 · 查看",
+        "href": "/p/2/blueprint?version=1"
+      },
+      {
+        "text": "未读 保存交付映射新版本 2026/10/1 04:36:08 · 查看",
+        "href": "/p/2/releases/new?version=1"
+      },
+      {
+        "text": "未读 保存质量策略新版本 2026/10/1 04:36:08 · 查看",
+        "href": "/p/2/rules?version=1"
+      },
+      {
+        "text": "未读 保存思维标准新版本 2026/10/1 04:36:08 · 查看",
+        "href": "/p/2/standard?version=1"
+      },
+      {
+        "text": "未读 保存覆盖方案新版本 2026/10/1 04:36:08 · 查看",
+        "href": "/p/2/coverage?version=1"
+      },
+      {
+        "text": "未读 重试失败项 2026/9/30 03:59:15 · 查看",
+        "href": "/p/1/runs/b_1"
+      },
+      {
+        "text": "未读 恢复批次 2026/9/30 03:37:32 · 查看",
+        "href": "/p/1/runs/b_1"
+      },
+      {
+        "text": "未读 暂停批次 2026/9/30 03:37:22 · 查看",
+        "href": "/p/1/runs/b_1"
+      },
+      {
+        "text": "未读 恢复批次 2026/9/30 03:36:46 · 查看",
+        "href": "/p/1/runs/b_1"
+      },
+      {
+        "text": "未读 暂停批次 2026/9/30 03:36:46 · 查看",
+        "href": "/p/1/runs/b_1"
+      },
+      {
+        "text": "未读 重试失败项 2026/9/28 06:03:53 · 查看",
+        "href": "/p/1/runs/b_1"
+      },
+      {
+        "text": "未读 暂停批次 2026/9/28 06:03:51 · 查看",
+        "href": "/p/1/runs/b_1"
+      },
+      {
+        "text": "未读 提交人工判断 2026/9/28 05:35:13 · 查看",
+        "href": "/p/1/data/s_4"
+      },
+      {
+        "text": "未读 创建批次 2026/9/28 05:31:00 · 查看",
+        "href": "/p/1/runs/b_4"
+      },
+      {
+        "text": "未读 重试失败项 2026/9/28 05:00:52 · 查看",
+        "href": "/p/1/runs/b_1"
+      }
+    ]
+  },
+  "clickProbe": {
+    "attempted": true,
+    "rowText": "未读 保存蓝图新版本 2026/10/1 04:49:31 · 查看",
+    "href": "/p/2/blueprint?version=4",
+    "landedOn": "/p/2/blueprint",
+    "landedTitle": "209-verify-incomplete-conn",
+    "landedOnOverview": false
+  },
+  "verdict": {
+    "auditRowsPresent": true,
+    "anyAuditLinkToOverview": false,
+    "passes": true
+  }
+}

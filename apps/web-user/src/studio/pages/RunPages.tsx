@@ -16,6 +16,7 @@ import type {
 } from '../../lib/api/studio'
 import { client } from '../../lib/api'
 import type { ApiError } from '../../lib/api'
+import { describeLengthScope } from '../../lib/enumLabels'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
 
@@ -537,7 +538,9 @@ export function BatchDetailPage() {
               <StatTile
                 label="长度中位 / P90"
                 value={analysis.length ? `${analysis.length.p50} / ${analysis.length.p90}` : '—'}
-                hint={analysis.length ? `最短 ${analysis.length.shortest} · 最长 ${analysis.length.longest} · 均值 ${analysis.length.meanChars}（字符数）` : '无数据'}
+                hint={analysis.length
+                  ? `最短 ${analysis.length.shortest} · 最长 ${analysis.length.longest} · 均值 ${analysis.length.meanChars}（字符数）`
+                  : '无数据'}
               />
               <StatTile
                 label="素材接地率"
@@ -555,6 +558,15 @@ export function BatchDetailPage() {
                 hint="仍需你判断的比例；去「审阅」处理"
               />
             </div>
+
+            {/* issue #197 第 13 条：长度是**多个字段的合计**，而卡片上只有
+                「长度中位 / P90」这个标签。不给口径，用户会把合计读成单条内容的长度。
+                字段清单来自服务端本次统计的真实事实（length.fields）。 */}
+            {analysis.length && analysis.length.fields.length > 0 ? (
+              <Text type="tertiary" size="small" className="block mb-3" data-analysis-length-scope="true">
+                {describeLengthScope(analysis.length.fields)}
+              </Text>
+            ) : null}
 
             <Text strong size="small" className="block mb-1">
               结构预览（领域 › 方向 → 计划 / 已产出）

@@ -73,32 +73,102 @@ var promptTemplateStages = []string{
 	"sft-generation",
 }
 
-// ValidateProviderInput 校验 AI 服务配置。
+// providerFieldRule 是模型连接的一条字段规则。
+//
+// 为什么是一张规则表，而不是「校验」与「展示」各写一段 if：
+// 这条规则有**两个消费方** ——
+//
+//  1. 保存路径 ValidateProviderInput：拒绝第一条不满足的规则（字段级 400）；
+//  2. 展示路径 ProviderConfigIssues：列出**全部**不满足的规则，用来回答
+//     「这条连接为什么不能用于生成」（issue #209）。
+//
+// 两处各写一段必然漂移，后果是自相矛盾：出现「能存进去但界面说不可用」或
+// 「界面说可用但保存被拒」。这与 issue #191/#206 反复复现的
+// 「同一份事实在两个地方各自实现」是同一形态。
+//
+// Reason 为空表示「必填」（取不到值时提示「必填」而不是某个具体原因）。
+// Issue 是给界面看的短句（ProviderConfigIssues 拼装时使用）。
+type providerFieldRule struct {
+	Field   string
+	JSONKey string
+	Reason  string
+	Issue   string
+	Invalid func(model.ModelProvider) bool
+}
+
+// providerFieldRules 的顺序即 ValidateProviderInput 的报错优先级（越靠前越先报）。
 //
 // name/baseUrl/model 是运行期真正被用到的三个字段：internal/llm/openai_client.go
 // 用 BaseURL 拼 /chat/completions，provider.Model 直接进请求体。任一为空都会在生成
-// 阶段才失败，而那时用户已经建好了任务。maxConcurrency/timeoutSeconds 是计数与秒数，
-// 0 表示「不限/立即超时」，都不是可用配置。
+// 阶段才失败，而那时用户已经建好了任务（正是 issue #209 报的损耗）。
+// maxConcurrency/timeoutSeconds 是计数与秒数，0 表示「不限/立即超时」，都不是可用配置。
+//
+// baseUrl 拆成「必填」与「格式」两条，是为了让报错文案精确；格式规则在**空值**时
+// 不触发，否则一条空 baseUrl 会同时产出「为空」与「不是完整地址」两句自相矛盾的提示。
+var providerFieldRules = []providerFieldRule{
+	{
+		Field: "服务名称", JSONKey: "name", Issue: "服务名称为空",
+		Invalid: func(p model.ModelProvider) bool { return strings.TrimSpace(p.Name) == "" },
+	},
+	{
+		Field: "基础 URL", JSONKey: "baseUrl", Issue: "基础 URL 为空",
+		Invalid: func(p model.ModelProvider) bool { return strings.TrimSpace(p.BaseURL) == "" },
+	},
+	{
+		Field: "基础 URL", JSONKey: "baseUrl", Reason: "必须是 http:// 或 https:// 开头的完整地址",
+		Issue: "基础 URL 不是完整的 http(s) 地址",
+		Invalid: func(p model.ModelProvider) bool {
+			return strings.TrimSpace(p.BaseURL) != "" && !isCompleteHTTPURL(p.BaseURL)
+		},
+	},
+	{
+		Field: "模型名称", JSONKey: "model", Issue: "模型名称为空",
+		Invalid: func(p model.ModelProvider) bool { return strings.TrimSpace(p.Model) == "" },
+	},
+	{
+		Field: "最大并发数", JSONKey: "maxConcurrency", Reason: "必须大于 0",
+		Issue:   "最大并发数不是正数",
+		Invalid: func(p model.ModelProvider) bool { return p.MaxConcurrency < 1 },
+	},
+	{
+		Field: "超时秒数", JSONKey: "timeoutSeconds", Reason: "必须大于 0",
+		Issue:   "超时秒数不是正数",
+		Invalid: func(p model.ModelProvider) bool { return p.TimeoutSeconds < 1 },
+	},
+}
+
+// ValidateProviderInput 校验 AI 服务配置。
+//
+// 规则本身见 providerFieldRules（与「这条连接能不能用」的展示口径同源）。
 func ValidateProviderInput(input model.ModelProvider) error {
-	if strings.TrimSpace(input.Name) == "" {
-		return requiredField("服务名称", "name")
-	}
-	if strings.TrimSpace(input.BaseURL) == "" {
-		return requiredField("基础 URL", "baseUrl")
-	}
-	if err := validateHTTPURL("基础 URL", "baseUrl", input.BaseURL); err != nil {
-		return err
-	}
-	if strings.TrimSpace(input.Model) == "" {
-		return requiredField("模型名称", "model")
-	}
-	if input.MaxConcurrency < 1 {
-		return invalidField("最大并发数", "maxConcurrency", "必须大于 0")
-	}
-	if input.TimeoutSeconds < 1 {
-		return invalidField("超时秒数", "timeoutSeconds", "必须大于 0")
+	for _, rule := range providerFieldRules {
+		if !rule.Invalid(input) {
+			continue
+		}
+		if rule.Reason == "" {
+			return requiredField(rule.Field, rule.JSONKey)
+		}
+		return invalidField(rule.Field, rule.JSONKey, rule.Reason)
 	}
 	return nil
+}
+
+// ProviderConfigIssues 列出「这条连接当前不能用于生成」的全部原因（issue #209）。
+//
+// 为什么必须由服务端给：连接的可用性只有一处权威判据（providerFieldRules，与保存路径
+// 同源）。让前端各自判断会让「列表说可用、下拉说不可用」这种漂移无法在服务端被断言
+// —— 这与 issue #206「事件文案由服务端下发而不是前端再抄一份」是同一条理由。
+//
+// 返回空切片表示配置完整。它**不**判断 is_active：停用是管理员的显式意图，
+// 与「配置坏了」是两件事，混在一起会让界面把「我故意停用的连接」标成错误。
+func ProviderConfigIssues(input model.ModelProvider) []string {
+	issues := []string{}
+	for _, rule := range providerFieldRules {
+		if rule.Invalid(input) {
+			issues = append(issues, rule.Issue)
+		}
+	}
+	return issues
 }
 
 // ValidateStorageProfileInput 校验结果存储配置。
@@ -173,10 +243,21 @@ func ValidatePromptInput(input model.PromptTemplate) error {
 	return nil
 }
 
+// isCompleteHTTPURL 判定「必须是完整 http(s) 地址」这一共同约定。
+//
+// 单独抽一个布尔判定（而不只有带错误的 validateHTTPURL）：模型连接的规则表需要在
+// 「不产生错误」的前提下问同一个问题（ProviderConfigIssues）。
+func isCompleteHTTPURL(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
+}
+
 // validateHTTPURL 校验「必须是完整 http(s) 地址」这一共同约定。
 func validateHTTPURL(field, jsonKey, raw string) error {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+	if !isCompleteHTTPURL(raw) {
 		return invalidField(field, jsonKey, "必须是 http:// 或 https:// 开头的完整地址")
 	}
 	return nil

@@ -17,6 +17,7 @@ import type {
   ReleaseRecord,
   ProjectCapabilities,
   SampleSummary,
+  SelectionComposition,
 } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
@@ -82,6 +83,23 @@ function statusColor(status: string): 'green' | 'red' | 'amber' | 'grey' {
     default:
       return 'grey'
   }
+}
+
+/**
+ * 把快照构成摘成一句人话（issue #203）。
+ *
+ * 为什么要它：区块标题以前写死「已接纳」，而冻结范围其实含未审阅内容。
+ * 这里把服务端下发的构成展开成可核对的数字，回答用户最关心的一件事：
+ * 「我这一份发布范围里，到底有多少条是我真审过的」。
+ * 构成缺失（旧后端）时返回空串 —— 此时标题给中性文案，**不编造「已接纳」**。
+ */
+function selectionCompositionSummary(composition: SelectionComposition | null): string {
+  if (!composition) return ''
+  const parts = [`已接纳 ${composition.accepted} 条`]
+  if (composition.pending > 0) parts.push(`未审阅 ${composition.pending} 条`)
+  if (composition.quarantined > 0) parts.push(`已隔离 ${composition.quarantined} 条`)
+  if (composition.conflict > 0) parts.push(`存在冲突 ${composition.conflict} 条`)
+  return parts.join(' · ')
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +252,15 @@ export function ReleaseNewPage() {
   const [samplesLoading, setSamplesLoading] = useState(false)
   const [selected, setSelected] = useState<number[]>([])
   const [selectionSnapshotItems, setSelectionSnapshotItems] = useState<number[] | null>(null)
+  /**
+   * 快照范围的实际构成（issue #203）。
+   *
+   * 缺陷形态：区块标题写死「发布范围（已接纳的内容版本）」，而冻结范围其实含
+   * 未审阅内容 —— 语义与事实不一致，比数值错误更危险。构成由**服务端**统计下发
+   * （`GET P/selection-snapshots/{id}` 的 `composition`），前端不再凭标题自行断言。
+   * `null` 表示快照未就绪或后端未下发：此时标题给中性文案，**不写死「已接纳」**。
+   */
+  const [selectionComposition, setSelectionComposition] = useState<SelectionComposition | null>(null)
   const [selectionSnapshotState, setSelectionSnapshotState] = useState<'none' | 'loading' | 'ready' | 'invalid'>('none')
   const [releaseName, setReleaseName] = useState('v1.0')
   const [mappingVersionId, setMappingVersionId] = useState('')
@@ -329,17 +356,20 @@ export function ReleaseNewPage() {
     if (selectionParam && selectionSnapshotID <= 0) {
       setSelectionSnapshotState('invalid')
       setSelectionSnapshotItems(null)
+      setSelectionComposition(null)
       setSnapshotNotice('发布范围快照链接无效，请从样本工作区重新选择范围')
       return
     }
     if (selectionSnapshotID <= 0) {
       setSelectionSnapshotState('none')
       setSelectionSnapshotItems(null)
+      setSelectionComposition(null)
       setSnapshotNotice(null)
       return
     }
     setSelectionSnapshotState('loading')
     setSelectionSnapshotItems(null)
+    setSelectionComposition(null)
     let cancelled = false
     void (async () => {
       try {
@@ -363,12 +393,17 @@ export function ReleaseNewPage() {
         }
         // 快照存的是**内容版本行 ID**；恢复时直接作为候选范围，不能只显示数量。
         setSelectionSnapshotItems(items)
+        // issue #203：构成由服务端下发，标题按它渲染。后端未下发时置 null，
+        // 标题就不写死「已接纳」（旧后端也不应显示错误断言）。
+        setSelectionComposition(resolved.composition ?? null)
         setSelectionSnapshotState('ready')
-        setSnapshotNotice(`已从服务端选择范围恢复 ${resolved.count} 个内容版本（快照 ${selectionSnapshotID}）。`)
+        const summary = selectionCompositionSummary(resolved.composition ?? null)
+        setSnapshotNotice(`已从服务端选择范围恢复 ${resolved.count} 个内容版本（快照 ${selectionSnapshotID}）${summary ? `：${summary}` : ''}。`)
       } catch (snapshotError) {
         if (!cancelled) {
           setSelectionSnapshotState('invalid')
           setSelectionSnapshotItems(null)
+          setSelectionComposition(null)
           setSnapshotNotice(snapshotError instanceof Error ? snapshotError.message : '选择范围已过期，请重新选择')
         }
       }
@@ -613,7 +648,19 @@ export function ReleaseNewPage() {
       </Card>
 
       <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-range-picker="true">
-        <Text strong className="block mb-2">发布范围（已接纳的内容版本）</Text>
+        {/* issue #203：标题必须按**实际构成**渲染。旧实现写死「已接纳的内容版本」，
+            而冻结范围含未审阅内容 —— 用户因此建立「进了候选就已审过」的错误心智模型。 */}
+        <Text strong className="block mb-2">
+          {selectionSnapshotID > 0 && selectionComposition
+            ? `发布范围（快照 ${selectionSnapshotID}：${selectionCompositionSummary(selectionComposition)}）`
+            : '发布范围'}
+        </Text>
+        {selectionSnapshotID > 0 && selectionComposition && selectionComposition.pending > 0 ? (
+          <Text type="warning" size="small" className="block mb-2" data-range-unreviewed-warning="true">
+            这份范围含 {selectionComposition.pending} 条未审阅内容；候选门槛会拦住未接纳的内容，
+            但它们已进入你的心智模型 —— 请确认这确实是你想发布的范围。
+          </Text>
+        ) : null}
         <Text type="tertiary" size="small" className="block mb-2">
           已选 {selectionSnapshotID > 0 ? selectionSnapshotItems?.length ?? 0 : selected.length} 条
           {selectionSnapshotID > 0 ? '（来自服务端冻结快照，范围已锁定）' : '（当前页）'}。候选保存的是具体内容版本，不是筛选条件。

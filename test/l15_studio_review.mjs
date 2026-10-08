@@ -47,6 +47,38 @@ const source = readFileSync(REVIEW_PAGE, 'utf8')
 const releaseSource = readFileSync(RELEASE_PAGE, 'utf8')
 const apiSource = readFileSync(STUDIO_API, 'utf8')
 
+/**
+ * 剥掉注释后再做「不得写死」类断言。
+ *
+ * 修复说明里会**引用旧形态**（如「旧实现写死‘发布范围（已接纳的内容版本）’」），
+ * 不剥注释会让守卫对**自己的文档**报错 —— 误报会让人直接关掉守卫。
+ * 与 test/l15_issue197_remediation.mjs 的 stripComments 同一取舍。
+ */
+function stripComments(text) {
+  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+}
+
+/**
+ * issue #203：候选页的发布范围标题必须按服务端下发的**构成**渲染，
+ * 不得写死「已接纳」（那正是「把未审阅内容当已接纳」的界面成因）。
+ *
+ * 抽成谓词是为了能被变异自证：把注入的坏源码喂进来，必须返回非空问题列表。
+ */
+function problemsWithReleaseRangeComposition(src) {
+  const problems = []
+  const code = stripComments(src)
+  if (!/selectionComposition/.test(code)) {
+    problems.push('候选页没有消费快照构成（无法按事实渲染标题）')
+  }
+  if (!/resolved\.composition/.test(code)) {
+    problems.push('候选页没有从快照接口取 composition')
+  }
+  if (/发布范围（已接纳的内容版本）/.test(code)) {
+    problems.push('候选页标题仍写死「已接纳的内容版本」')
+  }
+  return problems
+}
+
 // ---------------------------------------------------------------------------
 // 第 1 层：源码级断言
 // ---------------------------------------------------------------------------
@@ -145,6 +177,40 @@ record(
 )
 
 // ---------------------------------------------------------------------------
+// issue #203：冻结范围的“语义与事实一致”
+// ---------------------------------------------------------------------------
+//
+// 缺陷形态：数据页的全量冻结把 reviewStatus 缺省为 `undefined`，服务端解析成全量；
+// 而候选页标题写死「已接纳」。两者从此永久不一致。
+//
+// 因此断言的是**接线**（意图能否自证 + 标题是否按事实渲染），而不是文字：
+//   1. 冻结时必须显式传意图（空筛选 → 'all'），不得靠缺省表达全量；
+//   2. 审阅页不得指向一个不存在的冻结按钮；
+//   3. 候选页标题必须按服务端下发的 composition 渲染，不得写死「已接纳」。
+
+record(
+  '冻结范围时显式声明筛选意图（issue #203）',
+  /reviewStatus:\s*reviewStatus === '' \? 'all' : reviewStatus/.test(source),
+  '空筛选必须显式传 all，而不是靠缺省被服务端当成全量',
+)
+record(
+  '审阅页不再指向不存在的冻结按钮（issue #203）',
+  /本页没有冻结按钮/.test(source) && !/判断完成后可用下方/.test(source),
+  '审阅队列模式没有 data-snapshot-all，说明文字不得指向不存在的按钮',
+)
+record(
+  '候选页标题按服务端构成渲染（issue #203）',
+  problemsWithReleaseRangeComposition(releaseSource).length === 0,
+  problemsWithReleaseRangeComposition(releaseSource).join('；') || '标题来自快照的实际构成，不再写死「已接纳」',
+)
+record(
+  '快照接口下发构成（前端类型与后端字段一致）',
+  /composition\?:\s*SelectionComposition/.test(apiSource) &&
+    /export type SelectionComposition/.test(apiSource),
+  'GET selection-snapshots 的 composition 是候选页标题的唯一事实来源',
+)
+
+// ---------------------------------------------------------------------------
 // 第 2 层：导出面断言（前端与后端命令一一对应）
 // ---------------------------------------------------------------------------
 
@@ -213,6 +279,33 @@ for (const field of ['reviewStatus', 'aggregateReviewRevision', 'reviewConflict'
     '变异 3：失败时清空理由会被捕获',
     /catch[\s\S]{0,400}setReason\(''\)/.test(block),
     '注入「失败也清空」后「保留理由」断言失败',
+  )
+}
+
+// 变异 4：冻结时不声明意图（退回 #203 的缺省全量） → 必须被捕获。
+{
+  const mutated = source.replace(
+    "reviewStatus: reviewStatus === '' ? 'all' : reviewStatus",
+    "reviewStatus: reviewStatus === '' ? undefined : reviewStatus",
+  )
+  record(
+    '变异 4：冻结意图退回缺省会被捕获',
+    !/reviewStatus:\s*reviewStatus === '' \? 'all' : reviewStatus/.test(mutated),
+    '去掉显式 all 后「声明筛选意图」断言失败',
+  )
+}
+
+// 变异 5：候选页标题退回写死「已接纳」 → 必须被捕获。
+{
+  const mutated = releaseSource.replace(
+    ": '发布范围'}",
+    ": '发布范围（已接纳的内容版本）'}",
+  )
+  const problems = problemsWithReleaseRangeComposition(mutated)
+  record(
+    '变异 5：候选页标题写死「已接纳」会被捕获',
+    problems.length > 0,
+    `注入写死标题后捕获到 ${problems.length} 个问题`,
   )
 }
 

@@ -1,0 +1,26 @@
+{
+  "base": "http://127.0.0.1:3210",
+  "viewport": {
+    "width": 1600,
+    "height": 1000
+  },
+  "helpPromise": "审阅队列：J / K 在当前页内切换样本（保持筛选条件）",
+  "shortcuts": {
+    "start": "/p/1/data/s_5",
+    "afterJ": "/p/1/data/s_3",
+    "afterK": "/p/1/data/s_5",
+    "startIdentity": "方向二（难度 normal）：第 2 题 · s_5 · v2 · 内容 hash 8eecd7872712",
+    "jIdentity": "方向一（难度 normal）：第 2 题 · s_3 · v2 · 内容 hash 2941eeb6aae3",
+    "kIdentity": "方向二（难度 normal）：第 2 题 · s_5 · v2 · 内容 hash 8eecd7872712",
+    "jWorks": true,
+    "kWorks": true
+  },
+  "inputGuard": {
+    "beforeTyping": "/p/1/data/s_5",
+    "afterTyping": "/p/1/data/s_5",
+    "typedValue": "jk",
+    "navigatedWhileTyping": false
+  },
+  "consoleErrors": [],
+  "defectPresent": false
+}

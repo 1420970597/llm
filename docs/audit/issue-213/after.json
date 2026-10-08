@@ -1,0 +1,66 @@
+{
+  "issue": 213,
+  "phase": "after",
+  "base": "http://127.0.0.1:3210",
+  "viewport": "1600x1000",
+  "account": "admin@company.com",
+  "deployedVersion": {
+    "version": "a889b43ba00d1f9b1d6fccbdea735b04ca13e299",
+    "buildTime": "2026-10-01T11:13:43Z",
+    "source": "apps/web-user"
+  },
+  "checkboxes": [
+    {
+      "id": "",
+      "ariaLabel": "把交付字段 question设为必填",
+      "labelText": "必填",
+      "accessibleName": "把交付字段 question设为必填"
+    },
+    {
+      "id": "",
+      "ariaLabel": "把交付字段 reasoning设为必填",
+      "labelText": "必填",
+      "accessibleName": "把交付字段 reasoning设为必填"
+    },
+    {
+      "id": "",
+      "ariaLabel": "把交付字段 answer设为必填",
+      "labelText": "必填",
+      "accessibleName": "把交付字段 answer设为必填"
+    }
+  ],
+  "checkboxNames": [
+    "把交付字段 question设为必填",
+    "把交付字段 reasoning设为必填",
+    "把交付字段 answer设为必填"
+  ],
+  "accessibleNameIssues": 0,
+  "duplicateNames": false,
+  "distinctNames": 3,
+  "a11ySnapshotAll": [
+    "- checkbox \"把交付字段 question设为必填\" [checked] - text: 必填",
+    "- checkbox \"把交付字段 reasoning设为必填\" [checked] - text: 必填",
+    "- checkbox \"把交付字段 answer设为必填\" [checked] - text: 必填"
+  ],
+  "emptySubmit": {
+    "rangeErrorText": "发布范围不能为空：请选择要发布的内容版本",
+    "rangeAnchorCount": 1,
+    "bodyHasRangeMessage": true
+  },
+  "intendedUse": {
+    "errorText": "必须填写用途：数据卡要能说清这份数据用来做什么",
+    "errorCount": 1,
+    "ariaInvalid": "true",
+    "ariaDescribedBy": "intended-use-error",
+    "bodyHasRangeMessage": false,
+    "bodyHasUseMessage": true
+  },
+  "consoleErrors": [],
+  "verdict": {
+    "checkboxWithoutName": 0,
+    "checkboxNamesIndistinct": false,
+    "fieldErrorNotAnchored": false,
+    "fieldErrorNotDescribed": false
+  },
+  "ok": true
+}

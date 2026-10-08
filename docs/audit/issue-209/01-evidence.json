@@ -1,0 +1,218 @@
+{
+  "stage": "before",
+  "base": "http://127.0.0.1:3210",
+  "project": "1",
+  "viewport": {
+    "width": 1600,
+    "height": 1000
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "connections": [
+    {
+      "id": "20",
+      "nameText": "自动服务-192538",
+      "nameHasFallbackMark": false,
+      "modelText": "",
+      "statusText": "启用",
+      "configWarning": null
+    },
+    {
+      "id": "19",
+      "nameText": "",
+      "nameHasFallbackMark": false,
+      "modelText": "",
+      "statusText": "启用",
+      "configWarning": null
+    },
+    {
+      "id": "18",
+      "nameText": "",
+      "nameHasFallbackMark": false,
+      "modelText": "",
+      "statusText": "停用",
+      "configWarning": null
+    },
+    {
+      "id": "17",
+      "nameText": "",
+      "nameHasFallbackMark": false,
+      "modelText": "",
+      "statusText": "停用",
+      "configWarning": null
+    },
+    {
+      "id": "16",
+      "nameText": "自动服务-506335",
+      "nameHasFallbackMark": false,
+      "modelText": "",
+      "statusText": "启用",
+      "configWarning": null
+    },
+    {
+      "id": "15",
+      "nameText": "",
+      "nameHasFallbackMark": false,
+      "modelText": "",
+      "statusText": "启用",
+      "configWarning": null
+    },
+    {
+      "id": "14",
+      "nameText": "",
+      "nameHasFallbackMark": false,
+      "modelText": "",
+      "statusText": "停用",
+      "configWarning": null
+    },
+    {
+      "id": "13",
+      "nameText": "",
+      "nameHasFallbackMark": false,
+      "modelText": "",
+      "statusText": "停用",
+      "configWarning": null
+    },
+    {
+      "id": "11",
+      "nameText": "hy3-judge",
+      "nameHasFallbackMark": false,
+      "modelText": "global:hy3",
+      "statusText": "启用",
+      "configWarning": null
+    },
+    {
+      "id": "7",
+      "nameText": "gpt-5.6-sol-judge",
+      "nameHasFallbackMark": false,
+      "modelText": "global:hy4-preview",
+      "statusText": "启用",
+      "configWarning": null
+    },
+    {
+      "id": "1",
+      "nameText": "deepseek-v4.1-flash",
+      "nameHasFallbackMark": false,
+      "modelText": "global:deepseek-v4.1-flash",
+      "statusText": "启用",
+      "configWarning": null
+    }
+  ],
+  "unnamedConnectionRows": 6,
+  "incompleteMarkedRows": 0,
+  "dropdown": {
+    "optionTexts": [
+      "自动服务-192538",
+      "",
+      "",
+      "",
+      "自动服务-506335",
+      "",
+      "",
+      "",
+      "hy3-judge",
+      "gpt-5.6-sol-judge",
+      "deepseek-v4.1-flash"
+    ],
+    "blankOptions": 6,
+    "disabledOptions": 0
+  },
+  "providers": {
+    "total": 11,
+    "emptyNameAndBaseUrl": 6,
+    "emptyActive": 2,
+    "invalidBaseUrl": 2,
+    "withConfigIssues": 0,
+    "rows": [
+      {
+        "id": 20,
+        "name": "自动服务-192538",
+        "baseUrl": "not-a-url",
+        "model": "",
+        "isActive": true,
+        "configIssues": null
+      },
+      {
+        "id": 19,
+        "name": "",
+        "baseUrl": "",
+        "model": "",
+        "isActive": true,
+        "configIssues": null
+      },
+      {
+        "id": 18,
+        "name": "",
+        "baseUrl": "",
+        "model": "",
+        "isActive": false,
+        "configIssues": null
+      },
+      {
+        "id": 17,
+        "name": "",
+        "baseUrl": "",
+        "model": "",
+        "isActive": false,
+        "configIssues": null
+      },
+      {
+        "id": 16,
+        "name": "自动服务-506335",
+        "baseUrl": "not-a-url",
+        "model": "",
+        "isActive": true,
+        "configIssues": null
+      },
+      {
+        "id": 15,
+        "name": "",
+        "baseUrl": "",
+        "model": "",
+        "isActive": true,
+        "configIssues": null
+      },
+      {
+        "id": 14,
+        "name": "",
+        "baseUrl": "",
+        "model": "",
+        "isActive": false,
+        "configIssues": null
+      },
+      {
+        "id": 13,
+        "name": "",
+        "baseUrl": "",
+        "model": "",
+        "isActive": false,
+        "configIssues": null
+      },
+      {
+        "id": 11,
+        "name": "hy3-judge",
+        "baseUrl": "http://152.53.126.151:8885/v1",
+        "model": "global:hy3",
+        "isActive": true,
+        "configIssues": null
+      },
+      {
+        "id": 7,
+        "name": "gpt-5.6-sol-judge",
+        "baseUrl": "http://152.53.126.151:8885/v1",
+        "model": "global:hy4-preview",
+        "isActive": true,
+        "configIssues": null
+      },
+      {
+        "id": 1,
+        "name": "deepseek-v4.1-flash",
+        "baseUrl": "http://152.53.126.151:8885/v1",
+        "model": "global:deepseek-v4.1-flash",
+        "isActive": true,
+        "configIssues": null
+      }
+    ]
+  }
+}

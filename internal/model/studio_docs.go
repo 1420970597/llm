@@ -1018,6 +1018,21 @@ func RequiredSampleFields(targetKind string) []string {
 	return []string{"question", "reasoning", "answer"}
 }
 
+// SampleLengthFields 是参与「内容长度」统计的文本字段键，顺序即展示顺序。
+//
+// 它是这一口径的**唯一权威**：读模型（`internal/store` 的样本版本事实）与
+// 分析读模型（`internal/studio` 的长度分布）都从这里取，界面再据实际命中的
+// 字段如实标注「长度 = 哪几个字段之和」（issue #197 第 13 条）。
+//
+// 比 `RequiredSampleFields` 多一个 `teacherPrompt`：长度是对**产出内容有多长**
+// 的度量，而教师提示词同样是产出文本的一部分；必填字段则是「没有它这批数据
+// 就不能用」的最小集，两者不是同一个问题。
+//
+// 顺序固定而不是按 map 遍历：同一份 payload 每次必须得到同一个读数（可重放）。
+func SampleLengthFields() []string {
+	return []string{"question", "reasoning", "answer", "teacherPrompt"}
+}
+
 // ValidateGRPOSamplePayload 校验 GRPO 样本 payload（§2.2）：
 // 至少两档、档位不重复、每档有判据与边界例、与 levels 一一对应。
 //

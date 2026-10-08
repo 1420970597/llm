@@ -60,6 +60,14 @@ export type Provider = {
   timeoutSeconds: number
   isActive: boolean
   apiKeyMasked?: string
+  /**
+   * 「这条连接当前不能用于生成」的原因清单（issue #209）。
+   *
+   * 由服务端派生（`store.ProviderConfigIssues`，与保存时校验同一份规则）：
+   * 空数组/缺失 = 配置完整；**不包含**「已停用」——
+   * 佚用是管理员的显式意图，与配置坏了是两件事。
+   */
+  configIssues?: string[]
 }
 
 export type ProviderModelInfo = {

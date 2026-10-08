@@ -1,0 +1,108 @@
+{
+  "issue": 205,
+  "phase": "after",
+  "base": "http://127.0.0.1:3210",
+  "viewport": "1600x1000",
+  "account": "admin@company.com",
+  "deployedVersion": {
+    "version": "e4a2bed3e76541d16a3a83c3d986e18c320ab210",
+    "buildTime": "2026-10-01T10:38:04Z",
+    "source": "apps/web-user"
+  },
+  "tiles": [
+    {
+      "key": "projects",
+      "tag": "a",
+      "href": "/projects",
+      "text": "数据项目 | 2 | 你可见的项目",
+      "innerLinks": []
+    },
+    {
+      "key": "running",
+      "tag": "a",
+      "href": "/projects",
+      "text": "进行中批次 | 0 | 排队 / 运行 / 暂停请求中",
+      "innerLinks": []
+    },
+    {
+      "key": "shortfall",
+      "tag": "a",
+      "href": "/projects",
+      "text": "产出缺口 | 2 | 计划 24 · 完成 9",
+      "innerLinks": []
+    },
+    {
+      "key": "pending",
+      "tag": "a",
+      "href": "/projects",
+      "text": "待人工判断 | 3 | 进入项目「审阅」处理",
+      "innerLinks": []
+    },
+    {
+      "key": "produced",
+      "tag": "a",
+      "href": "/projects",
+      "text": "近 7 天产出 | 9 | 新增样本版本数",
+      "innerLinks": []
+    },
+    {
+      "key": "releases",
+      "tag": "div",
+      "href": null,
+      "text": "交付 | 0 | 已发布 · 被挡住 1 | 处理被挡住的 1 个候选 →",
+      "innerLinks": [
+        {
+          "href": "/deliveries",
+          "text": "交付0已发布 · 被挡住 1"
+        },
+        {
+          "href": "/projects",
+          "text": "处理被挡住的 1 个候选 →"
+        }
+      ]
+    }
+  ],
+  "currentPath": "/today",
+  "selfLinks": [],
+  "overview": {
+    "status": 200,
+    "projectCount": 2,
+    "scopedProjectIds": [
+      2,
+      1
+    ],
+    "blockedReleases": 1
+  },
+  "multiProject": true,
+  "pendingTarget": "/projects",
+  "pendingPointsToActivity": false,
+  "pendingReachable": true,
+  "blocked": {
+    "tileText": "交付 | 0 | 已发布 · 被挡住 1 | 处理被挡住的 1 个候选 →",
+    "innerLinks": [
+      {
+        "href": "/deliveries",
+        "text": "交付0已发布 · 被挡住 1"
+      },
+      {
+        "href": "/projects",
+        "text": "处理被挡住的 1 个候选 →"
+      }
+    ],
+    "hasDedicatedExit": true,
+    "dedicatedExitHref": "/projects"
+  },
+  "blockedCountInTile": 1,
+  "blockedExitPage": {
+    "href": "/projects",
+    "bodyHasBlocked": false
+  },
+  "consoleErrors": [],
+  "verdict": {
+    "selfLinkCount": 0,
+    "pendingWrongTarget": false,
+    "pendingReachable": true,
+    "blockedWithoutExit": false
+  },
+  "ok": true
+}

@@ -1,0 +1,50 @@
+{
+  "stage": "after",
+  "base": "http://127.0.0.1:3210",
+  "batch": "b_1",
+  "eventRows": [
+    {
+      "type": "批次请求重试",
+      "typeTitle": "BatchRetryFailedRequested",
+      "detail": ""
+    },
+    {
+      "type": "批次已恢复",
+      "typeTitle": "BatchResumed",
+      "detail": ""
+    },
+    {
+      "type": "批次已暂停",
+      "typeTitle": "BatchPaused",
+      "detail": ""
+    },
+    {
+      "type": "批次已恢复",
+      "typeTitle": "BatchResumed",
+      "detail": ""
+    },
+    {
+      "type": "批次已暂停",
+      "typeTitle": "BatchPaused",
+      "detail": ""
+    },
+    {
+      "type": "批次请求重试",
+      "typeTitle": "BatchRetryFailedRequested",
+      "detail": ""
+    },
+    {
+      "type": "批次已暂停",
+      "typeTitle": "BatchPaused",
+      "detail": ""
+    },
+    {
+      "type": "批次请求重试",
+      "typeTitle": "BatchRetryFailedRequested",
+      "detail": ""
+    }
+  ],
+  "visibleEnumKeys": [],
+  "visibleErrorCodes": [],
+  "consoleErrors": []
+}

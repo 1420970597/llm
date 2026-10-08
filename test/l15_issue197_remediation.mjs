@@ -21,12 +21,42 @@
  * 是被证明的，而不是被声称的（与 `l15_app_ux.mjs` 同一约定）。
  */
 
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relative) => readFileSync(path.join(REPO_ROOT, relative), 'utf8')
+
+/**
+ * 递归收集 `apps/web-user/src` 下全部 `.ts` / `.tsx`（#211 方向 3）。
+ *
+ * 为什么要递归而不是手工清单：#211 的成因就是「同一取值域有**第四条**渲染路径没被覆盖」
+ * —— 清单式守卫只能证明「我列出的那些文件是好的」，证明不了「没有第五处」。
+ * 这与 #192（Markdown 星号守卫退回手工清单）是同一教训。
+ */
+function collectFrontendSources(directory) {
+  const found = []
+  for (const entry of readdirSync(directory).sort()) {
+    const full = path.join(directory, entry)
+    if (statSync(full).isDirectory()) {
+      found.push(...collectFrontendSources(full))
+      continue
+    }
+    if (entry.endsWith('.ts') || entry.endsWith('.tsx')) {
+      found.push(full)
+    }
+  }
+  return found
+}
+// #197 第 11 条 §A：覆盖矩阵 m×n×z 结构读数必须在**真实模块**里可调用，
+// 因此这里用 esbuild 打包生产模块 src/studio/coverageStructure.ts，
+// 让「公式算术是否成立」成为可核对的读数，而不是匹配固定字符串。
+const webRequire = createRequire(path.join(REPO_ROOT, 'apps', 'web-user', 'package.json'))
+const esbuild = webRequire('esbuild')
+const COVERAGE_STRUCTURE_SOURCE = path.join(REPO_ROOT, 'apps', 'web-user', 'src', 'studio', 'coverageStructure.ts')
 
 const MODEL_DOCS = read('internal/model/studio_docs.go')
 // #206：批次事件模型（eventTypeLabel 字段的落点）。
@@ -53,6 +83,11 @@ const EVAL_CATEGORY_ROUTE = read('apps/api/routes_eval_dimensions.go')
 const BATCH_FAILURE_VIEW = read('apps/api/routes_studio_batches.go')
 const CD_WORKFLOW = read('.github/workflows/cd.yml')
 const MARKDOWN_GUARD = read('test/l15_markdown_ui.mjs')
+// #209：连接配置完整性的两个消费方（判定表、两条读路径、蓝图下拉）。
+const ADMIN_VALIDATION = read('internal/store/admin_validation.go')
+const ADMIN_STORE = read('internal/store/admin_store.go')
+const SETTINGS_ROUTES = read('apps/api/routes_studio_settings.go')
+const BLUEPRINT_PAGE = read('apps/web-user/src/studio/pages/BlueprintPages.tsx')
 
 const failures = []
 const results = []
@@ -415,6 +450,47 @@ function problemsWithDatasetAnalysis(storeSrc, pageSrc, analysisSrc) {
   return problems
 }
 
+/** #197-13（第 2 轮残余）：长度口径必须是事实且对用户可见。 */
+function problemsWithDisclosedLengthScope(modelDocsSrc, storeSrc, analysisSrc, pageSrc, labelSrc) {
+  const problems = []
+  // 1. 字段清单必须有唯一权威，而不是各文件各写一份。
+  if (!/func SampleLengthFields\(\) \[\]string/.test(modelDocsSrc)) {
+    problems.push('model 缺少长度字段口径的单一权威（SampleLengthFields）')
+  }
+  // 2. store 必须带出逐字段事实：只给一个合计字符串，上层无法诚实标注口径。
+  if (!/LengthByField map\[string\]int/.test(storeSrc)) {
+    problems.push('样本事实没有带出逐字段长度（上层只能硬编码字段数）')
+  }
+  // 3. 读模型不得再硬编码字段数。
+  if (/FieldCount:\s*1\b/.test(analysisSrc)) {
+    problems.push('长度字段数仍在硬编码为 1（读数与事实不符）')
+  }
+  if (!/FieldCount:\s*len\(fields\)/.test(analysisSrc)) {
+    problems.push('字段数没有从真实字段集推导')
+  }
+  // 4. 字段清单必须真的带出来（否则界面只能猜）。
+  if (!/Fields\s+\[\]string/.test(analysisSrc)) {
+    problems.push('读数没有返回参与统计的字段集')
+  }
+  // 5. 界面必须把口径显示出来，而不是只给数字。
+  if (!/data-analysis-length-scope/.test(pageSrc)) {
+    problems.push('批次分析卡片没有展示长度口径')
+  }
+  if (!/describeLengthScope\(/.test(pageSrc)) {
+    problems.push('前端没有使用共享的长度口径文案函数')
+  }
+  // 6. 口径文案不得回传原始英文键（#191 的同一形态）。
+  if (!/SAMPLE_FIELD_LABELS/.test(labelSrc)) {
+    problems.push('缺少字段键 → 中文的集中映射')
+  }
+  // 仅断言「函数存在」不够：把函数体改成 `return raw` 后仍会通过（变异自证拓出来的）。
+  // 必须断言它**真的查了映射表**。
+  if (!/SAMPLE_FIELD_LABELS\[raw\]/.test(labelSrc)) {
+    problems.push('describeSampleField 没有查映射表（未登记键会漏出英文）')
+  }
+  return problems
+}
+
 /** #192：Markdown 守卫必须是全树扫描，而不是手工文件清单。 */
 function problemsWithMarkdownGuardCoverage(guardSrc) {
   const problems = []
@@ -427,6 +503,38 @@ function problemsWithMarkdownGuardCoverage(guardSrc) {
   // 手工清单的形态：一个硬编码的 files 数组。
   if (/const files = \[\s*'apps\/web-user/.test(guardSrc)) {
     problems.push('守卫仍然是手工文件清单（#192 的原始缺陷形态）')
+  }
+  return problems
+}
+
+/**
+ * #197 第 11 条 §A：覆盖矩阵的 `m × n × z` 公式必须**算术自洽**。
+ *
+ * 缺陷形态（实测）：`DocumentEditors.tsx` 里 `z` 渲染成 Σquota、结果又复用同一个数，
+ * 得到 `m 1 × n 2 × z 4 = 4`（`1 × 2 × 4 ≠ 4`）。一个自称「数据集结构」的公式
+ * 自己算不通，用户就无法用它预判「改方向数/配额会不会影响产出量」。
+ * 根因是把「每方向题数」与「Σ配额」混为一个 z。
+ *
+ * 这里做两层断言：
+ *   1）源码层：公式推导必须来自共享模块（`coverageStructure.ts`），不得在组件里
+ *      重新内联一套（否则下次又会有第二份口径）；
+ *   2）真实模块层：直接打包模块，断言生产形态的读数正确、且**乘积成立**。
+ */
+function problemsWithCoverageStructureFormula(editorSrc) {
+  const problems = []
+  const editorCode = stripComments(editorSrc)
+  if (!/from '[^']*coverageStructure'/.test(editorCode)) {
+    problems.push('覆盖编辑器没有引用共享结构模块（推导会再次内联，产生第二份口径）')
+  }
+  if (!/deriveCoverageStructure\(/.test(editorCode)) {
+    problems.push('覆盖编辑器没有使用 deriveCoverageStructure（结构读数无法被直接核验）')
+  }
+  if (!/formatCoverageFormula\(/.test(editorCode)) {
+    problems.push('覆盖编辑器没有使用 formatCoverageFormula（公式仍是内联拼接）')
+  }
+  // 旧缺陷形态：`× z {capacity} = {capacity}`（z 与结果复用同一个数）。
+  if (/×\s*z\s*\{\s*\w+\s*\}\s*=\s*\{\s*\w+\s*\}/.test(editorCode)) {
+    problems.push('公式把同一个数同时当作 z 与结果（`× z {x} = {x}`），算术必然不自洽')
   }
   return problems
 }
@@ -478,6 +586,60 @@ function problemsWithReviewStatusLabels(qualitySrc, reviewSrc, enumSrc) {
   // #211 的第二个要求：必须说明未审阅内容能否纳入评测。
   if (!/unreviewedScopeNotice/.test(qualitySrc)) {
     problems.push('QualityPages 未说明「未审阅内容能否纳入评测」（#211 第 2 项要求）')
+  }
+  // #211 方向 2：行内标记 + 提交前提示。只有页顶一句背景说明是不够的 ——
+  // 用户点「创建并冻结实验」时不会再读一遍背景文案。
+  if (!/data-scope-unreviewed-row/.test(qualitySrc)) {
+    problems.push('已勾选的未审阅内容没有行内标记（用户无法回答「我刚勾的这条算不算已验证」）')
+  }
+  if (!/Modal\.confirm\(/.test(qualitySrc) || !/selectedUnreviewedCount/.test(qualitySrc)) {
+    problems.push('提交前没有针对「本次纳入了未审阅内容」的确认（#211 方向 2 的提交前提示）')
+  }
+  return problems
+}
+
+/**
+ * #211 方向 3：审阅枚举不得在**任何**前端渲染点裸渲染（全树递归扫描）。
+ *
+ * 为什么必须是递归扫描而不是手工清单：#211 的成因就是「同一个取值域有
+ * **第四条**渲染路径没被覆盖」（前三条已由 #191 修）。清单式断言只能证明
+ * 「我列出的文件是好的」，证明不了「没有第五处」—— 这正是 #192 的教训
+ * （Markdown 守卫退回手工清单后星号又漏了 5 个页面）。
+ *
+ * 裸渲染的形态：JSX 子节点直接输出枚举字段
+ * （`>{sample.reviewStatus}<` / `>{item.effectiveAction}<`）。
+ * 以下用法**不**算裸渲染，不得误报（误报会让人直接关掉守卫）：
+ *   - `title={x.reviewStatus}`     —— 刻意保留原值供排查（守卫只认 `>{...}` 形式）；
+ *   - `describeReviewStatus(x)`    —— 正确走单一来源；
+ *   - `reviewStatusColor(x)`       —— 颜色映射；
+ *   - `x.reviewStatus === 'pending'` —— 比较，不是渲染。
+ * 因此用 `>{` 前缀锚定「JSX 子节点位置」，而不是只要出现字段名就报错。
+ *
+ * sources 是 `{ name, source }` 列表（由调用方递归收集）：把「扫什么」与
+ * 「怎么判」分开，变异自证才能把伪造源码喂进来。
+ */
+function problemsWithBareReviewStatusRender(sources) {
+  const problems = []
+  if (!Array.isArray(sources) || sources.length === 0) {
+    problems.push('没有可扫描的前端源码（守卫会空转）')
+    return problems
+  }
+  // 字尾边界（\b）让 `reviewStatusColor(` / `describeReviewStatus(` 不被当成裸渲染；
+  // `(?:[A-Za-z_$][\w$]*\.)*` 允许 `sample.` / `detail.sample.` 这类前缀。
+  const bare = />\{\s*(?:[A-Za-z_$][\w$]*\.)*(reviewStatus|effectiveAction)\b\s*\}/g
+  let scanned = 0
+  for (const entry of sources) {
+    scanned++
+    const code = stripComments(entry.source)
+    code.split('\n').forEach((line, index) => {
+      bare.lastIndex = 0
+      if (bare.test(line)) {
+        problems.push(`${entry.name}:${index + 1} 裸渲染审阅枚举（应用 describeReviewStatus）：${line.trim().slice(0, 90)}`)
+      }
+    })
+  }
+  if (scanned < 40) {
+    problems.push(`只扫到 ${scanned} 个前端源码文件（递归收集可能失效）`)
   }
   return problems
 }
@@ -535,6 +697,74 @@ function problemsWithBatchTimelineLabels(runSrc, modelSrc, apiSrc, storeSrc) {
 // 磁贴与当前页共用一个 href、文档承诺与实现分家、审计记录与「查看」目标脱钩、
 // 服务端字段错误与页面提示脱钩。因此断言的都是**接线**，而不只是「函数存在」。
 // ---------------------------------------------------------------------------
+
+/**
+ * #209：模型连接的「配置完整性」必须只有一份权威判据，且两个消费方都用它。
+ *
+ * 缺陷形态：连接的**可用性**在保存路径（校验）与展示路径（列表/下拉）各自实现，
+ * 于是 6 条完全空的连接（含 2 条 is_active=true）既混进了蓝图「模型服务」下拉
+ * （选不到懂哪个是可用的），又能在被选中后跑到批次开跑才报
+ * `model connection unavailable`。
+ *
+ * 断言三条：
+ *   1. `providerFieldRules` 是唯一规则表，且**两个**导出函数都按它驱动；
+ *   2. 服务端在两条读路径上都派生 `configIssues`（admin 列表 + 连接选项），
+ *      否则前端只能自己判空字符串（就是漂移的起点）；
+ *   3. 蓝图下拉不得再把 `item.name` 直接当选项文案（空名 → 无字选项）。
+ */
+function problemsWithProviderConfigIssues(validationSrc, storeSrc, settingsRoutesSrc, blueprintSrc, settingsPageSrc) {
+  const problems = []
+  const validation = stripComments(validationSrc)
+  if (!/var providerFieldRules = \[\]providerFieldRule\{/.test(validation)) {
+    problems.push('缺少 providerFieldRules 规则表（判定会重新分家）')
+  }
+  // 两个消费方都必须遍历同一张表。
+  const validateBody = validation.match(/func ValidateProviderInput\([\s\S]*?\n\}/)
+  if (!validateBody || !/for _, rule := range providerFieldRules/.test(validateBody[0])) {
+    problems.push('ValidateProviderInput 没有按规则表驱动（保存与展示会漂移）')
+  }
+  const issuesBody = validation.match(/func ProviderConfigIssues\([\s\S]*?\n\}/)
+  if (!issuesBody || !/for _, rule := range providerFieldRules/.test(issuesBody[0])) {
+    problems.push('ProviderConfigIssues 没有按规则表驱动（会退回各自实现）')
+  }
+  // 展示口径不得把「停用」混进配置问题（停用是显式意图）。
+  if (issuesBody && /IsActive/.test(issuesBody[0])) {
+    problems.push('ProviderConfigIssues 把「停用」当成了配置问题')
+  }
+  // 两条读路径都要派生 configIssues。
+  if (!/item\.ConfigIssues = ProviderConfigIssues\(item\)/.test(stripComments(storeSrc))) {
+    problems.push('ListProviders 没有派生 configIssues（同名列表与下拉口径会分叉）')
+  }
+  if (!/ConfigIssues: store\.ProviderConfigIssues\(provider\)/.test(stripComments(settingsRoutesSrc))) {
+    problems.push('connection-options 端点没有下发 configIssues（蓝图下拉拿不到可用性）')
+  }
+  const blueprint = stripComments(blueprintSrc)
+  // 缺陷形态：`label: item.name` —— 名称为空时选项没有任何文字。
+  if (/label:\s*item\.name\s*,/.test(blueprint)) {
+    problems.push('蓝图下拉仍把空名称直接当选项文案（#209 的实测形态）')
+  }
+  if (!/connectionMeta\(/.test(blueprint)) {
+    problems.push('蓝图下拉没有把配置问题拼进选项（用户选择前仍看不出哪个不可用）')
+  }
+  // 配置不完整的连接必须**灰显不可选**（#209 建议方向 2 的「灰显 + 不可用」）。
+  if (!/disabled:\s*\(item\.configIssues\?\.length \?\? 0\) > 0/.test(blueprint)) {
+    problems.push('配置不完整的连接仍可被选择（选中后会在批次开跑时才报错）')
+  }
+  // 选项必须真的把 disabled 传给 Select，否则上面那行等于没接。
+  if (!/disabled:\s*option\.disabled/.test(blueprint)) {
+    problems.push('optionList 没有把 disabled 传给 Select（灰显不会生效）')
+  }
+  // 连接列表必须有显式标记，而不是留一个只能靠推断的空行。
+  const settingsPage = stripComments(settingsPageSrc)
+  if (!/配置不完整，不可用于生成/.test(settingsPage)) {
+    problems.push('连接列表没有标出「配置不完整，不可用于生成」')
+  }
+  // 空名称不得渲染成一个**空单元格**（用户无法区分「暂未配置」与「配置坏了」）。
+  if (!/未命名连接/.test(settingsPage)) {
+    problems.push('连接列表没有给空名称任何可读兼底')
+  }
+  return problems
+}
 
 /** #200：总览的待判断计数必须与审阅队列共用同一条谓词。 */
 function problemsWithOverviewQueueParity(activitySrc, sampleQuerySrc) {
@@ -709,6 +939,10 @@ const RELEASE_PAGE = read('apps/web-user/src/studio/pages/ReleasePages.tsx')
 const STUDIO_API_TYPES = read('apps/web-user/src/lib/api/studio.ts')
 // #212：维护循环的收敛点（只修 runner 修不到已经跑完的历史批次）。
 const STUDIO_JOBS = read('apps/worker/studio_jobs.go')
+// #211 方向 3：递归收集全部前端源码（不是手工清单）。
+const FRONTEND_SOURCES = collectFrontendSources(path.join(REPO_ROOT, 'apps/web-user/src')).map(
+  (absolute) => ({ name: path.relative(REPO_ROOT, absolute), source: readFileSync(absolute, 'utf8') }),
+)
 
 const checks = [
   ['#190 批次容量校验（服务端事实 + 字段级拒绝）',
@@ -722,6 +956,8 @@ const checks = [
   ['#211 审阅状态不再裸渲染 + 说明未审阅内容口径',
     problemsWithReviewStatusLabels(read('apps/web-user/src/studio/pages/QualityPages.tsx'),
       REVIEW_PAGE, ENUM_LABELS)],
+  ['#211 全树递归：审计/审阅枚举无旁枝裸渲染点',
+    problemsWithBareReviewStatusRender(FRONTEND_SOURCES)],
   ['#191 扫描发现的 3 条渲染路径接线不变式',
     problemsWithSweepDiscoveredPaths(EVAL_DIMENSION_MANAGER, EVAL_REPORT, EVAL_CATEGORY_ROUTE,
       BATCH_FAILURE_VIEW, RUN_PAGE)],
@@ -740,8 +976,13 @@ const checks = [
     problemsWithMigrationStatusHonesty(LEGACY_STORE, LEGACY_PAGE)],
   ['#197-13 数据集分析由服务端计算且区分空集',
     problemsWithDatasetAnalysis(BATCH_STORE, RUN_PAGE, read('internal/studio/dataset_analysis.go'))],
+  ['#197-13 长度口径是事实且对用户可见',
+    problemsWithDisclosedLengthScope(MODEL_DOCS, BATCH_STORE, read('internal/studio/dataset_analysis.go'),
+      RUN_PAGE, ENUM_LABELS)],
   ['#192 Markdown 守卫覆盖全树而非手工清单',
     problemsWithMarkdownGuardCoverage(MARKDOWN_GUARD)],
+  ['#197-11 覆盖矩阵 m×n×z 公式算术自洽（结构推导来自共享模块）',
+    problemsWithCoverageStructureFormula(DOCUMENT_EDITORS)],
   ['#200 总览待判断与审阅队列同一口径',
     problemsWithOverviewQueueParity(ACTIVITY_STORE, read('internal/store/sample_query.go'))],
   ['#205 总览磁贴不指向当前页 + 被挡住有出口',
@@ -754,6 +995,8 @@ const checks = [
     problemsWithAccessibleMappingAndFieldErrors(DOCUMENT_EDITORS, RELEASE_PAGE)],
   ['#212 阶段进度是 batch_items 的事实投影且存量批次可收敛',
     problemsWithBatchStepProgress(BATCH_STORE, STUDIO_JOBS, RUN_PAGE)],
+  ['#209 连接可用性单一来源 + 下拉不出现无字选项',
+    problemsWithProviderConfigIssues(ADMIN_VALIDATION, ADMIN_STORE, SETTINGS_ROUTES, BLUEPRINT_PAGE, SETTINGS_PAGE)],
 ]
 
 for (const [name, problems] of checks) {
@@ -789,6 +1032,16 @@ const mutations = [
   ['#211 让颜色/文案映射退化', problemsWithReviewStatusLabels(
     read('apps/web-user/src/studio/pages/QualityPages.tsx'),
     REVIEW_PAGE.replace(/describeReviewStatus\(/g, 'noop('), ENUM_LABELS)],
+  ['#211 摘掉行内未审阅标记与提交前提示', problemsWithReviewStatusLabels(
+    read('apps/web-user/src/studio/pages/QualityPages.tsx')
+      .replaceAll('data-scope-unreviewed-row', 'data-removed')
+      .replace(/Modal\.confirm\(/, 'noopConfirm('), REVIEW_PAGE, ENUM_LABELS)],
+  ['#211 让某条渲染路径退回裸枚举', problemsWithBareReviewStatusRender(
+    [...FRONTEND_SOURCES, { name: 'injected/Leak.tsx', source: 'export const A = () => <span>{sample.reviewStatus}</span>' }])],
+  ['#211 让全树扫描退化成手工清单', (() => {
+    const only = FRONTEND_SOURCES.filter((entry) => entry.name.endsWith('QualityPages.tsx'))
+    return problemsWithBareReviewStatusRender(only)
+  })()],
   ['#191 摘掉维度管理的分类中文映射', problemsWithSweepDiscoveredPaths(
     EVAL_DIMENSION_MANAGER.replace(/categoryLabels\[/g, 'categoryKeys['), EVAL_REPORT,
     EVAL_CATEGORY_ROUTE, BATCH_FAILURE_VIEW, RUN_PAGE)],
@@ -819,11 +1072,23 @@ const mutations = [
     LEGACY_PAGE.replace(/migrationStatus\.note/g, '尚未迁移</strong>'))],
   ['#197-13 删掉 P90 计算', problemsWithDatasetAnalysis(BATCH_STORE, RUN_PAGE,
     read('internal/studio/dataset_analysis.go').replace(/nearestRank\(0\.9\)/, '0'))],
+  ['#197-13 把长度字段数退回硬编码 1', problemsWithDisclosedLengthScope(MODEL_DOCS, BATCH_STORE,
+    read('internal/studio/dataset_analysis.go').replace(/FieldCount:\s*len\(fields\)/, 'FieldCount: 1'),
+    RUN_PAGE, ENUM_LABELS)],
+  ['#197-13 让界面只给数字不给口径', problemsWithDisclosedLengthScope(MODEL_DOCS, BATCH_STORE,
+    read('internal/studio/dataset_analysis.go'),
+    RUN_PAGE.replace('data-analysis-length-scope', 'data-unused'), ENUM_LABELS)],
+  ['#197-13 让口径文案回传原始英文键', problemsWithDisclosedLengthScope(MODEL_DOCS, BATCH_STORE,
+    read('internal/studio/dataset_analysis.go'), RUN_PAGE,
+    ENUM_LABELS.replace(/export function describeSampleField\(raw: string\): string \{[\s\S]*?\n\}/,
+      'export function describeSampleField(raw: string): string { return raw }'))],
   ['#192 退回手工文件清单', problemsWithMarkdownGuardCoverage(
     MARKDOWN_GUARD
       .replace(/function collectSources\(/, 'function unusedCollectSources(')
       .replace('const files = collectSources(SRC_ROOT)', "const files = ['apps/web-user/src/App.tsx']"),
   )],
+  ['#197-11 公式退回内联 z=Σ配额', problemsWithCoverageStructureFormula(
+    DOCUMENT_EDITORS.replace(/from '[^']*coverageStructure'/, "from './coverageInline'"))],
   ['#200 让总览退回「直接数投影行」', problemsWithOverviewQueueParity(
     ACTIVITY_STORE.replace('FROM samples s`+latestReviewProjectionJoin+`', 'FROM review_projections' )
       .replace("SELECT COUNT(*) FROM review_projections\n    WHERE s.project_id", 'SELECT COUNT(*) FROM review_projections\n    WHERE project_id'),
@@ -854,6 +1119,16 @@ const mutations = [
   ['#212 让页面退回「还没有阶段记录」', problemsWithBatchStepProgress(
     BATCH_STORE, STUDIO_JOBS,
     RUN_PAGE.replace(/data-batch-steps-empty="true">[\s\S]*?<\/Text>/, 'data-batch-steps-empty="true">还没有阶段记录。</Text>'))],
+  ['#209 让连接判定退回两处各自实现', problemsWithProviderConfigIssues(
+    ADMIN_VALIDATION.replace(/for _, rule := range providerFieldRules \{\n\t\tif !rule\.Invalid\(input\) \{\n\t\t\tcontinue\n\t\t\}/, 'if true {'),
+    ADMIN_STORE, SETTINGS_ROUTES, BLUEPRINT_PAGE, SETTINGS_PAGE)],
+  ['#209 让蓝图下拉退回 label: item.name', problemsWithProviderConfigIssues(
+    ADMIN_VALIDATION, ADMIN_STORE, SETTINGS_ROUTES,
+    BLUEPRINT_PAGE.replace(/label: item\.name \|\| `未命名连接 #\$\{item\.id\}`/, 'label: item.name'), SETTINGS_PAGE)],
+  ['#209 让不完整连接重新可选', problemsWithProviderConfigIssues(
+    ADMIN_VALIDATION, ADMIN_STORE, SETTINGS_ROUTES,
+    BLUEPRINT_PAGE.replace('disabled: (item.configIssues?.length ?? 0) > 0', 'disabled: false'),
+    SETTINGS_PAGE)],
 ]
 
 for (const [name, problems] of mutations) {
@@ -863,6 +1138,106 @@ for (const [name, problems] of mutations) {
     problems.length > 0 ? `捕获到 ${problems.length} 个问题` : '断言空转（改坏了却仍然通过）',
   )
 }
+
+// ---------------------------------------------------------------------------
+// 第 2 层：真实模块调用（#197 第 11 条 §A）
+//
+// 为什么要打到真实模块：§A 的缺陷不是「字符串没写对」，而是**算术不成立**。
+// 只匹配源码字符串的断言会在格式化/重命名后静默失效；这里直接打包
+// `coverageStructure.ts`，把「m×n×z 与结果是否相等」变成可重算的事实。
+// 与 `l15_studio_wizard.mjs` 同一约守：默认路径不需要容器/浏览器。
+// ---------------------------------------------------------------------------
+
+const coverageWorkDir = mkdtempSync(path.join(tmpdir(), 'l15-coverage-structure-'))
+
+/** 打包一个生产模块（或变异后的临时模块），返回它的导出。 */
+async function bundleCoverageModule(sourceFile) {
+  const outfile = path.join(coverageWorkDir, `out-${path.basename(sourceFile)}.cjs`)
+  await esbuild.build({ entryPoints: [sourceFile], outfile, bundle: true, format: 'cjs', platform: 'node', logLevel: 'silent' })
+  const mod = webRequire(outfile)
+  return mod.default ?? mod
+}
+
+/** 从公式文本 `m A × n B × z C = D` 里把四个数字读回来。 */
+function readProductFormula(formula) {
+  const match = formula.match(/^m (\d+) × n (\d+) × z (\d+) = (\d+)$/)
+  return match ? { m: Number(match[1]), n: Number(match[2]), z: Number(match[3]), result: Number(match[4]) } : null
+}
+
+{
+  const coverage = await bundleCoverageModule(COVERAGE_STRUCTURE_SOURCE)
+
+  // 生产形态：1 领域 × 2 方向（各配额 2）→ 可产出 4。
+  const product = coverage.deriveCoverageStructure({
+    schemaVersion: 'coverage.v1',
+    domains: [{ stableId: 'domain-1', name: '冷链领域', directions: [
+      { stableId: 'direction-1', name: '方向一', quota: 2, source: 'manual' },
+      { stableId: 'direction-2', name: '方向二', quota: 2, source: 'manual' },
+    ] }],
+  })
+  const formula = coverage.formatCoverageFormula(product)
+  const parsed = readProductFormula(formula)
+  record(
+    '#197-11 乘积成立时公式算术自洽（m×n×z == 可产出量）',
+    parsed !== null && parsed.m * parsed.n * parsed.z === parsed.result && parsed.result === product.capacity,
+    parsed !== null && parsed.m * parsed.n * parsed.z === parsed.result
+      ? `${formula}（${parsed.m}×${parsed.n}×${parsed.z}=${parsed.result}）`
+      : `公式不是自洽乘积，实际：${formula}`,
+  )
+  // 后端 `model.CoverageCapacity` 的口径：quota ≤ 0 视为 1。
+  const zeroQuota = coverage.deriveCoverageStructure({
+    domains: [{ stableId: 'd', name: '领域', directions: [
+      { stableId: 'z', name: '零配额', quota: 0 },
+      { stableId: 'n', name: '负配额', quota: -5 },
+    ] }],
+  })
+  record(
+    '#197-11 quota ≤ 0 视为 1（与后端 CoverageCapacity 同口径）',
+    zeroQuota.capacity === 2,
+    `容量=${zeroQuota.capacity}（期望 2）`,
+  )
+  // 非乘积形态：各方向配额不等时**不得**编造 `m×n×z = 结果` 等式。
+  const mixed = coverage.deriveCoverageStructure({
+    domains: [{ stableId: 'd', name: '领域', directions: [{ stableId: 'a', name: '方向一', quota: 1 }, { stableId: 'b', name: '方向二', quota: 3 }] }],
+  })
+  const mixedFormula = coverage.formatCoverageFormula(mixed)
+  record(
+    '#197-11 配额不一致时不编造乘积等式',
+    readProductFormula(mixedFormula) === null && mixedFormula.includes('计划单元合计 4'),
+    `实际表述：${mixedFormula}`,
+  )
+  // 空覆盖不得报错，也不得给出非零容量。
+  const empty = coverage.deriveCoverageStructure({ domains: [] })
+  record(
+    '#197-11 空覆盖容量为 0（不编造）',
+    empty.capacity === 0 && empty.uniformQuotaPerDirection === null,
+    `容量=${empty.capacity}，uniformQuota=${String(empty.uniformQuotaPerDirection)}`,
+  )
+
+  // 变异自证：把 z 退回「Σ配额」的旧缺陷形态，断言算术自洽检查**真的**会失败。
+  const buggySource = readFileSync(COVERAGE_STRUCTURE_SOURCE, 'utf8').replace(
+    /return `m \$\{domainCount\} × n \$\{uniformDirectionsPerDomain\} × z \$\{uniformQuotaPerDirection\} = \$\{capacity\}`/,
+    'return `m ${domainCount} × n ${uniformDirectionsPerDomain} × z ${capacity} = ${capacity}`',
+  )
+  const buggyFile = path.join(coverageWorkDir, 'buggyCoverageStructure.ts')
+  writeFileSync(buggyFile, buggySource)
+  const buggy = await bundleCoverageModule(buggyFile)
+  const buggyFormula = buggy.formatCoverageFormula(buggy.deriveCoverageStructure({
+    domains: [{ stableId: 'domain-1', directions: [
+      { stableId: 'direction-1', quota: 2 }, { stableId: 'direction-2', quota: 2 },
+    ] }],
+  }))
+  const buggyParsed = readProductFormula(buggyFormula)
+  record(
+    '变异：#197-11 退回 z 为 Σ配额 -> 算术自洽断言必须失败',
+    buggyParsed !== null && buggyParsed.m * buggyParsed.n * buggyParsed.z !== buggyParsed.result,
+    buggyParsed !== null && buggyParsed.m * buggyParsed.n * buggyParsed.z !== buggyParsed.result
+      ? `复现原缺陷：${buggyFormula}（${buggyParsed.m}×${buggyParsed.n}×${buggyParsed.z}≠${buggyParsed.result}）`
+      : `变异未生效：${buggyFormula}`,
+  )
+}
+
+rmSync(coverageWorkDir, { recursive: true, force: true })
 
 if (failures.length > 0) {
   console.error(`\nIssue #197 回归守卫失败：${failures.length} 项`)
