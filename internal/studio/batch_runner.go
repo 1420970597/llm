@@ -87,6 +87,7 @@ type UnitResult struct {
 	ResponseModelID string
 	// ConfigFingerprint 是本次请求的配置指纹（提供则覆盖 runner 的默认计算）。
 	ConfigFingerprint string
+	SourceChunkIDs    []int64
 }
 
 // PlannedUnit 是覆盖分配算出的一个单元。
@@ -102,7 +103,9 @@ type PlannedUnit struct {
 	// Quota 是该方向的配额（用于进度分列展示，不用于编造总体百分比）。
 	Quota int
 	// Difficulty 是配比算出的难度档（可为空）。
-	Difficulty string
+	Difficulty     string
+	Source         string
+	SourceChunkIDs []int64
 }
 
 // ItemKey 返回单元的稳定键。
@@ -320,6 +323,12 @@ func (runner *BatchRunner) runItem(ctx context.Context, batch model.Batch, item 
 
 	generated, err := runner.Generator.GenerateUnit(ctx, request)
 	if err != nil {
+		if errors.Is(err, ErrBatchPaused) {
+			if _, releaseErr := runner.Batches.ReturnBatchItemToPending(ctx, batch.ID, claimed.ID); releaseErr != nil {
+				return releaseErr
+			}
+			return ErrBatchPaused
+		}
 		return runner.failItem(ctx, batch, claimed, classifyUnitError(err), err.Error(), true)
 	}
 	if len(generated.Payload) == 0 {
@@ -356,6 +365,7 @@ func (runner *BatchRunner) runItem(ctx context.Context, batch model.Batch, item 
 			StandardContentHash:  batch.Snapshot.StandardContentHash,
 			BlueprintVersionID:   optionalVersionID(batch.Snapshot.BlueprintVersionID),
 			BlueprintContentHash: batch.Snapshot.BlueprintContentHash,
+			SourceChunkIDs:       generated.SourceChunkIDs,
 		})
 	if err != nil {
 		return err
@@ -450,17 +460,19 @@ func (runner *BatchRunner) PlanUnits(ctx context.Context, batch model.Batch) ([]
 // 展示用的难度档。
 //
 // 顺序：先按领域顺序，再按方向顺序，再按方向内 ordinal。
-// 每个方向的单元数取其 quota；quota ≤ 0 时视为 1（否则该方向在矩阵上
-// 有名字但永远不产出，而用户无法从界面看出原因）。
+// 每个方向的单元数使用公共容量规则：显式来源的非正配额保持缺口，
+// 未指定来源的历史版本沿用非正配额视为 1 的兼容语义。
 func AllocateUnits(coverage model.CoveragePayload, plannedUnits int) []PlannedUnit {
 	covered := model.AllocateCoverageUnits(coverage, plannedUnits)
 	if len(covered) == 0 {
 		return nil
 	}
 	ratioByDirection := make(map[string][]model.DifficultyRatio)
+	sourceByDirection := make(map[string]model.CoverageDirection)
 	for _, domain := range coverage.Domains {
 		for _, direction := range domain.Directions {
 			ratioByDirection[domain.StableID+"/"+direction.StableID] = direction.DifficultyRatios
+			sourceByDirection[domain.StableID+"/"+direction.StableID] = direction
 		}
 	}
 	units := make([]PlannedUnit, 0, len(covered))
@@ -473,6 +485,8 @@ func AllocateUnits(coverage model.CoveragePayload, plannedUnits int) []PlannedUn
 			Ordinal:           unit.Ordinal,
 			Quota:             unit.Quota,
 			Difficulty:        difficultyFor(ratioByDirection[unit.DomainStableID+"/"+unit.DirectionStableID], unit.Ordinal, unit.Quota),
+			Source:            sourceByDirection[unit.DomainStableID+"/"+unit.DirectionStableID].Source,
+			SourceChunkIDs:    append([]int64(nil), sourceByDirection[unit.DomainStableID+"/"+unit.DirectionStableID].SourceChunkIDs...),
 		})
 	}
 	return units

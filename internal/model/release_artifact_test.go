@@ -85,6 +85,26 @@ func TestCanonicalManifestNormalizesLimitationsAndCount(t *testing.T) {
 // TestManifestHashDoesNotIncludeItself 覆盖「manifest_hash 不把自己包含进 hash 输入」。
 //
 // 自指会让验证变成循环：你无法在不知道 hash 的情况下计算 hash。
+func TestManifestGroundingSortIsStableWithoutMutatingCaller(t *testing.T) {
+	first := manifestFixture()
+	first.Items[0].SourceChunks = []GroundingReference{{ID: 9, ContentHash: "nine", Status: "available"}, {ID: 1, Status: "missing_chunk"}}
+	second := manifestFixture()
+	second.Items[0].SourceChunks = []GroundingReference{first.Items[0].SourceChunks[1], first.Items[0].SourceChunks[0]}
+	one, err := ComputeManifestHash(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := ComputeManifestHash(second)
+	if err != nil || one != two || first.Items[0].SourceChunks[0].ID != 9 {
+		t.Fatalf("grounding order or caller mutated: %s %s %v", one, two, err)
+	}
+	second.Items[0].SourceChunks[0].Status = "available"
+	changed, err := ComputeManifestHash(second)
+	if err != nil || changed == one {
+		t.Fatal("missing content status must affect manifest hash")
+	}
+}
+
 func TestManifestHashDoesNotIncludeItself(t *testing.T) {
 	manifest := manifestFixture()
 	hash, err := ComputeManifestHash(manifest)

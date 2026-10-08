@@ -1093,6 +1093,12 @@ export function SampleReviewPage() {
             <li>
               生成来源：<code>{detail.version.source.blueprintContentHash.slice(0, 8) || '（未记录）'}</code>
             </li>
+            <li>
+              素材块：{detail.version.source.sourceChunkIds?.length
+                ? detail.version.source.sourceChunkIds.join('、')
+                : '未关联素材（外部成品或关键词生成）'}
+              <Button size="small" theme="borderless" onClick={() => navigate(projectHref('project.sources', scope.projectId))}>查看素材来源</Button>
+            </li>
           </ul>
 
           <div className="mt-3" data-review-decision-history="true">

@@ -38,6 +38,7 @@ type experimentRequest struct {
 	SamplingSeed       int64            `json:"samplingSeed"`
 	Rubric             model.RubricSpec `json:"rubric"`
 	JudgeConnectionIDs []int64          `json:"judgeConnectionIds"`
+	JudgeMaxTokens     int              `json:"judgeMaxTokens"`
 	MissingScorePolicy string           `json:"missingScorePolicy"`
 	BatchID            *int64           `json:"batchId"`
 	// TargetConfig 是 GRPO 专属配置（T24）：教师提示词版本、基准回答版本
@@ -162,7 +163,12 @@ func (app *application) createExperiment(w http.ResponseWriter, r *http.Request)
 	// 裁判身份：前端只传**连接 ID**，而来源指纹由服务端从连接当前配置读取。
 	// 不接受客户端传 fingerprint —— 那会让「同源自评」只需伪造一个指纹就能绕过
 	//（T14 验收项明确要求独立性判定不可被客户端绕过）。
-	judges, err := app.resolveJudgeSpecs(r, request.JudgeConnectionIDs)
+	maxTokens, err := judgeOutputLimit(request.JudgeMaxTokens)
+	if err != nil {
+		app.writeStudioError(w, r, err)
+		return
+	}
+	judges, err := app.resolveJudgeSpecs(r, request.JudgeConnectionIDs, maxTokens)
 	if err != nil {
 		app.writeStudioError(w, r, err)
 		return
@@ -241,7 +247,17 @@ func (app *application) writeExperimentEnvelope(w http.ResponseWriter, _ *http.R
 }
 
 // resolveJudgeSpecs 把连接 ID 解析成裁判快照（指纹由服务端读取）。
-func (app *application) resolveJudgeSpecs(r *http.Request, connectionIDs []int64) ([]model.JudgeSpec, error) {
+func judgeOutputLimit(value int) (int, error) {
+	if value == 0 {
+		return 4096, nil
+	}
+	if value < 512 || value > 32768 {
+		return 0, studio.NewValidationError("裁判输出上限必须在 512–32768 token 之间", []model.FieldError{{Field: "judgeMaxTokens", Message: "填写 512–32768 的整数"}})
+	}
+	return value, nil
+}
+
+func (app *application) resolveJudgeSpecs(r *http.Request, connectionIDs []int64, maxTokens int) ([]model.JudgeSpec, error) {
 	judges := make([]model.JudgeSpec, 0, len(connectionIDs))
 	for _, connectionID := range connectionIDs {
 		if connectionID <= 0 {
@@ -255,9 +271,17 @@ func (app *application) resolveJudgeSpecs(r *http.Request, connectionIDs []int64
 				[]model.FieldError{{Field: "judgeConnectionIds",
 					Message: "所选裁判连接不可用"}})
 		}
+		caps, found, err := app.studio.Usage.ResolveCapabilities(r.Context(), connectionID, modelName)
+		if err != nil {
+			return nil, err
+		}
+		if found && caps.MaxOutputTokens > 0 && maxTokens > caps.MaxOutputTokens {
+			return nil, studio.NewValidationError("裁判输出上限超过该连接声明的能力", []model.FieldError{{Field: "judgeMaxTokens", Message: "降低输出上限或选择其他连接"}})
+		}
 		judges = append(judges, model.JudgeSpec{
 			ConnectionID: connectionID, Label: modelName,
 			EndpointFingerprint: model.EndpointFingerprint(baseURL), ModelName: modelName,
+			Config: model.JudgeConfig{MaxTokens: maxTokens},
 		})
 	}
 	if len(judges) == 0 {

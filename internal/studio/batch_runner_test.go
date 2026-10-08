@@ -104,6 +104,21 @@ func successResult(request UnitRequest) UnitResult {
 
 func pointer(value int64) *int64 { return &value }
 
+func TestAllocateUnitsFreezesSourceAndKeepsExplicitGaps(t *testing.T) {
+	coverage := model.CoveragePayload{Domains: []model.CoverageDomain{{StableID: "cold", Directions: []model.CoverageDirection{
+		{StableID: "linked", Source: model.SourceDocument, SourceChunkIDs: []int64{7, 8}, Quota: 1},
+		{StableID: "gap", Source: model.SourceNone, Quota: 0},
+	}}}}
+	units := AllocateUnits(coverage, 10)
+	if len(units) != 1 || units[0].Source != model.SourceDocument || len(units[0].SourceChunkIDs) != 2 {
+		t.Fatalf("source plan mismatch: %+v", units)
+	}
+	coverage.Domains[0].Directions[0].SourceChunkIDs[0] = 99
+	if units[0].SourceChunkIDs[0] != 7 {
+		t.Fatal("draft mutation altered frozen unit source")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // fixture
 // ---------------------------------------------------------------------------
@@ -503,7 +518,39 @@ func TestRunBatchStopsSubmittingWhenPaused(t *testing.T) {
 	}
 }
 
-// TestRunBatchUsesSnapshotNotCurrentConfiguration 覆盖验收项
+// A budget pause retains the unit for an explicit resume without inventing a failure.
+func TestRunBatchBudgetPauseKeepsCurrentUnitPending(t *testing.T) {
+	generator := &scriptedGenerator{}
+	fixture := newRunnerFixture(t, generator)
+	batch := fixture.createBatch(t, 3)
+	units, err := fixture.runner.PlanUnits(context.Background(), batch)
+	if err != nil || len(units) == 0 {
+		t.Fatalf("plan units: %v", err)
+	}
+	generator.script = map[string]func(UnitRequest) (UnitResult, error){units[0].ItemKey(): func(request UnitRequest) (UnitResult, error) {
+		if _, err := fixture.batches.PauseBatch(context.Background(), fixture.projectID, batch.ID, fixture.userID); err != nil {
+			return UnitResult{}, err
+		}
+		return UnitResult{}, ErrBatchPaused
+	}}
+	result, err := fixture.runner.RunBatch(context.Background(), batch.ID)
+	if err != nil || !result.Superseded || result.FailedUnits != 0 {
+		t.Fatalf("pause result=%+v err=%v", result, err)
+	}
+	counts, err := fixture.batches.CountBatchItemsByStatus(context.Background(), batch.ID)
+	if err != nil || counts[model.ItemStatusPending] != 3 || generator.callCount() != 1 {
+		t.Fatalf("pending=%v calls=%d err=%v", counts, generator.callCount(), err)
+	}
+	generator.script = nil
+	if _, err := fixture.batches.ResumeBatch(context.Background(), fixture.projectID, batch.ID, fixture.userID); err != nil {
+		t.Fatal(err)
+	}
+	result, err = fixture.runner.RunBatch(context.Background(), batch.ID)
+	if err != nil || result.CompletedUnits != 3 {
+		t.Fatalf("resume=%+v err=%v", result, err)
+	}
+}
+
 // 「已有成功内容不受默认 prompt/provider/标准变更影响」的核心机制：
 // runner 只读**批次快照**。
 //

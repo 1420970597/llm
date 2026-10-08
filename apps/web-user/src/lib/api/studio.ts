@@ -834,6 +834,7 @@ export type CreateExperimentRequest = {
    */
   rubric?: { dimensions: Array<{ key: string; label: string; weight: number; min: number; max: number }> }
   judgeConnectionIds: number[]
+  judgeMaxTokens?: number
   missingScorePolicy?: 'exclude' | 'fail_experiment'
   batchId?: number
   /**

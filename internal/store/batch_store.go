@@ -1711,6 +1711,21 @@ func (s *BatchStore) ClaimBatchItemForAttempt(ctx context.Context, itemID int64)
 	return item, true, nil
 }
 
+// ReturnBatchItemToPending releases a claimed unit when a batch-wide pause
+// happens before an external request is submitted. It preserves the attempt
+// number and never overwrites a unit already completed concurrently.
+func (s *BatchStore) ReturnBatchItemToPending(ctx context.Context, batchID, itemID int64) (bool, error) {
+	tag, err := s.db.Exec(ctx, `
+    UPDATE batch_items
+    SET status = 'pending', error_class = '', error_message = '',
+        retryable = FALSE, started_at = NULL, finished_at = NULL, updated_at = NOW()
+    WHERE id = $1 AND batch_id = $2 AND status = 'running'`, itemID, batchID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 // CommitBatchItemSuccess 提交一个成功单元与其内容版本（**同一事务**）。
 //
 // 为什么必须同事务（T05 验收项「成功 item 提交与版本追加在事务中幂等」）：

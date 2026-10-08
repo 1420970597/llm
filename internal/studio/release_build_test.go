@@ -8,6 +8,7 @@ import (
 
 	"github.com/1420970597/llm/internal/exporter"
 	"github.com/1420970597/llm/internal/model"
+	"github.com/1420970597/llm/internal/store"
 )
 
 // 本文件验证 T21 编码层的**纯逻辑**（不需要数据库）。
@@ -25,6 +26,75 @@ func buildMapping() model.ExportMapping {
 			"reasoning": "chain_of_thought",
 			"answer":    "answer",
 		},
+	}
+}
+
+func TestGroundingReferencesPreserveMissingEvidenceAndExternalImports(t *testing.T) {
+	items := []model.ManifestItem{
+		{Source: "document", SourceChunks: []model.GroundingReference{{ID: 1}, {ID: 2}}},
+		{Source: "document", SourceChunks: []model.GroundingReference{{ID: 1}}},
+		{Source: "external_import"},
+		{},
+	}
+	summary := applyGroundingReferences(items, map[int64]model.SourceChunk{1: {ID: 1, Content: "原文", ContentHash: "sha256:abc", HeadingPath: "温控"}})
+	if summary.Chunks != 2 || summary.Missing != 1 || summary.GroundedSamples != 1 || summary.UngroundedSamples != 3 || summary.ExternalImports != 1 {
+		t.Fatalf("incorrect grounding summary: %+v", summary)
+	}
+	if items[0].SourceChunks[1].Status != "missing_chunk" || items[0].SourceChunks[0].ContentHash != "sha256:abc" {
+		t.Fatalf("missing reference must remain visible: %+v", items)
+	}
+	if empty := applyGroundingReferences(nil, nil); empty != (model.GroundingSummary{}) {
+		t.Fatalf("empty legacy scope: %+v", empty)
+	}
+}
+
+func TestReleaseGroundingPersistsAndSurvivesSourceErasure(t *testing.T) {
+	fixture := newRunnerFixture(t, &scriptedGenerator{})
+	ctx := context.Background()
+	sources := store.NewSourceChunkStore(fixture.pool)
+	chunks, _, err := sources.UpsertSourceChunks(ctx, fixture.projectID, "frozen-document", []model.SourceChunk{{HeadingPath: "温控", Ordinal: 1, Content: "保持2～8℃", ContentHash: model.ComputeArtifactHash([]byte("保持2～8℃"))}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sample, version, err := fixture.batches.AppendSampleVersion(ctx, store.AppendSampleVersionInput{
+		ProjectID: fixture.projectID, SampleKey: "grounded-release", TargetKind: model.TargetKindSFT,
+		Payload:        map[string]any{"question": "温度9℃应如何处置？", "reasoning": "9℃超出2～8℃范围，应隔离并记录。", "answer": "隔离并记录。", "source": "document"},
+		SourceChunkIDs: []int64{chunks[0].ID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	documents := store.NewDocumentStore(fixture.pool)
+	_, mapping, err := documents.SaveVersion(ctx, fixture.projectID, model.KindMapping, fixture.userID, store.SaveDocumentVersionInput{Payload: model.MappingPayload{
+		SchemaVersion: model.SchemaVersionFor(model.KindMapping), Format: "jsonl", Fields: []model.MappingField{{TargetField: "question", SourceField: "question"}, {TargetField: "reasoning", SourceField: "reasoning"}, {TargetField: "answer", SourceField: "answer"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	builder := &ReleaseBuilder{Batches: fixture.batches, Documents: documents, Sources: sources}
+	input := ReleaseBuildInput{ProjectID: fixture.projectID, ReleaseID: 1, Revision: 1, TargetKind: model.TargetKindSFT, Format: "jsonl", MappingVersionID: mapping.ID,
+		Items: []store.ReleaseItem{{SampleID: sample.ID, SampleVersionID: version.ID, ContentHash: version.ContentHash}}}
+	first, err := builder.BuildReleaseArtifact(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Manifest.Grounding.GroundedSamples != 1 || first.Manifest.Items[0].SourceChunks[0].ContentHash != chunks[0].ContentHash {
+		t.Fatalf("stored references were lost: %+v", first.Manifest)
+	}
+	// Explicit erasure affects a later data card, while the frozen sample remains
+	// exportable and the previously built artifact bytes remain identical.
+	if _, err := fixture.pool.Exec(ctx, `DELETE FROM source_chunks WHERE project_id=$1 AND id=$2`, fixture.projectID, chunks[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	second, err := builder.BuildReleaseArtifact(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Manifest.Grounding.Missing != 1 || second.Manifest.Items[0].SourceChunks[0].Status != "missing_chunk" || string(second.ArtifactBytes) != string(first.ArtifactBytes) || second.ArtifactHash != first.ArtifactHash {
+		t.Fatalf("erasure must preserve export and expose missing evidence: %+v", second.Manifest)
+	}
+	if first.Manifest.Items[0].SourceChunks[0].Status != "available" {
+		t.Fatal("later build mutated prior manifest")
 	}
 }
 

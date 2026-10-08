@@ -5,6 +5,32 @@ import (
 	"testing"
 )
 
+func TestComputeChargeMissingBillableDirectionStaysUnknown(t *testing.T) {
+	known := int64(100)
+	price := PriceVersion{InputPerMillion: 1000, OutputPerMillion: 2000}
+	for _, usage := range []TokenUsage{{InputTokens: &known, Source: UsageSourceProvider}, {OutputTokens: &known, Source: UsageSourceProvider}} {
+		charge := ComputeCharge(usage, price, "v1")
+		if charge.AmountState != AmountStateUnknown || charge.AmountMinor != nil {
+			t.Fatalf("missing billable direction must not become actual zero: %+v", charge)
+		}
+	}
+	price.OutputPerMillion = 0
+	charge := ComputeCharge(TokenUsage{InputTokens: &known, Source: UsageSourceProvider}, price, "v1")
+	if charge.AmountState != AmountStateActual || charge.AmountMinor == nil || *charge.AmountMinor != 1 {
+		t.Fatalf("known paid input and zero output price are sufficient: %+v", charge)
+	}
+}
+
+func TestEstimatedPricePreservesRealTokenSource(t *testing.T) {
+	usage := TokenUsage{InputTokens: int64Ptr(100), OutputTokens: int64Ptr(200), Source: UsageSourceProvider}
+	price := cnyPrice(1000, 2000)
+	price.IsEstimated = true
+	charge := ComputeCharge(usage, price, price.PriceVersion)
+	if charge.AmountState != AmountStateEstimated || charge.AmountMinor == nil || charge.Usage.Source != UsageSourceProvider {
+		t.Fatalf("operator estimate became real billing: %+v", charge)
+	}
+}
+
 // 本文件验证 Issue #160 T07 中**纯逻辑**的金额与能力判定。
 //
 // 涉及数据库的部分（预留、结算、并发不超卖）在
@@ -55,12 +81,6 @@ func TestComputeChargeIsExactAndCeils(t *testing.T) {
 			// 1*2000/1e6 与 1*8000/1e6 都 < 1 分 → 各取 1 分 = 2 分。
 			// 若合计后取整会得到 1 分，这是系统性少算。
 			want: 2, wantState: AmountStateActual,
-		},
-		{
-			name: "只有输出已知（输入未知不得当成免费）", in: nil, out: int64Ptr(1_000_000),
-			// 输入方向无法计价，但不补 0 也不能编造；这里只计输出 8000 分。
-			// 关键性质是**不返回 unknown、也不返回 8000 以下**。
-			want: 8000, wantState: AmountStateActual,
 		},
 	}
 

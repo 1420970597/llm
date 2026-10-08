@@ -3,6 +3,8 @@ package llm
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -76,8 +78,41 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+provider.APIKey)
 
+		var settle CallSettlement
+		if provider.Accounting != nil {
+			var bodyConfig struct {
+				MaxTokens           int64 `json:"max_tokens"`
+				MaxCompletionTokens int64 `json:"max_completion_tokens"`
+			}
+			_ = json.Unmarshal(requestBody, &bodyConfig)
+			maxOutput := bodyConfig.MaxTokens
+			if bodyConfig.MaxCompletionTokens > 0 {
+				maxOutput = bodyConfig.MaxCompletionTokens
+			}
+			hash := sha256.Sum256(requestBody)
+			settle, err = provider.Accounting.ReserveCall(ctx, RequestMetadata{
+				InputTokensUpperBound: int64(len(requestBody)) + 1024,
+				MaxOutputTokens:       maxOutput, ConfigFingerprint: "sha256:" + hex.EncodeToString(hash[:]),
+			})
+			if err != nil {
+				return decoded, err
+			}
+		}
+		finish := func(meta ResponseMetadata, callErr error) error {
+			if settle == nil {
+				return nil
+			}
+			// A cancelled request can still have incurred a charge. Persist its
+			// uncertainty using a bounded context independent of that cancellation.
+			settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			return settle(settleCtx, meta, callErr)
+		}
 		res, err := client.Do(req)
 		if err != nil {
+			if accountingErr := finish(ResponseMetadata{}, err); accountingErr != nil {
+				return decoded, accountingErr
+			}
 			lastErr = err
 			log.Printf("llm.chat.transport_error model=%s attempt=%d err=%v", provider.Model, attempt, err)
 			if shouldRetryTransportError(err) && attempt < maxAttempts {
@@ -95,6 +130,9 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 			message, retryable := readProviderError(res)
 			_ = res.Body.Close()
 			lastErr = fmt.Errorf("provider request failed: %s", message)
+			if accountingErr := finish(ResponseMetadata{}, lastErr); accountingErr != nil {
+				return decoded, accountingErr
+			}
 			if retryable && attempt < maxAttempts {
 				select {
 				case <-time.After(time.Duration(attempt) * time.Second):
@@ -109,6 +147,9 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 		raw, readErr := io.ReadAll(res.Body)
 		_ = res.Body.Close()
 		if readErr != nil {
+			if accountingErr := finish(ResponseMetadata{}, readErr); accountingErr != nil {
+				return decoded, accountingErr
+			}
 			lastErr = readErr
 			if attempt < maxAttempts {
 				time.Sleep(time.Duration(attempt) * time.Second)
@@ -117,7 +158,13 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 			return decoded, readErr
 		}
 
+		requestID, modelID := ExtractIdentityFromBody(raw)
+		meta := ResponseMetadata{Usage: ExtractUsageFromBody(raw), RequestID: requestID, ModelID: modelID}
+		decoded = chatCompletionResponse{}
 		err = decodeChatCompletionBody(raw, &decoded)
+		if accountingErr := finish(meta, err); accountingErr != nil {
+			return decoded, accountingErr
+		}
 		if err != nil {
 			lastErr = err
 			if attempt < maxAttempts {
@@ -125,6 +172,9 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 				continue
 			}
 			return decoded, fmt.Errorf("provider response decode failed after %d attempts: %w", attempt, err)
+		}
+		if provider.ObserveResponse != nil {
+			provider.ObserveResponse(meta)
 		}
 		if len(decoded.Choices) == 0 {
 			lastErr = fmt.Errorf("provider returned no choices")
@@ -145,6 +195,16 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 
 func buildChatCompletionBodies(provider ProviderConfig, payload map[string]any) ([][]byte, error) {
 	base := clonePayload(payload)
+	if provider.MaxTokens > 0 {
+		if strings.HasPrefix(strings.ToLower(provider.Model), "gpt-5") {
+			base["max_completion_tokens"] = provider.MaxTokens
+		} else {
+			base["max_tokens"] = provider.MaxTokens
+		}
+	}
+	if provider.Temperature != nil {
+		base["temperature"] = *provider.Temperature
+	}
 	if _, exists := base["stream"]; !exists {
 		base["stream"] = true
 	}

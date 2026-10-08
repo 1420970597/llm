@@ -27,7 +27,11 @@ type ProviderConfig struct {
 	// 部署直接失败。因此它必须是**显式**选择，由需要计费用的新路径
 	// （T12 的 Studio 生成）通过 WithUsageReporting 打开，
 	// 旧路径行为保持不变。
-	IncludeUsage bool
+	IncludeUsage    bool
+	MaxTokens       int
+	Temperature     *float64
+	ObserveResponse func(ResponseMetadata)
+	Accounting      CallAccounting
 }
 
 func GenerateDomains(ctx context.Context, provider ProviderConfig, dataset model.Dataset, promptTemplate *model.PromptTemplate) ([]model.Domain, []model.DomainEdge, error) {

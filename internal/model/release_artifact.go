@@ -48,10 +48,27 @@ type ManifestItem struct {
 	SampleVersionID int64  `json:"sampleVersionId"`
 	ContentHash     string `json:"contentHash"`
 	// 来源 hash：样本版本自带的引用（**不是**当前项目采用版本）。
-	StandardContentHash     string `json:"standardContentHash,omitempty"`
-	BlueprintContentHash    string `json:"blueprintContentHash,omitempty"`
-	AggregateReviewRevision int64  `json:"aggregateReviewRevision,omitempty"`
-	EvidenceRevision        int64  `json:"evidenceRevision,omitempty"`
+	StandardContentHash     string               `json:"standardContentHash,omitempty"`
+	BlueprintContentHash    string               `json:"blueprintContentHash,omitempty"`
+	AggregateReviewRevision int64                `json:"aggregateReviewRevision,omitempty"`
+	EvidenceRevision        int64                `json:"evidenceRevision,omitempty"`
+	Source                  string               `json:"source,omitempty"`
+	SourceChunks            []GroundingReference `json:"sourceChunks,omitempty"`
+}
+
+type GroundingReference struct {
+	ID          int64  `json:"id"`
+	ContentHash string `json:"contentHash,omitempty"`
+	HeadingPath string `json:"headingPath,omitempty"`
+	Status      string `json:"status"`
+}
+
+type GroundingSummary struct {
+	Chunks            int `json:"chunks"`
+	Missing           int `json:"missing"`
+	GroundedSamples   int `json:"groundedSamples"`
+	UngroundedSamples int `json:"ungroundedSamples"`
+	ExternalImports   int `json:"externalImports"`
 }
 
 // ReleaseManifest 是发布清单（元数据）。
@@ -80,8 +97,9 @@ type ReleaseManifest struct {
 	// ItemsContentHash 是清单内容的 hash（与 artifact_hash 分开）。
 	ItemsContentHash string `json:"itemsContentHash"`
 	// 质量与覆盖摘要（原范围指标与覆盖损失）。
-	QualitySnapshot json.RawMessage `json:"qualitySnapshot,omitempty"`
-	CoverageSummary json.RawMessage `json:"coverageSummary,omitempty"`
+	QualitySnapshot json.RawMessage   `json:"qualitySnapshot,omitempty"`
+	CoverageSummary json.RawMessage   `json:"coverageSummary,omitempty"`
+	Grounding       *GroundingSummary `json:"grounding,omitempty"`
 
 	HashScope string `json:"hashScope"`
 }
@@ -102,6 +120,12 @@ type ReleaseManifest struct {
 func CanonicalManifestBytes(manifest ReleaseManifest) ([]byte, error) {
 	normalized := manifest
 	normalized.Items = append([]ManifestItem(nil), manifest.Items...)
+	for index := range normalized.Items {
+		normalized.Items[index].SourceChunks = append([]GroundingReference(nil), manifest.Items[index].SourceChunks...)
+		sort.Slice(normalized.Items[index].SourceChunks, func(i, j int) bool {
+			return normalized.Items[index].SourceChunks[i].ID < normalized.Items[index].SourceChunks[j].ID
+		})
+	}
 	sort.SliceStable(normalized.Items, func(i, j int) bool {
 		if normalized.Items[i].SampleID != normalized.Items[j].SampleID {
 			return normalized.Items[i].SampleID < normalized.Items[j].SampleID

@@ -76,6 +76,14 @@ type JudgeSpec struct {
 	// ModelName 参与指纹判断的辅助信息（同 endpoint 不同模型算不算同源
 	// 是一个判断，这里冻结当时的结论）。
 	ModelName string `json:"modelName"`
+	// Config is frozen with the experiment. Old snapshots without an output
+	// limit must be repaired through a new experiment before paid execution.
+	Config JudgeConfig `json:"config"`
+}
+
+type JudgeConfig struct {
+	MaxTokens   int      `json:"maxTokens"`
+	Temperature *float64 `json:"temperature,omitempty"`
 }
 
 // GeneratorSource 是一个生成来源的冻结快照（**由样本来源推导**）。

@@ -49,6 +49,11 @@ const grpoBlueprintLevelsKey = "levels"
 type grpoUnitGenerator struct {
 	datasets  *store.DatasetStore
 	documents *store.DocumentStore
+	sources   sourceChunkReader
+	usage     *store.UsageStore
+	projects  *store.ProjectStore
+	batches   *store.BatchStore
+	jobID     int64
 }
 
 func (generator *grpoUnitGenerator) GenerateUnit(ctx context.Context, request studio.UnitRequest) (studio.UnitResult, error) {
@@ -77,21 +82,34 @@ func (generator *grpoUnitGenerator) GenerateUnit(ctx context.Context, request st
 		return studio.UnitResult{}, err
 	}
 
-	output, err := llm.GenerateGrpoPrompt(ctx, llm.WithUsageReporting(llm.ProviderConfig{
+	provider := llm.WithUsageReporting(llm.ProviderConfig{
 		BaseURL: baseURL, Model: modelName, ProviderType: providerType,
 		ReasoningEffort: reasoningEffort, APIKey: apiKey,
-	}), llm.GrpoPromptInput{
-		RootKeyword:   request.Unit.DomainName,
-		DirectionName: request.Unit.DirectionName,
-		Question:      grpoQuestionFor(request),
-		ChainSteps:    steps,
-		Levels:        levels,
+		MaxTokens: request.GenerationConfig.MaxTokens, Temperature: request.GenerationConfig.Temperature,
+	})
+	var receipts generationReceipts
+	provider.ObserveResponse = receipts.observe
+	provider.Accounting = &studioCallAccounting{usage: generator.usage, projects: generator.projects, batches: generator.batches,
+		projectID: request.ProjectID, batchID: &request.BatchID, connectionID: connectionID,
+		idempotencyKey: fmt.Sprintf("batch:%d:item:%s:attempt:%d", request.BatchID, request.ItemKey, request.Attempt),
+		attempt:        request.Attempt, purpose: "batch_generate", provider: provider, jobID: generator.jobID}
+	question, materials, err := questionFor(ctx, provider, request, generator.sources, generator.documents, steps)
+	if err != nil {
+		return studio.UnitResult{}, err
+	}
+	output, err := llm.GenerateGrpoPrompt(ctx, provider, llm.GrpoPromptInput{
+		RootKeyword:     request.Unit.DomainName,
+		DirectionName:   request.Unit.DirectionName,
+		Question:        question,
+		ChainSteps:      steps,
+		Levels:          levels,
+		SourceMaterials: materials,
 	})
 	if err != nil {
 		return studio.UnitResult{}, err
 	}
 
-	payload, err := buildGrpoPayload(grpoQuestionFor(request), output, levels)
+	payload, err := buildGrpoPayload(question, output, levels)
 	if err != nil {
 		// 生成的判据不合规（缺档/重复档/空规则）必须**显式失败**：
 		// 静默写入一个不合规的样本会让质量实验按错误的量表打分，
@@ -99,9 +117,15 @@ func (generator *grpoUnitGenerator) GenerateUnit(ctx context.Context, request st
 		return studio.UnitResult{}, err
 	}
 	_ = frameworkRef
+	payload["source"] = questionSource(request.Unit.Source)
+	payload["difficulty"] = request.Unit.Difficulty
 	return studio.UnitResult{
-		Title:   grpoQuestionFor(request),
-		Payload: payload,
+		Title:           question,
+		Payload:         payload,
+		Usage:           receipts.usage(),
+		RequestID:       strings.Join(receipts.requestIDs, ","),
+		ResponseModelID: receipts.modelID,
+		SourceChunkIDs:  append([]int64(nil), request.Unit.SourceChunkIDs...),
 	}, nil
 }
 
@@ -230,19 +254,6 @@ func (generator *grpoUnitGenerator) loadBlueprintLevels(ctx context.Context, req
 			"levels 去重后不足两档（原始 %d 档）：档位重复或为空都会让判分标准失效", len(levels))
 	}
 	return normalized, payload.Nodes.Generation.ModelVersion, nil
-}
-
-// grpoQuestionFor 生成该单元的问题文本（与 SFT 分支同一形态）。
-func grpoQuestionFor(request studio.UnitRequest) string {
-	direction := request.Unit.DirectionName
-	if direction == "" {
-		direction = request.Unit.DirectionStableID
-	}
-	difficulty := request.Unit.Difficulty
-	if difficulty == "" {
-		difficulty = "normal"
-	}
-	return fmt.Sprintf("%s（难度 %s）：第 %d 题", direction, difficulty, request.Unit.Ordinal)
 }
 
 // grpoStandardSteps 读取被引用标准版本的步骤（与 SFT 共用同一适配）。

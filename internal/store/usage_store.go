@@ -31,6 +31,9 @@ var (
 	// ErrBudgetExhausted 表示预留会导致超出（项目或批次的）预算上限。
 	// API 层必须把它映射成 429（契约 §1.3「限流 / 预算预留失败」）。
 	ErrBudgetExhausted = errors.New("预算额度不足，已阻止新的外部调用")
+	// ErrBatchPaused means the batch control command won the row lock before
+	// this reservation. The transaction rolls back without a new paid call.
+	ErrBatchPaused = errors.New("批次已暂停，已阻止新的外部调用")
 	// ErrUsageNotFound 表示账目不存在。
 	ErrUsageNotFound = errors.New("用量账目不存在")
 	// ErrUsageNotReserved 表示账目已经结算或释放过（重复结算）。
@@ -59,6 +62,7 @@ type PriceVersionInput struct {
 	OutputPerMillion int64
 	// IsFree 显式声明免费接入点（见 model.PriceVersion.IsFree 的说明）。
 	IsFree        bool
+	IsEstimated   bool
 	EffectiveFrom time.Time
 	Note          string
 	CreatedBy     *int64
@@ -98,32 +102,46 @@ func (s *UsageStore) UpsertPriceVersion(ctx context.Context, input PriceVersionI
 		input.EffectiveFrom = time.Now()
 	}
 
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return model.PriceVersion{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	var price model.PriceVersion
-	err := s.db.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
     INSERT INTO model_price_versions
       (price_version, provider_connection_id, endpoint_fingerprint, model_name, currency,
-       input_price_minor_per_million, output_price_minor_per_million, is_free,
+	       input_price_minor_per_million, output_price_minor_per_million, is_free, is_estimated,
        effective_from, note, created_by)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $12, $9, $10, $11)
     ON CONFLICT (price_version, provider_connection_id, model_name) DO UPDATE
     SET endpoint_fingerprint = EXCLUDED.endpoint_fingerprint,
         currency = EXCLUDED.currency,
         input_price_minor_per_million = EXCLUDED.input_price_minor_per_million,
         output_price_minor_per_million = EXCLUDED.output_price_minor_per_million,
-        is_free = EXCLUDED.is_free,
+	        is_free = EXCLUDED.is_free,
+	        is_estimated = EXCLUDED.is_estimated,
         effective_from = LEAST(model_price_versions.effective_from, EXCLUDED.effective_from),
         note = EXCLUDED.note,
         updated_at = NOW()
     RETURNING id, price_version, provider_connection_id, endpoint_fingerprint, model_name, currency,
-              input_price_minor_per_million, output_price_minor_per_million, is_free,
+	              input_price_minor_per_million, output_price_minor_per_million, is_free, is_estimated,
               effective_from, note`,
 		input.PriceVersion, input.ConnectionID, input.EndpointFP, input.ModelName, input.Currency,
 		input.InputPerMillion, input.OutputPerMillion, input.IsFree,
-		input.EffectiveFrom, input.Note, input.CreatedBy,
+		input.EffectiveFrom, input.Note, input.CreatedBy, input.IsEstimated,
 	).Scan(&price.ID, &price.PriceVersion, &price.ConnectionID, &price.EndpointFP, &price.ModelName,
-		&price.Currency, &price.InputPerMillion, &price.OutputPerMillion, &price.IsFree,
+		&price.Currency, &price.InputPerMillion, &price.OutputPerMillion, &price.IsFree, &price.IsEstimated,
 		&price.EffectiveFrom, &price.Note)
 	if err != nil {
+		return model.PriceVersion{}, err
+	}
+	if input.CreatedBy != nil {
+		if err := writeProjectAuditTx(ctx, tx, *input.CreatedBy, "model_provider.update", "model_provider", input.ConnectionID, "保存模型价格版本 "+input.PriceVersion); err != nil {
+			return model.PriceVersion{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return model.PriceVersion{}, err
 	}
 	return price, nil
@@ -142,14 +160,14 @@ func (s *UsageStore) ResolvePriceVersion(ctx context.Context, connectionID int64
 	var price model.PriceVersion
 	err := s.db.QueryRow(ctx, `
     SELECT id, price_version, provider_connection_id, endpoint_fingerprint, model_name, currency,
-           input_price_minor_per_million, output_price_minor_per_million, is_free,
+	           input_price_minor_per_million, output_price_minor_per_million, is_free, is_estimated,
            effective_from, note
     FROM model_price_versions
     WHERE provider_connection_id = $1 AND model_name = $2 AND effective_from <= $3
     ORDER BY effective_from DESC, id DESC
     LIMIT 1`, connectionID, modelName, at,
 	).Scan(&price.ID, &price.PriceVersion, &price.ConnectionID, &price.EndpointFP, &price.ModelName,
-		&price.Currency, &price.InputPerMillion, &price.OutputPerMillion, &price.IsFree,
+		&price.Currency, &price.InputPerMillion, &price.OutputPerMillion, &price.IsFree, &price.IsEstimated,
 		&price.EffectiveFrom, &price.Note)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return model.PriceVersion{}, false, nil
@@ -387,15 +405,21 @@ func reserveProjectBudgetTx(ctx context.Context, tx pgx.Tx, input ReserveUsageIn
 func reserveBatchBudgetTx(ctx context.Context, tx pgx.Tx, input ReserveUsageInput) error {
 	// 先确认批次存在且币种一致：币种不一致说明调用方拿错了配置，
 	// 此时把它当成「额度不足」会让用户去加预算而不是去修配置 —— 误导。
-	var batchCurrency string
+	var batchCurrency, status, controlState string
 	var existingLimit int64
 	if err := tx.QueryRow(ctx, `
-    SELECT budget_currency, budget_limit_minor FROM batches WHERE id = $1 FOR UPDATE`,
-		*input.BatchID).Scan(&batchCurrency, &existingLimit); err != nil {
+    SELECT budget_currency, budget_limit_minor, status, control_state
+    FROM batches WHERE id = $1 AND project_id = $2 FOR UPDATE`,
+		*input.BatchID, input.ProjectID).Scan(&batchCurrency, &existingLimit, &status, &controlState); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return &apiStoreError{Message: "批次不存在，无法预留预算"}
 		}
 		return err
+	}
+	// PauseBatch locks the same row. Every HTTP attempt must pass this check,
+	// including retries and a unit's second request; a pre-read is insufficient.
+	if controlState != model.BatchControlRun || status == model.BatchStatusPaused || status == model.BatchStatusPauseRequested {
+		return ErrBatchPaused
 	}
 	if batchCurrency != input.Currency {
 		return &apiStoreError{Message: fmt.Sprintf(
