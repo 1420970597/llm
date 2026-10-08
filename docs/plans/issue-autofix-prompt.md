@@ -258,6 +258,29 @@ npm run build
 > 就必须额外跑 `scripts/go-test-postgres.sh`**（它负责起临时 Postgres、套迁移、再注入 DSN）。
 > 只跑 `go-gate.sh` 会把「集成测试未执行」误当成「集成测试通过」——
 > 这与把「无证据」当成「已验证」是同一类错误。
+>
+> **第二个已实测的假绿陷阱：在 worktree 里跑了主 checkout 的脚本。**
+> 第 3 轮实测：`scripts/check-docs.mjs` 用 `path.dirname(import.meta.url)` 推导 `REPO_ROOT`
+> （见其 `:30`），因此**脚本文件在哪，校验的就是那棵树**。在证据 worktree 里写成
+> `node /root/llm/scripts/check-docs.mjs` 时，脚本会把 `REPO_ROOT` 解析成**主 checkout**，
+> 于是「本轮新写的证据文档」**根本没被检查**，而输出仍是「全部通过」——
+> 本地假绿、CI 的 `Docs consistency (links + anchors)` 立刻 `exit 1`。
+>
+> 实测复现（在 worktree 内故意写坏一条相对链接）：
+>
+> ```text
+> $ node /root/llm/scripts/check-docs.mjs    # 主 checkout 的脚本 → 只查主 checkout
+> 全部通过：相对链接可解析、同文档锚点有对应标题、代码引用路径真实存在。   exit=0   ← 假绿
+> $ node scripts/check-docs.mjs              # worktree 内的脚本 → 查当前树
+>   ✗ docs/audit/issue-212-r3/README.md: 相对链接指向不存在的路径 -> BROKEN.png   exit=1  ← 与 CI 一致
+> ```
+>
+> **规则：门禁脚本一律用「当前工作树内的相对路径」调用**（先 `cd` 进工作树，
+> 再 `node scripts/check-docs.mjs` / `bash scripts/go-test-postgres.sh`），
+> **绝不用主 checkout 的绝对路径**。任何按 `import.meta.url` / `$0` / `BASH_SOURCE`
+> 推导仓库根的脚本都受此约束。
+> 这与上一段的 `go-gate.sh` 盲区是同一类错误：**本地门禁与 CI 不等价时，
+> 「本地全绿」是一个没有证据力的结论**。
 
 ### 6.3 自测闭环
 
@@ -385,13 +408,36 @@ gh pr create --base main --head <分支名> \
 
 | 落点 | 判定条件 | 操作 |
 | --- | --- | --- |
-| **关闭** | 门禁全绿 **且** 修复后复现确认缺陷消失 **且** 聚合型子项全部收口 | 评论证据 → `gh issue close <n>` → 台账记 `fixed` |
+| **关闭** | ① 门禁全绿 **且** ② 修复后复现确认缺陷消失 **且** ③ 聚合型子项全部收口 **且** ④ **修复已进入 `origin/main`** | 评论证据 → `gh issue close <n>` → 台账记 `fixed` |
 | **部分修复，留待迭代** | 有真实进展但仍有子项未收口 | 评论（含逐项表 + 下轮计划）→ **保持开启** → 台账记 `partial` |
+| **已修复待人工合并** | 修复已完成且已在分支上取证，但载体 PR **尚未合并**（本任务无合并权限） | 评论写明「修复载体 PR #N 待人工合并」→ **保持开启** → 台账记 `partial` |
 | **升级人工** | 已做满 `MAX_ROUNDS`（默认 3）轮仍无实质进展，或根因超出自动化能力边界 | 评论说明卡点与已穷尽的方案 → 打 `autofix-blocked` → **保持开启** → 台账记 `blocked` |
 | **无法取证** | 环境/复现手段不足，拿不到可判定证据 | 评论说明缺口 → 保持开启 → 台账记 `blocked` |
 
 > **不要为了「本轮有产出」而假关闭。** 关闭 issue 是本 SOP 中**最高风险**的操作，
-> 只有第一行的三个条件**同时**满足才允许。
+> 只有第一行的**四个**条件**同时**满足才允许。
+
+#### 条件④「修复已进入 `origin/main`」——为什么必须有
+
+**已实测踩到**：有三条 issue（#203 / #211 / #212）在**修复载体 PR 仍为 OPEN**
+（即 `main` 上的缺陷**依然存在**）时就被 `close` 并记 `fixed`，且评论里**从未**
+说明「待合并」。后果很具体：
+
+- 以 #203 为例，其缺陷文案在 `origin/main` 上**至今仍然在世**
+  （`ReleasePages.tsx` 仍写死「发布范围（已接纳的内容版本）」）；
+- 但 issue 已显示为「已修复并关闭」—— 任何读者（包括甲方）都会得到**错误结论**。
+
+这正是本 SOP 最高原则禁止的「谎报修好了」。在分支上取证只能证明**分支**已修；
+缺陷的真实性以 `main` 为准。
+
+**判定方式（不能用 `git merge-base --is-ancestor`）**：本仓库用 **squash/rebase**
+合并，因此分支上的提交**永远不会**成为 `main` 的祖先 —— 用 `--is-ancestor` 判定会
+把「已合并且已修复」误判成「未合并」。正确做法是查 PR 的终态：
+
+```bash
+gh pr view <PR编号> --json state,mergedAt -q '"\(.state) \(.mergedAt // \"-\")"'
+# MERGED → 可关闭；OPEN/CLOSED（未合并）→ 走「已修复待人工合并」，保持开启
+```
 
 ### 8.4 记台账 + 释放认领（**必做，漏了会污染下一轮**）
 
@@ -417,8 +463,13 @@ scripts/issue-bot/preflight.sh release <编号> --blocked
       `scripts/go-test-postgres.sh`（否则 38 处集成测试静默 skip，等于未验证）
 - [ ] 未收口项已在评论中列出
 - [ ] issue 状态与 §8.3 判定一致
+- [ ] **若本轮打算 `close`：已用 `gh pr view <N> --json state` 确认载体 PR 是 `MERGED`**
+      （不是 `--is-ancestor`，本仓库 squash 合并）—— 否则只能走「已修复待人工合并」并保持开启
 - [ ] 台账已写、`release` 返回 0（含复核）
 - [ ] 若本轮是 `blocked`，已加 `autofix-blocked` 标签
+- [ ] **门禁脚本用当前工作树内的相对路径跑**（不是主 checkout 的绝对路径）——
+      否则 `check-docs.mjs` 一类按 `import.meta.url` 推导仓库根的脚本会去查**另一棵树**，
+      给出假绿而 CI 直接红（§6.2 第二个假绿陷阱）
 - [ ] **工作树干净**（`git status --porcelain` 为空）—— 否则崩后残留的脏工作树
       会让下一轮 `probe` 返回 10 而**持续空转**
 

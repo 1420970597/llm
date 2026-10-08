@@ -1,0 +1,37 @@
+{
+  "issue": 197,
+  "subitem": "13-length-scope",
+  "phase": "before",
+  "base": "http://127.0.0.1:3210",
+  "viewport": "1600x1000",
+  "account": "admin@company.com",
+  "batch": "b_3",
+  "httpStatus": 200,
+  "length": {
+    "count": 4,
+    "shortest": 1052,
+    "longest": 1699,
+    "p50": 1082,
+    "p90": 1699,
+    "meanChars": 1235,
+    "fieldCount": 1
+  },
+  "notes": [
+    "长度按字符数统计（中文 1 字 = 1 字符），分位用最近秩法。",
+    "重复率按内容指纹统计，只说明「内容完全相同」，不代表语义重复。",
+    "接地率是「这条内容的生成输入里有素材块」的比例；无素材来源的项目恒为 0。"
+  ],
+  "ui": {
+    "route": "/p/1/runs/b_3",
+    "analysisCardPresent": 1,
+    "lengthTileLabel": "长度中位 / P90 | 1082 / 1699 | 最短 1052 · 最长 1699 · 均值 1235（字符数）",
+    "lengthScopeElementCount": 0,
+    "lengthScopeText": "",
+    "notesText": "口径说明：长度按字符数统计（中文 1 字 = 1 字符），分位用最近秩法。 | 口径说明：重复率按内容指纹统计，只说明「内容完全相同」，不代表语义重复。 | 口径说明：接地率是「这条内容的生成输入里有素材块」的比例；无素材来源的项目恒为 0。",
+    "lengthScopeDisclosedOnUi": false
+  },
+  "fieldCountClaimed": 1,
+  "fieldBreakdownPresent": false,
+  "ok": false,
+  "pageErrors": []
+}

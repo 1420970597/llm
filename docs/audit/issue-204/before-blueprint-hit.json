@@ -1,0 +1,112 @@
+{
+  "stage": "before",
+  "base": "http://127.0.0.1:3210",
+  "viewport": {
+    "width": 1600,
+    "height": 1000
+  },
+  "geometry": {
+    "canvas": {
+      "x": 225,
+      "width": 790,
+      "scrollWidth": 1886,
+      "overflowX": "auto"
+    },
+    "inspector": {
+      "x": 1037,
+      "width": 420
+    }
+  },
+  "nodes": [
+    {
+      "index": 0,
+      "key": "coverage",
+      "label": "覆盖范围",
+      "x": 256,
+      "right": 492,
+      "inViewport": true,
+      "hitClass": "blueprint-node__caption",
+      "hitIsSelf": true,
+      "hitByInspector": false
+    },
+    {
+      "index": 1,
+      "key": "standard",
+      "label": "思维标准",
+      "x": 526,
+      "right": 762,
+      "inViewport": true,
+      "hitClass": "blueprint-node__caption",
+      "hitIsSelf": true,
+      "hitByInspector": false
+    },
+    {
+      "index": 2,
+      "key": "generation",
+      "label": "生成",
+      "x": 796,
+      "right": 1032,
+      "inViewport": true,
+      "hitClass": "blueprint-node__caption",
+      "hitIsSelf": true,
+      "hitByInspector": false
+    },
+    {
+      "index": 3,
+      "key": "evaluation",
+      "label": "独立评估",
+      "x": 1066,
+      "right": 1302,
+      "inViewport": true,
+      "hitClass": "blueprint-inspector",
+      "hitIsSelf": false,
+      "hitByInspector": true
+    },
+    {
+      "index": 4,
+      "key": "rules",
+      "label": "规则检查",
+      "x": 1336,
+      "right": 1572,
+      "inViewport": true,
+      "hitClass": "blueprint-inspector",
+      "hitIsSelf": false,
+      "hitByInspector": true
+    },
+    {
+      "index": 5,
+      "key": "human_review",
+      "label": "人工检查点",
+      "x": 1606,
+      "right": 1842,
+      "inViewport": false,
+      "hitClass": null,
+      "hitIsSelf": false,
+      "hitByInspector": false
+    },
+    {
+      "index": 6,
+      "key": "delivery",
+      "label": "版本交付",
+      "x": 1876,
+      "right": 2112,
+      "inViewport": false,
+      "hitClass": null,
+      "hitIsSelf": false,
+      "hitByInspector": false
+    }
+  ],
+  "clippedByInspector": [
+    "evaluation",
+    "rules"
+  ],
+  "unhittableInViewport": [
+    "evaluation",
+    "rules"
+  ],
+  "nodesInViewport": 5,
+  "nodesTotal": 7,
+  "consoleErrors": [
+    "HTTP 401 /api/v1/auth/me"
+  ]
+}

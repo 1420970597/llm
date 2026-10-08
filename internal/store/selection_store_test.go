@@ -302,4 +302,67 @@ func TestListSamplesIncludesReviewProjection(t *testing.T) {
 	}
 }
 
+// TestSelectionCompositionMatchesProjection 覆盖 issue #203 的核心断言：
+// 快照构成必须按**服务端审阅投影**统计，且总数等于冻结条数。
+//
+// 为什么必须连真实 Postgres：构成来自 `review_projections` 的 LEFT JOIN，
+// 「没有投影行按 pending 计入」是 SQL 层语义，mock 测不出来。
+func TestSelectionCompositionMatchesProjection(t *testing.T) {
+	fixture := newSelectionFixture(t)
+	ctx := context.Background()
+
+	snapshot, err := fixture.selections.Create(ctx, CreateSelectionSnapshotInput{
+		ProjectID: fixture.projectID, Purpose: "release", CreatedBy: &fixture.userID,
+		SampleVersionIDs: fixture.versionIDs(),
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// 正常路径：全部未判断 → 三条都算 pending，没有 accepted。
+	// 这正是 issue #203 的实测形态（「全量冻结」含未审阅内容）。
+	before, err := fixture.selections.Composition(ctx, fixture.projectID, snapshot.ID)
+	if err != nil {
+		t.Fatalf("Composition: %v", err)
+	}
+	if before.Pending != 3 || before.Accepted != 0 {
+		t.Fatalf("未判断时应为 pending=3/accepted=0，实际 %+v", before)
+	}
+	if before.Total() != snapshot.ItemCount {
+		t.Fatalf("构成总数 %d 必须等于冻结条数 %d", before.Total(), snapshot.ItemCount)
+	}
+
+	// 接纳一条后，构成必须随之转移（否则标题会与事实不符 —— #203 的本质）。
+	projection, err := fixture.reviews.GetProjection(ctx, fixture.projectID, fixture.versions[0].ID)
+	if err != nil {
+		t.Fatalf("GetProjection: %v", err)
+	}
+	if _, err := fixture.reviews.SubmitDecision(ctx, fixture.projectID, fixture.userID,
+		model.SubmitDecisionInput{
+			SampleVersionID: fixture.versions[0].ID, EvidenceRevision: projection.EvidenceRevision,
+			ReviewerRevision: 1, Action: model.DecisionAccept, Reason: "推理链完整",
+		}); err != nil {
+		t.Fatalf("SubmitDecision: %v", err)
+	}
+	after, err := fixture.selections.Composition(ctx, fixture.projectID, snapshot.ID)
+	if err != nil {
+		t.Fatalf("Composition(after): %v", err)
+	}
+	if after.Accepted != 1 || after.Pending != 2 {
+		t.Fatalf("接纳一条后应为 accepted=1/pending=2，实际 %+v", after)
+	}
+	if after.Total() != snapshot.ItemCount {
+		t.Fatalf("构成总数 %d 必须等于冻结条数 %d", after.Total(), snapshot.ItemCount)
+	}
+
+	// 边界：作用域。跨项目读不属自己的快照必须得到全 0，而不能把别人的计数漏出来。
+	other, err := fixture.selections.Composition(ctx, fixture.projectID+1_000_000, snapshot.ID)
+	if err != nil {
+		t.Fatalf("Composition(other project): %v", err)
+	}
+	if other.Total() != 0 {
+		t.Fatalf("跨项目构成必须为空，实际 %+v", other)
+	}
+}
+
 var _ = os.Getpid

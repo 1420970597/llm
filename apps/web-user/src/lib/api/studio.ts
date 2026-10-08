@@ -389,6 +389,9 @@ export type DatasetAnalysis = {
     p50: number
     p90: number
     meanChars: number
+    fieldCount: number
+    /** 实际参与长度统计的字段键（顺序来自服务端）。空集合表示没有可分析内容。 */
+    fields: string[]
   } | null
   difficulty: Array<{ key: string; label: string; count: number; share: number; expected?: number | null }>
   reviewStatus: Array<{ key: string; label: string; count: number; share: number }>
@@ -625,6 +628,19 @@ export type SelectionSnapshot = {
   createdBy?: number
   createdAt: string
   expiresAt?: string
+}
+
+/**
+ * 快照范围内按「有效处置」的构成（issue #203）。
+ *
+ * 与 `review_projections.effective_action` 同一取值域：没有投影行的内容版本
+ * 按 `pending`（未判断）计入。标题必须按这份构成渲染，而不是写死「已接纳」。
+ */
+export type SelectionComposition = {
+  accepted: number
+  pending: number
+  quarantined: number
+  conflict: number
 }
 
 export type CreateSelectionSnapshotRequest = {
@@ -1297,7 +1313,7 @@ export const studioApi = {
   /** `GET P/selection-snapshots/{id}`：**重新鉴权**后解析范围。 */
   getSelectionSnapshot: (projectId: ProjectResourceId, snapshotId: number) =>
     client
-      .get<{ snapshot: SelectionSnapshot; items: number[]; count: number }>(
+      .get<{ snapshot: SelectionSnapshot; items: number[]; count: number; composition?: SelectionComposition }>(
         `${projectPath(projectId)}/selection-snapshots/${snapshotId}`,
       )
       .then((response) => response.data),

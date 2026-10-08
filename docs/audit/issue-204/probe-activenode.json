@@ -1,0 +1,71 @@
+{
+  "base": "http://127.0.0.1:3210",
+  "results": [
+    {
+      "key": "coverage",
+      "nodeX": 256,
+      "nodeRight": 492,
+      "canvasLeft": 225,
+      "canvasRight": 1015,
+      "canvasScrollLeft": 0,
+      "visibleInCanvas": true,
+      "inspectorTitle": "覆盖范围"
+    },
+    {
+      "key": "generation",
+      "nodeX": 796,
+      "nodeRight": 1032,
+      "canvasLeft": 225,
+      "canvasRight": 1015,
+      "canvasScrollLeft": 0,
+      "visibleInCanvas": true,
+      "inspectorTitle": "生成"
+    },
+    {
+      "key": "evaluation",
+      "nodeX": 1066,
+      "nodeRight": 1302,
+      "canvasLeft": 225,
+      "canvasRight": 1015,
+      "canvasScrollLeft": 0,
+      "visibleInCanvas": false,
+      "inspectorTitle": "独立评估"
+    },
+    {
+      "key": "rules",
+      "nodeX": 1336,
+      "nodeRight": 1572,
+      "canvasLeft": 225,
+      "canvasRight": 1015,
+      "canvasScrollLeft": 0,
+      "visibleInCanvas": false,
+      "inspectorTitle": "规则检查"
+    },
+    {
+      "key": "human_review",
+      "nodeX": 1606,
+      "nodeRight": 1842,
+      "canvasLeft": 225,
+      "canvasRight": 1015,
+      "canvasScrollLeft": 0,
+      "visibleInCanvas": false,
+      "inspectorTitle": "人工检查点"
+    },
+    {
+      "key": "delivery",
+      "nodeX": 1876,
+      "nodeRight": 2112,
+      "canvasLeft": 225,
+      "canvasRight": 1015,
+      "canvasScrollLeft": 0,
+      "visibleInCanvas": false,
+      "inspectorTitle": "版本交付"
+    }
+  ],
+  "invisibleActiveNodes": [
+    "evaluation",
+    "rules",
+    "human_review",
+    "delivery"
+  ]
+}

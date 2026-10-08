@@ -1,0 +1,41 @@
+{
+  "issue": 201,
+  "phase": "before",
+  "base": "http://127.0.0.1:3210",
+  "viewport": "1600x1000",
+  "account": "admin@company.com",
+  "deployedVersion": "f615353f2f95b9e4c718abf4b818071e1547a3d7",
+  "maintenanceWaitMs": 45000,
+  "armed": {
+    "armedRow": "completed|4|1",
+    "batchItemRows": 1
+  },
+  "batch": {
+    "status": "completed",
+    "plannedUnits": 4,
+    "completedUnits": 1,
+    "failedUnits": 0,
+    "inFlightUnits": 0,
+    "shortfallUnits": 3,
+    "shortfallNote": "计划 4，实际产出 1，缺口 3：覆盖率不足或无素材接地，请补充方向配额/素材后重跑",
+    "capabilities": {
+      "canPause": false,
+      "canResume": false,
+      "canRetryFailed": false
+    }
+  },
+  "clickableActionButtons": [
+    "搜索",
+    "A",
+    "异常恢复"
+  ],
+  "shortfallCardText": "产出缺口：计划 4，实际产出 1，缺口 3\n计划 4，实际产出 1，缺口 3：覆盖率不足或无素材接地，请补充方向配额/素材后重跑",
+  "noteBlamesCoverage": true,
+  "showsCompletedDespiteShortfall": true,
+  "correctionEvent": null,
+  "correctionsBefore": 7,
+  "correctionsAfter": 7,
+  "newCorrectionEvents": 0,
+  "pageErrors": [],
+  "ok": false
+}
