@@ -50,6 +50,7 @@ trap cleanup EXIT
 
 echo "[go-test-postgres] 启动临时 Postgres（$IMAGE，宿主端口 $PORT）"
 docker run -d --rm --name "$CONTAINER" "${postgres_limits[@]}" \
+  -v "$REPO_ROOT:/w:ro" \
   -e "POSTGRES_DB=$DB_NAME" -e "POSTGRES_USER=$DB_USER" -e "POSTGRES_PASSWORD=$DB_PASS" \
   -p "127.0.0.1:$PORT:5432" "$IMAGE" >/dev/null
 
@@ -102,9 +103,26 @@ echo "[go-test-postgres] 迁移完成：$(find sql/migrations -name '*.sql' | wc
 
 export LLM_TEST_POSTGRES_DSN="postgres://$DB_USER:$DB_PASS@127.0.0.1:$PORT/$DB_NAME?sslmode=disable"
 
+# Fault acceptance reuses the same disposable Postgres lifecycle. The schema
+# probes run inside the postgres image, where psql is present.
+if [ "${TEST_SCHEMA_FAULTS:-0}" = "1" ]; then
+  docker exec -w /w "$CONTAINER" sh scripts/check-schema-faults.sh \
+    "postgres://$DB_USER:$DB_PASS@127.0.0.1:5432/$DB_NAME?sslmode=disable"
+fi
+
+extra_args=()
+for name in LLM_TEST_REDIS_ADDR LLM_TEST_S3_ENDPOINT LLM_TEST_S3_ACCESS_KEY LLM_TEST_S3_SECRET_KEY LLM_TEST_FAULT_CONTROL_DIR; do
+  if [ -n "${!name:-}" ]; then
+    extra_args+=(-e "$name=${!name}")
+  fi
+done
+if [ -n "${LLM_TEST_FAULT_CONTROL_DIR:-}" ]; then
+  extra_args+=(-v "$LLM_TEST_FAULT_CONTROL_DIR:$LLM_TEST_FAULT_CONTROL_DIR")
+fi
 echo "[go-test-postgres] 执行：$*"
 # 不要用 exec：exec 会替换掉当前 shell，trap 于是不会触发，
 # 临时 Postgres 容器会一直留在后台占着端口（实测踩过一次）。
 docker run --rm --network host -v "$REPO_ROOT:/w" -w /w "${go_limits[@]}" \
   -e "LLM_TEST_POSTGRES_DSN=$LLM_TEST_POSTGRES_DSN" \
+  "${extra_args[@]}" \
   "$GO_IMAGE" "$@"

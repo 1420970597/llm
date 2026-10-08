@@ -136,6 +136,24 @@ jobs:
       - name: Real Postgres + migrations + required integration tests
         run: ./scripts/go-test-postgres.sh sh scripts/check-integration-tests.sh
 
+  studio-failures:
+    name: Studio failures (real Redis + MinIO + Postgres)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Real service interruption, lease recovery, storage fault and rollback
+        run: |
+          mkdir -p test/artifacts/studio-failures
+          set -o pipefail
+          bash scripts/go-test-studio-failures.sh 2>&1 | tee test/artifacts/studio-failures/report.log
+      - name: Upload fault acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-failure-report
+          path: test/artifacts/studio-failures/report.log
+          if-no-files-found: error
+
   stack:
     name: Stack (compose up + migrate + healthz)
     runs-on: ubuntu-latest

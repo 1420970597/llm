@@ -716,7 +716,19 @@ func (s *JobStore) RetryJob(ctx context.Context, jobID int64) (model.Job, error)
 		return model.Job{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	job, err := retryJobTx(ctx, tx, jobID)
+	if err != nil {
+		return model.Job{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return model.Job{}, err
+	}
+	return job, nil
+}
 
+// retryJobTx allows a business retry (such as release publication) to reuse the
+// same durable job transition in its own transaction.
+func retryJobTx(ctx context.Context, tx pgx.Tx, jobID int64) (model.Job, error) {
 	var status string
 	if err := tx.QueryRow(ctx, `
     SELECT status FROM jobs WHERE id = $1 FOR UPDATE`, jobID).Scan(&status); err != nil {
@@ -746,12 +758,18 @@ func (s *JobStore) RetryJob(ctx context.Context, jobID int64) (model.Job, error)
 		"studio.jobs", map[string]any{"jobId": jobID, "reason": "manual_retry"}); err != nil {
 		return model.Job{}, err
 	}
+	// A second manual retry reuses the same event identity. Rearm it explicitly;
+	// ON CONFLICT DO NOTHING alone would leave a previously dispatched event
+	// closed and the freshly pending job asleep until maintenance recovered it.
+	if _, err := tx.Exec(ctx, `
+    UPDATE outbox SET status='pending', attempts=0, next_attempt_at=NOW(),
+      dispatched_at=NULL, last_error=''
+    WHERE event_id=$1`, outboxEventIDForJobReclaim(jobID, -1)); err != nil {
+		return model.Job{}, err
+	}
 
 	job, err := scanJob(tx.QueryRow(ctx, jobSelectByIDSQL, jobID))
 	if err != nil {
-		return model.Job{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return model.Job{}, err
 	}
 	return job, nil

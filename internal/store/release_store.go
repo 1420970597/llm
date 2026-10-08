@@ -55,6 +55,67 @@ var (
 	ErrReleasePublished = errors.New("该发布版本已发布，内容与数据卡只读")
 )
 
+// MarkBuildFailed records a failed attempt without changing the stable release
+// identity.  A release build can fail after the candidate has been frozen (for
+// example when object storage is unavailable); leaving it in `building` would
+// make the UI and the rollout health view report a permanently active job and
+// would prevent an operator from retrying the same releaseId.  The update is
+// fenced to the building state so a late failure cannot overwrite a published
+// release.  Replays after a previous failure or after publication are harmless.
+func (s *ReleaseStore) MarkBuildFailed(ctx context.Context, releaseID int64, job model.Job) error {
+	if releaseID <= 0 {
+		return ErrReleaseNotFound
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	// Match FreezeRelease's lock order (release before job) so a concurrent
+	// operator retry and worker failure cannot deadlock each other.
+	var status string
+	if err := tx.QueryRow(ctx, `SELECT status FROM releases WHERE id = $1 FOR UPDATE`, releaseID).Scan(&status); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrReleaseNotFound
+		}
+		return err
+	}
+	var valid bool
+	if err := tx.QueryRow(ctx, `
+    SELECT lease_owner = $2 AND fencing_token = $3 AND lease_until > NOW()
+      AND status IN ('leased', 'running') AND job_kind = $4
+      AND project_id = (SELECT project_id FROM releases WHERE id = $5)
+      AND (payload->>'releaseId')::bigint = $5
+      AND EXISTS (
+        SELECT 1 FROM release_candidates c
+        WHERE c.release_id = $5 AND c.revision = (jobs.payload->>'revision')::bigint
+          AND c.revision = (SELECT MAX(revision) FROM release_candidates WHERE release_id = $5))
+    FROM jobs WHERE id = $1 FOR UPDATE`,
+		job.ID, job.LeaseOwner, job.FencingToken, model.JobKindReleaseBuild, releaseID).Scan(&valid); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrJobLeaseLost
+		}
+		return err
+	}
+	if !valid {
+		return ErrJobLeaseLost
+	}
+	tag, err := tx.Exec(ctx, `
+    UPDATE releases SET status = 'build_failed', updated_at = NOW()
+    WHERE id = $1 AND status = 'building'`, releaseID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() > 0 {
+		return tx.Commit(ctx)
+	}
+	// Idempotent retry, or a race where the successful worker published first.
+	if status == model.ReleaseStatusBuildFailed || status == model.ReleaseStatusPublished {
+		return tx.Commit(ctx)
+	}
+	return fmt.Errorf("发布 %d 当前状态 %q，不能标记构建失败", releaseID, status)
+}
+
 // Release 是一次发布（稳定身份）。
 type Release struct {
 	ID          int64  `json:"id"`
@@ -449,6 +510,22 @@ func (s *ReleaseStore) FreezeRelease(ctx context.Context, projectID, releaseID, 
 	if err := appendOutboxTx(ctx, tx, fmt.Sprintf("release:%d:publish", releaseID), "studio.releases",
 		map[string]any{"releaseId": releaseID, "projectId": projectID, "revision": candidateRevision}); err != nil {
 		return Release{}, err
+	}
+	// The generic release event is an audit/notification event. The dispatcher
+	// only executes durable jobs with a jobId, so the build must also be enqueued
+	// in this same transaction; a release-only event would leave building stuck.
+	buildJob, _, err := EnqueueJobTx(ctx, tx, EnqueueJobInput{
+		ProjectID: &projectID, Kind: model.JobKindReleaseBuild,
+		Payload:        map[string]int64{"releaseId": releaseID, "revision": candidateRevision},
+		IdempotencyKey: fmt.Sprintf("release:%d:build:%d", releaseID, candidateRevision), CreatedBy: &actorID,
+	})
+	if err != nil {
+		return Release{}, err
+	}
+	if buildJob.Status == model.JobStatusFailed || buildJob.Status == model.JobStatusDead {
+		if _, err := retryJobTx(ctx, tx, buildJob.ID); err != nil {
+			return Release{}, err
+		}
 	}
 	if err := writeStudioAuditTx(ctx, tx, StudioAudit{
 		ActorID: actorID, Action: "release_freeze", Resource: "release",

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/1420970597/llm/internal/model"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -405,6 +406,18 @@ func TestFreezeReleaseIsIdempotentAndStartsBuilding(t *testing.T) {
 	if releaseCount != 1 {
 		t.Fatalf("双击不得生成第二个发布版本，实际 %d 个", releaseCount)
 	}
+	var buildJobCount, buildOutboxCount int
+	if err := fixture.pool.QueryRow(ctx, `SELECT COUNT(*) FROM jobs WHERE project_id=$1 AND job_kind=$2 AND payload->>'releaseId'=$3`,
+		fixture.projectID, model.JobKindReleaseBuild, fmt.Sprint(release.ID)).Scan(&buildJobCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.pool.QueryRow(ctx, `SELECT COUNT(*) FROM outbox WHERE payload->>'jobId' IN (SELECT id::text FROM jobs WHERE project_id=$1 AND job_kind=$2 AND payload->>'releaseId'=$3)`,
+		fixture.projectID, model.JobKindReleaseBuild, fmt.Sprint(release.ID)).Scan(&buildOutboxCount); err != nil {
+		t.Fatal(err)
+	}
+	if buildJobCount != 1 || buildOutboxCount != 1 {
+		t.Fatalf("重复冻结必须只有一个持久化发布作业及通知，实际 jobs=%d outbox=%d", buildJobCount, buildOutboxCount)
+	}
 
 	// outbox 事件必须存在（T21 的发布作业靠它派发）。
 	var outboxCount int
@@ -527,5 +540,68 @@ func TestUpdateCandidateRejectsEmptyRange(t *testing.T) {
 	}
 	if !hasFieldError(fieldErrors, "sampleVersionIds") {
 		t.Fatalf("空范围的字段错误必须指向 sampleVersionIds，实际 %+v", fieldErrors)
+	}
+}
+
+// TestMarkBuildFailedIsIdempotentAndDoesNotOverwritePublished verifies the
+// failure transition used by the worker when object storage or manifest writes
+// fail.  It covers the normal building -> build_failed path and the boundary
+// late-error path after publication.
+func TestMarkBuildFailedIsIdempotentAndDoesNotOverwritePublished(t *testing.T) {
+	fixture := newReleaseFixture(t)
+	ctx := context.Background()
+	release, err := fixture.releases.CreateReleaseCandidate(ctx,
+		fixture.candidateInput("failure-state", fixture.versionIDs))
+	if err != nil {
+		t.Fatalf("CreateReleaseCandidate: %v", err)
+	}
+	if _, err := fixture.releases.FreezeRelease(ctx, fixture.projectID, release.ID, fixture.userID); err != nil {
+		t.Fatalf("FreezeRelease: %v", err)
+	}
+	var jobID int64
+	if err := fixture.pool.QueryRow(ctx, `SELECT id FROM jobs WHERE project_id=$1 AND job_kind=$2 AND payload->>'releaseId'=$3`,
+		fixture.projectID, model.JobKindReleaseBuild, fmt.Sprint(release.ID)).Scan(&jobID); err != nil {
+		t.Fatalf("freeze must enqueue a durable release build: %v", err)
+	}
+	jobs := NewJobStore(fixture.pool)
+	job, claimed, err := jobs.ClaimJobByID(ctx, jobID, "release-failure-test", time.Minute)
+	if err != nil || !claimed {
+		t.Fatalf("claim release build: claimed=%v err=%v", claimed, err)
+	}
+	if err := fixture.releases.MarkBuildFailed(ctx, release.ID, job); err != nil {
+		t.Fatalf("MarkBuildFailed: %v", err)
+	}
+	failed, err := fixture.releases.GetRelease(ctx, fixture.projectID, release.ID)
+	if err != nil {
+		t.Fatalf("GetRelease after failure: %v", err)
+	}
+	if failed.Status != model.ReleaseStatusBuildFailed {
+		t.Fatalf("building release must become build_failed, got %s", failed.Status)
+	}
+	if err := fixture.releases.MarkBuildFailed(ctx, release.ID, job); err != nil {
+		t.Fatalf("replayed MarkBuildFailed must be idempotent: %v", err)
+	}
+
+	// A late worker error must never overwrite a published release.  The model
+	// test suite covers publication rules; here we pin the store's SQL fence by
+	// moving this disposable row to published before the second call.
+	if _, err := fixture.pool.Exec(ctx,
+		`UPDATE releases SET status = 'published', published_at = NOW() WHERE id = $1`, release.ID); err != nil {
+		t.Fatalf("publish fixture release: %v", err)
+	}
+	if err := fixture.releases.MarkBuildFailed(ctx, release.ID, job); err != nil {
+		t.Fatalf("late MarkBuildFailed should be ignored after publish: %v", err)
+	}
+	published, err := fixture.releases.GetRelease(ctx, fixture.projectID, release.ID)
+	if err != nil {
+		t.Fatalf("GetRelease after publication: %v", err)
+	}
+	if published.Status != model.ReleaseStatusPublished {
+		t.Fatalf("late failure must not overwrite published release, got %s", published.Status)
+	}
+	stale := job
+	stale.FencingToken++
+	if err := fixture.releases.MarkBuildFailed(ctx, release.ID, stale); !errors.Is(err, ErrJobLeaseLost) {
+		t.Fatalf("stale lease must be rejected even after publication: %v", err)
 	}
 }

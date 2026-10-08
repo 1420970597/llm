@@ -715,6 +715,25 @@ func TestRetryJobResetsBudgetAndRepublishes(t *testing.T) {
 	if republish != 1 {
 		t.Fatalf("人工重试必须产生 1 条派发事件，实际 %d", republish)
 	}
+	// Once that retry has itself been dispatched and failed, another manual
+	// retry must reopen the same outbox event immediately rather than waiting
+	// for the stalled-dispatch maintenance timeout.
+	if _, err := fixture.pool.Exec(ctx, `UPDATE outbox SET status='dispatched', dispatched_at=NOW()`); err != nil {
+		t.Fatal(err)
+	}
+	claimedAgain, ok, err := fixture.jobs.ClaimJobByID(ctx, job.ID, "worker", model.DefaultLeaseDuration)
+	if err != nil || !ok {
+		t.Fatalf("claim manual retry: %v %v", ok, err)
+	}
+	if _, err := fixture.jobs.FailJob(ctx, job.ID, "worker", claimedAgain.FencingToken, model.ErrorClassSchema, "still invalid"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.jobs.RetryJob(ctx, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.pool.QueryRow(ctx, `SELECT COUNT(*) FROM outbox WHERE status='pending' AND dispatched_at IS NULL`).Scan(&republish); err != nil || republish != 1 {
+		t.Fatalf("repeated manual retry must reopen exactly one event: %d %v", republish, err)
+	}
 
 	// 对 running 的作业「重试」必须被拒绝：那不是重试而是并发重复执行。
 	second, _, err := fixture.jobs.EnqueueJob(ctx, EnqueueJobInput{
