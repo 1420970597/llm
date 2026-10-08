@@ -1,0 +1,33 @@
+{
+  "issue": 197,
+  "item": 11,
+  "phase": "before",
+  "base": "http://127.0.0.1:3210",
+  "viewport": "1600x1000",
+  "account": "admin@company.com",
+  "deployedVersion": {
+    "version": "a889b43ba00d1f9b1d6fccbdea735b04ca13e299",
+    "buildTime": "2026-10-01T11:20:07Z",
+    "source": "apps/web-user"
+  },
+  "route": "/p/p_1/coverage",
+  "formulaText": "m 1 × n 2 × z 4 = 4",
+  "formulaIsProduct": null,
+  "parsedFormula": {
+    "m": 1,
+    "n": 2,
+    "z": 4,
+    "result": 4
+  },
+  "formulaArithmeticHolds": false,
+  "capacityFromData": 4,
+  "formulaMatchesCapacity": true,
+  "domainCount": 1,
+  "directionCount": 2,
+  "quotas": [
+    2,
+    2
+  ],
+  "consoleErrors": [],
+  "ok": false
+}
