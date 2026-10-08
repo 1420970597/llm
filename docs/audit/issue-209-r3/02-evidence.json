@@ -1,0 +1,256 @@
+{
+  "stage": "after",
+  "base": "http://127.0.0.1:3310",
+  "project": "1",
+  "viewport": {
+    "width": 1600,
+    "height": 1000
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "connections": [
+    {
+      "id": "20",
+      "nameText": "自动服务-192538",
+      "nameHasFallbackMark": true,
+      "modelText": "未设置",
+      "statusText": "停用\n配置不完整，不可用于生成",
+      "configWarning": "配置不完整，不可用于生成"
+    },
+    {
+      "id": "19",
+      "nameText": "未命名连接",
+      "nameHasFallbackMark": true,
+      "modelText": "未设置",
+      "statusText": "停用\n配置不完整，不可用于生成",
+      "configWarning": "配置不完整，不可用于生成"
+    },
+    {
+      "id": "18",
+      "nameText": "未命名连接",
+      "nameHasFallbackMark": true,
+      "modelText": "未设置",
+      "statusText": "停用\n配置不完整，不可用于生成",
+      "configWarning": "配置不完整，不可用于生成"
+    },
+    {
+      "id": "17",
+      "nameText": "未命名连接",
+      "nameHasFallbackMark": true,
+      "modelText": "未设置",
+      "statusText": "停用\n配置不完整，不可用于生成",
+      "configWarning": "配置不完整，不可用于生成"
+    },
+    {
+      "id": "16",
+      "nameText": "自动服务-506335",
+      "nameHasFallbackMark": true,
+      "modelText": "未设置",
+      "statusText": "停用\n配置不完整，不可用于生成",
+      "configWarning": "配置不完整，不可用于生成"
+    },
+    {
+      "id": "15",
+      "nameText": "未命名连接",
+      "nameHasFallbackMark": true,
+      "modelText": "未设置",
+      "statusText": "停用\n配置不完整，不可用于生成",
+      "configWarning": "配置不完整，不可用于生成"
+    },
+    {
+      "id": "14",
+      "nameText": "未命名连接",
+      "nameHasFallbackMark": true,
+      "modelText": "未设置",
+      "statusText": "停用\n配置不完整，不可用于生成",
+      "configWarning": "配置不完整，不可用于生成"
+    },
+    {
+      "id": "13",
+      "nameText": "未命名连接",
+      "nameHasFallbackMark": true,
+      "modelText": "未设置",
+      "statusText": "停用\n配置不完整，不可用于生成",
+      "configWarning": "配置不完整，不可用于生成"
+    },
+    {
+      "id": "11",
+      "nameText": "hy3-judge",
+      "nameHasFallbackMark": false,
+      "modelText": "global:hy3",
+      "statusText": "启用",
+      "configWarning": null
+    },
+    {
+      "id": "7",
+      "nameText": "gpt-5.6-sol-judge",
+      "nameHasFallbackMark": false,
+      "modelText": "global:hy4-preview",
+      "statusText": "启用",
+      "configWarning": null
+    },
+    {
+      "id": "1",
+      "nameText": "deepseek-v4.1-flash",
+      "nameHasFallbackMark": false,
+      "modelText": "global:deepseek-v4.1-flash",
+      "statusText": "启用",
+      "configWarning": null
+    }
+  ],
+  "unnamedConnectionRows": 0,
+  "incompleteMarkedRows": 8,
+  "dropdown": {
+    "optionTexts": [
+      "自动服务-192538",
+      "未命名连接 #19",
+      "未命名连接 #18",
+      "未命名连接 #17",
+      "自动服务-506335",
+      "未命名连接 #15",
+      "未命名连接 #14",
+      "未命名连接 #13",
+      "hy3-judge",
+      "gpt-5.6-sol-judge",
+      "deepseek-v4.1-flash"
+    ],
+    "blankOptions": 0,
+    "disabledOptions": 8
+  },
+  "providers": {
+    "total": 11,
+    "emptyNameAndBaseUrl": 6,
+    "emptyActive": 0,
+    "invalidBaseUrl": 2,
+    "withConfigIssues": 8,
+    "rows": [
+      {
+        "id": 20,
+        "name": "自动服务-192538",
+        "baseUrl": "not-a-url",
+        "model": "",
+        "isActive": false,
+        "configIssues": [
+          "基础 URL 不是完整的 http(s) 地址",
+          "模型名称为空"
+        ]
+      },
+      {
+        "id": 19,
+        "name": "",
+        "baseUrl": "",
+        "model": "",
+        "isActive": false,
+        "configIssues": [
+          "服务名称为空",
+          "基础 URL 为空",
+          "模型名称为空"
+        ]
+      },
+      {
+        "id": 18,
+        "name": "",
+        "baseUrl": "",
+        "model": "",
+        "isActive": false,
+        "configIssues": [
+          "服务名称为空",
+          "基础 URL 为空",
+          "模型名称为空",
+          "最大并发数不是正数",
+          "超时秒数不是正数"
+        ]
+      },
+      {
+        "id": 17,
+        "name": "",
+        "baseUrl": "",
+        "model": "",
+        "isActive": false,
+        "configIssues": [
+          "服务名称为空",
+          "基础 URL 为空",
+          "模型名称为空",
+          "最大并发数不是正数",
+          "超时秒数不是正数"
+        ]
+      },
+      {
+        "id": 16,
+        "name": "自动服务-506335",
+        "baseUrl": "not-a-url",
+        "model": "",
+        "isActive": false,
+        "configIssues": [
+          "基础 URL 不是完整的 http(s) 地址",
+          "模型名称为空"
+        ]
+      },
+      {
+        "id": 15,
+        "name": "",
+        "baseUrl": "",
+        "model": "",
+        "isActive": false,
+        "configIssues": [
+          "服务名称为空",
+          "基础 URL 为空",
+          "模型名称为空"
+        ]
+      },
+      {
+        "id": 14,
+        "name": "",
+        "baseUrl": "",
+        "model": "",
+        "isActive": false,
+        "configIssues": [
+          "服务名称为空",
+          "基础 URL 为空",
+          "模型名称为空",
+          "最大并发数不是正数",
+          "超时秒数不是正数"
+        ]
+      },
+      {
+        "id": 13,
+        "name": "",
+        "baseUrl": "",
+        "model": "",
+        "isActive": false,
+        "configIssues": [
+          "服务名称为空",
+          "基础 URL 为空",
+          "模型名称为空",
+          "最大并发数不是正数",
+          "超时秒数不是正数"
+        ]
+      },
+      {
+        "id": 11,
+        "name": "hy3-judge",
+        "baseUrl": "http://152.53.126.151:8885/v1",
+        "model": "global:hy3",
+        "isActive": true,
+        "configIssues": []
+      },
+      {
+        "id": 7,
+        "name": "gpt-5.6-sol-judge",
+        "baseUrl": "http://152.53.126.151:8885/v1",
+        "model": "global:hy4-preview",
+        "isActive": true,
+        "configIssues": []
+      },
+      {
+        "id": 1,
+        "name": "deepseek-v4.1-flash",
+        "baseUrl": "http://152.53.126.151:8885/v1",
+        "model": "global:deepseek-v4.1-flash",
+        "isActive": true,
+        "configIssues": []
+      }
+    ]
+  }
+}
