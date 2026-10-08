@@ -377,8 +377,8 @@ record(
   // 基础契约包含 34 条；评估/清洗两个 Atelier 辅助工作台、兼容索引
   // 与历史资产索引/详情是额外入口。保留精确计数，避免整组路由被误删时「>=」仍然通过，
   // 同时把每个产品级入口的加入明确写进守卫，而不是让它变成隐式漂移。
-  routeBlocks.length === 38 && routeBlocks.every((block) => block.status === 'planned' || block.status === 'available'),
-  `共 ${routeBlocks.length} 条路由（34 基础 + 2 评估/清洗工作台 + 2 历史资产）；状态缺失：${routeBlocks.filter((block) => !block.status).map((block) => block.key).join(', ') || '无'}`,
+  routeBlocks.length === 40 && routeBlocks.every((block) => block.status === 'planned' || block.status === 'available'),
+  `共 ${routeBlocks.length} 条路由（34 基础 + 2 评估/清洗工作台 + 2 历史资产 + 2 素材来源）；状态缺失：${routeBlocks.filter((block) => !block.status).map((block) => block.key).join(', ') || '无'}`,
 )
 
 /**

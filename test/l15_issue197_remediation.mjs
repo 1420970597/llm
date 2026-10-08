@@ -953,7 +953,7 @@ function readProductFormula(formula) {
       ? `${formula}（${parsed.m}×${parsed.n}×${parsed.z}=${parsed.result}）`
       : `公式不是自洽乘积，实际：${formula}`,
   )
-  // 后端 `model.CoverageCapacity` 的口径：quota ≤ 0 视为 1。
+  // 未明确来源的历史文档保留 quota ≤ 0 视为 1 的容量语义。
   const zeroQuota = coverage.deriveCoverageStructure({
     domains: [{ stableId: 'd', name: '领域', directions: [
       { stableId: 'z', name: '零配额', quota: 0 },
@@ -961,10 +961,16 @@ function readProductFormula(formula) {
     ] }],
   })
   record(
-    '#197-11 quota ≤ 0 视为 1（与后端 CoverageCapacity 同口径）',
+    '#197-11 历史无来源 quota ≤ 0 视为 1（与后端 CoverageCapacity 同口径）',
     zeroQuota.capacity === 2,
     `容量=${zeroQuota.capacity}（期望 2）`,
   )
+  const excluded = coverage.deriveCoverageStructure({ domains: [{ directions: [
+    { stableId: 'none', source: 'none', quota: 0 },
+    { stableId: 'document', source: 'document', quota: 0 },
+    { stableId: 'ai', source: 'ai', quota: 3 },
+  ] }] })
+  record('#217 显式零配额方向不计入容量', excluded.capacity === 3, `容量=${excluded.capacity}（期望 3）`)
   // 非乘积形态：各方向配额不等时**不得**编造 `m×n×z = 结果` 等式。
   const mixed = coverage.deriveCoverageStructure({
     domains: [{ stableId: 'd', name: '领域', directions: [{ stableId: 'a', name: '方向一', quota: 1 }, { stableId: 'b', name: '方向二', quota: 3 }] }],

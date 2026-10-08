@@ -11,7 +11,10 @@ import { ProjectLayout } from './ProjectLayout'
 import { StudioLayout } from './StudioLayout'
 import { ProjectOverviewPage, ProjectsPage } from './pages/ProjectsPages'
 import { NewProjectWizard } from './pages/NewProjectWizard'
-import { BlueprintPage, CoveragePage, StandardPage } from './pages/BlueprintPages'
+import { BlueprintPage, StandardPage } from './pages/BlueprintPages'
+import { TargetStructurePage } from './pages/TargetStructurePage'
+import { SourceDocumentsPage } from './pages/SourceDocumentsPage'
+import { SourceImportWizard } from './pages/SourceImportWizard'
 import { BatchDetailPage, BatchPlanningPage, FailuresPage, RunsPage } from './pages/RunPages'
 import { SampleHistoryPage, SampleListPage, SampleReviewPage } from './pages/ReviewPages'
 import { ComparePage } from './pages/ComparePage'
@@ -92,7 +95,9 @@ const AVAILABLE_PAGES: Record<string, () => JSX.Element> = {
   'project.runDetail': () => <BatchDetailPage />,
   'project.runFailures': () => <FailuresPage />,
   'project.blueprint': () => <BlueprintPage />,
-  'project.coverage': () => <CoveragePage />,
+  'project.coverage': () => <TargetStructurePage />,
+  'project.sources': () => <SourceDocumentsPage />,
+  'project.sourceImport': () => <SourceImportWizard />,
   'project.standard': () => <StandardPage />,
   new: () => <WizardRoute step="basic" />,
   'new.coverage': () => <WizardRoute step="coverage" />,

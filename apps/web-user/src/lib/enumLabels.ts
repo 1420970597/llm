@@ -351,6 +351,7 @@ const AUDIT_RESOURCE_LABELS: Record<string, string> = {
   standard_version: '思维标准版本',
   quality_policy_version: '质量策略版本',
   mapping_version: '交付映射版本',
+  source_version: '来源文档版本',
   export_mapping: '导出映射',
   sample_version: '样本版本',
   chain_standard: '思维链标准',

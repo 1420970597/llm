@@ -16,8 +16,8 @@
  *     界面才能在「不是一个乘积」时给出诚实的表述，而不是硬凑一个算不通的等式。
  *
  * 与后端的口径：`capacity` 必须与 `model.CoverageCapacity` 逐字一致 ——
- * `quota ≤ 0` 视为 1（界面上它是一个「有名字的方向」，若不计入，容量会小于
- * 实际分配出的单元数，容量校验就会误拒合法计划量）。
+ * 显式来源方向的零配额不参与生产；旧版本未注明来源时保留 `quota ≤ 0`
+ * 回退为 1 的历史语义，避免改变已保存批次的容量。
  */
 
 /** 覆盖矩阵的 `m × n × z` 结构读数。 */
@@ -38,9 +38,10 @@ function asDirections(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item)) : []
 }
 
-/** `quota ≤ 0` 视为 1，与后端 `CoverageCapacity` / `AllocateCoverageUnits` 一致。 */
-function quotaOf(direction: Record<string, unknown>): number {
+/** 与后端 CoverageCapacity / AllocateCoverageUnits 保持同一兼容口径。 */
+export function coverageQuotaOf(direction: Record<string, unknown>): number {
   const quota = Number(direction.quota)
+  if (direction.source && quota === 0) return 0
   return Number.isFinite(quota) && quota > 0 ? quota : 1
 }
 
@@ -54,7 +55,7 @@ export function deriveCoverageStructure(payload: Record<string, unknown>): Cover
   const domains = Array.isArray(payload.domains) ? payload.domains.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item)) : []
   const directionsPerDomain = domains.map((domain) => asDirections(domain.directions))
   const directionCount = directionsPerDomain.reduce((total, directions) => total + directions.length, 0)
-  const quotas = directionsPerDomain.flatMap((directions) => directions.map(quotaOf))
+  const quotas = directionsPerDomain.flatMap((directions) => directions.map(coverageQuotaOf))
   const capacity = quotas.reduce((total, quota) => total + quota, 0)
   return {
     domainCount: domains.length,

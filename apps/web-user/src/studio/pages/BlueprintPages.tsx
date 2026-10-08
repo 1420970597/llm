@@ -5,8 +5,8 @@ import { AlertTriangle, CheckCircle2, Copy, FileCog, History, Plus, Save, Trash2
 import { client } from '../../lib/api'
 import { newIdempotencyKey, projectPath } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
-import { projectHref } from '../StudioLayout'
-import { CopyVersionButton, CoveragePayloadEditor, DocumentHistory, DocumentSaveBar, StandardPayloadEditor, useVersionedDocument } from '../DocumentEditors'
+import { CopyVersionButton, DocumentHistory, DocumentSaveBar, StandardPayloadEditor, useVersionedDocument } from '../DocumentEditors'
+export { TargetStructurePage as CoveragePage } from './TargetStructurePage'
 
 /**
  * 设计区页面（Issue #160 T11）：蓝图节点检查器、覆盖矩阵、标准历史。
@@ -1158,72 +1158,6 @@ function RatioMapEditor({ value, disabled, onChange }: { value: unknown; disable
  * 不能触发旧内容重生成」**。因此缺口链接指向 `/pilot`（规划新批次），
  * 而不是任何「重新生成」入口 —— 后者会让已有成功内容被重跑并重复计费。
  */
-export function CoveragePage() {
-  const scope = useProjectScope()
-  const navigate = useNavigate()
-  const { Title, Text } = Typography
-  const state = useVersionedDocument(scope.projectId, 'coverage-versions')
-  if (state.loading) {
-    return (
-      <div className="flex justify-center py-10">
-        <Spin tip="正在加载覆盖方案" />
-      </div>
-    )
-  }
-  if (state.error) {
-    return (
-      <Card className="console-card">
-        <Text strong className="block">
-          加载失败
-        </Text>
-        <Text type="tertiary">{state.error}</Text>
-        <Button size="small" className="mt-3" onClick={() => void state.reload()}>重试</Button>
-      </Card>
-    )
-  }
-
-  const payload = state.payload ?? { schemaVersion: 'coverage.v1', domains: [] }
-  const domains = Array.isArray(payload.domains) ? payload.domains as Array<Record<string, unknown>> : []
-  const totalQuota = domains.reduce(
-    (sum, domain) =>
-      sum +
-      ((domain.directions as Array<Record<string, unknown>> | undefined) ?? []).reduce(
-        (inner, direction) => inner + Number(direction.quota ?? 0),
-        0,
-      ),
-    0,
-  )
-
-  return (
-    <div className="console-page" data-studio-page="coverage">
-      <div className="console-page__header">
-        <div>
-          <Title heading={4} className="!mb-1">
-            覆盖矩阵
-          </Title>
-          <Text type="tertiary">
-            领域和方向使用稳定 ID；保存新版本不会改写已经运行的批次。
-          </Text>
-        </div>
-        <div className="console-page__actions"><CopyVersionButton state={state} /></div>
-      </div>
-
-      <Card className="console-card mb-3" bodyStyle={{ padding: 16 }}>
-        <Text type="tertiary" size="small">共 {domains.length} 个领域，方向配额合计 {totalQuota}（计划单元数，不是已产出数量）</Text>
-      </Card>
-      <CoveragePayloadEditor payload={payload} disabled={state.isReadOnly || !state.canEdit} onChange={state.setPayload} />
-      <DocumentSaveBar state={state} label="覆盖方案" />
-      <DocumentHistory state={state} />
-      {domains.length > 0 ? <Card className="console-card mt-3" bodyStyle={{ padding: 14 }}>
-        <Text strong className="block mb-2">从方向开始下一批试制</Text>
-        <div className="coverage-directions coverage-directions--actions">
-          {domains.flatMap((domain) => ((domain.directions as Array<Record<string, unknown>> | undefined) ?? []).map((direction) => <button key={`${String(domain.stableId)}-${String(direction.stableId)}`} type="button" className="coverage-gap" data-coverage-gap="true" onClick={() => navigate(`${projectHref('project.pilot', scope.projectId)}?slice=${encodeURIComponent(String(direction.stableId ?? ''))}`)}>以“{String(direction.name ?? '未命名方向')}”规划新批次</button>))}
-        </div>
-      </Card> : null}
-    </div>
-  )
-}
-
 /**
  * 思维标准页（P04）。
  *
