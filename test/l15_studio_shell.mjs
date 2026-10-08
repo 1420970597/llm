@@ -615,16 +615,16 @@ record('路由路径可由元数据填充', filledPath === '/p/7/data', filledPa
   )
 }
 
-// 变异 5：把滚动 effect 的依赖退回只有 activeSpec → 加载中节点未挂载时漏滚，必须被捕获。
+// 变异 5：删除滚动 effect 的 loading 依赖；保留缩放等其他依赖，仍必须捕获漏滚。
 {
   const mutated = blueprintPageSource.replace(
-    /\}, \[activeSpec, loading\]\)/,
-    '}, [activeSpec])',
+    /\}, \[(activeSpec,[^\]]*\bloading\b[^\]]*)\]\)/,
+    (_, dependencies) => `}, [${dependencies.split(',').map((value) => value.trim()).filter((value) => value !== 'loading').join(', ')}])`,
   )
   const problems = problemsWithBlueprintActiveNodeReachability(mutated)
   record(
     '变异 5：滚动 effect 缺少 loading 依赖会被捕获',
-    problems.length > 0,
+    mutated !== blueprintPageSource && problems.length > 0,
     `退回依赖后捕获到 ${problems.length} 个问题`,
   )
 }
