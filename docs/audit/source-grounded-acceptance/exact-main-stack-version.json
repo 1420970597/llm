@@ -1,0 +1,36 @@
+{
+  "sourceRevision": "bd439ebae5e25b63419a070986e5e3b9ec885e5f",
+  "worktreeCleanAtBuildAndLaunch": true,
+  "buildLogs": {
+    "api": "/tmp/llm-journey-main-api-build.log",
+    "worker": "/tmp/llm-journey-main-worker-build.log",
+    "web": "/tmp/llm-journey-main-web-build.log"
+  },
+  "images": {
+    "api": {
+      "container": "llmgrounding-api-1",
+      "imageID": "sha256:27e3cc55970c7a7a9efcb32a057b1dd4f650e55990a19b9d5b3bbaa57a902213",
+      "revisionLabel": "bd439ebae5e25b63419a070986e5e3b9ec885e5f",
+      "binarySHA256": "e486448df6bc829c894076719474b6551ad4e2a4fd3f57c41ad9805c975ad935"
+    },
+    "worker": {
+      "container": "llmgrounding-worker-1",
+      "imageID": "sha256:d530baccd948374a03d8816891dc087ee4ec0ebb04382a6fe0d97b926d692635",
+      "revisionLabel": "bd439ebae5e25b63419a070986e5e3b9ec885e5f",
+      "binarySHA256": "573b7dd808d362c30fa30c4f050d8167ac2985590fa7d131839f875fcfa29384"
+    },
+    "web": {
+      "container": "llmgrounding-web-user-1",
+      "imageID": "sha256:206eab10808d34b38325b9b09e0021cb2cdeb0de4642e5239fe1715748f05567",
+      "revisionLabel": "bd439ebae5e25b63419a070986e5e3b9ec885e5f",
+      "versionJSON": {
+        "version": "bd439ebae5e25b63419a070986e5e3b9ec885e5f",
+        "buildTime": "2026-10-08T07:00:00Z",
+        "source": "apps/web-user"
+      },
+      "buildTimeSource": "explicit build-argument timestamp; not image completion time"
+    }
+  },
+  "apiVersionSelfReport": "No API version route exists; provenance uses clean checkout, build log, image label/ID and binary digest.",
+  "journey": {"freshProjects": true, "resumeEvidence": false, "repairGRPOMapping": false, "providerID": 1, "model": "deepseek-v4.1-flash", "maxTokens": 16384}
+}

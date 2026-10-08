@@ -1,0 +1,60 @@
+{
+  "releaseId": 9,
+  "revision": 1,
+  "releaseName": "grounding-2026-10-08T07-06-05-325Z",
+  "targetKind": "grpo",
+  "format": "jsonl",
+  "mappingVersionId": 86,
+  "encoderVersion": "atelier-exporter-v1",
+  "intendedUse": "隔离验收，非生产训练数据",
+  "limitations": [
+    "单样本技术验收；未进行真人可用性验收或真实独立裁判评估"
+  ],
+  "provenance": {
+    "runID": "2026-10-08T07-06-05-325Z"
+  },
+  "items": [
+    {
+      "sampleId": 12,
+      "sampleVersionId": 12,
+      "contentHash": "2ce748ccf804578b6d7b11fa7dfbfe2c0d3fa5230dd0b0bea91c76460c4f354d",
+      "standardContentHash": "0853ab7bb124e7f396ca8e710a77d992bfab3dd10a354bc60ccc7c016cb48064",
+      "blueprintContentHash": "938eaf131bfaff08b30365232f744a27ed51ce991f4e34b438ba1f09fa1aaffa",
+      "aggregateReviewRevision": 1,
+      "source": "document",
+      "sourceChunks": [
+        {
+          "id": 19,
+          "contentHash": "749a098c952f3f9764191315ea38e6cb671ca3718f51553c7de790f556474498",
+          "headingPath": "北辰仓库退货政策",
+          "status": "available"
+        },
+        {
+          "id": 20,
+          "contentHash": "aab4083e1abe7bc42f7b00cbfe54d7b50067450f6bc6be24b6223ee64b51a6e2",
+          "headingPath": "特殊情况",
+          "status": "available"
+        }
+      ]
+    }
+  ],
+  "itemCount": 1,
+  "itemsContentHash": "sha256:1844c529512b31de300203c28a5e5424e0bdb5b1d7c20314c0ea736a9cbb4c60",
+  "qualitySnapshot": {
+    "inspected": 1,
+    "acceptanceRate": 1,
+    "acceptanceRateDisplay": "100.0%"
+  },
+  "coverageSummary": {
+    "excludedItemCount": 0,
+    "originalItemCount": 1
+  },
+  "grounding": {
+    "chunks": 2,
+    "missing": 0,
+    "groundedSamples": 1,
+    "ungroundedSamples": 0,
+    "externalImports": 0
+  },
+  "hashScope": "release_items+config"
+}

@@ -130,7 +130,7 @@ STUDIO_ENABLED=false                              # API 与 worker 同时设
 
 1. **生产灰度尚未执行**：隔离真实 Postgres/Redis/MinIO 的工程故障演练与 CI 必需 PASS 门禁见
    [2026-10 故障验收记录](2026-10-studio-failure-validation.md)，覆盖 Redis 中断、租约重投、
-   schema/worker 类型错配、对象存储失败、开关回退与固定下载。它们不替代第 3 节连续 48 小时的
+   schema/worker 类型错配、对象存储失败、开关回退与固定下载。它们不替代第 4 节连续 48 小时的
    真正灰度，也不替代真实商业 provider 任务、生产 SLO 标定或 T34 真人会话。
 2. **SLO 阈值未标定**：见第 2 节。
 3. **旧写入口的冻结属于 T31**：本文件只说明了「旧控制台不持有新对象的写路径」

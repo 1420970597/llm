@@ -1,0 +1,96 @@
+{
+  "runID": "2026-10-08T07-06-05-325Z",
+  "baseURL": "http://127.0.0.1:18086",
+  "webURL": "http://127.0.0.1:13216",
+  "generationMaxTokens": 16384,
+  "sourceRevision": "bd439ebae5e25b63419a070986e5e3b9ec885e5f",
+  "productSourceRunID": "2026-10-08T07-06-05-325Z",
+  "projects": [
+    {
+      "projectID": 9,
+      "targetKind": "sft",
+      "sourceVersionID": 80,
+      "sourceChunkIDs": [
+        17,
+        18
+      ],
+      "batchID": 9,
+      "sampleID": "s_8",
+      "sampleVersionID": 8,
+      "contentHash": "2cff5c9f4a1ee53a529a7aae6863009e7d262c146f404e2031722dd90022bb2e",
+      "releaseID": 7,
+      "artifactHash": "sha256:5f56babea8e5e0d25260f2a259136cc86d3f49947a046becb2dc50770720899e",
+      "budget": {
+        "budget": {
+          "projectId": 9,
+          "currency": "CNY",
+          "limitMinor": 10000,
+          "reservedMinor": 0,
+          "settledMinor": 0,
+          "uncertainMinor": 12,
+          "version": 4
+        },
+        "notes": [
+          "未知费用按当时的预留金额占用额度（unknown 不等于 0）：超时/断连时供应商可能已收费",
+          "实际（settled）只放精确金额；估计与未知都计入 uncertain，因此「剩余额度」会偏保守",
+          "pause：额度用尽时阻止新的自动执行，不会静默换更便宜的模型"
+        ]
+      }
+    },
+    {
+      "projectID": 10,
+      "targetKind": "grpo",
+      "sourceVersionID": 89,
+      "sourceChunkIDs": [
+        19,
+        20
+      ],
+      "levels": [
+        "不合格",
+        "合格",
+        "优秀"
+      ],
+      "batchID": 10,
+      "sampleID": "s_12",
+      "sampleVersionID": 12,
+      "contentHash": "2ce748ccf804578b6d7b11fa7dfbfe2c0d3fa5230dd0b0bea91c76460c4f354d",
+      "releaseID": 9,
+      "artifactHash": "sha256:80fa6d027025aec52a8005ec61ddbd3c886b5f93beaeae7b07d32f64de9440a2",
+      "budget": {
+        "budget": {
+          "projectId": 10,
+          "currency": "CNY",
+          "limitMinor": 10000,
+          "reservedMinor": 0,
+          "settledMinor": 0,
+          "uncertainMinor": 13,
+          "version": 4
+        },
+        "notes": [
+          "未知费用按当时的预留金额占用额度（unknown 不等于 0）：超时/断连时供应商可能已收费",
+          "实际（settled）只放精确金额；估计与未知都计入 uncertain，因此「剩余额度」会偏保守",
+          "pause：额度用尽时阻止新的自动执行，不会静默换更便宜的模型"
+        ]
+      }
+    }
+  ],
+  "checks": [
+    "sft:source-import-and-replay",
+    "sft:real-generated-content-and-source-ids",
+    "sft:same-source-judge-rejected",
+    "sft:pending-review-blocks-publication",
+    "sft:published-download-hash-and-typed-fields",
+    "alpaca:product-preview-import-replay-and-failures",
+    "grpo:source-import-and-replay",
+    "sharegpt:product-preview-import-replay-and-failures",
+    "jsonl:product-preview-import-replay-and-failures",
+    "external-imports-do-not-change-frozen-release-or-claim-grounding",
+    "grpo:real-generated-content-and-source-ids",
+    "grpo:same-source-judge-rejected",
+    "grpo:default-structured-mapping",
+    "grpo:pending-review-blocks-publication",
+    "grpo:published-download-hash-and-typed-fields"
+  ],
+  "phaseErrors": [],
+  "result": "passed"
+}

@@ -68,7 +68,7 @@
 
 ## 5. 证据清单（DoD 逐条对照）
 
-「已收集」= 已有自动化或文档证据；「待人工」= 需要真实会话或真实部署才能产生。
+「已收集」= 已有自动化或文档证据；「正在验证」= 尚未归档并合入的工程运行结果；「待人工」= 需要真实会话、独立质量判断或真实部署观察才能产生。当前代码证据基线为 main `bd439eb`，#267 最终 head 和合并 main 均五项 CI SUCCESS。
 
 | DoD 条目 | 证据来源 | 状态 |
 |---|---|---|
@@ -76,13 +76,15 @@
 | 创建项目不调用模型；pilot 与 scale 独立；快照固定；暂停/预算/恢复基于服务端事实 | `internal/studio/batch_runner_test.go`、`apps/api/routes_studio_contract_test.go` | 已收集 |
 | 同基准 A/B 可解释；采用只规划新批次；未知费用不伪造 | `internal/store/comparison_store_test.go`、`internal/model/usage_test.go` | 已收集 |
 | 样本原文不可被判断覆盖；规则/裁判/人工分离；并发冲突可见 | `internal/store/review_store_test.go`、`internal/store/rule_store_test.go` | 已收集 |
-| SFT 与 GRPO 均有真实全旅程；GRPO JSONL 保留数组与判据 | `internal/model/grpo_export_test.go`、`internal/studio/release_build_test.go`、`internal/studio/experiment_runner_grpo_test.go` | 部分（自动化已覆盖结构与路径；**真实 provider 全旅程待人工**） |
-| 发布具备内容/来源/版本/质量/mapping/manifest/hash；异常不产生假发布；后续修改不改旧下载 | `internal/store/release_store_test.go`、`internal/store/release_artifact_store_test.go` | 部分（hash 与冻结已覆盖；**真实对象存储故障注入待人工**） |
+| SFT 与 GRPO 均有真实全旅程；GRPO JSONL 保留数组与判据 | `internal/model/grpo_export_test.go`、`internal/studio/release_build_test.go`、`internal/studio/experiment_runner_grpo_test.go`；[供应商技术验收](../architecture/source-grounded-acceptance.md) | 部分：真实素材生成、发布下载、数组与来源引用、公开格式导入已有技术证据；失败与成功运行分别保留。模型仍来自同一 endpoint；**完整独立裁判、两版 pilot 同基准比较、scale 与真人任务未完成** |
+| 发布具备内容/来源/版本/质量/mapping/manifest/hash；异常不产生假发布；后续修改不改旧下载 | `internal/store/release_store_test.go`、`internal/store/release_artifact_store_test.go`；#264 [真实故障验收记录](2026-10-studio-failure-validation.md) | 已收集工程证据：真实 MinIO 拒绝凭证、同身份发布恢复、回退后固定下载/hash 与损坏拒绝均已执行；工程故障验收不替代真人发布任务和连续灰度 |
 | owner/reviewer/viewer/admin 能力服务端执行 | `internal/store/authz_store_test.go`、`apps/api/routes_studio_contract_test.go` | 已收集 |
 | 旧资产迁移可 dry-run/续跑/对账/解释缺失 | `internal/legacy/inventory_integration_test.go`、`internal/legacy/import_integration_test.go` | 已收集 |
-| CI 真实执行必要 DB/浏览器用例；桌面/窄屏/键盘/断网通过 | `internal/migrate/migrate_integration_test.go`、`test/l15_studio_browser_router.mjs`、CI `integration`；真实 Chromium `test/audit/t29_measure.mjs` 与 `docs/audit/issue-160-t29/`；#259 蓝图回归 `docs/audit/issue-197-closure/` | 已收集 DB/路由与真实浏览器断网、390/768/1440、键盘证据。素材导入/工作台五态 Chromium CI 在最终审计 PR 验证，未合 main 前保持待交付；44px 触屏目标仍有未达标控件 |
+| CI 真实执行必要 DB/浏览器用例；桌面/窄屏/键盘/断网通过 | `internal/migrate/migrate_integration_test.go`、`test/l15_studio_browser_router.mjs`、CI `integration`；真实 Chromium `test/audit/t29_measure.mjs` 与 `docs/audit/issue-160-t29/`；#259 蓝图回归 `docs/audit/issue-197-closure/`；#266 [CI run 37734281360](https://github.com/1420970597/llm/actions/runs/37734281360) | 已收集 DB/路由与真实浏览器断网、390/768/1440、键盘证据；#266 已合 main，五项 CI SUCCESS，素材导入/工作台五态 Chromium 的 `source217-ui-report` artifact 可复查。生产 UI 使用受控 API；44px 触屏目标仍有未达标控件 |
 | 十万样本分页、当前版本审阅口径与待审计数基准 | [PR #262](https://github.com/1420970597/llm/pull/262)、[十万样本性能报告](https://github.com/1420970597/llm/blob/cd8effc78c84b64a5dc7f48038abe3a3061167cd/docs/architecture/sample-query-performance.md) 及原始 before/after JSON | 已收集真实 PostgreSQL 100K 基准；同资源配置、单并发/4 并发、查询计划齐备。计时不含 HTTP/前端/LLM，不视为生产 SLA |
-| 模型实测、真实用户任务、灰度/回退有记录 | 本文件第 1–4 节 | **待人工**（尚未执行） |
+| 模型实测、真实用户任务、灰度/回退有记录 | 本文件第 1–4 节；[最终审计矩阵](final-issue-delivery-audit.md)；[供应商验收](../architecture/source-grounded-acceptance.md)；[故障验收记录](2026-10-studio-failure-validation.md)；[灰度手册](studio-rollout-runbook.md) 第 4 节 | 部分：供应商技术运行、失败历史与真实服务故障/工程回退已有记录；**完整独立质量旅程、5–8 名真人会话、连续 48 小时真实部署灰度与 SLO 标定仍待执行** |
+
+所需外部资源及原始记录见 [最终审计矩阵的资源表](final-issue-delivery-audit.md#160-尚需的外部验收资源与原始记录)：真实参与者及三角色会话、实际不同接入点的裁判配置、真实部署连续 48 小时版本/health 观察须分别提供。#267 已合 main `bd439eb`，终态、正文隔离、内容准入、截断结算、GRPO 档位与默认数组映射均有正常/异常回归；原项目 4 占位失败未发布，旧映射和失败发布没有被改写。真实技术成功不消除本表的外部验收缺口。
 
 ## 6. 阻塞级问题的处置
 

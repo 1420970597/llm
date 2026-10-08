@@ -71,7 +71,7 @@ SFT 独立探针先遇 HTTP 503，重试后 HTTP 200，但 `finish_reason=length
 
 恢复运行 `2026-10-08T06-47-29-957Z` 已完整通过，沿用项目 8 样本版本 7，新增映射版本 73、发布 5，保留旧映射 67 和失败发布 4。GRPO 下载 SHA-256 为 `6f310bf4528d58202de6948a53a357a2f2ccd6d1fa988eec67ce999410a4f7f7`，逐字比对三个中文档位及每档 criteria/accept_case/reject_case；manifest groundedSamples=1、missing=0。项目 8 仍只有两条模型用量记录，恢复无新增模型请求，uncertainMinor=12。三种公开产品格式再次通过 preview/导入/稳定重放、Alpaca 错误第二行、external_import 无素材来源声明、旧 SFT 冻结清单和下载 hash 不变的检查。浏览器保存了 SFT 与 GRPO 发布页截图，显示制品已校验及两块素材、零缺失。
 
-该恢复仍是混合版本及跨轮证据：API/Web 为先前 WIP，Worker 镜像为 `sha256:bec7605fb30d0e9cad41c771c239a66234f38316e175dc49fe2ddf3eb8fd0a4a`；不是精确 main 新项目默认映射验收。合并后将 API/Worker/Web 全部从同一精确 main SHA 重建，再执行不设置 resume/repair 的新 SFT、GRPO 和三格式完整旅程。
+该恢复仍是混合版本及跨轮证据：API/Web 为先前 WIP，Worker 镜像为 `sha256:bec7605fb30d0e9cad41c771c239a66234f38316e175dc49fe2ddf3eb8fd0a4a`；不是精确 main 新项目默认映射验收。合并后已将 API/Worker/Web 全部从同一精确 main SHA 重建，执行不设置 resume/repair 的新 SFT、GRPO 和三格式完整旅程并通过，详见下文精确 main 记录。
 
 ```mermaid
 stateDiagram-v2
@@ -101,9 +101,38 @@ stateDiagram-v2
 | 原生 GRPO 默认映射到发布 | 真实 PostgreSQL bootstrap、样本、冻结映射正常/异常回归通过 | 默认数组用单占位符；旧版本与文本映射语义保持不变 |
 | 输出截断与计费 | JSON、包装、SSE length 与 quoted 示例边界覆盖 | 真实 token 先结算；冻结上限耗尽不重复付费重试 |
 | 最终全量 Go/真实数据库门禁 | 1318 PASS、11 可选 SKIP、必需零缺失，包含 SFT 正常/未知目标子用例 | 43 个迁移完成，gofmt、vet、build 通过 |
-| 完整 SFT/GRPO 到下载 | 混合版本跨轮恢复通过，制品与来源核验通过 | 精确 main 全新完整旅程待合并后复验 |
+| 完整 SFT/GRPO 到下载 | 混合版本恢复通过；精确 main 全新旅程也通过 | main 运行无 resume/repair，自动审阅仍不是人工或独立裁判验收 |
 | 独立裁判、真人接受与 48 小时灰度 | 缺少真实证据 | 保留 Issue #160 的未满足边界 |
 
 真实旅程脚本为 `test/audit/source-grounded-journey.mjs`，必须在 Node/Playwright 容器中指定隔离 API、前端和真实连接 ID。脚本为每轮保存 evidence、制品与截图；它检查素材来源 ID、同源裁判拒绝、pending 审阅阻断发布、自动 accepted 后发布下载及 SHA-256、三种公开格式的导入重放和失败明细、冻结发布内容不变。自动 accepted 仅检验技术流程，不能冒充人工审阅。
 
-响应探针只在内存中解密现有凭据，不打印或保存凭据。输出目录保留脱敏响应与简明正文/usage 形态。原失败项目、批次和样本继续保留，没有通过 SQL 改写结果。旧版本恢复显式新增映射与发布；精确 main 复验将使用新项目，避免以改写旧证据制造成功。
+响应探针只在内存中解密现有凭据，不打印或保存凭据。输出目录保留脱敏响应与简明正文/usage 形态。原失败项目、批次和样本继续保留，没有通过 SQL 改写结果。旧版本恢复显式新增映射与发布；下述精确 main 复验使用了新项目，未改写旧证据。
+
+## 精确 main 的全新完整旅程
+
+PR #267 合并提交为 `bd439ebae5e25b63419a070986e5e3b9ec885e5f`。验收工作树 detached 到该精确 SHA，构建与启动前 `git status --porcelain` 为空。API、Worker、Web 均由该干净工作树构建后替换隔离栈的运行容器，三个镜像的 `org.opencontainers.image.revision` 标签一致；Web `/version.json` 也返回该 SHA。API 没有版本自报路由，版本证据使用构建日志、镜像标签、实际容器 image ID 和二进制摘要，不把环境变量声明当成服务自报。
+
+| 服务 | 实际运行容器的 image ID | 版本或二进制 SHA-256 |
+| --- | --- | --- |
+| API | `sha256:27e3cc55970c7a7a9efcb32a057b1dd4f650e55990a19b9d5b3bbaa57a902213` | `e486448df6bc829c894076719474b6551ad4e2a4fd3f57c41ad9805c975ad935` |
+| Worker | `sha256:d530baccd948374a03d8816891dc087ee4ec0ebb04382a6fe0d97b926d692635` | `573b7dd808d362c30fa30c4f050d8167ac2985590fa7d131839f875fcfa29384` |
+| Web | `sha256:206eab10808d34b38325b9b09e0021cb2cdeb0de4642e5239fe1715748f05567` | `/version.json` 为上述 main SHA；显式 buildTime 参数 `2026-10-08T07:00:00Z`，并非镜像完成时间 |
+
+全新运行 `2026-10-08T07-06-05-325Z` 的 evidence 结果为 passed，phaseErrors 为空；没有设置 `JOURNEY_RESUME_EVIDENCE` 或 `JOURNEY_REPAIR_GRPO_MAPPING`。新建项目与素材、冻结 16384 token 上限，并真实调用 canonical `deepseek-v4.1-flash`。GRPO 直接使用原生 bootstrap 默认 `{{levels}}` / `{{levelRubrics}}` 映射，不手工修正默认配置。该运行的三个产品 sourceKey 也为新 run ID，与先前恢复运行分开。
+
+| 新项目 | 生成与发布 | 素材来源 | 下载制品 SHA-256 | 实际 token 回执 |
+| --- | --- | --- | --- | --- |
+| SFT 9 | 批次 9 completed；样本版本 8；发布 7 published | 块 17、18；groundedSamples=1、missing=0 | `5f56babea8e5e0d25260f2a259136cc86d3f49947a046becb2dc50770720899e` | input/output 546/1608、730/7933 |
+| GRPO 10 | 批次 10 completed；样本版本 12；发布 9 published | 块 19、20；groundedSamples=1、missing=0 | `80fa6d027025aec52a8005ec61ddbd3c886b5f93beaeae7b07d32f64de9440a2` | input/output 546/2204、883/7695 |
+
+两个新项目均通过同源裁判拒绝、pending 审阅阻断、自动 accepted 技术流程、发布作业、下载 hash 与素材引用核验。SFT 推理及答案不为格式示例或省略号；GRPO 导出逐字比对“不合格、合格、优秀”档位及全部 criteria/accept_case/reject_case。Alpaca、ShareGPT、JSONL 三格式通过 preview/导入/幂等重放，Alpaca 第二行错误被准确保留；external_import 样本不宣称素材接地，产品导入后原 SFT 冻结清单和制品 hash 不变。浏览器两张发布页截图显示已发布、制品已校验、两块素材零缺失；GRPO 格式副文案明确仅支持 JSONL 并保留档位与判据数组。
+
+可长期复查的脱敏记录已纳入仓库：[运行结果](../audit/source-grounded-acceptance/evidence.json)、[三服务版本绑定](../audit/source-grounded-acceptance/exact-main-stack-version.json)、[SFT 清单](../audit/source-grounded-acceptance/sft-manifest.json) 与 [GRPO 清单](../audit/source-grounded-acceptance/grpo-manifest.json)。本机 output/playwright 的原 run 目录还保留两份下载 JSONL，供独立重算上述摘要。构建日志在本机 `/tmp/llm-journey-main-api-build.log`、`/tmp/llm-journey-main-worker-build.log`、`/tmp/llm-journey-main-web-build.log`，旅程日志为 `/tmp/llm-journey-exact-main-real.log`；本机日志不冒充公开附件。
+
+以下截图来自上述精确 main 的实际隔离发布页面，引用来源为本仓库 `test/audit/source-grounded-journey.mjs` 的 Chromium 运行。
+
+![SFT 发布 7：已发布、制品已校验、两个素材块零缺失](../audit/source-grounded-acceptance/sft-release.png)
+
+![GRPO 发布 9：仅 JSONL、完整档位判据数组、两个素材块零缺失](../audit/source-grounded-acceptance/grpo-release.png)
+
+项目 9、10 的 uncertainMinor 分别为 12、13，仍为隔离技术验收估计费用，没有精确供应商账单。自动 accepted、真实模型生成、来源引用完整和页面截图证明技术闭环；独立裁判、真实用户会话与持续 48 小时灰度仍需分别提供真实证据，Issue #160 的这些条件不能据此勾选或关单。
