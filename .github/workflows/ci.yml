@@ -98,10 +98,11 @@ jobs:
           failed=0
           # issue197_remediation 是 #190–#195 / #197 的结构回归守卫
           #（含变异自证：把源码改坏后断言必须报错）。
+          # migration_smoke 是 #217 B1：db-migrate-smoke 曾只跑 0001 却「永远绿灯」。
           for t in stage_routes silent_guards capability_entries legacy_compatibility capability_coverage markdown_ui recipes_empty_state detail_context auth_redirect nmx_params \
                    artifact_download dataset_status app_ux cleaning_ux studio_shell studio_entrypoint studio_wizard \
                    studio_review studio_browser_router deployment_version offline_queue team_permissions \
-                   issue197_remediation; do
+                   issue197_remediation migration_smoke; do
             f="test/l15_${t}.mjs"
             [ -f "$f" ] || { echo "缺少冻结测试 $f"; failed=1; continue; }
             echo "=== $f ==="
