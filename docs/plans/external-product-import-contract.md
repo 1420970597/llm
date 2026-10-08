@@ -39,13 +39,15 @@ sequenceDiagram
 
 JSON 数组与逐行 JSON 都支持。缺必需字段、类型错误、空答案或不完整对话只影响该行，失败 `sourceId` 为原始行号（数组为条目序号），失败明细最多 200 条但总计数完整。`<think>...</think>` 已有推理可拆分，未提供推理保留空串。固定样例位于 `test/fixtures/source-import/`，由实际映射测试读取。
 
-成品请求形状：`{format,sourceKey,content,targetKind:"sft",changeReason}`；可用 `contentBase64` 代替 content，不能同时提供。通用问答格式没有 GRPO 判据，GRPO 项目会返回字段级 422，避免伪造成教师数据。
+成品请求形状：`{format,sourceKey,content,targetKind:"sft",changeReason?}`；可用 `contentBase64` 代替 content，不能同时提供。未提供理由时自动记录「导入公开成品 <sourceKey>」。通用问答格式没有 GRPO 判据，GRPO 项目会返回字段级 422，避免伪造成教师数据。
 
-素材 form 字段：file、changeReason、expectedRevision、可选 sourceKey、chunking.algorithm、chunking.separator、chunking.maxLength、chunking.minLength、chunking.keepHeadingPath。缺省来源键由文件摘要与切分策略摘要组成，同文件调整策略可以重新导入。算法只公开已实现的 recursive/text，默认 2000/200 字符、换行段落分隔、保留标题路径。PDF/DOCX/目录导入明确不支持。正文规范化 CRLF/BOM；非 UTF-8 转换后再上传。超长段落按 Unicode 字符硬切，不丢正文。
+素材 form 字段：file、expectedRevision、可选 changeReason/sourceKey、chunking.algorithm、chunking.separator、chunking.maxLength、chunking.minLength、chunking.keepHeadingPath。未提供理由时自动记录「上传素材 <filename>」。缺省来源键由文件摘要与切分策略摘要组成，同文件调整策略可以重新导入。算法只公开已实现的 recursive/text，默认 2000/200 字符、换行段落分隔、保留标题路径。PDF/DOCX/目录导入明确不支持。正文规范化 CRLF/BOM；非 UTF-8 转换后再上传。超长段落按 Unicode 字符硬切，不丢正文。
 
 三层幂等复用 `legacy_imports`：唯一来源键绑定 project → 本系统内容 hash → 确定性样本键。不同项目同来源键互不冲突；相同键变更内容或策略返回 409，必须用新键。相同 completed 请求返回 200 replay 且零副作用。并发成品按内容身份加事务锁，去重与样本追加同事务；旧版本永不 UPDATE。
 
 第六类 source 文档通过原有循环注册得到 source-versions 三个端点，新增的路径映射与 typed 解码是必要接线。上传排队保存 pending 来源版本，解析完成再追加包含 chunkIds 的版本。generation.sourceVersionId 固定该不可变版本，避免后续上传改变批次接地依据。方向 document 必须关联本项目素材块；ai 为显式关键词降级；none/空串为缺口；manual 不冒充文档接地。
+
+项目概览 `versions.source` 返回当前来源版本摘要，尚未上传为 null。样本版本视图 `source.sourceChunkIds` 固定实际使用素材块 ID，旧样本为空数组。素材块预览可传 `sourceVersionId`，先按该版本 documents 的冻结 chunkIds 过滤，再进行搜索、总数计算与分页；历史版本不混入后来上传的素材。
 
 覆盖配额是最新 #190 已确立的容量事实。项目 m×n×z 是初始估算，与覆盖不同必须在界面显示；批次不允许计划量超过冻结覆盖容量。这是对旧 #217「一律拒绝不等于项目估算」的兼容性修正，不使历史版本失效。配额 0 为缺口，负配额拒绝。
 

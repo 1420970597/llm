@@ -42,8 +42,14 @@ func (s *LegacyImportStore) QueueSourceImport(ctx context.Context, input QueueSo
 	if input.SourceKind != SourceKindDocument && input.SourceKind != SourceKindProduct {
 		return LegacyImport{}, false, model.FieldErrors{{Field: "sourceKind", Message: "不支持目录或私有接口导入"}}
 	}
-	if input.Options.ActorID <= 0 || strings.TrimSpace(input.Options.ChangeReason) == "" {
-		return LegacyImport{}, false, model.FieldErrors{{Field: "changeReason", Message: "变更理由必填"}}
+	if input.Options.ActorID <= 0 {
+		return LegacyImport{}, false, model.FieldErrors{{Field: "actorId", Message: "导入必须归属当前用户"}}
+	}
+	if strings.TrimSpace(input.Options.ChangeReason) == "" {
+		input.Options.ChangeReason = "上传素材 " + input.Options.FileName
+		if input.SourceKind == SourceKindProduct {
+			input.Options.ChangeReason = "导入公开成品 " + input.SourceKey
+		}
 	}
 	if len(input.Content) > importer.MaxSourceUploadBytes {
 		return LegacyImport{}, false, model.FieldErrors{{Field: "file", Message: "素材不能超过 200 MB"}}

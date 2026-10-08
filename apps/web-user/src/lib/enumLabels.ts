@@ -294,6 +294,8 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   document_version_created: '保存文档新版本',
   blueprint_version_created: '保存蓝图新版本',
   coverage_version_created: '保存覆盖方案新版本',
+  source_version_created: '保存素材来源新版本',
+  project_source_import_queued: '提交外部来源导入',
   standard_version_created: '保存思维标准新版本',
   quality_policy_version_created: '保存质量策略新版本',
   mapping_version_created: '保存交付映射新版本',

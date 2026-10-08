@@ -108,9 +108,6 @@ func (app *application) uploadSourceDocument(w http.ResponseWriter, r *http.Requ
 func sourceOptionsFromForm(r *http.Request) (store.SourceImportOptions, []model.FieldError) {
 	options := store.SourceImportOptions{ChangeReason: r.FormValue("changeReason"), Chunking: model.DefaultSourceChunking()}
 	errs := []model.FieldError{}
-	if strings.TrimSpace(options.ChangeReason) == "" {
-		errs = append(errs, model.FieldError{Field: "changeReason", Message: "变更理由必填"})
-	}
 	if raw := r.FormValue("expectedRevision"); raw != "" {
 		revision, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || revision < 0 {

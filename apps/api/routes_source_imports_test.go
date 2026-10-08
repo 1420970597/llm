@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"github.com/1420970597/llm/internal/model"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -36,5 +39,17 @@ func TestSourceFileTypesRejectUnsupportedAndAcceptMarkdown(t *testing.T) {
 		if _, ok := sourceFileKind(name); ok {
 			t.Fatalf("unsupported %s accepted", name)
 		}
+	}
+}
+
+func TestSampleVersionSourceViewPreservesChunkIDsAndEmptyArray(t *testing.T) {
+	view := toSampleVersionView(model.SampleVersion{SourceChunkIDs: []int64{3, 5}})
+	if len(view.Source.SourceChunkIDs) != 2 || view.Source.SourceChunkIDs[0] != 3 {
+		t.Fatal("sample view lost immutable provenance")
+	}
+	empty := toSampleVersionView(model.SampleVersion{})
+	raw, err := json.Marshal(empty)
+	if err != nil || !bytes.Contains(raw, []byte(`"sourceChunkIds":[]`)) {
+		t.Fatalf("legacy source IDs must be an empty array: %s %v", raw, err)
 	}
 }

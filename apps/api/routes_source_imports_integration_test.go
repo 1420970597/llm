@@ -47,7 +47,7 @@ func sourceMultipartRequest(t *testing.T, projectID, actor int64, fileName, cont
 	if _, err := file.Write([]byte(content)); err != nil {
 		t.Fatal(err)
 	}
-	if err := form.WriteField("changeReason", "导入公开素材"); err != nil {
+	if err := form.WriteField("changeReason", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := form.WriteField("expectedRevision", fmt.Sprint(revision)); err != nil {
@@ -104,6 +104,10 @@ func TestSourceUploadHTTPBoundariesAndDurableIngestion(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || result.ImportID == 0 || result.JobID == 0 {
 		t.Fatalf("missing durable IDs %s %v", w.Body.String(), err)
 	}
+	pendingSource, err := f.app.documents.GetDocument(ctx, projectID, model.KindSource, "")
+	if err != nil || pendingSource.Current == nil || pendingSource.Current.ChangeReason != "上传素材 guide.md" {
+		t.Fatalf("missing automatic reason: %+v %v", pendingSource.Current, err)
+	}
 	jobs := store.NewJobStore(f.pool)
 	job, claimed, err := jobs.ClaimJobByID(ctx, result.JobID, "api-source-test", time.Minute)
 	if err != nil || !claimed {
@@ -112,6 +116,10 @@ func TestSourceUploadHTTPBoundariesAndDurableIngestion(t *testing.T) {
 	row, err := store.NewLegacyImportStore(f.pool).ProcessSourceImport(ctx, job, result.ImportID)
 	if err != nil || row.Status != "completed" {
 		t.Fatalf("ingestion %+v %v", row, err)
+	}
+	overview, err := f.app.studio.LoadProjectOverview(ctx, projectID)
+	if err != nil || overview.Versions.Source == nil || overview.Versions.Source.Version != 2 {
+		t.Fatalf("overview missing source snapshot: %+v %v", overview.Versions.Source, err)
 	}
 	w = httptest.NewRecorder()
 	f.app.uploadSourceDocument(w, sourceMultipartRequest(t, projectID, f.actor, "new.md", "new content", 0))
@@ -141,7 +149,7 @@ func TestSourceUploadHTTPBoundariesAndDurableIngestion(t *testing.T) {
 
 func TestSourceProductsPreviewAndImportHTTP(t *testing.T) {
 	f, projectID := sourceIntegrationProject(t)
-	input := sourceProductRequest{Format: "alpaca", SourceKey: "easy-dataset/public-v1", Content: "{\"instruction\":\"问题\",\"output\":\"答案\"}\n{\"instruction\":\"缺答案\"}", TargetKind: "sft", ChangeReason: "导入公开成品"}
+	input := sourceProductRequest{Format: "alpaca", SourceKey: "easy-dataset/public-v1", Content: "{\"instruction\":\"问题\",\"output\":\"答案\"}\n{\"instruction\":\"缺答案\"}", TargetKind: "sft"}
 	body, _ := json.Marshal(input)
 	request := func(raw []byte) *http.Request {
 		return sourceAuthRequest(httptest.NewRequest(http.MethodPost, "/api/v1/projects/1/source-import-products", bytes.NewReader(raw)), projectID, f.actor)
