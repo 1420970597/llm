@@ -181,6 +181,7 @@ func BlueprintNodeSpecs() []BlueprintNodeSpec {
 					Help: "选择已启用的模型服务；密钥只保存在连接设置中。",
 				},
 				{Name: "modelVersion", Label: "模型版本", Kind: FieldKindString, Required: false},
+				{Name: "sourceVersionId", Label: "素材来源版本", Kind: FieldKindID, Required: false, Help: "文档接地时引用已解析的素材来源版本；后续上传不会改变已有批次。"},
 				{
 					Name: "schemaVersion", Label: "输出内容类型", Kind: FieldKindEnum, Required: true,
 					Options: []string{"sft.sample.v1", "grpo.sample.v1"},

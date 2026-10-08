@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// 本文件实现 Atelier 五类版本化文档与乐观锁（Issue #160 T04）。
+// 本文件实现 Atelier 六类版本化文档与乐观锁（Issue #160 T04 / #217）。
 //
 // 契约：docs/plans/atelier-implementation.md §4.1、§4.3、§5；
 // docs/plans/atelier-api-contract.md §2.2。
@@ -173,6 +173,12 @@ func currentDocumentVersionIDTx(ctx context.Context, tx pgx.Tx, projectID int64,
 // 且返回错误），而不是让某个调用点静默跳过校验。
 func validatePayloadForKind(kind model.DocumentKind, payload any) (string, error) {
 	switch kind {
+	case model.KindSource:
+		typed, ok := payload.(model.SourcePayload)
+		if !ok {
+			return "", ErrDocumentKindMismatch
+		}
+		return "source.v1", model.ValidateSourcePayload(typed)
 	case model.KindBlueprint:
 		typed, ok := payload.(model.BlueprintPayload)
 		if !ok {
@@ -284,6 +290,36 @@ func saveVersionTx(ctx context.Context, tx pgx.Tx, projectID int64, kind model.D
 	payloadJSON, err := json.Marshal(input.Payload)
 	if err != nil {
 		return VersionedDocument{}, DocumentVersion{}, err
+	}
+	if coverage, ok := input.Payload.(model.CoveragePayload); ok {
+		for i, domain := range coverage.Domains {
+			for j, direction := range domain.Directions {
+				if len(direction.SourceChunkIDs) > 0 {
+					if err := validateChunkIDsTx(ctx, tx, projectID, direction.SourceChunkIDs); err != nil {
+						return VersionedDocument{}, DocumentVersion{}, model.FieldErrors{{Field: fmt.Sprintf("domains[%d].directions[%d].sourceChunkIds", i, j), Message: "素材块不存在或属于其他项目"}}
+					}
+				}
+			}
+		}
+	}
+	if source, ok := input.Payload.(model.SourcePayload); ok {
+		for i, doc := range source.Documents {
+			for start := 0; start < len(doc.ChunkIDs); start += 500 {
+				end := start + 500
+				if end > len(doc.ChunkIDs) {
+					end = len(doc.ChunkIDs)
+				}
+				if err := validateChunkIDsTx(ctx, tx, projectID, doc.ChunkIDs[start:end]); err != nil {
+					return VersionedDocument{}, DocumentVersion{}, model.FieldErrors{{Field: fmt.Sprintf("documents[%d].chunkIds", i), Message: "素材块不存在或属于其他项目"}}
+				}
+			}
+		}
+	}
+	if blueprint, ok := input.Payload.(model.BlueprintPayload); ok && blueprint.Nodes.Generation.SourceVersionID > 0 {
+		var sourceKind string
+		if err := tx.QueryRow(ctx, `SELECT kind FROM document_versions WHERE id=$1 AND project_id=$2`, blueprint.Nodes.Generation.SourceVersionID, projectID).Scan(&sourceKind); err != nil || sourceKind != "source" {
+			return VersionedDocument{}, DocumentVersion{}, model.FieldErrors{{Field: "nodes.generation.sourceVersionId", Message: "必须引用本项目的素材来源版本"}}
+		}
 	}
 	contentHash, err := model.ContentHash(input.Payload)
 	if err != nil {
@@ -457,6 +493,7 @@ func collectReferences(kind model.DocumentKind, payload any) []documentReference
 	}
 	add(model.BlueprintNodeCoverage, blueprint.Nodes.Coverage.CoverageVersionID)
 	add(model.BlueprintNodeStandard, blueprint.Nodes.Standard.StandardVersionID)
+	add("source", blueprint.Nodes.Generation.SourceVersionID)
 	add(model.BlueprintNodeRules, blueprint.Nodes.Rules.QualityPolicyVersionID)
 	add(model.BlueprintNodeDelivery, blueprint.Nodes.Delivery.MappingVersionID)
 	// 评估节点的 rubric 版本也走同一套引用检查（它必须同项目）。
@@ -653,6 +690,8 @@ func DocumentKindLabel(kind model.DocumentKind) string {
 		return "质量策略"
 	case model.KindMapping:
 		return "字段映射"
+	case model.KindSource:
+		return "素材来源"
 	default:
 		return "文档"
 	}

@@ -58,6 +58,7 @@ type LegacyImport struct {
 	FinishedAt      *time.Time         `json:"finishedAt,omitempty"`
 	CreatedAt       time.Time          `json:"createdAt"`
 	UpdatedAt       time.Time          `json:"updatedAt"`
+	JobID           *int64             `json:"jobId,omitempty"`
 }
 
 // LegacyImportStore 提供导入台账的读写。
@@ -73,17 +74,23 @@ func NewLegacyImportStore(db *pgxpool.Pool) *LegacyImportStore {
 const legacyImportColumns = `id, source_kind, source_key, target_project_id, batch_id, status,
   cursor, content_hash, source_items, imported_versions, skipped_existing,
   skipped_no_content, failed_items, before_snapshot, after_snapshot, failures,
-  error_message, started_at, finished_at, created_at, updated_at`
+  error_message, started_at, finished_at, created_at, updated_at, job_id`
 
 // BeginImport 开始（或命中既有）一次导入，返回 (台账, 是否已完成的回放)。
 //
 // replay=true 表示这次来源已经**完成**过：调用方必须跳过全部副作用。
 // 已存在但未完成（running/paused/failed）时 replay=false，调用方从 cursor 续跑。
 func (s *LegacyImportStore) BeginImport(ctx context.Context, sourceKind, sourceKey string) (LegacyImport, bool, error) {
+	return beginImport(ctx, s.db, sourceKind, sourceKey)
+}
+
+// beginImport is shared by legacy migration and external ingestion. Callers
+// with further business writes pass their transaction so ledger/job are atomic.
+func beginImport(ctx context.Context, db queryable, sourceKind, sourceKey string) (LegacyImport, bool, error) {
 	if sourceKind == "" || sourceKey == "" {
 		return LegacyImport{}, false, &apiStoreError{Message: "导入台账需要来源类型与来源键"}
 	}
-	row := s.db.QueryRow(ctx, `
+	row := db.QueryRow(ctx, `
     INSERT INTO legacy_imports (source_kind, source_key, status, started_at)
     VALUES ($1, $2, 'running', NOW())
     ON CONFLICT (source_kind, source_key) DO NOTHING
@@ -96,7 +103,7 @@ func (s *LegacyImportStore) BeginImport(ctx context.Context, sourceKind, sourceK
 		return LegacyImport{}, false, err
 	}
 	// 冲突命中：回读既有行（这就是幂等的落点）。
-	existing, err := s.GetImport(ctx, sourceKind, sourceKey)
+	existing, err := scanLegacyImport(db.QueryRow(ctx, `SELECT `+legacyImportColumns+` FROM legacy_imports WHERE source_kind=$1 AND source_key=$2`, sourceKind, sourceKey))
 	if err != nil {
 		return LegacyImport{}, false, err
 	}
@@ -278,7 +285,7 @@ func scanLegacyImport(row pgx.Row) (LegacyImport, error) {
 		&importRow.Counts.FailedItems,
 		&before, &after, &failures,
 		&importRow.ErrorMessage, &importRow.StartedAt, &importRow.FinishedAt,
-		&importRow.CreatedAt, &importRow.UpdatedAt)
+		&importRow.CreatedAt, &importRow.UpdatedAt, &importRow.JobID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return LegacyImport{}, ErrLegacyImportNotFound
 	}

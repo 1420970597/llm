@@ -139,8 +139,19 @@ Idempotency-Key: <uuid>
 
 ### 2.2 版本化文档
 
-五类同构：`blueprint-versions`、`coverage-versions`、`standard-versions`、
-`quality-policy-versions`、`mapping-versions`。
+六类同构：`blueprint-versions`、`coverage-versions`、`standard-versions`、
+`quality-policy-versions`、`mapping-versions`、`source-versions`。
+
+| 文档类型 | schemaVersion | 版本入口 |
+|---|---|---|
+| blueprint | blueprint.v1 | blueprint-versions |
+| coverage | coverage.v1 | coverage-versions |
+| standard | standard.v1 | standard-versions |
+| quality_policy | quality_policy.v1 | quality-policy-versions |
+| mapping | mapping.v1 | mapping-versions |
+| source | source.v1 | source-versions |
+
+素材来源与公开成品导入的限制、异步对账及字段映射见[外部导入契约](external-product-import-contract.md)。
 
 ```http
 POST P/blueprint-versions

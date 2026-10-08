@@ -205,13 +205,13 @@ func (s *BatchStore) GetSampleVersionByID(ctx context.Context, projectID, versio
     SELECT id, sample_id, project_id, version, target_kind, schema_version, payload, content_hash,
            batch_id, batch_item_id, attempt, COALESCE(generator_config, '{}'::jsonb),
            standard_version_id, standard_content_hash, blueprint_version_id, blueprint_content_hash,
-           created_by, created_at
+           created_by, created_at, source_chunk_ids
     FROM sample_versions WHERE id = $1 AND project_id = $2`, versionID, projectID,
 	).Scan(&item.ID, &item.SampleID, &item.ProjectID, &item.Version, &item.TargetKind,
 		&item.SchemaVersion, &item.Payload, &item.ContentHash,
 		&item.BatchID, &item.BatchItemID, &item.Attempt, &item.GeneratorConfig,
 		&item.StandardVersionID, &item.StandardContentHash,
 		&item.BlueprintVersionID, &item.BlueprintContentHash,
-		&item.CreatedBy, &item.CreatedAt)
+		&item.CreatedBy, &item.CreatedAt, &item.SourceChunkIDs)
 	return item, err
 }

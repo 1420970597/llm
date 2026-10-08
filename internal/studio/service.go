@@ -257,6 +257,7 @@ type OverviewVersions struct {
 	Standard  *VersionSummary `json:"standard"`
 	Quality   *VersionSummary `json:"qualityPolicy"`
 	Mapping   *VersionSummary `json:"mapping"`
+	Source    *VersionSummary `json:"source"`
 }
 
 // VersionSummary 是一条版本摘要（契约 §1.1 的稳定字段子集）。
@@ -317,6 +318,16 @@ func (s *Service) LoadProjectOverview(ctx context.Context, projectID int64) (Pro
 		return ProjectOverview{}, err
 	}
 	for _, document := range documents {
+		if document.CurrentVersion == 0 {
+			continue
+		}
+		if document.Current == nil {
+			version, err := s.Documents.GetVersion(ctx, document.ID, document.CurrentVersion)
+			if err != nil {
+				return ProjectOverview{}, err
+			}
+			document.Current = &version
+		}
 		summary := &VersionSummary{
 			VersionID: document.ID,
 			Version:   document.CurrentVersion,
@@ -344,6 +355,8 @@ func (s *Service) LoadProjectOverview(ctx context.Context, projectID int64) (Pro
 			overview.Versions.Quality = summary
 		case model.KindMapping:
 			overview.Versions.Mapping = summary
+		case model.KindSource:
+			overview.Versions.Source = summary
 		}
 	}
 

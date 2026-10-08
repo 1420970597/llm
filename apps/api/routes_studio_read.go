@@ -308,11 +308,12 @@ type sampleVersionView struct {
 	Attempt       int    `json:"attempt"`
 	// Source 说明这条内容是哪来的（版本来源单独页要能回答「谁生成的」）。
 	Source struct {
-		BatchID              *int64 `json:"batchId,omitempty"`
-		StandardVersionID    *int64 `json:"standardVersionId,omitempty"`
-		StandardContentHash  string `json:"standardContentHash"`
-		BlueprintVersionID   *int64 `json:"blueprintVersionId,omitempty"`
-		BlueprintContentHash string `json:"blueprintContentHash"`
+		BatchID              *int64  `json:"batchId,omitempty"`
+		StandardVersionID    *int64  `json:"standardVersionId,omitempty"`
+		StandardContentHash  string  `json:"standardContentHash"`
+		BlueprintVersionID   *int64  `json:"blueprintVersionId,omitempty"`
+		BlueprintContentHash string  `json:"blueprintContentHash"`
+		SourceChunkIDs       []int64 `json:"sourceChunkIds"`
 	} `json:"source"`
 	CreatedBy *int64 `json:"createdBy,omitempty"`
 	CreatedAt string `json:"createdAt"`
@@ -344,6 +345,7 @@ func toSampleVersionView(version model.SampleVersion) sampleVersionView {
 	view.Source.StandardContentHash = version.StandardContentHash
 	view.Source.BlueprintVersionID = version.BlueprintVersionID
 	view.Source.BlueprintContentHash = version.BlueprintContentHash
+	view.Source.SourceChunkIDs = append([]int64{}, version.SourceChunkIDs...)
 	return view
 }
 

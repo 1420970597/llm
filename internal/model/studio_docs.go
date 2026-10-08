@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// 本文件定义 Atelier 五类版本化文档的 typed payload（Issue #160 T04）。
+// 本文件定义 Atelier 版本化文档的 typed payload（Issue #160 T04 / #217）。
 //
 // 为什么单独一个文件而不是塞进 internal/model/pipeline_v2.go：
 // 后者是**第一轮冻结契约**（L1–L15）的落点，本轮的落点由
@@ -25,7 +25,7 @@ import (
 // docs/plans/atelier-api-contract.md §2.2。
 //
 // 设计要点：
-//  1. 五类文档共享同一套版本与乐观锁语义（表结构见迁移 0024），
+//  1. 六类文档共享同一套版本与乐观锁语义（表结构见迁移 0024 / 0040），
 //     但 payload 各自 typed —— 契约 §5 明确「不能把所有节点做成同一表单」。
 //  2. **禁止任意脚本节点**：这里的节点集合是闭合的，没有「自定义」入口。
 //  3. 校验在服务端（本文件）而不是只在前端：前端的即时校验是体验，
@@ -33,7 +33,7 @@ import (
 //  4. ContentHash 对**规范化 JSON** 计算：跨版本与跨环境必须得到同一 hash，
 //     否则批次快照的「内容 hash 一致性」检查会误报。
 
-// DocumentKind 是五类版本化文档的类型。
+// DocumentKind 是六类版本化文档的类型。
 type DocumentKind string
 
 const (
@@ -42,11 +42,12 @@ const (
 	KindStandard      DocumentKind = "standard"
 	KindQualityPolicy DocumentKind = "quality_policy"
 	KindMapping       DocumentKind = "mapping"
+	KindSource        DocumentKind = "source"
 )
 
 // AllDocumentKinds 是全部合法类型，顺序与蓝图节点顺序一致。
 func AllDocumentKinds() []DocumentKind {
-	return []DocumentKind{KindCoverage, KindStandard, KindBlueprint, KindQualityPolicy, KindMapping}
+	return []DocumentKind{KindCoverage, KindStandard, KindBlueprint, KindQualityPolicy, KindMapping, KindSource}
 }
 
 // IsValidDocumentKind 判断类型是否合法。
@@ -75,6 +76,8 @@ func schemaVersionFor(kind DocumentKind) string {
 		return "quality_policy.v1"
 	case KindMapping:
 		return "mapping.v1"
+	case KindSource:
+		return "source.v1"
 	default:
 		return ""
 	}
@@ -142,6 +145,7 @@ type BlueprintStandardNode struct {
 // modelConnectionId 是**非秘密标识**：契约 §2.2 与 §2.4 明确
 // 「版本 payload 不含密钥」「凭证单独取，不能冻结明文密钥」。
 type BlueprintGenerationNode struct {
+	SourceVersionID   int64  `json:"sourceVersionId"`
 	ModelConnectionID int64  `json:"modelConnectionId"`
 	ModelVersion      string `json:"modelVersion"`
 	SchemaVersion     string `json:"schemaVersion"`
@@ -234,6 +238,7 @@ type CoverageDirection struct {
 	Quota            int               `json:"quota"`
 	DifficultyRatios []DifficultyRatio `json:"difficultyRatios,omitempty"`
 	Source           string            `json:"source"`
+	SourceChunkIDs   []int64           `json:"sourceChunkIds,omitempty"`
 }
 
 // CoverageDomain 是覆盖计划中的一个领域。
@@ -564,6 +569,25 @@ func ValidateCoveragePayload(payload CoveragePayload) error {
 		seenDirection := map[string]bool{}
 		for directionIndex, direction := range domain.Directions {
 			directionField := fmt.Sprintf("%s.directions[%d]", field, directionIndex)
+			switch direction.Source {
+			case "", SourceNone, SourceDocument, SourceAI, SourceManual:
+			default:
+				errs = append(errs, FieldError{Field: directionField + ".source", Message: "只能选择 document、ai、manual 或 none"})
+			}
+			if direction.Source == SourceDocument && len(direction.SourceChunkIDs) == 0 {
+				errs = append(errs, FieldError{Field: directionField + ".sourceChunkIds", Message: "文档来源需要关联至少一个素材块"})
+			}
+			seenChunks := map[int64]bool{}
+			for _, id := range direction.SourceChunkIDs {
+				if id <= 0 || seenChunks[id] {
+					errs = append(errs, FieldError{Field: directionField + ".sourceChunkIds", Message: "素材块 ID 必须是正整数且不能重复"})
+					break
+				}
+				seenChunks[id] = true
+			}
+			if direction.Source != SourceDocument && len(direction.SourceChunkIDs) > 0 {
+				errs = append(errs, FieldError{Field: directionField + ".sourceChunkIds", Message: "只有文档来源可以关联素材块"})
+			}
 			directionID := strings.TrimSpace(direction.StableID)
 			if directionID == "" {
 				errs = append(errs, FieldError{Field: directionField + ".stableId", Message: "必填"})
@@ -571,8 +595,8 @@ func ValidateCoveragePayload(payload CoveragePayload) error {
 				errs = append(errs, FieldError{Field: directionField + ".stableId", Message: "不能与同一领域内其它方向重复"})
 			}
 			seenDirection[directionID] = true
-			if direction.Quota < 1 {
-				errs = append(errs, FieldError{Field: directionField + ".quota", Message: "必须大于等于 1"})
+			if direction.Quota < 0 {
+				errs = append(errs, FieldError{Field: directionField + ".quota", Message: "不能为负数；0 表示缺口"})
 			}
 			if err := validateDifficultyRatios(directionField, direction.DifficultyRatios); err != nil {
 				errs = append(errs, err.(FieldErrors)...)
