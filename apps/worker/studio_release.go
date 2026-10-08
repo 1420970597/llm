@@ -32,6 +32,7 @@ func init() {
 // handleReleaseBuild 执行一次发布作业。
 func handleReleaseBuild(ctx context.Context, env *StudioJobEnv, job model.Job) (any, error) {
 	releaseID := int64(0)
+	jobRevision := int64(0)
 	if job.Payload != nil {
 		var payload struct {
 			ReleaseID int64 `json:"releaseId"`
@@ -39,6 +40,7 @@ func handleReleaseBuild(ctx context.Context, env *StudioJobEnv, job model.Job) (
 		}
 		if err := json.Unmarshal(job.Payload, &payload); err == nil {
 			releaseID = payload.ReleaseID
+			jobRevision = payload.Revision
 		}
 	}
 	if releaseID <= 0 {
@@ -48,9 +50,6 @@ func handleReleaseBuild(ctx context.Context, env *StudioJobEnv, job model.Job) (
 	releases := env.Releases()
 	artifacts := env.ReleaseArtifacts()
 	datasets := env.datasetStore()
-	if datasets == nil {
-		return nil, fmt.Errorf("worker 未注入 provider 解析依赖，无法执行发布")
-	}
 
 	release, err := releases.GetRelease(ctx, 0, releaseID)
 	if err != nil {
@@ -66,14 +65,34 @@ func handleReleaseBuild(ctx context.Context, env *StudioJobEnv, job model.Job) (
 	if release.Status == model.ReleaseStatusPublished {
 		return map[string]any{"releaseId": releaseID, "status": "published", "replayed": true}, nil
 	}
+	if job.ProjectID == nil || *job.ProjectID != release.ProjectID {
+		return nil, fmt.Errorf("config_error: 发布作业项目与发布版本不一致")
+	}
+	if jobRevision != release.CandidateRevision {
+		return nil, store.ErrReleaseRevisionStale
+	}
+	// Once the release is known to be in a build attempt, every downstream
+	// failure must leave an explicit retryable state.  Otherwise an object-store
+	// outage strands the release in `building` forever and the operator cannot
+	// distinguish it from an active worker.  MarkBuildFailed is fenced to the
+	// building state, so a late error cannot overwrite a successful publication.
+	failBuild := func(buildErr error) (any, error) {
+		if markErr := releases.MarkBuildFailed(ctx, releaseID, job); markErr != nil {
+			return nil, fmt.Errorf("%w（同时标记发布失败也失败：%v）", buildErr, markErr)
+		}
+		return nil, buildErr
+	}
+	if datasets == nil {
+		return failBuild(fmt.Errorf("config_error: worker 未注入存储解析依赖，无法执行发布"))
+	}
 
 	revision := release.CandidateRevision
 	items, err := releases.ListReleaseItems(ctx, releaseID, revision, 200_000)
 	if err != nil {
-		return nil, err
+		return failBuild(err)
 	}
 	if len(items) == 0 {
-		return nil, fmt.Errorf("发布清单为空：不能产出有效版本（请重新确认候选范围）")
+		return failBuild(fmt.Errorf("发布清单为空：不能产出有效版本（请重新确认候选范围）"))
 	}
 
 	// 映射版本：取候选冻结的那一个（不是「当前默认映射」）。
@@ -95,21 +114,21 @@ func handleReleaseBuild(ctx context.Context, env *StudioJobEnv, job model.Job) (
 		CoverageSummary:  release.CoverageSummary,
 	})
 	if err != nil {
-		return nil, err
+		return failBuild(err)
 	}
 
 	// 存储身份在**写入时**固化，之后切换默认存储不影响这份文件。
 	endpoint, region, bucket, accessKeyID, secretKey, usePathStyle, err :=
 		datasets.ResolveStorageProfile(ctx, 0)
 	if err != nil {
-		return nil, fmt.Errorf("解析存储配置失败：%w", err)
+		return failBuild(fmt.Errorf("解析存储配置失败：%w", err))
 	}
 	objectStore, err := storage.New(storage.Profile{
 		Endpoint: endpoint, Region: region, Bucket: bucket,
 		AccessKeyID: accessKeyID, SecretKey: secretKey, UsePathStyle: usePathStyle,
 	})
 	if err != nil {
-		return nil, err
+		return failBuild(err)
 	}
 
 	objectKey := model.ArtifactObjectKey(release.ID, revision, release.Format, built.ArtifactHash)
@@ -118,13 +137,13 @@ func handleReleaseBuild(ctx context.Context, env *StudioJobEnv, job model.Job) (
 	//（重传会覆盖对象，而「已发布文件不可变」不允许）。
 	existing, found, err := artifacts.FindArtifactByHash(ctx, release.ID, built.ArtifactHash)
 	if err != nil {
-		return nil, err
+		return failBuild(err)
 	}
 	if found && existing.State == model.ArtifactStateVerified {
 		// 已有确认过的同内容制品：直接进入发布判定。
 		published, reason, err := artifacts.PublishReleaseIfReady(ctx, release.ID, revision)
 		if err != nil {
-			return nil, err
+			return failBuild(err)
 		}
 		return map[string]any{
 			"releaseId": releaseID, "artifactHash": built.ArtifactHash,
@@ -133,19 +152,19 @@ func handleReleaseBuild(ctx context.Context, env *StudioJobEnv, job model.Job) (
 	}
 
 	if _, err := objectStore.PutBytes(ctx, objectKey, built.ArtifactBytes, contentTypeFor(release.Format)); err != nil {
-		return nil, fmt.Errorf("写入对象失败：%w", err)
+		return failBuild(fmt.Errorf("写入对象失败：%w", err))
 	}
 
 	// **读回校验**：上传返回成功不等于对象可用。
 	readBack, err := objectStore.ReadBytes(ctx, objectKey)
 	if err != nil {
-		return nil, fmt.Errorf("读回对象失败（上传可能未真正写入）：%w", err)
+		return failBuild(fmt.Errorf("读回对象失败（上传可能未真正写入）：%w", err))
 	}
 	if err := model.ValidateArtifactUpload(
 		built.SizeBytes, built.ArtifactHash, int64(len(readBack)),
 		model.ComputeArtifactHash(readBack), true,
 	); err != nil {
-		return nil, err
+		return failBuild(err)
 	}
 
 	registered, err := artifacts.RegisterArtifact(ctx, store.ArtifactUpload{
@@ -160,19 +179,19 @@ func handleReleaseBuild(ctx context.Context, env *StudioJobEnv, job model.Job) (
 		UploadedBy:       job.CreatedBy,
 	})
 	if err != nil {
-		return nil, err
+		return failBuild(err)
 	}
 	if _, _, err := artifacts.RegisterManifest(ctx, built.Manifest, job.CreatedBy); err != nil {
-		return nil, err
+		return failBuild(err)
 	}
 	if err := artifacts.MarkArtifactVerified(ctx, registered.Artifact.ID); err != nil {
-		return nil, err
+		return failBuild(err)
 	}
 
 	// 最后一步：只有制品确认后才可能发布（唯一入口）。
 	published, reason, err := artifacts.PublishReleaseIfReady(ctx, release.ID, revision)
 	if err != nil {
-		return nil, err
+		return failBuild(err)
 	}
 	if !published {
 		// 未发布**不是错误**：可能还有其它格式的制品未完成。

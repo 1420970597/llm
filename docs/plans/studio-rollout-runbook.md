@@ -121,16 +121,17 @@ STUDIO_ENABLED=false                              # API 与 worker 同时设
 | 演练 | 怎么造 | 预期 |
 |---|---|---|
 | job schema 不兼容 | 把 Redis 里的消息 `schemaVersion` 改成 999 投递 | worker 记日志并送死信，**不**按旧格式解析；不丢消息 |
-| API/worker 版本不匹配 | 先起新 worker 再用旧 worker 消费同一队列 | 旧 worker 看到 `type` 为空而忽略（不误吞）；新 worker 正常处理 |
+| API/worker 版本不匹配 | 投递未来 schema，或持久化当前 worker 未注册的 job kind | schema 消息进入保留原始字节的死信；未知 kind 的 durable job 留在 pending/outbox 并写明兼容版本原因；修复后重投 |
 | 发布积压 | 造一个 release 卡在 `building`（断开对象存储） | `health.releases.buildFailed` 增长并出现在 `notes`；重试可幂等续接；已发布文件不受影响 |
 | 回退后恢复 | 关总开关 → 提交一个命令（503）→ 开启 → 重试同一命令 | 幂等键让「重试」返回同一个对象，不产生第二个 |
 | 未知成本 | 让一次模型调用超时 | `usage.unknownAmount24h` 增长；`uncertainMinor` 增加；**不会被记成 0** |
 
 ## 7. 已知缺口（诚实清单）
 
-1. **真实灰度和演练尚未执行**：本文件是方案与判据，不是执行记录。第 6 节的每一项
-   都还没有证据，因此 T33 的验收项（「演练 API/worker 版本不匹配、发布积压与回退」）
-   在真实环境做完之前**不应**被勾选。
+1. **生产灰度尚未执行**：隔离真实 Postgres/Redis/MinIO 的工程故障演练与 CI 必需 PASS 门禁见
+   [2026-10 故障验收记录](2026-10-studio-failure-validation.md)，覆盖 Redis 中断、租约重投、
+   schema/worker 类型错配、对象存储失败、开关回退与固定下载。它们不替代第 3 节连续 48 小时的
+   真正灰度，也不替代真实商业 provider 任务、生产 SLO 标定或 T34 真人会话。
 2. **SLO 阈值未标定**：见第 2 节。
 3. **旧写入口的冻结属于 T31**：本文件只说明了「旧控制台不持有新对象的写路径」
    这一结构性事实（新对象在独立表、由项目级授权与开关共同管辖），

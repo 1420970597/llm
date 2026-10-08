@@ -471,17 +471,14 @@ func (app *application) requireProject(w http.ResponseWriter, r *http.Request, a
 		return model.Project{}, store.AuthzDecision{}, false
 	}
 
-	decision, denial, message, err := app.authz.RequireProjectAccess(r.Context(), projectID, user.ID, action)
+	// The Studio service is the single authorization boundary for project-scoped
+	// commands.  In addition to the role/membership check it applies the
+	// STUDIO_ENABLED / per-project rollout gate.  Keeping this call here is
+	// important for the legacy project and source routes, which all funnel
+	// through requireProject but do not call a Studio handler directly.
+	decision, err := app.studio.Authorize(r.Context(), projectID, user.ID, action)
 	if err != nil {
-		app.writeAPIEntityError(w, r, err)
-		return model.Project{}, store.AuthzDecision{}, false
-	}
-	switch denial {
-	case store.DenialHidden:
-		app.writeAPIError(w, r, http.StatusNotFound, codeNotFound, message, nil)
-		return model.Project{}, decision, false
-	case store.DenialForbidden:
-		app.writeAPIError(w, r, http.StatusForbidden, codeForbidden, message, nil)
+		app.writeStudioError(w, r, err)
 		return model.Project{}, decision, false
 	}
 	return decision.Project, decision, true
