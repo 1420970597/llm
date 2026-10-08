@@ -41,7 +41,7 @@ function asDirections(value: unknown): Array<Record<string, unknown>> {
 /** 与后端 CoverageCapacity / AllocateCoverageUnits 保持同一兼容口径。 */
 export function coverageQuotaOf(direction: Record<string, unknown>): number {
   const quota = Number(direction.quota)
-  if (direction.source && quota === 0) return 0
+  if (direction.source && (!Number.isFinite(quota) || quota <= 0)) return 0
   return Number.isFinite(quota) && quota > 0 ? quota : 1
 }
 

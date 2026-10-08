@@ -1202,6 +1202,13 @@ function readProductFormula(formula) {
     { stableId: 'ai', source: 'ai', quota: 3 },
   ] }] })
   record('#217 显式零配额方向不计入容量', excluded.capacity === 3, `容量=${excluded.capacity}（期望 3）`)
+  const invalidExplicitQuota = coverage.deriveCoverageStructure({ domains: [{ directions: [
+    { source: 'document', quota: -1 },
+    { source: 'ai' },
+    { source: 'none', quota: 'invalid' },
+    { quota: -1 },
+  ] }] })
+  record('#217 显式来源的负值/缺失/非法配额保持缺口，历史负值兼容', invalidExplicitQuota.capacity === 1, `容量=${invalidExplicitQuota.capacity}（期望 1）`)
   // 非乘积形态：各方向配额不等时**不得**编造 `m×n×z = 结果` 等式。
   const mixed = coverage.deriveCoverageStructure({
     domains: [{ stableId: 'd', name: '领域', directions: [{ stableId: 'a', name: '方向一', quota: 1 }, { stableId: 'b', name: '方向二', quota: 3 }] }],
