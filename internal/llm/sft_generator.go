@@ -70,6 +70,13 @@ func GenerateSft(ctx context.Context, provider ProviderConfig, input SftInput) (
 	if result.ChainOfThought == "" {
 		return SftPayload{}, fmt.Errorf("provider returned empty chain of thought for question %d", input.Question.ID)
 	}
+	assessment := assessLongText("reasoning", result.ChainOfThought, minReasoningRunes)
+	if input.IncludeAnswer {
+		assessment = AssessReasoningContent(result.Answer, result.ChainOfThought)
+	}
+	if !assessment.Valid {
+		return SftPayload{}, newInvalidContentError(assessment)
+	}
 
 	steps := NormalizeChainSteps(input.Steps)
 	log.Printf("sft.generate.question.done dataset_id=%d question_id=%d cot_runes=%d aligned_steps=%d/%d",
@@ -120,7 +127,7 @@ func defaultSftUserPrompt(input SftInput, steps []model.ChainStep) string {
 	builder.WriteString("2. 每一步结束时明确回答该步的检查点（checkpoint）是否满足，以及依据。\n")
 	builder.WriteString("3. chainOfThought 必须是完整可读的长链推理过程，禁止使用「首先、其次、最后」这类无信息量的套话。\n")
 	builder.WriteString(answerRule)
-	builder.WriteString("\n5. 只返回 JSON 对象：{\"chainOfThought\":\"...\",\"answer\":\"...\"}，不要输出解释文字，不要使用 Markdown 代码块。")
+	builder.WriteString("\n5. 只返回包含 chainOfThought 和 answer 两个字符串字段的 JSON 对象。chainOfThought 必须为完整推理；answer 遵循第4条要求。不得复制格式示例或使用省略号、待补充等占位符。不要输出解释文字，不要使用 Markdown 代码块。")
 	return builder.String()
 }
 

@@ -36,6 +36,52 @@ func TestDecodeChatCompletionSSESeparatesReasoningFromContent(t *testing.T) {
 	}
 }
 
+// The live canonical-model endpoint emits reasoning_details[].text. Those
+// events fall through the generic SSE reader and must remain separate from
+// the final JSON, including when an internal format example is itself JSON.
+func TestDecodeChatCompletionSSESeparatesStructuredReasoningFromContent(t *testing.T) {
+	raw := `data: {"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.text","text":"思考示例：[{\"content\":\"问题正文\",\"difficulty\":\"medium\"}]","model":"deepseek-v4.1-flash","id":"reasoning-1"}]},"index":0}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"[{\"content\":\"仓库应如何核查","reasoning_details":[{"text":"还在内部思考","id":"reasoning-2"}]},"index":0}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"冷链温控异常？\",\"difficulty\":\"medium\"}]"},"index":0}],"object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{},"finish_reason":"stop","index":0}],"object":"chat.completion.chunk"}
+
+data: [DONE]
+`
+	content, err := decodeChatCompletionSSE([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `[{"content":"仓库应如何核查冷链温控异常？","difficulty":"medium"}]`
+	if content != want {
+		t.Fatalf("structured reasoning leaked into final JSON: %q", content)
+	}
+	drafts, err := parseQuestionDrafts(content)
+	if err != nil || len(drafts) != 1 || drafts[0].Content != "仓库应如何核查冷链温控异常？" {
+		t.Fatalf("final questions=%v, err=%v", drafts, err)
+	}
+}
+
+func TestDecodeChatCompletionSSEStructuredReasoningAloneIsNotFinalContent(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		data string
+	}{
+		{"ordered-reasoning-only", `[{"type":"reasoning.text","text":"依据素材，"},{"type":"reasoning.text","text":"核对异常时限。"}]`},
+		{"encrypted-details-are-not-text", `[{"type":"reasoning.encrypted","data":"opaque-vendor-token"}]`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			raw := `data: {"choices":[{"delta":{"reasoning_details":` + test.data + `},"index":0}],"object":"chat.completion.chunk"}` + "\n\ndata: [DONE]\n"
+			content, err := decodeChatCompletionSSE([]byte(raw))
+			if err == nil {
+				t.Fatalf("internal reasoning metadata became final content: %q", content)
+			}
+		})
+	}
+}
+
 func TestDecodeChatCompletionSSEFallsBackToReasoningWhenNoContent(t *testing.T) {
 	onlyReasoning := `data: {"choices":[{"delta":{"reasoning_content":"思考中"},"index":0}],"object":"chat.completion.chunk"}
 
@@ -79,6 +125,78 @@ func TestDecodeChatCompletionBodyReadsNonStreamContent(t *testing.T) {
 	}
 	if got := decoded.Choices[0].Message.Content; got != `["x","y"]` {
 		t.Fatalf("content mismatch: %q", got)
+	}
+}
+
+func TestDecodeWrappedChatCompletionKeepsReasoningExamplesOutOfContent(t *testing.T) {
+	const content = `{"chainOfThought":"依据素材核对退货窗口与冷链例外。","answer":"冷链异常需独立审核。"}`
+	const example = `思考输出格式：{"chainOfThought":"第1步... \\n第2步...","answer":"..."}`
+	for _, test := range []struct {
+		name string
+		data map[string]any
+		want string
+	}{
+		{"wrapped-choices", map[string]any{"choices": []any{map[string]any{"message": map[string]any{
+			"content": content, "reasoning_content": example,
+		}}}}, content},
+		{"wrapped-output-text", map[string]any{"output_text": content, "reasoning": example}, content},
+		{"structured-reasoning-is-separate", map[string]any{"output_text": content, "reasoning": map[string]any{"text": example}}, content},
+		{"structured-reasoning-details-are-separate", map[string]any{"output_text": content, "reasoning_details": []any{map[string]any{"text": example}}}, content},
+		{"reasoning-only-fallback", map[string]any{"content": "", "reasoning_content": "只有推理正文"}, "只有推理正文"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body, err := json.Marshal(map[string]any{"success": true, "data": test.data})
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The former map traversal made this intermittent: repeated decoding
+			// must always retain only the final content when it is present.
+			for i := 0; i < 50; i++ {
+				var decoded chatCompletionResponse
+				if err := decodeChatCompletionBody(body, &decoded); err != nil {
+					t.Fatal(err)
+				}
+				if got := decoded.Choices[0].Message.Content; got != test.want {
+					t.Fatalf("wrapped response content=%q, want=%q", got, test.want)
+				}
+			}
+		})
+	}
+}
+
+func TestDecodeWrappedChatCompletionRejectsEmptyContent(t *testing.T) {
+	for _, body := range []string{
+		`{"success":true,"data":{"choices":[{"message":{"content":"","reasoning_content":""}}]}}`,
+		`{"success":true,"data":{"choices":[{"message":{"content":"","reasoning_details":[{"text":"内部推理 JSON 示例：{\"answer\":\"...\"}"}]}}]}}`,
+	} {
+		var decoded chatCompletionResponse
+		if err := decodeChatCompletionBody([]byte(body), &decoded); err == nil {
+			t.Fatal("metadata-only wrapper must not become a successful model response")
+		}
+	}
+}
+
+func TestDecodeChatCompletionReportsLengthLimitBeforeReasoningFallback(t *testing.T) {
+	for _, body := range []string{
+		`{"choices":[{"message":{"content":"{\"answer\":\"...\"}"},"finish_reason":"length"}]}`,
+		`{"success":true,"data":{"choices":[{"message":{"content":"","reasoning_content":"格式示例：{\"answer\":\"...\"}"},"finish_reason":"length"}]}}`,
+		`{"success":true,"data":{"output_text":"partial","finish_reason":"length"}}`,
+		"data: {\"choices\":[{\"delta\":{\"reasoning_details\":[{\"text\":\"内部推理\"}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n",
+		"data: {\"choices\":[{\"delta\":{\"content\":\"{\\\"answer\\\":\\\"已返回但未完成\\\"}\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n",
+	} {
+		var decoded chatCompletionResponse
+		if err := decodeChatCompletionBody([]byte(body), &decoded); err != errCompletionTruncated {
+			t.Fatalf("length limit err=%v, want explicit truncation", err)
+		}
+		if len(decoded.Choices) != 0 {
+			t.Fatalf("truncated response exposed usable choices: %+v", decoded.Choices)
+		}
+	}
+	// Metadata-looking JSON inside the final answer is ordinary content.
+	const valid = `{"choices":[{"message":{"content":"{\"finish_reason\":\"length\"}"},"finish_reason":"stop"}]}`
+	var decoded chatCompletionResponse
+	if err := decodeChatCompletionBody([]byte(valid), &decoded); err != nil {
+		t.Fatalf("quoted metadata caused false truncation: %v", err)
 	}
 }
 

@@ -4,12 +4,115 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/1420970597/llm/internal/config"
 	"github.com/1420970597/llm/internal/model"
+	"github.com/1420970597/llm/internal/store"
 )
+
+// Use the native handler with an already committed item: this exercises the
+// real runner/job completion ordering without making any external model calls.
+func settledNativeBatchJob(t *testing.T) (*studioRuntime, model.Job, *store.BatchStore) {
+	t.Helper()
+	accounting, pool := accountingFixture(t)
+	ctx := context.Background()
+	project, err := accounting.projects.GetProject(ctx, accounting.projectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	documents := store.NewDocumentStore(pool)
+	if err := documents.BootstrapProjectDocuments(ctx, project.ID, project.OwnerID, model.TargetKindSFT, project.Name, project.Goal); err != nil {
+		t.Fatal(err)
+	}
+	document, err := documents.GetDocument(ctx, project.ID, model.KindBlueprint, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, err := documents.GetVersion(ctx, document.ID, document.CurrentVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var blueprint model.BlueprintPayload
+	if err := json.Unmarshal(version.Payload, &blueprint); err != nil {
+		t.Fatal(err)
+	}
+	blueprint.Nodes.Generation.ModelConnectionID = accounting.connectionID
+	_, version, err = documents.SaveVersion(ctx, project.ID, model.KindBlueprint, project.OwnerID, store.SaveDocumentVersionInput{
+		ExpectedRevision: document.RowVersion, Payload: blueprint, ChangeReason: "native completion fixture",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, job, err := accounting.batches.CreateBatchWithJob(ctx, project.ID, project.OwnerID, model.TargetKindSFT,
+		model.CreateBatchInput{Purpose: model.BatchPurposePilot, UnitCount: 1, BlueprintVersionID: version.ID},
+		&store.EnqueueJobInput{Kind: model.JobKindBatchGenerate, IdempotencyKey: fmt.Sprintf("native-state:%d", project.ID)})
+	if err != nil || job == nil {
+		t.Fatalf("create native batch/job: %v", err)
+	}
+	item, _, err := accounting.batches.EnsureBatchItem(ctx, batch.ID, project.ID, "domain-1/direction-1#1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := accounting.batches.CommitBatchItemSuccess(ctx, batch.ID, project.ID, item.ID, store.AppendSampleVersionInput{
+		SampleKey: item.ItemKey, TargetKind: model.TargetKindSFT,
+		Payload: map[string]any{"question": "fixture question", "reasoning": "fixture reasoning", "answer": "fixture answer"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	jobs := store.NewJobStore(pool)
+	claimed, ok, err := jobs.ClaimJobByID(ctx, job.ID, "native-state-worker", time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("claim native job: %v", err)
+	}
+	rt := &studioRuntime{env: &StudioJobEnv{Pool: pool, Jobs: jobs, Owner: "native-state-worker"}, lease: time.Minute}
+	rt.env.SetExtra("datasetStore", store.NewDatasetStore(pool, nil))
+	return rt, claimed, accounting.batches
+}
+
+func TestStudioNativeBatchCompletionConvergesAfterFencedJobCommit(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		pause      bool
+		staleToken bool
+		wantBatch  string
+		wantJob    string
+	}{
+		{"completed", false, false, model.BatchStatusCompleted, model.JobStatusSucceeded},
+		{"pause-is-preserved", true, false, model.BatchStatusPauseRequested, model.JobStatusSucceeded},
+		{"stale-worker-cannot-finalize", false, true, model.BatchStatusQueued, model.JobStatusLeased},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rt, job, batches := settledNativeBatchJob(t)
+			ctx := context.Background()
+			if test.pause {
+				if _, err := batches.PauseBatch(ctx, *job.ProjectID, *job.BatchID, 0); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if test.staleToken {
+				job.FencingToken++
+			}
+			rt.execute(ctx, job)
+			batch, err := batches.GetBatch(ctx, *job.BatchID)
+			if err != nil || batch.Status != test.wantBatch {
+				t.Fatalf("batch status after native execution: %+v, err=%v", batch, err)
+			}
+			stored, err := rt.env.Jobs.GetJob(ctx, job.ID)
+			if err != nil || stored.Status != test.wantJob {
+				t.Fatalf("job status after native execution: %+v, err=%v", stored, err)
+			}
+			if test.wantBatch == model.BatchStatusCompleted {
+				steps, err := batches.ListBatchSteps(ctx, batch.ID)
+				if err != nil || len(steps) != 2 || steps[1].Status != model.StepStatusCompleted {
+					t.Fatalf("terminal batch steps must also converge: %+v, err=%v", steps, err)
+				}
+			}
+		})
+	}
+}
 
 // 本文件验证 Issue #160 T06 执行侧中**不需要 Redis** 的那部分逻辑。
 //

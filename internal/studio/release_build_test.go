@@ -2,7 +2,9 @@ package studio
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -95,6 +97,94 @@ func TestReleaseGroundingPersistsAndSurvivesSourceErasure(t *testing.T) {
 	}
 	if first.Manifest.Items[0].SourceChunks[0].Status != "available" {
 		t.Fatal("later build mutated prior manifest")
+	}
+}
+
+func TestBootstrapGRPOReleaseKeepsFrozenArraysAndRejectsFlattenedMapping(t *testing.T) {
+	fixture := newRunnerFixture(t, &scriptedGenerator{})
+	ctx := context.Background()
+	var workspaceID int64
+	if err := fixture.pool.QueryRow(ctx, `SELECT workspace_id FROM projects WHERE id=$1`, fixture.projectID).Scan(&workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	input := model.CreateProjectInput{Name: "原生 GRPO 发布", Goal: "检查退货培训", TargetKind: model.TargetKindGRPO}
+	input.Normalize()
+	project, err := store.NewProjectStore(fixture.pool).CreateProject(ctx, workspaceID, fixture.userID, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	documents := store.NewDocumentStore(fixture.pool)
+	if err := documents.BootstrapProjectDocuments(ctx, project.ID, fixture.userID, project.TargetKind, project.Name, project.Goal); err != nil {
+		t.Fatal(err)
+	}
+	head, err := documents.GetDocument(ctx, project.ID, model.KindMapping, store.DefaultLogicalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frozen, err := documents.GetVersion(ctx, head.ID, head.CurrentVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := model.GRPOSample{
+		Question: "温控异常怎样处理？", JudgePrompt: "按证据完整性评分。", Levels: []string{"不合格", "合格"},
+		LevelRubrics: []model.GrpoLevelRubric{
+			{Level: "不合格", Criteria: "未提供记录", RejectCase: "直接退款"},
+			{Level: "合格", Criteria: "上传温度记录并交质量组审核", AcceptCase: "记录温度"},
+		},
+	}
+	sample, version, err := fixture.batches.AppendSampleVersion(ctx, store.AppendSampleVersionInput{
+		ProjectID: project.ID, SampleKey: "native-grpo", TargetKind: model.TargetKindGRPO, Payload: payload,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	builder := &ReleaseBuilder{Batches: fixture.batches, Documents: documents}
+	buildInput := ReleaseBuildInput{ProjectID: project.ID, ReleaseID: 1, Revision: 1, TargetKind: model.TargetKindGRPO,
+		Format: model.ExportFormatJSONL, MappingVersionID: frozen.ID,
+		Items: []store.ReleaseItem{{SampleID: sample.ID, SampleVersionID: version.ID, ContentHash: version.ContentHash}}}
+	first, err := builder.BuildReleaseArtifact(ctx, buildInput)
+	if err != nil {
+		t.Fatalf("native bootstrap mapping must build without manual correction: %v", err)
+	}
+	var row model.GRPOExportLine
+	if err := json.Unmarshal(first.ArtifactBytes, &row); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(row.Levels, payload.Levels) || !reflect.DeepEqual(row.LevelRubrics, model.ToGRPORubricExports(payload.LevelRubrics)) {
+		t.Fatalf("stored default mapping lost array content: %+v", row)
+	}
+	if count, err := model.VerifyGRPOExportLines(first.ArtifactBytes); err != nil || count != 1 {
+		t.Fatalf("published row invalid: count=%d err=%v", count, err)
+	}
+	var flattened model.MappingPayload
+	if err := json.Unmarshal(frozen.Payload, &flattened); err != nil {
+		t.Fatal(err)
+	}
+	for index := range flattened.Fields {
+		flattened.Fields[index].SourceField = strings.Trim(flattened.Fields[index].SourceField, "{}")
+	}
+	_, badVersion, err := documents.SaveVersion(ctx, project.ID, model.KindMapping, fixture.userID, store.SaveDocumentVersionInput{
+		ExpectedRevision: head.RowVersion, Payload: flattened, ChangeReason: "边界回归：数组误配置为文本",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	badInput := buildInput
+	badInput.MappingVersionID = badVersion.ID
+	if output, err := builder.BuildReleaseArtifact(ctx, badInput); err == nil || !strings.Contains(err.Error(), "结构校验失败") || len(output.ArtifactBytes) != 0 {
+		t.Fatalf("flattened mapping must reject publication without artifact: err=%v bytes=%d", err, len(output.ArtifactBytes))
+	}
+	// Saving a new head must not alter the mapping already frozen by a release.
+	second, err := builder.BuildReleaseArtifact(ctx, buildInput)
+	if err != nil || string(first.ArtifactBytes) != string(second.ArtifactBytes) || first.ArtifactHash != second.ArtifactHash {
+		t.Fatalf("frozen release changed after mapping edit: %v", err)
+	}
+	if err := documents.BootstrapProjectDocuments(ctx, project.ID, fixture.userID, project.TargetKind, project.Name, project.Goal); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := documents.GetDocument(ctx, project.ID, model.KindMapping, store.DefaultLogicalID)
+	if err != nil || latest.CurrentVersion != badVersion.Version {
+		t.Fatalf("bootstrap must preserve existing versions, including user errors: %+v err=%v", latest, err)
 	}
 }
 

@@ -75,3 +75,25 @@ func TestCallAccountingSettlesEveryChargedRetry(t *testing.T) {
 		t.Fatalf("retry must preserve paid empty response and unknown usage: %+v", probe)
 	}
 }
+
+func TestCallAccountingSettlesTruncatedResponseWithoutRepeatingFrozenLimit(t *testing.T) {
+	probe := &accountingProbe{}
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"id\":\"charged-length\",\"model\":\"m1\",\"choices\":[{\"delta\":{\"reasoning_details\":[{\"text\":\"格式示例：{\\\"answer\\\":\\\"...\\\"}\"}]},\"finish_reason\":\"length\"}]}\n\ndata: {\"id\":\"charged-length\",\"choices\":[],\"usage\":{\"prompt_tokens\":760,\"completion_tokens\":4096}}\n\ndata: [DONE]\n"))
+	}))
+	defer server.Close()
+	_, err := requestChatCompletion(context.Background(), ProviderConfig{BaseURL: server.URL, Model: "m1", MaxTokens: 4096, Accounting: probe}, map[string]any{}, time.Second)
+	if err != errCompletionTruncated {
+		t.Fatalf("truncation err=%v", err)
+	}
+	if calls != 1 || probe.reserved != 1 || len(probe.settled) != 1 {
+		t.Fatalf("same frozen limit was retried or receipt was lost: calls=%d probe=%+v", calls, probe)
+	}
+	settled := probe.settled[0]
+	if settled.RequestID != "charged-length" || settled.Usage.OutputTokens == nil || *settled.Usage.OutputTokens != 4096 || settled.Usage.InputTokens == nil || *settled.Usage.InputTokens != 760 {
+		t.Fatalf("paid truncated usage was not retained: %+v", settled)
+	}
+}

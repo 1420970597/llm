@@ -168,18 +168,28 @@ type LongTextAssessment struct {
 //
 // field 是字段名，minRunes 是该字段的长度下限。
 func assessLongText(field, value string, minRunes int) LongTextAssessment {
+	if assessment := assessNonPlaceholderText(field, value); !assessment.Valid {
+		return assessment
+	}
+	trimmed := strings.TrimSpace(value)
+	if contentRunes := countContentRunes(trimmed); contentRunes < minContentRunes {
+		return LongTextAssessment{Field: field, Reason: fmt.Sprintf("%s 有效字符过少（%d < %d）", field, contentRunes, minContentRunes)}
+	}
+	if length := utf8.RuneCountInString(trimmed); length < minRunes {
+		return LongTextAssessment{Field: field, Reason: fmt.Sprintf("%s 长度不足（%d < %d）", field, length, minRunes)}
+	}
+	return LongTextAssessment{Valid: true}
+}
+
+// Short rubric fields share the placeholder rules without inheriting SFT
+// length thresholds: a concise criterion can still carry valid information.
+func assessNonPlaceholderText(field, value string) LongTextAssessment {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return LongTextAssessment{Field: field, Reason: field + " 为空"}
 	}
 	if _, isPlaceholder := placeholderTokens[normalizeForPlaceholder(trimmed)]; isPlaceholder {
 		return LongTextAssessment{Field: field, Reason: field + " 是占位符"}
-	}
-	if contentRunes := countContentRunes(trimmed); contentRunes < minContentRunes {
-		return LongTextAssessment{Field: field, Reason: fmt.Sprintf("%s 有效字符过少（%d < %d）", field, contentRunes, minContentRunes)}
-	}
-	if length := utf8.RuneCountInString(trimmed); length < minRunes {
-		return LongTextAssessment{Field: field, Reason: fmt.Sprintf("%s 长度不足（%d < %d）", field, length, minRunes)}
 	}
 	return LongTextAssessment{Valid: true}
 }

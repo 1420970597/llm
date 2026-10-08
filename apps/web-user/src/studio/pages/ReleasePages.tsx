@@ -921,7 +921,7 @@ export function ReleaseCardPage() {
 
       <div className="console-stat-grid">
         <StatTile label="用途" value={release.intendedUse || '（未填写）'} hint="数据卡必须写清用途" />
-        <StatTile label="格式" value={release.format} hint="本轮承诺 JSONL/CSV/Alpaca" />
+        <StatTile label="格式" value={release.format} hint={release.targetKind === 'grpo' ? 'GRPO 仅支持 JSONL，保留档位与判据数组' : 'SFT 支持 JSONL/CSV/Alpaca'} />
         <StatTile label="限制" value={String(release.limitations.length)} hint="每行一条；空限制表示无声明" />
         <StatTile label="制品" value={String(card.artifacts.length)} hint="注册/校验/失败三态" />
       </div>

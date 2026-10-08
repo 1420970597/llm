@@ -1689,6 +1689,61 @@ func TestRefreshBatchCountsConvergesZombieRunningBatch(t *testing.T) {
 // 实测教训：`RefreshBatchCounts` 此前只由 runner 跑完与控制命令调用，因此
 // 已经跑完的历史批次永远走不到它 —— 修复只对未来的批次有效。
 // 本查询把「哪几条与事实不符」变成可扫描的事实，由 worker 维护循环定期调用。
+func TestQueuedBatchIsReconciledOnlyAfterGenerationJobSettles(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+	jobs := NewJobStore(fixture.pool)
+	batch, job, err := fixture.batches.CreateBatchWithJob(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1),
+		&EnqueueJobInput{Kind: model.JobKindBatchGenerate, IdempotencyKey: fmt.Sprintf("queued-reconcile:%d", fixture.projectID)})
+	if err != nil || job == nil {
+		t.Fatalf("create batch/job: %v", err)
+	}
+	assertScanned := func(want bool) {
+		t.Helper()
+		ids, err := fixture.batches.ListDivergentBatchIDs(ctx, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, id := range ids {
+			found = found || id == batch.ID
+		}
+		if found != want {
+			t.Fatalf("queued batch scanned=%v, want=%v", found, want)
+		}
+	}
+	assertScanned(false) // A newly queued job is still legitimate pending work.
+	claimed, ok, err := jobs.ClaimJobByID(ctx, job.ID, "queued-reconcile-worker", time.Minute)
+	if err != nil || !ok {
+		t.Fatalf("claim job: %v", err)
+	}
+	assertScanned(false)
+	item, _, err := fixture.batches.EnsureBatchItem(ctx, batch.ID, fixture.projectID, "d/d#1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := fixture.batches.CommitBatchItemSuccess(ctx, batch.ID, fixture.projectID, item.ID, AppendSampleVersionInput{
+		SampleKey: item.ItemKey, TargetKind: model.TargetKindSFT, Payload: sftPayload("真实作业定稿顺序"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := fixture.batches.RefreshBatchCounts(ctx, batch.ID)
+	if err != nil || before.Status != model.BatchStatusQueued {
+		t.Fatalf("active job must prevent premature terminal state: %+v, %v", before, err)
+	}
+	assertScanned(false)
+	if _, err := jobs.CompleteJob(ctx, job.ID, claimed.LeaseOwner, claimed.FencingToken, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertScanned(true) // Simulate a crash after job commit, before worker refresh.
+	final, err := fixture.batches.RefreshBatchCounts(ctx, batch.ID)
+	if err != nil || final.Status != model.BatchStatusCompleted || final.CompletedUnits != 1 {
+		t.Fatalf("settled queued batch must converge: %+v, %v", final, err)
+	}
+	assertScanned(false)
+}
+
 func TestListDivergentBatchIDsFindsStaleStates(t *testing.T) {
 	fixture := newBatchFixture(t)
 	ctx := context.Background()

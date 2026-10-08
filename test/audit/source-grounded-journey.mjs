@@ -5,7 +5,7 @@
  * they do not constitute human acceptance or independent quality evaluation.
  */
 import { createRequire } from 'node:module'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
 
@@ -13,13 +13,34 @@ const require = createRequire(import.meta.url)
 const { request, chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const baseURL = process.env.JOURNEY_URL
 assert(baseURL, 'JOURNEY_URL must point to an isolated acceptance stack')
+const webURL = process.env.JOURNEY_WEB_URL || baseURL
 const providerID = Number(process.env.JOURNEY_PROVIDER_ID)
 assert(providerID > 0, 'A real provider ID is required')
+const generationMaxTokens = Number(process.env.JOURNEY_MAX_TOKENS || 8192)
+assert(Number.isInteger(generationMaxTokens) && generationMaxTokens > 0, 'JOURNEY_MAX_TOKENS must be a positive integer')
 const api = await request.newContext({ baseURL, timeout: 30000 })
 const runID = new Date().toISOString().replace(/[:.]/g, '-')
-const evidence = { runID, baseURL, sourceRevision: process.env.JOURNEY_SHA || 'working-tree', projects: [], checks: [] }
+const evidence = { runID, baseURL, webURL, generationMaxTokens, sourceRevision: process.env.JOURNEY_SHA || 'working-tree', productSourceRunID: runID, projects: [], checks: [] }
 const outputDir = `output/playwright/grounding-${runID}`
 mkdirSync(outputDir, { recursive: true })
+if (process.env.JOURNEY_RESUME_EVIDENCE) {
+  const previous = JSON.parse(readFileSync(process.env.JOURNEY_RESUME_EVIDENCE, 'utf8'))
+  assert.equal(previous.baseURL, baseURL, 'Resume evidence must belong to this isolated API')
+  const sft = previous.projects.find(project => project.targetKind === 'sft' && project.releaseID && project.artifactHash)
+  assert(sft, 'Resume evidence must contain a previously verified SFT release')
+  evidence.projects.push(structuredClone(sft))
+  evidence.resumedFromRun = previous.runID
+  evidence.reusedSFTFromRun = previous.reusedSFTFromRun || previous.runID
+  evidence.reusedSFTScope = previous.reusedSFTScope || { sourceRevision: previous.sourceRevision, generationMaxTokens: previous.generationMaxTokens }
+  evidence.productSourceRunID = previous.productSourceRunID || previous.runID
+  const grpo = previous.projects.find(project => project.targetKind === 'grpo' && project.sampleVersionID && project.contentHash)
+  if (grpo) {
+    evidence.projects.push(structuredClone(grpo))
+    evidence.reusedGRPOFromRun = previous.reusedGRPOFromRun || previous.runID
+    evidence.reusedGRPOScope = previous.reusedGRPOScope || { sourceRevision: previous.sourceRevision, generationMaxTokens: previous.generationMaxTokens }
+  }
+  evidence.checks.push(...previous.checks.filter(check => check.startsWith('sft:') || (grpo && check.startsWith('grpo:'))))
+}
 
 async function call(method, path, data, expected = [200, 201, 202]) {
   const digest = createHash('sha256').update(`${path}:${JSON.stringify(data)}`).digest('hex')
@@ -31,10 +52,15 @@ async function call(method, path, data, expected = [200, 201, 202]) {
 async function waitFor(path, statuses, label, maxSeconds = 900) {
   const deadline = Date.now() + maxSeconds * 1000
   let last
+  let previousStatus
   while (Date.now() < deadline) {
     last = await call('GET', path)
-    if (statuses.includes(last.status)) return last
-    if (['failed', 'partial_failed', 'build_failed', 'paused'].includes(last.status)) {
+    const status = last.data?.batch?.status || last.data?.release?.status || last.status || last.data?.status
+    assert(status, `${label}: response contains no resource status`)
+    if (status !== previousStatus) console.log(`${label}: ${status}`)
+    previousStatus = status
+    if (statuses.includes(status)) return last
+    if (['failed', 'partial_failed', 'build_failed', 'paused', 'cancelled'].includes(status)) {
       throw new Error(`${label}: ${JSON.stringify(last)}`)
     }
     await new Promise(resolve => setTimeout(resolve, 4000))
@@ -53,6 +79,17 @@ async function save(projectID, kind, old, payload) {
   return saved.data.version
 }
 async function runTarget(targetKind) {
+  const reused = evidence.projects.find(project => project.targetKind === targetKind && project.sampleVersionID && project.contentHash)
+  if (reused) {
+    const detail = await call('GET', `/api/v1/projects/${reused.projectID}/samples/${reused.sampleID}`)
+    const version = detail.data.version || detail.data.currentVersion
+    assert.equal(version.versionId, reused.sampleVersionID, 'Resumed content version must remain immutable')
+    assert.equal(version.contentHash, reused.contentHash, 'Resumed sample content must not change')
+    assert.deepEqual([...version.source.sourceChunkIds].sort(), [...reused.sourceChunkIDs].sort())
+    if (reused.artifactHash) return verifyPublishedTarget(reused, version)
+    console.log(`Reusing real ${targetKind} project=${reused.projectID} sample=${reused.sampleID}; no model generation`)
+    return finishTarget(reused, version, detail, true)
+  }
   const created = await call('POST', '/api/v1/projects', {
     name: `素材接地验收-${targetKind}-${runID}`, targetKind,
     goal: '根据北辰仓库退货政策生成可核查的培训问题', pilotSize: 1,
@@ -95,12 +132,16 @@ async function runTarget(targetKind) {
   const blueprintOld = await document(projectID, 'blueprint')
   const blueprintPayload = structuredClone(blueprintOld.payload)
   blueprintPayload.nodes.coverage.coverageVersionId = coverage.id
-  Object.assign(blueprintPayload.nodes.generation, { sourceVersionId: source.id, modelConnectionId: providerID, concurrency: 1, maxTokens: 4096 })
+  Object.assign(blueprintPayload.nodes.generation, { sourceVersionId: source.id, modelConnectionId: providerID, concurrency: 1, maxTokens: generationMaxTokens })
+  if (targetKind === 'grpo') {
+    blueprintPayload.nodes.generation.jsonSchema = { ...blueprintPayload.nodes.generation.jsonSchema, levels: ['不合格', '合格', '优秀'] }
+    result.levels = [...blueprintPayload.nodes.generation.jsonSchema.levels]
+  }
   const blueprint = await save(projectID, 'blueprint', blueprintOld, blueprintPayload)
   const batch = await call('POST', `${prefix}/batches`, { purpose: 'pilot', unitCount: 1, blueprintVersionId: blueprint.id })
   result.batchID = Number(batch.id.replace(/^b_/, ''))
   await waitFor(`${prefix}/batches/b_${result.batchID}`, ['completed'], 'real model generation')
-  const listed = await call('GET', `${prefix}/samples?reviewStatus=all&limit=20`)
+  const listed = await call('GET', `${prefix}/samples?status=all&limit=20`)
   assert.equal(listed.items.length, 1)
   const sampleID = listed.items[0].resourceId || `s_${listed.items[0].sampleId}`
   const detail = await call('GET', `${prefix}/samples/${sampleID}`)
@@ -109,10 +150,20 @@ async function runTarget(targetKind) {
   assert.deepEqual([...version.source.sourceChunkIds].sort(), [...chunkIDs].sort())
   assert.equal(version.payload.source, 'document')
   assert(!/：第\s*\d+\s*题$/.test(version.payload.question), 'Question is generated by the real model')
+  if (targetKind === 'sft') {
+    assert(!/^[.\s…]+$/.test(version.payload.answer), 'Final answer must not be an ellipsis placeholder')
+    assert(!/第\s*1\s*步\s*(?:\.{3}|…)[\s\S]*第\s*2\s*步\s*(?:\.{3}|…)/.test(version.payload.reasoning), 'Reasoning must not come from an internal format example')
+  }
   result.sampleID = sampleID
   result.sampleVersionID = version.versionId
   result.contentHash = version.contentHash
   evidence.checks.push(`${targetKind}:real-generated-content-and-source-ids`)
+  return finishTarget(result, version, detail)
+}
+
+async function finishTarget(result, version, detail, resumed = false) {
+  const { projectID, targetKind, sampleID } = result
+  const prefix = `/api/v1/projects/${projectID}`
   const sameSource = await call('POST', `${prefix}/experiments`, {
     sampleVersionIds: [version.versionId], judgeConnectionIds: [providerID], judgeMaxTokens: 1024,
     samplingSeed: 42, missingScorePolicy: 'exclude',
@@ -120,23 +171,52 @@ async function runTarget(targetKind) {
   }, [422])
   assert(sameSource.error?.message.includes('同源'), 'Valid same-source experiment must be rejected for judge independence')
   evidence.checks.push(`${targetKind}:same-source-judge-rejected`)
-  const policy = await document(projectID, 'quality-policy')
-  await call('POST', `${prefix}/rule-previews`, { qualityPolicyVersionId: policy.id, sampleVersionIds: [version.versionId], maxHits: 20 })
-  const mapping = await document(projectID, 'mapping')
-  const pendingCandidate = await call('POST', `${prefix}/releases`, {
-    releaseName: `pending-${runID}`, sampleVersionIds: [version.versionId], mappingVersionId: mapping.id,
-    format: 'jsonl', intendedUse: '隔离验收：验证未审阅样本阻止发布', limitations: ['技术验收'], provenance: { runID },
-  })
-  const pendingCard = await call('GET', `${prefix}/releases/${pendingCandidate.id}`)
-  assert(pendingCard.data.blockers.some(item => item.code === 'PENDING_REVIEW'))
-  await call('POST', `${prefix}/releases/${pendingCandidate.id}/publish`, {}, [409])
-  evidence.checks.push(`${targetKind}:pending-review-blocks-publication`)
+  if (!resumed) {
+    const policy = await document(projectID, 'quality-policy')
+    await call('POST', `${prefix}/rule-previews`, { qualityPolicyVersionId: policy.id, sampleVersionIds: [version.versionId], maxHits: 20 })
+  }
+  let mapping = await document(projectID, 'mapping')
+  if (process.env.JOURNEY_REPAIR_GRPO_MAPPING === '1' && targetKind === 'grpo' && resumed) {
+    // Old immutable mappings remain untouched. Recovery explicitly saves a new
+    // document version matching the fixed native-project default.
+    const corrected = structuredClone(mapping.payload)
+    let changed = false
+    for (const field of corrected.fields) {
+      if ((field.targetField === 'levels' && field.sourceField === 'levels') ||
+          (field.targetField === 'level_rubrics' && field.sourceField === 'levelRubrics')) {
+        field.sourceField = `{{${field.sourceField}}}`
+        changed = true
+      }
+    }
+    if (changed) {
+      result.mappingRecovery = { oldMappingVersionID: mapping.id, failedReleaseID: result.releaseID }
+      mapping = await save(projectID, 'mapping', mapping, corrected)
+      result.mappingRecovery.newMappingVersionID = mapping.id
+    }
+  }
+  if (targetKind === 'grpo') {
+    assert.equal(mapping.payload.fields.find(field => field.targetField === 'levels').sourceField, '{{levels}}')
+    assert.equal(mapping.payload.fields.find(field => field.targetField === 'level_rubrics').sourceField, '{{levelRubrics}}')
+    evidence.checks.push(resumed ? 'grpo:recovery-structured-mapping' : 'grpo:default-structured-mapping')
+  }
+  if (!resumed || !evidence.checks.includes(`${targetKind}:pending-review-blocks-publication`)) {
+    const pendingCandidate = await call('POST', `${prefix}/releases`, {
+      releaseName: `pending-${runID}`, sampleVersionIds: [version.versionId], mappingVersionId: mapping.id,
+      format: 'jsonl', intendedUse: '隔离验收：验证未审阅样本阻止发布', limitations: ['技术验收'], provenance: { runID },
+    })
+    const pendingCard = await call('GET', `${prefix}/releases/${pendingCandidate.id}`)
+    assert(pendingCard.data.blockers.some(item => item.code === 'PENDING_REVIEW'))
+    await call('POST', `${prefix}/releases/${pendingCandidate.id}/publish`, {}, [409])
+    evidence.checks.push(`${targetKind}:pending-review-blocks-publication`)
+  }
   const review = await call('GET', `${prefix}/samples/${sampleID}/versions/${version.version}/decisions`)
   const projection = review.projection || review.data?.projection || detail.data.projection
-  await call('POST', `${prefix}/samples/${sampleID}/versions/${version.version}/decisions`, {
-    action: 'accepted', reason: '自动化技术验收：仅检查内容结构、素材引用与交付完整性；不是人工验收或独立质量评估。',
-    evidenceRevision: projection?.evidenceRevision || 0, reviewerRevision: 1,
-  })
+  if (projection?.effectiveAction !== 'accepted') {
+    await call('POST', `${prefix}/samples/${sampleID}/versions/${version.version}/decisions`, {
+      action: 'accepted', reason: '自动化技术验收：仅检查内容结构、素材引用与交付完整性；不是人工验收或独立质量评估。',
+      evidenceRevision: projection?.evidenceRevision || 0, reviewerRevision: 1,
+    })
+  }
   const release = await call('POST', `${prefix}/releases`, {
     releaseName: `grounding-${runID}`, sampleVersionIds: [version.versionId], mappingVersionId: mapping.id,
     format: 'jsonl', intendedUse: '隔离验收，非生产训练数据',
@@ -144,26 +224,38 @@ async function runTarget(targetKind) {
   })
   result.releaseID = Number(release.id)
   await call('POST', `${prefix}/releases/${release.id}/publish`, {})
-  const card = await waitFor(`${prefix}/releases/${release.id}`, ['published'], 'release job', 180)
+  return verifyPublishedTarget(result, version)
+}
+
+async function verifyPublishedTarget(result, version) {
+  const { projectID, targetKind, sampleID, releaseID } = result
+  const prefix = `/api/v1/projects/${projectID}`
+  const card = await waitFor(`${prefix}/releases/${releaseID}`, ['published'], 'release job', 180)
   assert.equal(card.data.manifest.grounding.groundedSamples, 1)
   assert.equal(card.data.manifest.grounding.missing, 0)
   const artifact = card.data.artifacts.find(item => item.state === 'verified')
   assert(artifact, 'Published artifact is verified')
-  const download = await api.get(`${prefix}/releases/${release.id}/artifacts/${artifact.id}/download`)
+  if (result.artifactHash) assert.equal(artifact.artifactHash, result.artifactHash, 'Previously verified release bytes must remain immutable')
+  const download = await api.get(`${prefix}/releases/${releaseID}/artifacts/${artifact.id}/download`)
   assert.equal(download.status(), 200)
   const bytes = await download.body()
   assert.equal(`sha256:${createHash('sha256').update(bytes).digest('hex')}`, artifact.artifactHash)
+  writeFileSync(`${outputDir}/${targetKind}.jsonl`, bytes)
   const exported = JSON.parse(bytes.toString('utf8').trim())
   assert.equal(exported.question, version.payload.question)
   if (targetKind === 'grpo') {
     assert(Array.isArray(exported.levels) && exported.levels.length >= 2)
     assert(Array.isArray(exported.level_rubrics))
+    assert.deepEqual(exported.levels, version.payload.levels)
+    assert.deepEqual(exported.level_rubrics, version.payload.levelRubrics.map(rubric => ({
+      level: rubric.level, criteria: rubric.criteria, accept_case: rubric.acceptCase, reject_case: rubric.rejectCase,
+    })))
   } else assert(exported.reasoning && exported.answer)
   result.artifactHash = artifact.artifactHash
   result.budget = await call('GET', `${prefix}/budget`)
   writeFileSync(`${outputDir}/${targetKind}-manifest.json`, JSON.stringify(card.data.manifest, null, 2))
   evidence.checks.push(`${targetKind}:published-download-hash-and-typed-fields`)
-  console.log(`PASS ${targetKind} project=${projectID} sample=${sampleID} release=${release.id}`)
+  console.log(`PASS ${targetKind} project=${projectID} sample=${sampleID} release=${releaseID}`)
 }
 
 async function verifyProducts() {
@@ -175,7 +267,7 @@ async function verifyProducts() {
     jsonl: [{ question: '产物验收：何时退款？', reasoning: '以验收通过时间为起点。', answer: '验收通过后3个工作日内。' }],
   }
   for (const [format, rows] of Object.entries(formats)) {
-    const payload = { format, sourceKey: `${runID}-${format}`, targetKind: 'sft', content: rows.map(row => JSON.stringify(row)).join('\n'), changeReason: 'EasyDataset公开产物格式真实导入验收' }
+    const payload = { format, sourceKey: `${evidence.productSourceRunID}-${format}`, targetKind: 'sft', content: rows.map(row => JSON.stringify(row)).join('\n'), changeReason: 'EasyDataset公开产物格式真实导入验收' }
     const preview = await call('POST', `${prefix}/source-import-products/preview`, payload)
     assert.equal(preview.validItems, 1)
     const queued = await call('POST', `${prefix}/source-import-products`, payload)
@@ -188,7 +280,7 @@ async function verifyProducts() {
     assert.equal(replay.importId, queued.importId)
     evidence.checks.push(`${format}:product-preview-import-replay-and-failures`)
   }
-  const samples = await call('GET', `${prefix}/samples?reviewStatus=all&limit=20`)
+  const samples = await call('GET', `${prefix}/samples?status=all&limit=20`)
   assert.equal(samples.items.length, 4)
   for (const item of samples.items.filter(item => item.resourceId !== project.sampleID)) {
     const detail = await call('GET', `${prefix}/samples/${item.resourceId}`)
@@ -196,8 +288,15 @@ async function verifyProducts() {
     assert.equal(detail.data.version.source.sourceChunkIds?.length || 0, 0)
   }
   const card = await call('GET', `${prefix}/releases/${project.releaseID}`)
-  assert.equal(card.data.artifacts.find(item => item.state === 'verified').artifactHash, project.artifactHash)
+  const artifact = card.data.artifacts.find(item => item.state === 'verified')
+  assert.equal(artifact.artifactHash, project.artifactHash)
   assert.equal(card.data.manifest.itemCount, 1)
+  const downloaded = await api.get(`${prefix}/releases/${project.releaseID}/artifacts/${artifact.id}/download`)
+  assert.equal(downloaded.status(), 200)
+  const bytes = await downloaded.body()
+  assert.equal(`sha256:${createHash('sha256').update(bytes).digest('hex')}`, project.artifactHash)
+  writeFileSync(`${outputDir}/sft.jsonl`, bytes)
+  writeFileSync(`${outputDir}/sft-manifest.json`, JSON.stringify(card.data.manifest, null, 2))
   evidence.checks.push('external-imports-do-not-change-frozen-release-or-claim-grounding')
 }
 
@@ -208,14 +307,18 @@ try {
     outputPriceMinorPerMillion: 1000, isFree: false, isEstimated: true,
     note: '隔离技术验收保守估计，非官方价格或实际账单',
   })
-  for (const target of ['sft', 'grpo']) await runTarget(target)
-  await verifyProducts()
+  if (!evidence.projects.some(project => project.targetKind === 'sft' && project.artifactHash)) await runTarget('sft')
+  // Product import and the independent GRPO project can finish even when the
+  // other phase fails. Stable source keys make resumed imports idempotent.
+  const phases = await Promise.allSettled([runTarget('grpo'), verifyProducts()])
+  evidence.phaseErrors = phases.flatMap((phase, index) => phase.status === 'rejected' ? [{ phase: ['grpo', 'products'][index], error: phase.reason.message }] : [])
+  if (evidence.phaseErrors.length) throw new Error(evidence.phaseErrors.map(item => `${item.phase}: ${item.error}`).join('\n'))
   const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] })
   try {
     const context = await browser.newContext({ storageState: await api.storageState(), viewport: { width: 1440, height: 1024 } })
     const page = await context.newPage()
     for (const project of evidence.projects) {
-      await page.goto(`${baseURL}/p/${project.projectID}/releases/${project.releaseID}`)
+      await page.goto(`${webURL}/p/${project.projectID}/releases/${project.releaseID}`)
       await page.locator('[data-grounding-summary="true"]').waitFor({ timeout: 15000 })
       await page.screenshot({ path: `${outputDir}/${project.targetKind}-release.png`, fullPage: true })
     }
