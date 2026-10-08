@@ -492,6 +492,16 @@ func (rt *studioRuntime) execute(ctx context.Context, job model.Job) {
 			log.Printf("studio.job.complete_replayed job=%d kind=%s", job.ID, job.Kind)
 			return
 		}
+		// runner 聚合时自身作业仍持有租约，不能提前声明批次终态。
+		// 只有 fenced 成功提交之后才再次聚合；维护扫描修复崩溃窗口和旧 queued 行。
+		if job.Kind == model.JobKindBatchGenerate && job.BatchID != nil {
+			batches := store.NewBatchStore(rt.env.Pool)
+			if _, err := batches.RefreshBatchCounts(ctx, *job.BatchID); err != nil {
+				log.Printf("studio.job.batch_refresh_failed job=%d batch=%d err=%v", job.ID, *job.BatchID, err)
+			} else if _, err := batches.RefreshBatchSteps(ctx, *job.BatchID); err != nil {
+				log.Printf("studio.job.batch_steps_failed job=%d batch=%d err=%v", job.ID, *job.BatchID, err)
+			}
+		}
 		log.Printf("studio.job.succeeded job=%d kind=%s attempt=%d duration_ms=%d",
 			job.ID, job.Kind, job.Attempt, time.Since(started).Milliseconds())
 		return

@@ -534,10 +534,11 @@ const batchListSQL = `
 // 于是修复只对未来的批次有效，已存在的矛盾状态永久保留。
 //
 // 本查询把「哪几条需要重算」变成可扫描的事实，由 worker 的维护循环定期调用。
-// 只用**已落库的列**判定，不回表算 batch_items：维护循环每 30 秒跑一次，
-// 让它随批次数量增长而变慢会拖垮整个 worker。两种形态各自都极小：
+// 维护循环每 30 秒扫描：终态少交付使用已落库计数，活跃状态使用
+// NOT EXISTS 检查单元与作业事实，避免读取全部单元重新聚合。两种形态：
 //   - `completed` 但 `completed_units < planned_units`（#201 的静默少交付）；
-//   - `running` 但既无在途/待执行单元、也无活作业（#202 的僵尸）。
+//   - `queued` / `running` 但既无在途/待执行单元、也无活作业。
+//     原生 runner 在自己的作业结束前聚合，queued 也可能留下已定稿内容。
 //
 // 第二个条件里的「无活作业」与 `RefreshBatchCounts` 里的 activeJobs 判定
 // **必须一致**：否则会把一个刚被派发、还没建单元的正在跑的批次误判为僵尸
@@ -549,7 +550,7 @@ func (s *BatchStore) ListDivergentBatchIDs(ctx context.Context, limit int) ([]in
 	rows, err := s.db.Query(ctx, `
     SELECT id FROM batches
     WHERE (status = 'completed' AND completed_units < planned_units)
-       OR (status = 'running'
+       OR (status IN ('queued', 'running')
              AND NOT EXISTS (
                SELECT 1 FROM batch_items i
                WHERE i.batch_id = batches.id AND i.status IN ('pending', 'running'))

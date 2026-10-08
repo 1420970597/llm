@@ -329,7 +329,12 @@ func decodeChatCompletionBody(raw []byte, target *chatCompletionResponse) error 
 
 	var generic map[string]any
 	if err := json.Unmarshal(trimmed, &generic); err == nil {
-		text := strings.Join(extractKnownText(generic), "")
+		// 包装响应也必须正文优先。把 reasoning_content 一并拼接会让
+		// 下游从模型思考中的示例 JSON 提取到占位数据，且结果取决于 map 遍历顺序。
+		text := joinGenericText(generic, contentKeys)
+		if strings.TrimSpace(text) == "" {
+			text = joinGenericText(generic, reasoningKeys)
+		}
 		if strings.TrimSpace(text) != "" {
 			target.Choices = make([]struct {
 				Message struct {
@@ -563,7 +568,7 @@ var contentKeys = map[string]struct{}{
 }
 
 var reasoningKeys = map[string]struct{}{
-	"reasoning_content": {}, "reasoning": {},
+	"reasoning_content": {}, "reasoning": {}, "reasoning_details": {},
 }
 
 func joinGenericText(value any, wanted map[string]struct{}) string {
@@ -575,6 +580,21 @@ func extractTextByKeys(value any, wanted map[string]struct{}) []string {
 	case map[string]any:
 		collected := []string{}
 		for key, nested := range typed {
+			if key == "reasoning_details" {
+				// Structured reasoning is internal provider metadata, not a
+				// substitute for a missing final message (text or encrypted).
+				continue
+			}
+			if _, isReasoning := reasoningKeys[key]; isReasoning {
+				if _, includeReasoning := wanted[key]; !includeReasoning {
+					continue // Reasoning objects can themselves contain text/content keys.
+				}
+				if _, isText := nested.(string); !isText {
+					// Some compatible responses nest legacy reasoning text.
+					collected = append(collected, extractTextByKeys(nested, contentKeys)...)
+					continue
+				}
+			}
 			if _, match := wanted[key]; match {
 				if text, ok := nested.(string); ok {
 					if strings.TrimSpace(text) != "" {
