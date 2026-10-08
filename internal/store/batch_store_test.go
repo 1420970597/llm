@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/1420970597/llm/internal/model"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -2028,5 +2029,163 @@ func TestListBatchIDsWithStaleStepsFindsHistoricalBatches(t *testing.T) {
 		if id == batch.ID {
 			t.Fatal("阶段已收敛的批次不得再被扫出（会导致维护循环永不收敛）")
 		}
+	}
+}
+
+func TestBatchStepHistoricalTimesAndStaleWrites(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err := fixture.batches.EnsureBatchItem(ctx, batch.ID, fixture.projectID, "d/d#1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := fixture.batches.CommitBatchItemSuccess(ctx, batch.ID, fixture.projectID, item.ID,
+		AppendSampleVersionInput{SampleKey: "historical", TargetKind: model.TargetKindSFT, Payload: sftPayload("历史")}); err != nil {
+		t.Fatal(err)
+	}
+	// 模拟早已执行的历史批次：维护时刻不能冒充历史执行时刻。
+	started := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	finished := started.Add(time.Minute)
+	if _, err := fixture.pool.Exec(ctx, `UPDATE batch_items SET created_at=$2, started_at=$2, finished_at=$3 WHERE id=$1`,
+		item.ID, started, finished); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.batches.RefreshBatchCounts(ctx, batch.ID); err != nil {
+		t.Fatal(err)
+	}
+	steps, err := fixture.batches.RefreshBatchSteps(ctx, batch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	generate := steps[1]
+	if generate.StartedAt == nil || !generate.StartedAt.Equal(started) ||
+		generate.FinishedAt == nil || !generate.FinishedAt.Equal(finished) || generate.ID == 0 {
+		t.Fatalf("首次落盘必须保留真实执行时间和阶段身份，实际 %+v", generate)
+	}
+	if _, err := fixture.batches.RefreshBatchSteps(ctx, batch.ID); err != nil {
+		t.Fatal(err)
+	}
+	// 终态后的过期写入不能把已产出的单元退回到 running/0。
+	stale := generate
+	stale.Status, stale.DoneUnits = model.StepStatusRunning, 0
+	if err := fixture.batches.UpsertBatchStep(ctx, batch.ID, stale); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	var done int
+	var updated time.Time
+	if err := fixture.pool.QueryRow(ctx, `SELECT status, done_units, updated_at FROM batch_steps WHERE id=$1`, generate.ID).
+		Scan(&status, &done, &updated); err != nil {
+		t.Fatal(err)
+	}
+	if status != model.StepStatusCompleted || done != 1 || !updated.Equal(generate.UpdatedAt) {
+		t.Fatalf("重放和过期写入不能改写终态：status=%s done=%d updated=%v", status, done, updated)
+	}
+}
+
+func TestBatchStepsConvergeAfterSuccessfulRetry(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err := fixture.batches.EnsureBatchItem(ctx, batch.ID, fixture.projectID, "d/d#1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.batches.CommitBatchItemFailure(ctx, batch.ID, item.ID, model.ErrorClassTimeout, "超时", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.batches.RefreshBatchCounts(ctx, batch.ID); err != nil {
+		t.Fatal(err)
+	}
+	before, err := fixture.batches.RefreshBatchSteps(ctx, batch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before[1].Status != model.StepStatusPartialFailed || before[1].FinishedAt == nil {
+		t.Fatalf("部分失败必须有真实结束时间，实际 %+v", before[1])
+	}
+	if _, err := fixture.batches.MarkRetryableItemsPending(ctx, fixture.projectID, batch.ID, fixture.editorID); err != nil {
+		t.Fatal(err)
+	}
+	running, err := fixture.batches.RefreshBatchSteps(ctx, batch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if running[1].Status != model.StepStatusRunning || running[1].FinishedAt != nil {
+		t.Fatalf("合法重试必须重新开放阶段，实际 %+v", running[1])
+	}
+	if _, _, err := fixture.batches.CommitBatchItemSuccess(ctx, batch.ID, fixture.projectID, item.ID,
+		AppendSampleVersionInput{SampleKey: "retry", TargetKind: model.TargetKindSFT, Payload: sftPayload("重试成功")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.batches.RefreshBatchCounts(ctx, batch.ID); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := fixture.batches.ListBatchIDsWithStaleSteps(ctx, 10000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, id := range ids {
+		found = found || id == batch.ID
+	}
+	if !found {
+		t.Fatal("合法重试后的计数变化必须能被维护循环发现")
+	}
+	after, err := fixture.batches.RefreshBatchSteps(ctx, batch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after[1].Status != model.StepStatusCompleted || after[1].DoneUnits != 1 || after[1].FailedUnits != 0 || after[1].FinishedAt == nil {
+		t.Fatalf("重试成功必须收敛持久化阶段，实际 %+v", after[1])
+	}
+	if err := fixture.batches.UpsertBatchStep(ctx, batch.ID, before[1]); err != nil {
+		t.Fatal(err)
+	}
+	var storedStatus string
+	var storedDone, storedFailed int
+	if err := fixture.pool.QueryRow(ctx, `SELECT status, done_units, failed_units FROM batch_steps WHERE id=$1`, after[1].ID).
+		Scan(&storedStatus, &storedDone, &storedFailed); err != nil {
+		t.Fatal(err)
+	}
+	if storedStatus != model.StepStatusCompleted || storedDone != 1 || storedFailed != 0 {
+		t.Fatalf("重试前的过期失败投影不能覆盖成功事实：%s %d/%d", storedStatus, storedDone, storedFailed)
+	}
+}
+
+func TestBatchStepsExplainSkippedUnits(t *testing.T) {
+	fixture := newBatchFixture(t)
+	ctx := context.Background()
+	batch, err := fixture.batches.CreateBatch(ctx, fixture.projectID, fixture.editorID, model.TargetKindSFT,
+		fixture.createBatchInput(t, model.BatchPurposePilot, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err := fixture.batches.EnsureBatchItem(ctx, batch.ID, fixture.projectID, "d/d#1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.batches.MarkBatchItemSkipped(ctx, batch.ID, item.ID, "原始素材无答案"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.batches.RefreshBatchCounts(ctx, batch.ID); err != nil {
+		t.Fatal(err)
+	}
+	steps, err := fixture.batches.RefreshBatchSteps(ctx, batch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if steps[1].DoneUnits != 0 || steps[1].FailedUnits != 0 || steps[1].Status != model.StepStatusPartialFailed ||
+		!strings.Contains(steps[1].ErrorSummary, "1 个跳过") || steps[1].FinishedAt == nil {
+		t.Fatalf("跳过必须解释缺口且不能冒充失败或产出：%+v", steps[1])
 	}
 }

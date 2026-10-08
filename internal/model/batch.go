@@ -353,6 +353,8 @@ func StepStatusFor(batchStatus string, done, failed, total int) string {
 		return StepStatusFailed
 	case batchStatus == BatchStatusPaused || batchStatus == BatchStatusPauseRequested:
 		return StepStatusPaused
+	case batchStatus == BatchStatusQueued && done == 0 && failed == 0:
+		return StepStatusPending
 	case batchStatus == BatchStatusCompleted || batchStatus == BatchStatusPartialFailed:
 		// 批次已定稿而这个阶段没做全：缺口必须在阶段行上可见，
 		// 而不是显示成「仍在推进」。

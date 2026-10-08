@@ -81,6 +81,9 @@ func TestBatchStepLabelsAndStatusFollowFacts(t *testing.T) {
 	if got := StepStatusFor(BatchStatusRunning, 1, 0, 4); got != StepStatusRunning {
 		t.Fatalf("推进中的阶段必须是 running，实际 %q", got)
 	}
+	if got := StepStatusFor(BatchStatusQueued, 0, 0, 4); got != StepStatusPending {
+		t.Fatalf("尚未开始的排队阶段必须是 pending，实际 %q", got)
+	}
 	// 边界/异常路径 3：零计划量的空批次没有待办工作，「已完成」才是诚实描述
 	//（与 #190 对空批次的判定同一口径）。
 	if got := StepStatusFor(BatchStatusCompleted, 0, 0, 0); got != StepStatusCompleted {
