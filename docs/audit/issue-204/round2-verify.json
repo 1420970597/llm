@@ -1,0 +1,97 @@
+{
+  "base": "http://127.0.0.1:3210",
+  "viewports": [
+    {
+      "viewport": "1600x1000",
+      "deepLinkInvisible": [],
+      "discoverability": {
+        "nodeCount": 7,
+        "fullyVisible": 2,
+        "clipped": [
+          "generation",
+          "evaluation",
+          "rules",
+          "human_review",
+          "delivery"
+        ],
+        "horizontalScrollbarBelowFold": true,
+        "hintText": "流程从左到右：先定范围与标准，再生成，最后评估与交付。点任一节点在右侧配置它。",
+        "hintMentionsHorizontalScroll": false
+      }
+    },
+    {
+      "viewport": "1440x900",
+      "deepLinkInvisible": [],
+      "discoverability": {
+        "nodeCount": 7,
+        "fullyVisible": 2,
+        "clipped": [
+          "generation",
+          "evaluation",
+          "rules",
+          "human_review",
+          "delivery"
+        ],
+        "horizontalScrollbarBelowFold": true,
+        "hintText": "流程从左到右：先定范围与标准，再生成，最后评估与交付。点任一节点在右侧配置它。",
+        "hintMentionsHorizontalScroll": false
+      }
+    },
+    {
+      "viewport": "1280x800",
+      "deepLinkInvisible": [],
+      "discoverability": {
+        "nodeCount": 7,
+        "fullyVisible": 2,
+        "clipped": [
+          "generation",
+          "evaluation",
+          "rules",
+          "human_review",
+          "delivery"
+        ],
+        "horizontalScrollbarBelowFold": true,
+        "hintText": "流程从左到右：先定范围与标准，再生成，最后评估与交付。点任一节点在右侧配置它。",
+        "hintMentionsHorizontalScroll": false
+      }
+    },
+    {
+      "viewport": "1024x768",
+      "deepLinkInvisible": [],
+      "discoverability": {
+        "nodeCount": 7,
+        "fullyVisible": 3,
+        "clipped": [
+          "evaluation",
+          "rules",
+          "human_review",
+          "delivery"
+        ],
+        "horizontalScrollbarBelowFold": true,
+        "hintText": "流程从左到右：先定范围与标准，再生成，最后评估与交付。点任一节点在右侧配置它。",
+        "hintMentionsHorizontalScroll": false
+      }
+    },
+    {
+      "viewport": "390x844",
+      "deepLinkInvisible": [],
+      "discoverability": {
+        "nodeCount": 7,
+        "fullyVisible": 1,
+        "clipped": [
+          "standard",
+          "generation",
+          "evaluation",
+          "rules",
+          "human_review",
+          "delivery"
+        ],
+        "horizontalScrollbarBelowFold": true,
+        "hintText": "流程从左到右：先定范围与标准，再生成，最后评估与交付。点任一节点在右侧配置它。",
+        "hintMentionsHorizontalScroll": false
+      }
+    }
+  ],
+  "deepLinkRegressionAnyViewport": false,
+  "discoverabilityGapAnyViewport": true
+}
