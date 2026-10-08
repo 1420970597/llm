@@ -74,8 +74,15 @@ type LengthAnalysis struct {
 	P50       int `json:"p50"`
 	P90       int `json:"p90"`
 	MeanChars int `json:"meanChars"`
-	// FieldCount 是参与长度统计的字段数（question/reasoning/answer 等文本字段）。
+	// FieldCount 是参与长度统计的字段数（= len(Fields)）。
 	FieldCount int `json:"fieldCount"`
+	// Fields 是**实际参与**长度统计的字段键（按 model.SampleLengthFields 顺序）。
+	//
+	// 它不是常数：一个 payload 只写了 question/reasoning/answer 时它就不包含
+	// teacherPrompt。硬编码一个字段数会让「长度合计了哪几个字段」变成不可核对的
+	// 声称 —— 而用户恰恰需要它才能把「长度中位 1082」读对
+	//（issue #197 第 13 条：数字可见但口径不可见）。
+	Fields []string `json:"fields"`
 }
 
 // AnalysisShare 是一个占比项。
@@ -197,7 +204,7 @@ func AnalyzeDataset(ctx context.Context, batches *store.BatchStore, documents *s
 	}
 	analysis.SampleCount = len(rows)
 	if len(rows) > 0 {
-		analysis.Length = summarizeLengths(lengths)
+		analysis.Length = summarizeLengths(lengths, lengthFieldsOf(rows))
 		// 重复率按「非首个出现的版本」计数：10 条里 2 条重复 → 20%。
 		duplicates := 0
 		for _, count := range hashes {
@@ -230,8 +237,32 @@ func AnalyzeDataset(ctx context.Context, batches *store.BatchStore, documents *s
 	return analysis, nil
 }
 
+// lengthFieldsOf 汇总本批产出里**实际参与**长度统计的字段键。
+//
+// 用并集而不是取第一条：批次里不同样本可能写了不同的字段集（例如有的样本带
+// teacherPrompt、有的不带）。只取首条会把「有的样本算了 4 个字段」这一事实抹掉。
+// 顺序取 model.SampleLengthFields 的全序，因此结果是可重放的。
+func lengthFieldsOf(rows []store.SampleVersionFact) []string {
+	present := map[string]bool{}
+	for _, row := range rows {
+		for key := range row.LengthByField {
+			present[key] = true
+		}
+	}
+	fields := []string{}
+	for _, key := range model.SampleLengthFields() {
+		if present[key] {
+			fields = append(fields, key)
+		}
+	}
+	return fields
+}
+
 // summarizeLengths 计算长度分布（无数据时由调用方保证不进来）。
-func summarizeLengths(lengths []int) *LengthAnalysis {
+//
+// fields 是实际参与统计的字段键（由 lengthFieldsOf 从样本事实得出），
+// 它既决定读数里的 FieldCount，也决定界面上的口径文案。
+func summarizeLengths(lengths []int, fields []string) *LengthAnalysis {
 	if len(lengths) == 0 {
 		return nil
 	}
@@ -264,7 +295,8 @@ func summarizeLengths(lengths []int) *LengthAnalysis {
 		P50:        nearestRank(0.5),
 		P90:        nearestRank(0.9),
 		MeanChars:  total / len(ordered),
-		FieldCount: 1,
+		FieldCount: len(fields),
+		Fields:     fields,
 	}
 }
 
