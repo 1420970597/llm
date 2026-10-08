@@ -4,7 +4,8 @@ import { Button, Card, Empty, Input, Select, TextArea, Typography } from '@douyi
 import { ChevronDown, ChevronUp, Copy, Plus, Save, Trash2 } from 'lucide-react'
 import { client } from '../lib/api'
 import { newIdempotencyKey, projectPath, type ProjectResourceId } from '../lib/api/studio'
-import { describeCoverageFormula, deriveCoverageStructure, formatCoverageFormula } from './coverageStructure'
+import { coverageQuotaOf, describeCoverageFormula, deriveCoverageStructure, formatCoverageFormula } from './coverageStructure'
+import { SourceChunkSelector } from './SourceChunkSelector'
 
 const Text = Typography.Text
 
@@ -33,6 +34,7 @@ type DocumentEditorState = {
   setPayload: (payload: Record<string, unknown>) => void
   current: VersionedDocument | null
   versions: VersionedDocument[]
+  headRevision: number
   loading: boolean
   error: string | null
   saving: boolean
@@ -57,7 +59,7 @@ function readVersion(body: unknown): VersionedDocument {
 }
 
 /**
- * 五类 Atelier 文档共用的版本读取/保存状态机。
+ * Atelier 文档共用的版本读取/保存状态机。
  * 保存永远创建新版本，历史版本由 URL 的 ?version= 进入只读态。
  */
 export function useVersionedDocument(projectId: ProjectResourceId, segment: string): DocumentEditorState {
@@ -121,17 +123,13 @@ export function useVersionedDocument(projectId: ProjectResourceId, segment: stri
 
   const save = useCallback(async () => {
     if (!payload || !canEdit || isReadOnly) return false
-    if (changeReason.trim() === '') {
-      setSaveError('请填写变更理由，方便团队知道这次配置为什么调整。')
-      return false
-    }
     setSaving(true)
     setSaveError(null)
     try {
       await client.post(`${projectPath(projectId)}/${segment}`, {
         expectedRevision: headRevision,
         logicalId: 'main',
-        changeReason: changeReason.trim(),
+        changeReason: changeReason.trim() || `更新${segment === 'source-versions' ? '素材来源与切分策略' : '设计配置'}`,
         payload,
       }, { headers: { 'Idempotency-Key': newIdempotencyKey() } })
       setChangeReason('')
@@ -158,7 +156,7 @@ export function useVersionedDocument(projectId: ProjectResourceId, segment: stri
     setPayload({ ...current.payload })
   }, [current, viewingVersion])
 
-  return { payload, setPayload, current, versions, loading, error, saving, saveError, canEdit, isReadOnly, dirty, changeReason, setChangeReason, save, copyCurrentToDraft, reload: () => load() }
+  return { payload, setPayload, current, versions, headRevision, loading, error, saving, saveError, canEdit, isReadOnly, dirty, changeReason, setChangeReason, save, copyCurrentToDraft, reload: () => load() }
 }
 
 export function DocumentSaveBar({ state, label }: { state: DocumentEditorState; label: string }) {
@@ -177,7 +175,7 @@ export function DocumentSaveBar({ state, label }: { state: DocumentEditorState; 
       </div>
       {!state.isReadOnly ? (
         <div className="document-editor__reason">
-          <label className="wizard-field__label" htmlFor={`document-change-reason-${label}`}>变更理由</label>
+          <label className="wizard-field__label" htmlFor={`document-change-reason-${label}`}>变更说明（选填）</label>
           <Input id={`document-change-reason-${label}`} value={state.changeReason} disabled={!state.canEdit} onChange={state.setChangeReason} placeholder="例如：增加冷链异常场景，补齐方向配额" />
         </div>
       ) : null}
@@ -221,7 +219,7 @@ function addButton(label: string, onClick: () => void, disabled: boolean) {
   return <Button size="small" icon={<Plus size={13} />} disabled={disabled} onClick={onClick}>{label}</Button>
 }
 
-export function CoveragePayloadEditor({ payload, disabled, onChange }: { payload: Record<string, unknown>; disabled: boolean; onChange: (payload: Record<string, unknown>) => void }) {
+export function CoveragePayloadEditor({ payload, disabled, projectId, sourceVersionId, onChange }: { payload: Record<string, unknown>; disabled: boolean; projectId?: ProjectResourceId; sourceVersionId?: number; onChange: (payload: Record<string, unknown>) => void }) {
   const domains = asArray(payload.domains)
   const updateDomains = (next: Array<Record<string, unknown>>) => onChange({ ...payload, schemaVersion: 'coverage.v1', domains: next })
   /*
@@ -255,10 +253,7 @@ export function CoveragePayloadEditor({ payload, disabled, onChange }: { payload
         <ul className="coverage-tree__list">
           {domains.map((domain, domainIndex) => {
             const directions = asArray(domain.directions)
-            const domainQuota = directions.reduce((total, direction) => {
-              const quota = Number(direction.quota)
-              return total + (Number.isFinite(quota) && quota > 0 ? quota : 1)
-            }, 0)
+            const domainQuota = directions.reduce((total, direction) => total + coverageQuotaOf(direction), 0)
             return (
               <li key={`${String(domain.stableId)}-${domainIndex}`} data-coverage-domain={String(domain.stableId ?? domainIndex)}>
                 <span className="coverage-tree__domain">
@@ -274,9 +269,9 @@ export function CoveragePayloadEditor({ payload, disabled, onChange }: { payload
                       {String(direction.name ?? '') || '（未命名方向）'}
                       <Text type="tertiary" size="small">
                         {' '}
-                        × {Number(direction.quota) > 0 ? Number(direction.quota) : 1}
+                        × {coverageQuotaOf(direction)}
                         {' · '}
-                        {String(direction.source ?? '') || '未标注来源'}
+                        {({ none: '未选择来源', document: '文档素材', ai: 'AI 合成', manual: '历史手工规划' } as Record<string, string>)[String(direction.source)] ?? '历史来源未标注'}
                       </Text>
                     </li>
                   ))}
@@ -294,7 +289,7 @@ export function CoveragePayloadEditor({ payload, disabled, onChange }: { payload
             <label className="wizard-field"><span className="wizard-field__label">领域名称</span><Input value={String(domain.name ?? '')} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { name: value }))} /></label>
             <label className="wizard-field"><span className="wizard-field__label">稳定 ID</span><Input value={String(domain.stableId ?? '')} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { stableId: value }))} /></label>
           </div>
-          <div className="document-editor__subhead"><strong>方向与配额</strong>{addButton('添加方向', () => updateDomains(updateAt(domains, domainIndex, { directions: [...directions, { stableId: `direction-${directions.length + 1}`, name: '', quota: 1, source: 'manual' }] })), disabled)}</div>
+          <div className="document-editor__subhead"><strong>方向与配额</strong>{addButton('添加方向', () => updateDomains(updateAt(domains, domainIndex, { directions: [...directions, { stableId: `direction-${directions.length + 1}`, name: '', quota: 1, source: 'none' }] })), disabled)}</div>
           {/*
             列头（issue #193）：第 3、4 个输入框以前只有 aria-label，
             视觉上完全没有标签 —— 截图里就是一个数字和一个 `project-default`，
@@ -306,19 +301,22 @@ export function CoveragePayloadEditor({ payload, disabled, onChange }: { payload
             <span role="columnheader">方向名称</span>
             <span role="columnheader">稳定 ID</span>
             <span role="columnheader">每个方向计划数量</span>
-            <span role="columnheader">来源（manual / document / ai）</span>
+            <span role="columnheader">来源（文档 / AI / 未选择）</span>
             <span role="columnheader" className="document-editor__header-row--actions">操作</span>
           </div>
-          {directions.map((direction, directionIndex) => <div className="document-editor__row" key={`${String(direction.stableId)}-${directionIndex}`}>
+          {directions.map((direction, directionIndex) => <div className="source-direction" key={`${String(direction.stableId)}-${directionIndex}`}><div className="document-editor__row">
             <Input aria-label="方向名称" placeholder="方向名称" value={String(direction.name ?? '')} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { directions: updateAt(directions, directionIndex, { name: value }) }))} />
             <Input aria-label="方向稳定 ID" placeholder="稳定 ID" value={String(direction.stableId ?? '')} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { directions: updateAt(directions, directionIndex, { stableId: value }) }))} />
-            <Input aria-label="每个方向计划数量" type="number" min={1} value={String(direction.quota ?? 1)} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { directions: updateAt(directions, directionIndex, { quota: Number(value) || 0 }) }))} />
-            <Input aria-label="来源" placeholder="manual / document / ai" value={String(direction.source ?? '')} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { directions: updateAt(directions, directionIndex, { source: value }) }))} />
+            <Input aria-label="每个方向计划数量" type="number" min={0} value={String(direction.quota ?? 1)} disabled={disabled} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { directions: updateAt(directions, directionIndex, { quota: Number(value) || 0 }) }))} />
+            <Select aria-label="来源" value={String(direction.source ?? '')} disabled={disabled} optionList={[
+              { value: '', label: '历史来源未标注', disabled: true }, { value: 'none', label: '未选择来源' },
+              { value: 'document', label: '文档素材' }, { value: 'ai', label: 'AI 合成' }, { value: 'manual', label: '历史手工规划' },
+            ]} onChange={(value) => updateDomains(updateAt(domains, domainIndex, { directions: updateAt(directions, directionIndex, { source: value, sourceChunkIds: value === 'document' ? direction.sourceChunkIds ?? [] : [] }) }))} />
             <Button type="tertiary" icon={<Trash2 size={14} />} aria-label="删除方向" disabled={disabled || directions.length <= 1} onClick={() => updateDomains(updateAt(domains, domainIndex, { directions: removeAt(directions, directionIndex) }))} />
-          </div>)}
+          </div>{direction.source === 'document' && projectId ? <SourceChunkSelector projectId={projectId} sourceVersionId={sourceVersionId} value={Array.isArray(direction.sourceChunkIds) ? direction.sourceChunkIds as number[] : []} disabled={disabled} onChange={(ids) => updateDomains(updateAt(domains, domainIndex, { directions: updateAt(directions, directionIndex, { sourceChunkIds: ids }) }))} /> : direction.source === 'none' && coverageQuotaOf(direction) > 0 ? <Text type="warning" size="small">该方向尚未选择来源，请选择文档素材或 AI 合成后再运行。</Text> : null}</div>)}
         </Card>
       })}
-      <div className="document-editor__actions">{addButton('添加领域', () => updateDomains([...domains, { stableId: `domain-${domains.length + 1}`, name: '', directions: [{ stableId: 'direction-1', name: '', quota: 1, source: 'manual' }] }]), disabled)}</div>
+      <div className="document-editor__actions">{addButton('添加领域', () => updateDomains([...domains, { stableId: `domain-${domains.length + 1}`, name: '', directions: [{ stableId: 'direction-1', name: '', quota: 1, source: 'none' }] }]), disabled)}</div>
     </div>
   )
 }
