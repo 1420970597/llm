@@ -64,6 +64,33 @@ jobs:
       - run: npm ci
       - run: npm run build -w apps/web-user
 
+      # #217 E2：使用真实生产构建与 Chromium，API 契约夹具自带账号/项目，
+      # 因此全新 runner 不依赖数据库种子。临时安装浏览器，不修改仓库依赖。
+      - name: Source UI (Chromium states + import flows + overflow)
+        timeout-minutes: 10
+        run: |
+          npm install --prefix "$RUNNER_TEMP/source-ui-browser" --no-save --package-lock=false playwright@1.56.1
+          "$RUNNER_TEMP/source-ui-browser/node_modules/.bin/playwright" install --with-deps chromium
+          npm run preview -w apps/web-user -- --port 13212 > "$RUNNER_TEMP/source-ui-preview.log" 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:13212/ >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" != 1 ]; then cat "$RUNNER_TEMP/source-ui-preview.log"; exit 1; fi
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/source-ui-browser/node_modules/playwright" \
+            SOURCE_UI_URL=http://127.0.0.1:13212 node test/audit/run-source217-ui.mjs
+
+      - name: Upload source UI browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: source217-ui-report
+          path: output/playwright/source217-*
+          if-no-files-found: error
+
       # 文档一致性门禁（scripts/check-docs.mjs）。
       #
       # 为什么必须在这里跑：这个脚本早已存在，却**没有任何 CI job 执行它** ——

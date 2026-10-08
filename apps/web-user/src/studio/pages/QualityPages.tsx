@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button, Card, Empty, Input, InputNumber, Modal, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 // AlertTriangle 来自 lucide-react（图标库），不是 semi-ui 的组件。
 import { AlertTriangle } from 'lucide-react'
@@ -12,6 +12,7 @@ import type { BatchSummary, ConnectionProviderOption, CreateExperimentRequest, E
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
 import { CopyVersionButton, DocumentHistory, DocumentSaveBar, QualityPolicyPayloadEditor, useVersionedDocument } from '../DocumentEditors'
+import { useBlueprintContext } from '../blueprintContext'
 
 /**
  * 质量工作区页面（Issue #160 T19）：实验列表、创建页、报告页与规则页。
@@ -192,6 +193,9 @@ export function QualityListPage() {
 export function QualityNewPage() {
   const scope = useProjectScope()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const blueprintId = searchParams.get('blueprintVersionId')
+  const blueprint = useBlueprintContext(blueprintId ? scope.projectId : undefined, blueprintId)
   const { Title, Text } = Typography
 
   const [batches, setBatches] = useState<BatchSummary[]>([])
@@ -222,6 +226,15 @@ export function QualityNewPage() {
   )
   const [judgeID, setJudgeID] = useState('')
   const [judgeMaxTokens, setJudgeMaxTokens] = useState(4096)
+  const [blueprintJudges, setBlueprintJudges] = useState<number[]>([])
+  // Keep user edits separate from values temporarily retained while React
+  // disposes a removed blueprint deep-link.  A browser history transition can
+  // render once before the blueprint-loading effect clears its state; submit
+  // must still use the unscoped form defaults during that transition.
+  const manualJudgeTouchedRef = useRef(false)
+  const [missingScorePolicy, setMissingScorePolicy] = useState<'exclude' | 'fail_experiment'>('exclude')
+  const [blueprintRubric, setBlueprintRubric] = useState<CreateExperimentRequest['rubric']>()
+  const [blueprintPolicyError, setBlueprintPolicyError] = useState<string | null>(null)
   /**
    * 裁判模型候选（issue #197 第 14 条）。
    *
@@ -253,6 +266,29 @@ export function QualityNewPage() {
     }
   }, [])
   const [seed, setSeed] = useState('42')
+  const manualSeedTouchedRef = useRef(false)
+  useEffect(() => {
+    if (!blueprint.current) {
+      setBlueprintJudges([]); setJudgeID(''); setSeed('42')
+      manualJudgeTouchedRef.current = false
+      manualSeedTouchedRef.current = false
+      setMissingScorePolicy('exclude'); setBlueprintRubric(undefined); setBlueprintPolicyError(null)
+      return
+    }
+    const nodes = blueprint.current.payload.nodes as Record<string, Record<string, unknown>> | undefined
+    const config = nodes?.evaluation ?? {}
+    const judges = Array.isArray(config.judgeConnectionIds) ? config.judgeConnectionIds.filter((value): value is number => typeof value === 'number' && value > 0) : []
+    setBlueprintJudges(judges); setJudgeID(judges[0] ? String(judges[0]) : '')
+    manualJudgeTouchedRef.current = false
+    setSeed(String(config.samplingSeed ?? 42))
+    manualSeedTouchedRef.current = false
+    setMissingScorePolicy(config.missingScorePolicy === 'fail_experiment' ? 'fail_experiment' : 'exclude')
+    setBlueprintPolicyError(config.missingScorePolicy && !['exclude', 'fail_experiment'].includes(String(config.missingScorePolicy)) ? '所选蓝图的缺分策略尚不支持质量实验。请在蓝图中选择“排除缺分”后保存新版本，避免改变评测含义。' : null)
+    const weights = config.weights && typeof config.weights === 'object' ? config.weights as Record<string, number> : {}
+    const labels: Record<string, string> = { accuracy: '准确', reasoning: '推理', completeness: '完整', relevance: '相关', consistency: '一致' }
+    const dimensions = Object.entries(weights).map(([key, weight]) => ({ key, label: labels[key] ?? '自定义维度', weight, min: 0, max: 10 }))
+    setBlueprintRubric(dimensions.length ? { dimensions } : undefined)
+  }, [blueprint.current])
   const [teacherPromptVersion, setTeacherPromptVersion] = useState('')
   const [baselineAnswerVersion, setBaselineAnswerVersion] = useState('')
   const [boundaryReferenceJSON, setBoundaryReferenceJSON] = useState('')
@@ -286,6 +322,7 @@ export function QualityNewPage() {
     }
   }, [scope.projectId])
   const isGRPO = targetKind === 'grpo'
+  const grpoBlueprintError = isGRPO && blueprintRubric ? '所选蓝图包含自定义维度权重，但 GRPO 实验仅支持服务端内置量表。请清除该蓝图的自定义权重并保存新版本后再创建实验。' : null
 
   useEffect(() => {
     let cancelled = false
@@ -309,6 +346,9 @@ export function QualityNewPage() {
 
   const submit = useCallback(async () => {
     setError(null)
+    if (blueprintId && (!blueprint.current || blueprint.loading || blueprint.error || blueprintPolicyError || grpoBlueprintError)) {
+      setError(blueprintPolicyError ?? grpoBlueprintError ?? '请先成功读取所选蓝图版本，再创建实验'); return
+    }
     if (!canRun) {
       setError('当前项目没有运行质量实验的权限；请联系项目负责人')
       return
@@ -318,6 +358,12 @@ export function QualityNewPage() {
       return
     }
     if (judgeID.trim() === '') {
+      setError('实验至少需要一名裁判；请填写裁判连接 ID（独立性由服务端校验）')
+      return
+    }
+    const hasBlueprintSelection = Boolean(blueprintId && blueprint.current)
+    const effectiveJudgeID = hasBlueprintSelection || manualJudgeTouchedRef.current ? judgeID : ''
+    if (effectiveJudgeID.trim() === '') {
       setError('实验至少需要一名裁判；请填写裁判连接 ID（独立性由服务端校验）')
       return
     }
@@ -348,15 +394,15 @@ export function QualityNewPage() {
       const experiment = await studioApi.createExperiment(scope.projectId, {
         // 提交的是**样本版本**（内容版本），不是样本：同一题的两版内容是两件事。
         sampleVersionIds: selected,
-        samplingSeed: Number(seed) || 0,
+        samplingSeed: hasBlueprintSelection || manualSeedTouchedRef.current ? Number(seed) || 0 : 42,
         // GRPO 省略量表 → 服务端用内置 GRPO 量表（档位覆盖 / 边界稳定性 /
         // 评分解释一致性）。SFT 必须显式给出。
         rubric: isGRPO
           ? undefined
-          : { dimensions: [{ key: 'accuracy', label: '准确', weight: 1, min: 0, max: 10 }] },
-        judgeConnectionIds: [Number(judgeID)],
+          : (hasBlueprintSelection ? blueprintRubric : undefined) ?? { dimensions: [{ key: 'accuracy', label: '准确', weight: 1, min: 0, max: 10 }] },
+        judgeConnectionIds: hasBlueprintSelection && blueprintJudges.length ? blueprintJudges : [Number(effectiveJudgeID)],
         judgeMaxTokens,
-        missingScorePolicy: 'exclude',
+        missingScorePolicy: hasBlueprintSelection ? missingScorePolicy : 'exclude',
         batchId: batchID.trim() === '' ? undefined : Number(batchID),
         targetConfig,
       }, { idempotencyKey: idempotencyKeyRef.current })
@@ -367,7 +413,7 @@ export function QualityNewPage() {
     } finally {
       setBusy(false)
     }
-  }, [baselineAnswerVersion, batchID, boundaryReferenceJSON, canRun, isGRPO, judgeID, judgeMaxTokens, navigate, scope.projectId, seed, selected, teacherPromptVersion])
+  }, [baselineAnswerVersion, batchID, blueprint.current, blueprint.error, blueprint.loading, blueprintId, blueprintJudges, blueprintPolicyError, blueprintRubric, boundaryReferenceJSON, canRun, grpoBlueprintError, isGRPO, judgeID, judgeMaxTokens, missingScorePolicy, navigate, scope.projectId, seed, selected, teacherPromptVersion])
 
   /**
    * #211 方向 2：勾选了未审阅内容时，**提交前**显式提示一次。
@@ -415,6 +461,11 @@ export function QualityNewPage() {
         </div>
       </div>
 
+      {blueprintId ? <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-quality-blueprint-context="true">
+        {blueprint.loading ? <Spin tip="正在读取工作台所选蓝图" /> : blueprint.error ? <div role="alert">{blueprint.error}<Button onClick={blueprint.reload}>重试</Button></div> : <Text>来自蓝图 v{blueprint.current?.version}：已带入 {blueprintJudges.length} 名裁判、抽样种子{!isGRPO && blueprintRubric ? '、维度权重' : ''}与缺分策略。{isGRPO ? 'GRPO 使用服务端内置量表。' : ''}创建时冻结下方范围与实际配置。</Text>}
+        {blueprintPolicyError || grpoBlueprintError ? <Text type="danger" className="block" role="alert">{blueprintPolicyError || grpoBlueprintError}</Text> : null}
+      </Card> : null}
+
       <Card className="console-card mb-3" bodyStyle={{ padding: 16 }}>
         <Text type="tertiary" size="small" className="block mb-1">
           批次（可选：把实验挂在某个批次上，便于在批次详情里回看）
@@ -454,7 +505,7 @@ export function QualityNewPage() {
           </>
         ) : (
           <Text type="tertiary" size="small">
-            维度：accuracy（准确，权重 1，范围 0–10）。改量表需要新建实验。
+            {blueprintRubric ? `蓝图维度：${blueprintRubric.dimensions.map((dimension) => `${dimension.label}（权重 ${dimension.weight}）`).join('、')}；范围 0–10。` : '维度：accuracy（准确，权重 1，范围 0–10）。'}改量表需要新建实验。
           </Text>
         )}
       </Card>
@@ -563,7 +614,7 @@ export function QualityNewPage() {
                 value: String(provider.id),
                 label: `${provider.name}（${provider.model}）`,
               }))}
-              onChange={(value) => setJudgeID(String(value ?? ''))}
+              onChange={(value) => { manualJudgeTouchedRef.current = true; setJudgeID(String(value ?? '')); setBlueprintJudges([]) }}
               data-judge-connection-select="true"
             />
             {judgeOptionsError ? (
@@ -592,7 +643,7 @@ export function QualityNewPage() {
             <InputNumber
               id="sampling-seed"
               value={Number(seed) || 0}
-              onChange={(value) => setSeed(String(value ?? 0))}
+              onChange={(value) => { manualSeedTouchedRef.current = true; setSeed(String(value ?? 0)) }}
               disabled={!canRun}
             />
           </div>
@@ -783,6 +834,9 @@ export function RulesPage() {
   const scope = useProjectScope()
   const { Title, Text } = Typography
   const documentState = useVersionedDocument(scope.projectId, 'quality-policy-versions')
+  const [searchParams] = useSearchParams()
+  const blueprintId = searchParams.get('blueprintVersionId')
+  const blueprint = useBlueprintContext(blueprintId ? scope.projectId : undefined, blueprintId)
   const [preview, setPreview] = useState<RulePreviewResult | null>(null)
   const [policyVersionID, setPolicyVersionID] = useState('')
   const [sampleVersionIDs, setSampleVersionIDs] = useState('')
@@ -790,13 +844,19 @@ export function RulesPage() {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    if (documentState.current && policyVersionID === '') {
+    if (blueprintId && blueprint.current) {
+      const nodes = blueprint.current.payload.nodes as Record<string, Record<string, unknown>> | undefined
+      const referenced = Number(nodes?.rules?.qualityPolicyVersionId)
+      setPolicyVersionID(referenced > 0 ? String(referenced) : '')
+    } else if (!blueprintId && documentState.current && policyVersionID === '') {
       setPolicyVersionID(String(documentState.current.id))
     }
-  }, [documentState.current, policyVersionID])
+  }, [blueprint.current, blueprintId, documentState.current, policyVersionID])
 
   const runPreview = useCallback(async () => {
     setError(null)
+    if (blueprintId && (!blueprint.current || blueprint.loading || blueprint.error)) { setError('请先成功读取所选蓝图版本，再预览规则'); return }
+    if (!documentState.versions.some((version) => String(version.id) === policyVersionID)) { setError('请选择当前项目可用的规则版本；蓝图引用的策略可能尚未配置。'); return }
     setBusy(true)
     try {
       const ids = sampleVersionIDs
@@ -813,7 +873,7 @@ export function RulesPage() {
     } finally {
       setBusy(false)
     }
-  }, [policyVersionID, sampleVersionIDs, scope.projectId])
+  }, [blueprint.current, blueprint.error, blueprint.loading, blueprintId, documentState.versions, policyVersionID, sampleVersionIDs, scope.projectId])
 
   return (
     <div className="console-page" data-studio-page="rules">
@@ -829,6 +889,8 @@ export function RulesPage() {
         <div className="console-page__actions"><CopyVersionButton state={documentState} /></div>
       </div>
 
+      {blueprintId ? <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-rule-blueprint-context="true">{blueprint.loading ? <Spin tip="正在读取工作台所选蓝图" /> : blueprint.error ? <div role="alert">{blueprint.error}<Button onClick={blueprint.reload}>重试</Button></div> : <Text>来自蓝图 v{blueprint.current?.version}：规则预览已选择该蓝图引用的策略版本。上方编辑保存策略不会改写该蓝图或既有批次。</Text>}</Card> : null}
+
       {documentState.loading ? <Card className="console-card"><Spin tip="正在加载规则版本" /></Card> : null}
       {documentState.error ? <Card className="console-card"><Text type="danger">{documentState.error}</Text><Button size="small" className="mt-2" onClick={() => void documentState.reload()}>重试</Button></Card> : null}
       {!documentState.loading && !documentState.error ? <>
@@ -843,7 +905,7 @@ export function RulesPage() {
             <label className="wizard-field__label" htmlFor="policy-version">
               用于预览的规则版本
             </label>
-            <Select id="policy-version" value={policyVersionID || undefined} onChange={(value) => setPolicyVersionID(String(value))} optionList={documentState.versions.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))} placeholder="选择规则版本" disabled={documentState.versions.length === 0} />
+            <Select id="policy-version" aria-label="用于预览的规则版本" value={policyVersionID || undefined} onChange={(value) => setPolicyVersionID(String(value))} optionList={documentState.versions.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))} placeholder="选择规则版本" disabled={documentState.versions.length === 0 || Boolean(blueprintId)} />
           </div>
           <div className="wizard-field">
             <label className="wizard-field__label" htmlFor="preview-versions">

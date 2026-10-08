@@ -564,11 +564,19 @@ func (s *DocumentStore) GetVersionByID(ctx context.Context, versionID int64) (Do
 //
 // 历史版本必须**可读**（§2.2 验收项「旧版本可读/比较/复制」），
 // 因此这里不做「只返回最近 N 版」的裁剪；数量增长由分页在 T08 的读模型处理。
-func (s *DocumentStore) ListVersions(ctx context.Context, projectID int64, kind model.DocumentKind, logicalID string, limit int) ([]DocumentVersion, error) {
+func (s *DocumentStore) ListVersions(ctx context.Context, projectID int64, kind model.DocumentKind, logicalID string, limit int, beforeVersion ...int) ([]DocumentVersion, error) {
+	before := 0
+	if len(beforeVersion) > 1 || len(beforeVersion) == 1 && beforeVersion[0] < 0 {
+		return nil, model.FieldErrors{{Field: "cursor", Message: "版本游标必须为正数"}}
+	}
+	if len(beforeVersion) == 1 {
+		before = beforeVersion[0]
+	}
 	if strings.TrimSpace(logicalID) == "" {
 		logicalID = DefaultLogicalID
 	}
-	if limit <= 0 || limit > 200 {
+	// 201 allows the HTTP layer to look ahead for a 200-row page.
+	if limit <= 0 || limit > 201 {
 		limit = 50
 	}
 	rows, err := s.db.Query(ctx, `
@@ -577,8 +585,9 @@ func (s *DocumentStore) ListVersions(ctx context.Context, projectID int64, kind 
     FROM document_versions v
     JOIN versioned_documents d ON d.id = v.document_id
     WHERE d.project_id = $1 AND d.kind = $2 AND d.logical_id = $3
+      AND ($5::integer = 0 OR v.version < $5)
     ORDER BY v.version DESC
-    LIMIT $4`, projectID, string(kind), logicalID, limit)
+    LIMIT $4`, projectID, string(kind), logicalID, limit, before)
 	if err != nil {
 		return nil, err
 	}

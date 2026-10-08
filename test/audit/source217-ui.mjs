@@ -4,6 +4,9 @@
  * 不需要 @playwright/test，也不向共享 node_modules 新增依赖。
  */
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const chunks = Array.from({ length: 12 }, (_, index) => ({ id: index + 1, projectId: 7,
   sourceDocumentStableId: 'manual', headingPath: `手册 / 章节 ${index + 1}`, ordinal: index + 1,
@@ -11,7 +14,7 @@ const chunks = Array.from({ length: 12 }, (_, index) => ({ id: index + 1, projec
 const chunking = { algorithm: 'recursive', separator: '\n\n', minLength: 200, maxLength: 2000, keepHeadingPath: true }
 const capabilities = { canEdit: true, canRun: true, canReview: true, canPublish: true, canDownload: true, canManageMembers: true }
 const counts = { sourceItems: 3, importedVersions: 1, skippedExisting: 1, skippedNoContent: 0, failedItems: 1 }
-const fixture = { uploaded: false, polls: 0, product: false, ledgerReads: 0, sourceRequests: [], savedCoverage: null, chunksFailOnce: false }
+const fixture = { uploaded: false, polls: 0, product: false, ledgerReads: 0, sourceRequests: [], savedCoverage: null, chunksFailOnce: false, documentState: 'default', documentGate: null, previewGate: null }
 
 function sourceVersion(version = 2) {
   const ids = version === 1 ? [1, 2] : chunks.map((chunk) => chunk.id)
@@ -30,6 +33,13 @@ export async function install(page, baseURL = 'http://127.0.0.1:13212') {
     else if (path.endsWith('/runtime')) body = {}
     else if (/\/projects\/7$/.test(path)) body = { data: { id: 7, name: '素材接入验收', domainCount: 2, directionsPerDomain: 3, questionsPerDirection: 4 }, capabilities }
     else if (path.endsWith('/overview')) body = { data: {}, capabilities }
+    else if (/\/(source|coverage)-versions$/.test(path) && fixture.documentState !== 'default') {
+      if (fixture.documentState === 'loading') await fixture.documentGate
+      if (fixture.documentState === 'error') { status = 503; body = { error: { message: '文档读取暂时失败' } } }
+      else if (fixture.documentState === 'empty') body = { items: [], document: { revision: 0, currentVersion: 0 }, canEdit: true }
+      else if (path.endsWith('/source-versions')) body = { items: [sourceVersion(2)], document: { revision: 2, currentVersion: 2 }, canEdit: true }
+      else body = { items: [{ id: 8, version: 1 }], document: { revision: 1 }, canEdit: true }
+    }
     else if (/\/source-versions(?:\/\d+)?$/.test(path)) {
       const number = Number(path.split('/').at(-1))
       body = Number.isFinite(number) ? { version: sourceVersion(number) } : { items: [sourceVersion(2), sourceVersion(1)], document: { revision: 2, currentVersion: 2 }, canEdit: true }
@@ -54,6 +64,7 @@ export async function install(page, baseURL = 'http://127.0.0.1:13212') {
       }
     } else if (/\/source-chunks\/\d+$/.test(path)) body = chunks.find((chunk) => chunk.id === Number(path.split('/').at(-1)))
     else if (path.endsWith('/source-import-products/preview')) {
+      if (fixture.previewGate) await fixture.previewGate
       const input = request.postDataJSON()
       if (input.content === '{broken') { status = 422; body = { error: { message: 'JSON 格式无效' } } }
       else body = { sourceItems: 3, validItems: 1, duplicateItems: 1, failedItems: 1, failures: [{ sourceId: 3, reason: '缺少答案' }] }
@@ -68,6 +79,7 @@ export async function install(page, baseURL = 'http://127.0.0.1:13212') {
 }
 
 export async function verify(page, baseURL = 'http://127.0.0.1:13212') {
+  console.log('Source UI: history, upload and chunk selection')
   const failures = []
   page.on('pageerror', (error) => failures.push(error.message))
   await page.getByRole('button', { name: '下一页', exact: true }).first().click()
@@ -98,14 +110,28 @@ export async function verify(page, baseURL = 'http://127.0.0.1:13212') {
   assert.deepEqual(fixture.savedCoverage.payload.domains[0].directions[0].sourceChunkIds, [12, 1])
   assert.equal(fixture.savedCoverage.changeReason, '更新设计配置')
   await page.goto(`${baseURL}/p/7/sources/import`)
+  console.log('Source UI: external product validation and import')
+  assert.equal(await page.locator('[data-source-import-state="empty"]').count(), 1)
   await page.getByRole('textbox', { name: '导入名称', exact: true }).fill('Easy Dataset 导出')
   await page.getByRole('textbox', { name: '外部数据集内容', exact: true }).fill('{broken')
+  assert.equal(await page.locator('[data-source-import-state="default"]').count(), 1)
   await page.getByRole('button', { name: '校验并预览', exact: true }).click()
   await page.getByRole('alert').filter({ hasText: 'JSON 格式无效' }).waitFor()
-  await page.getByLabel('选择外部数据集文件').setInputFiles({ name: 'oversized.json', mimeType: 'application/json', buffer: Buffer.alloc(21 * 1024 * 1024) })
+  const largeFileDir = mkdtempSync(join(tmpdir(), 'source-ui-oversized-'))
+  const largeFile = join(largeFileDir, 'oversized.json')
+  writeFileSync(largeFile, Buffer.alloc(21 * 1024 * 1024))
+  try { await page.getByLabel('选择外部数据集文件').setInputFiles(largeFile, { timeout: 60000 }) }
+  finally { rmSync(largeFileDir, { recursive: true, force: true }) }
   await page.getByRole('alert').filter({ hasText: '最多 20 MB' }).waitFor()
   await page.getByLabel('选择外部数据集文件').setInputFiles({ name: 'alpaca.json', mimeType: 'application/json', buffer: Buffer.from('[{"instruction":"冷链处置","output":"隔离并评估"}]') })
+  let releasePreview
+  fixture.previewGate = new Promise((resolve) => { releasePreview = resolve })
+  const pendingPreview = page.waitForRequest((request) => request.url().endsWith('/source-import-products/preview'))
   await page.getByRole('button', { name: '校验并预览', exact: true }).click()
+  await pendingPreview
+  assert.equal(await page.getByRole('button', { name: '校验并预览', exact: true }).isDisabled(), true)
+  assert.equal(await page.getByRole('textbox', { name: '外部数据集内容', exact: true }).isDisabled(), true)
+  releasePreview(); fixture.previewGate = null
   await page.locator('[data-source-import-preview]').waitFor()
   await page.getByRole('textbox', { name: '导入名称', exact: true }).fill('改名后预览应失效')
   assert.equal(await page.locator('[data-source-import-preview]').count(), 0)
@@ -113,6 +139,26 @@ export async function verify(page, baseURL = 'http://127.0.0.1:13212') {
   await page.getByRole('button', { name: '确认导入 1 条有效记录' }).click()
   await page.getByText('第 3 条：缺少答案', { exact: true }).waitFor()
   assert.equal(fixture.ledgerReads, 1, 'completed replay must read failure details')
+  for (const path of ['/p/7/sources', '/p/7/coverage']) {
+    console.log(`Source UI: five states ${path}`)
+    let releaseDocument
+    fixture.documentState = 'loading'
+    fixture.documentGate = new Promise((resolve) => { releaseDocument = resolve })
+    await page.goto(`${baseURL}${path}`)
+    await page.locator('[data-source-state="loading"]').waitFor()
+    fixture.documentState = 'default'; releaseDocument()
+    await page.locator('[data-source-state="default"]').waitFor()
+    fixture.documentState = 'empty'
+    await page.goto(`${baseURL}${path}`)
+    await page.locator('[data-source-state="empty"]').waitFor()
+    if (path.endsWith('/sources')) assert.equal(await page.getByRole('button', { name: '添加素材', exact: true }).isDisabled(), false)
+    fixture.documentState = 'error'
+    await page.goto(`${baseURL}${path}`)
+    await page.locator('[data-source-state="error"]').waitFor()
+    fixture.documentState = 'default'
+    await page.getByRole('button', { name: path.endsWith('/sources') ? '重新加载' : '重试', exact: true }).click()
+    await page.locator('[data-source-state="default"]').waitFor()
+  }
   for (const path of ['/p/7/sources', '/p/7/coverage', '/p/7/sources/import']) {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto(`${baseURL}${path}`)
@@ -121,5 +167,5 @@ export async function verify(page, baseURL = 'http://127.0.0.1:13212') {
     assert.ok(overflow <= 1, `${path}: horizontal overflow ${overflow}px`)
   }
   assert.deepEqual(failures, [])
-  return 'PASS: frozen history, chunk pagination/retry, invalid and async upload, cross-page association/save, malformed JSON, oversized/file product import, preview invalidation, completed replay failures, 390px layouts; no page errors.'
+  return 'PASS: Default/Loading/Empty/Error/Edge-Case states, frozen history, chunk pagination/retry, invalid and async upload, cross-page association/save, malformed JSON, oversized/file product import, preview invalidation, completed replay failures, 390px layouts; no page errors.'
 }

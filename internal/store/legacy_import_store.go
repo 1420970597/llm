@@ -318,59 +318,60 @@ func nullableJSON(raw json.RawMessage) any {
 //   - ImportedRecords：台账里 completed 的导入条数；
 //   - BoundProjects：有多少个项目绑定了旧数据集；
 //   - MigrationComplete：**只有**「还有旧数据（>0）但已无未迁移项」时才为 true。
-//     旧数据本身为 0（空库/全新部署）不算「迁移成功」—— 那是「没有可迁移的东西」，
-//     两者对「能不能删菜单」的结论相同（都能删），但语义必须分开，
-//     否则汇报「迁移成功」会把「从未有过旧数据」说成一件工作成果。
+//     空库不算「迁移成功」，保留入口；映射目标必须是本账号可访问的项目。
+//     查询失败直接返回错误，不能把失败读数置零后误报完成。
 type LegacyMigrationStatus struct {
 	LegacyDatasets    int  `json:"legacyDatasets"`
 	ImportedRecords   int  `json:"importedRecords"`
 	BoundProjects     int  `json:"boundProjects"`
 	MigrationComplete bool `json:"migrationComplete"`
-	// PendingDatasets 是仍未绑定到任何项目的旧数据集数（缺口）。
+	// PendingDatasets 是缺少成功台账或本账号可访问映射的旧数据集数。
 	PendingDatasets int `json:"pendingDatasets"`
 	// Note 是给界面的一句话结论（服务端给结论，前端只渲染）。
-	Note string `json:"note"`
+	Note  string `json:"note"`
+	Scope string `json:"scope"`
 }
 
 // LegacyMigrationStatus 汇总迁移对账读数。
 //
 // 只读：全部是 COUNT 与 LEFT JOIN，不修改任何数据。
-func (s *LegacyImportStore) LegacyMigrationStatus(ctx context.Context) (LegacyMigrationStatus, error) {
-	var status LegacyMigrationStatus
-	// `datasets` 是旧模型的核心表；它不存在时（全新库）按 0 处理而不是报错 ——
-	// 报错会让整页 500，而「没有旧数据」是一个完全正常的结论。
-	if err := s.db.QueryRow(ctx, `
-    SELECT COUNT(*) FROM datasets`).Scan(&status.LegacyDatasets); err != nil {
-		status.LegacyDatasets = 0
+func (s *LegacyImportStore) LegacyMigrationStatus(ctx context.Context, actorID int64) (LegacyMigrationStatus, error) {
+	if actorID <= 0 {
+		return LegacyMigrationStatus{}, fmt.Errorf("迁移对账需要有效账号")
 	}
-	if err := s.db.QueryRow(ctx, `
-    SELECT COUNT(*) FROM legacy_imports WHERE status = 'completed'`).
-		Scan(&status.ImportedRecords); err != nil {
-		status.ImportedRecords = 0
-	}
-	if err := s.db.QueryRow(ctx, `
-    SELECT COUNT(*) FROM projects WHERE legacy_dataset_id IS NOT NULL`).
-		Scan(&status.BoundProjects); err != nil {
-		status.BoundProjects = 0
-	}
-	// 未迁移 = 旧数据集中没有任何项目绑定的那些。
-	if err := s.db.QueryRow(ctx, `
-    SELECT COUNT(*) FROM datasets d
-    WHERE NOT EXISTS (SELECT 1 FROM projects p WHERE p.legacy_dataset_id = d.id)`).
-		Scan(&status.PendingDatasets); err != nil {
-		status.PendingDatasets = 0
+	status := LegacyMigrationStatus{Scope: "visible_legacy_assets"}
+	// Legacy dataset reads currently expose the same dataset catalog to all signed-in
+	// users. A mapped project counts only when this actor can read it; otherwise the
+	// historical entry is still the actor's way to reach that dataset. The matching
+	// successful dataset ledger is required; a manual binding is not a migration.
+	// One statement
+	// also prevents a failure or concurrent update from becoming a false completion.
+	err := s.db.QueryRow(ctx, `SELECT
+    (SELECT COUNT(*) FROM datasets),
+    (SELECT COUNT(*) FROM legacy_imports i WHERE i.source_kind='dataset' AND i.status='completed' AND i.failed_items=0
+      AND EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id=i.target_project_id AND pm.user_id=$1)),
+    (SELECT COUNT(*) FROM projects p WHERE p.legacy_dataset_id IS NOT NULL
+      AND EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id=p.id AND pm.user_id=$1)),
+    (SELECT COUNT(*) FROM datasets d WHERE NOT EXISTS (
+      SELECT 1 FROM projects p JOIN project_members pm ON pm.project_id=p.id
+      JOIN legacy_imports i ON i.target_project_id=p.id AND i.source_kind='dataset'
+        AND i.source_key='dataset:' || d.id::text AND i.status='completed' AND i.failed_items=0
+      WHERE p.legacy_dataset_id=d.id AND pm.user_id=$1))`, actorID).
+		Scan(&status.LegacyDatasets, &status.ImportedRecords, &status.BoundProjects, &status.PendingDatasets)
+	if err != nil {
+		return LegacyMigrationStatus{}, fmt.Errorf("读取迁移对账: %w", err)
 	}
 
 	switch {
 	case status.LegacyDatasets == 0:
-		status.MigrationComplete = true
-		status.Note = "本部署没有旧数据集，因此没有可迁移的历史资产。"
+		status.MigrationComplete = false
+		status.Note = "没有可见的旧数据集；空库不作为迁移成功的证据，历史入口继续保留。"
 	case status.PendingDatasets == 0:
 		status.MigrationComplete = true
-		status.Note = "全部旧数据集都已绑定到项目，可以对账后移除「历史资产」菜单。"
+		status.Note = "全部可见旧数据集都有成功导入台账并映射到本账号可访问的项目，主菜单已收起；历史深链仍可只读访问。"
 	default:
 		status.MigrationComplete = false
-		status.Note = "尚未全部迁移：仍有未绑定项目的旧数据集，本菜单保留为只读盘点页。"
+		status.Note = "尚未全部迁移：仍有缺少成功导入台账或不可访问映射的旧数据集，历史入口保留为只读盘点页。"
 	}
 	return status, nil
 }

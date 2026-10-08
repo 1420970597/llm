@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"testing"
 )
 
@@ -18,14 +19,15 @@ import (
 // 断言增量才能同时满足「单跑」与「全量跑」。
 func TestLegacyMigrationStatusIsSelfConsistent(t *testing.T) {
 	pool := newStudioTestPool(t)
-	status, err := NewLegacyImportStore(pool).LegacyMigrationStatus(context.Background())
+	actorID := seedStudioUser(t, pool, "legacy-status-actor")
+	status, err := NewLegacyImportStore(pool).LegacyMigrationStatus(context.Background(), actorID)
 	if err != nil {
 		t.Fatalf("LegacyMigrationStatus: %v", err)
 	}
 
 	// 不变式 1：结论必须与读数一致。这是界面拿来决定「能不能删菜单」的字段，
 	// 不允许出现 `migrationComplete=true` 但 `pendingDatasets>0` 的自相矛盾。
-	if status.MigrationComplete != (status.PendingDatasets == 0) {
+	if status.MigrationComplete != (status.LegacyDatasets > 0 && status.PendingDatasets == 0) {
 		t.Fatalf("结论与读数矛盾：migrationComplete=%v pending=%d",
 			status.MigrationComplete, status.PendingDatasets)
 	}
@@ -53,14 +55,14 @@ func TestLegacyMigrationStatusCountsUnmigratedDatasets(t *testing.T) {
 	ctx := context.Background()
 	store := NewLegacyImportStore(pool)
 
-	before, err := store.LegacyMigrationStatus(ctx)
+	ownerID := seedStudioUser(t, pool, "legacy-owner")
+	before, err := store.LegacyMigrationStatus(ctx, ownerID)
 	if err != nil {
 		t.Fatalf("baseline LegacyMigrationStatus: %v", err)
 	}
 
 	// `datasets.created_by` 有外键，因此先建一个真实用户（不能用写死的 1：
 	// 全新测试库里 id=1 还不存在）。
-	ownerID := seedStudioUser(t, pool, "legacy-owner")
 	// 直接插入两条最小可用的旧数据集（模拟迁移前的历史资产）。
 	// 只填 NOT NULL 列：这条读数只做 COUNT，不读其它字段。
 	for _, name := range []string{"legacy-a", "legacy-b"} {
@@ -71,7 +73,7 @@ func TestLegacyMigrationStatusCountsUnmigratedDatasets(t *testing.T) {
 		}
 	}
 
-	after, err := store.LegacyMigrationStatus(ctx)
+	after, err := store.LegacyMigrationStatus(ctx, ownerID)
 	if err != nil {
 		t.Fatalf("LegacyMigrationStatus: %v", err)
 	}
@@ -88,5 +90,74 @@ func TestLegacyMigrationStatusCountsUnmigratedDatasets(t *testing.T) {
 	}
 	if after.Note == "" {
 		t.Fatal("未完成时也必须给出可读结论")
+	}
+}
+
+func TestLegacyMigrationStatusRequiresActor(t *testing.T) {
+	if status, err := NewLegacyImportStore(nil).LegacyMigrationStatus(context.Background(), 0); err == nil || status.MigrationComplete {
+		t.Fatal("无账号对账必须失败，不能声称全部迁移")
+	}
+}
+
+func TestLegacyMigrationStatusUsesVisibleMappingsAndPreservesReadErrors(t *testing.T) {
+	pool := newStudioTestPool(t)
+	ctx := context.Background()
+	actorID := seedStudioUser(t, pool, "legacy-visible-actor")
+	ownerID := seedStudioUser(t, pool, "legacy-invisible-owner")
+	imports := NewLegacyImportStore(pool)
+	before, err := imports.LegacyMigrationStatus(ctx, actorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var datasetID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO datasets(name,root_keyword,target_size,created_by,status)
+    VALUES('visible-mapping-legacy','legacy',1,$1,'draft') RETURNING id`, ownerID).Scan(&datasetID); err != nil {
+		t.Fatal(err)
+	}
+	workspaceID := seedAuthzWorkspace(t, pool, "legacy-visible-scope")
+	project, err := NewProjectStore(pool).CreateProject(ctx, workspaceID, ownerID, validProjectInput("不可见映射项目"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE projects SET legacy_dataset_id=$1 WHERE id=$2`, datasetID, project.ID); err != nil {
+		t.Fatal(err)
+	}
+	invisible, err := imports.LegacyMigrationStatus(ctx, actorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if invisible.PendingDatasets != before.PendingDatasets+1 || invisible.BoundProjects != before.BoundProjects || invisible.MigrationComplete {
+		t.Fatalf("不可见映射不能隐藏历史入口: before=%+v after=%+v", before, invisible)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'viewer')`, project.ID, actorID); err != nil {
+		t.Fatal(err)
+	}
+	visible, err := imports.LegacyMigrationStatus(ctx, actorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if visible.PendingDatasets != before.PendingDatasets+1 || visible.BoundProjects != before.BoundProjects+1 || visible.Scope != "visible_legacy_assets" {
+		t.Fatalf("手动映射不能替代成功导入台账: %+v", visible)
+	}
+	var importID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO legacy_imports(source_kind,source_key,target_project_id,status,failed_items)
+    VALUES('dataset',$1,$2,'failed',1) RETURNING id`, fmt.Sprintf("dataset:%d", datasetID), project.ID).Scan(&importID); err != nil {
+		t.Fatal(err)
+	}
+	failed, err := imports.LegacyMigrationStatus(ctx, actorID)
+	if err != nil || failed.PendingDatasets != before.PendingDatasets+1 {
+		t.Fatalf("失败导入不得算成功: %+v %v", failed, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE legacy_imports SET status='completed',failed_items=0 WHERE id=$1`, importID); err != nil {
+		t.Fatal(err)
+	}
+	completed, err := imports.LegacyMigrationStatus(ctx, actorID)
+	if err != nil || completed.PendingDatasets != before.PendingDatasets || completed.ImportedRecords != before.ImportedRecords+1 {
+		t.Fatalf("成功台账和可访问映射共同收敛缺口: %+v %v", completed, err)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if status, err := imports.LegacyMigrationStatus(cancelled, actorID); err == nil || status.MigrationComplete {
+		t.Fatal("读取失败不能降级为零记录/迁移完成")
 	}
 }

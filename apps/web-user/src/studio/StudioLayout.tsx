@@ -34,6 +34,7 @@ import type { ProjectResourceId } from '../lib/api/studio'
 import { CommandSearch } from './pages/TodayPages'
 import { clearForActor, currentActorID } from '../lib/pendingQueue'
 import { useProjectName } from './projectName'
+import { client } from '../lib/api'
 
 /**
  * 全局壳（Issue #160 T09）：4 全局入口 + 辅助入口 + 目录评审（仅非生产）。
@@ -83,6 +84,17 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
   const breadcrumbs = useBreadcrumbs()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [legacyMigrationComplete, setLegacyMigrationComplete] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    setLegacyMigrationComplete(false)
+    void client.get<{ scope?: string; migrationComplete: boolean; legacyDatasets: number; pendingDatasets: number }>('/v1/legacy/migration-status')
+      .then((response) => {
+        const status = response.data
+        if (!cancelled) setLegacyMigrationComplete(status.scope === 'visible_legacy_assets' && status.migrationComplete === true && status.legacyDatasets > 0 && status.pendingDatasets === 0)
+      }).catch(() => { if (!cancelled) setLegacyMigrationComplete(false) })
+    return () => { cancelled = true }
+  }, [userEmail, location.pathname])
   const mobileMenuRef = useRef<HTMLButtonElement>(null)
   const mobileNavFocusTimer = useRef<number | null>(null)
 
@@ -197,7 +209,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
             {/* 第三层：辅助入口。刻意放在下方且样式更轻，不与主流程争位置。 */}
             <div className="sidebar-nav-section">
               <div className="sidebar-nav-heading">辅助</div>
-              {auxiliaryRoutes.filter((route) => !route.navParent).map((route) =>
+              {auxiliaryRoutes.filter((route) => !route.navParent && !(route.key === 'legacy.history' && legacyMigrationComplete)).map((route) =>
                 renderNavItem(route.path, AUXILIARY_ICONS[route.key], route.label, route.caption, activeKey === route.key, () => closeMobileNav(false)),
               )}
             </div>

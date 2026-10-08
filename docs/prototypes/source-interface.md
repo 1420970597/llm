@@ -123,3 +123,5 @@ stateDiagram-v2
 ## 验证
 
 容器内 `npm run build`、`test/l15_issue197_remediation.mjs`、`test/l15_studio_shell.mjs` 与 `test/l15_studio_browser_router.mjs` 均通过；Go 格式化、vet、构建与全套单测通过。浏览器验收入口为 `test/audit/run-source217-ui.mjs`，使用真实 Chromium 执行生产页面与 API 契约夹具，覆盖历史冻结分页、查询重试、非法/异步素材上传、跨页关联保存、坏 JSON、超过 20 MB 文件、文件内容导入、预览失效、完成回放失败明细、390px 三页面布局与运行错误。该前端契约验收不替代后端数据库与真实全栈集成验证。
+
+2026-10-08 补齐 E2：来源页与目标结构页分别断言 Default、Loading、Empty、Error 及重试；导入页断言空输入、填写后常规态、受控校验请求期间的加载禁用、格式错误及大小边界。CI 的 Frontend job 安装固定 Playwright 版本，在 Vite 生产构建上运行相同脚本；任一断言失败都会使 job 失败。账号与项目来自受控 API，无数据库种子依赖；JSON 结果、截图及 trace 以 `source217-ui-report` artifact 保存。
