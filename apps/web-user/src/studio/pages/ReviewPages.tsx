@@ -164,7 +164,12 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
             ? { sampleVersionIds: sampleVersionIDs }
             : {
                 fromFilter: {
-                  reviewStatus: reviewStatus === '' ? undefined : reviewStatus,
+                  // issue #203：冻结时必须**显式带上意图**，不能靠「字段缺省」表达全量。
+                  // 旧实现把「无筛选」（reviewStatus 为空串）填成 `{}`，服务端于是解析出
+                  // 全量范围，而候选页却把它称为「已接纳」—— 两处从此永久不一致。
+                  // 空筛选明确写为 `all`（服务端已有该语义），快照的解释字段因此能自证
+                  // 「这份范围含未审阅内容」。
+                  reviewStatus: reviewStatus === '' ? 'all' : reviewStatus,
                   search: search.trim() === '' ? undefined : search.trim(),
                 },
               }),
@@ -286,15 +291,33 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
            还没看内容的情况下就进入发布流程（issue #194 的 CTA 完全相同的成因）。 */
         <div className="mb-3">
           <Text type="tertiary" size="small">
-            待判断 {samples.length} 条{samples.length > 0 ? '，点每行的「审阅」逐条判断' : ''}。判断完成后可用下方「按筛选条件冻结」把同一范围交给发布流程。
+            待判断 {samples.length} 条{samples.length > 0 ? '，点每行的「审阅」逐条判断' : ''}。
+            需要把这个范围交给发布流程时，请回到「数据」页用「按当前筛选冻结并准备发布」——
+            本页没有冻结按钮，避免在还没判断的情况下把未审阅内容当成发布范围。
           </Text>
         </div>
       ) : (
         <div className="mb-3">
           {projectCapabilities?.canPublish ? (
-            <Button size="small" onClick={() => void snapshotAll()} data-snapshot-all="true">
-              按当前筛选冻结并准备发布（服务端解析）
-            </Button>
+            <>
+              <Button size="small" onClick={() => void snapshotAll()} data-snapshot-all="true">
+                按当前筛选冻结并准备发布（服务端解析）
+              </Button>
+              {/* issue #203：按钮必须如实声明冻结范围的**语义**。
+                  在「全部」筛选（reviewStatus 为空串）下，冻结的是全量，
+                  含未审阅内容；旧实现把同一件事写成了「导出/发布当前筛选」，
+                  于是用户把它误解为「已接纳」。 */}
+              <Text
+                type="tertiary"
+                size="small"
+                className="block mt-2"
+                data-snapshot-scope-intent="true"
+              >
+                {reviewStatus === ''
+                  ? '当前筛选是「全部」：冻结范围含未审阅内容，候选页会标出其中已接纳与未审阅各多少条。'
+                  : `当前筛选是「${describeReviewStatus(reviewStatus)}」：只冻结该状态的内容版本。`}
+              </Text>
+            </>
           ) : null}
         </div>
       )}
