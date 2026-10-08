@@ -269,4 +269,65 @@ func (s *SelectionStore) CountSelectionItems(ctx context.Context, snapshotID int
 	return count, err
 }
 
+// SelectionComposition 是快照范围内按「有效处置」的构成计数。
+//
+// 为什么需要它：快照只记录「冻结了哪些内容版本」这一个事实，而候选页必须如实
+// 告诉用户这份范围**由什么构成** —— issue #203 的缺陷正是「区块标题写死
+// ‘已接纳’，而范围里其实含未审阅内容」。计数必须来自服务端的投影表
+// （`review_projections`），而不是前端对着 ID 列表再数一遍：前端拿不到审阅状态，
+// 数出来也是与后端分叉的第二份事实。
+type SelectionComposition struct {
+	Accepted    int `json:"accepted"`
+	Pending     int `json:"pending"`
+	Quarantined int `json:"quarantined"`
+	Conflict    int `json:"conflict"`
+}
+
+// Total 返回构成内的总条数，应当等于快照的 `item_count`。
+// 不等说明有内容版本在冻结后被删除（RESTRICT 本应挡住，读路径仍需自证）。
+func (c SelectionComposition) Total() int {
+	return c.Accepted + c.Pending + c.Quarantined + c.Conflict
+}
+
+// Composition 统计快照范围内的有效处置构成。
+//
+// 语义与 `ListSampleVersionIDsByFilter` 完全一致：没有投影行的内容版本按
+// `pending`（未判断）计入 —— 与 `COALESCE(rp.effective_action, 'pending')` 同一口径，
+// 否则「筛选能查出它、构成却不计它」会让两处数字对不上。
+func (s *SelectionStore) Composition(ctx context.Context, projectID, snapshotID int64) (SelectionComposition, error) {
+	rows, err := s.db.Query(ctx, `
+    SELECT COALESCE(rp.effective_action, 'pending') AS action, COUNT(*)
+    FROM sample_selection_items si
+    JOIN sample_versions sv ON sv.id = si.sample_version_id
+    LEFT JOIN review_projections rp ON rp.sample_version_id = sv.id
+    WHERE si.snapshot_id = $1 AND sv.project_id = $2
+    GROUP BY 1`, snapshotID, projectID)
+	if err != nil {
+		return SelectionComposition{}, err
+	}
+	defer rows.Close()
+
+	var composition SelectionComposition
+	for rows.Next() {
+		var action string
+		var count int
+		if err := rows.Scan(&action, &count); err != nil {
+			return SelectionComposition{}, err
+		}
+		switch action {
+		case model.EffectiveAccepted:
+			composition.Accepted = count
+		case model.EffectiveQuarantined:
+			composition.Quarantined = count
+		case model.EffectiveConflict:
+			composition.Conflict = count
+		default:
+			// `pending` 与任何未知取值都归入未判断：宁可把未知算成「待确认」，
+			// 也不能静默从构成里丢掉（丢掉会让总数对不上 `item_count`）。
+			composition.Pending += count
+		}
+	}
+	return composition, rows.Err()
+}
+
 var _ = model.EffectivePending

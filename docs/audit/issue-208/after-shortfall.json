@@ -1,0 +1,18 @@
+{
+  "base": "http://127.0.0.1:3210",
+  "viewport": {
+    "width": 1600,
+    "height": 1000
+  },
+  "batch": "b_1",
+  "shortfallCard": "产出缺口：计划 12，实际产出 0，缺口 12 / 计划 12，实际产出 0，缺口 12：生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次 / 补齐缺口（继续本批次） / 同一批次、同一快照；已成功的内容不会被重跑",
+  "failure": {
+    "errorClass": "config_error",
+    "errorMessage": "missing model connection: 批次快照没有模型连接，请到设计页的生成节点补齐",
+    "suggestedAction": "生成配置有问题，请打开项目设计页的“生成”节点选择模型连接并保存新蓝图后，再新建批次"
+  },
+  "blamesCoverage": false,
+  "agreesWithSuggestion": true,
+  "consoleErrors": [],
+  "defectPresent": false
+}

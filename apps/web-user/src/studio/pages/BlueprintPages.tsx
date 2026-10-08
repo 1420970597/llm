@@ -186,6 +186,15 @@ export function BlueprintPage() {
   const [choices, setChoices] = useState<BlueprintChoices>({ versions: {}, connections: [] })
   const bootstrapAttempted = useRef(false)
   const preserveDraftAfterNavigation = useRef(false)
+  /**
+   * 画布节点的 DOM 句柄（issue #204）。
+   *
+   * 缺陷形态：`?node=` 是契约 §3.2 里**可分享**的参数，但画布是横向滚动容器
+   * （`overflow-x: auto`），深链到靠后的节点时它被裁在可视区外 ——
+   * 用户打开了「版本交付」却看不到它，也不知道要横向滚动。《实测评测：4/6 个常见的
+   * 深链目标不可见》。因此当前节点必须被**滚入可视区**，而不仅是写入 URL。
+   */
+  const nodeRefs = useRef<Record<string, HTMLButtonElement | null>>({})
 
   // `?node=` 与 `?version=` 都来自 URL：分享链接要能指向同一个节点与版本。
   const activeNodeKey = searchParams.get('node') ?? ''
@@ -299,6 +308,28 @@ export function BlueprintPage() {
     () => specs.find((spec) => spec.key === activeNodeKey) ?? specs[0],
     [specs, activeNodeKey],
   )
+
+  /**
+   * 把当前节点滚入画布可视区（issue #204）。
+   *
+   * 为什么需要：画布是 `overflow-x: auto` 的横向流程带，窄屏下只有前几个节点
+   * 在可视区内。`?node=` 是契约 §3.2 的**可分享**参数，但以前它只改了 URL，
+   * 界面没跟上 —— 用户打开一个指向「版本交付」的链接，看到的却是被截断的左端，
+   * 而唯一的横向滚动条在画布底部（首屏往往看不到）。
+   *
+   * `inline: 'nearest'` 而不是 `'center'`：已经在可视区内的节点不应被强制居中，
+   * 否则点击节点会让画布自己跳动（变成本次修复引入的新“不稳定”）。
+   */
+  useEffect(() => {
+    // `loading` 必须在依赖里：加载中页面提前 return <Spin>，节点尚未挂载
+    // （refs 为空）；若只在 `activeSpec` 变化时跑，深链场景下 specs 到达后
+    // activeSpec 已定型、而节点要等 `loading` 变 false 才挂载 —— 那次不会重跑，
+    // 当前节点就永远滚不进来。
+    if (loading || !activeSpec) return
+    const node = nodeRefs.current[activeSpec.key]
+    if (!node) return
+    node.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' })
+  }, [activeSpec, loading])
 
   // URL 中存在 version 就代表「历史查看」；current 此时恰好也是被查看的
   // 历史版本，拿两者比较会把只读状态错误地判成可编辑。
@@ -449,6 +480,7 @@ export function BlueprintPage() {
                 spec.key === activeSpec?.key ? 'blueprint-node blueprint-node--active' : 'blueprint-node'
               }
               aria-current={spec.key === activeSpec?.key ? 'true' : undefined}
+              ref={(element) => { nodeRefs.current[spec.key] = element }}
               onClick={() => {
                 setSearchParams((params) => {
                   params.set('node', spec.key)
@@ -1328,32 +1360,30 @@ function parseJSONField(text: string): { ok: boolean; value: unknown } {
 }
 
 /**
- * JSONValue 是 JSON 文档可取的值的封闭集合。
- *
- * 存在的理由：编辑器草稿来自 `JSON.parse`，其形状是 JSON 的取值域，
- * 而不是「任意 unknown」。把返回类型写成 `unknown` 会让调用方（提交路径）
- * 失去类型提示，也无法断言「清理后的东西仍然是合法 JSON 结构」。
- */
-type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue }
-
-/**
  * stripInvalidJSONMarkers 递归去掉编辑器临时标记 `__invalid`。
  *
  * 为什么必须清理：它是「用户输到一半」的中间态，直接提交会让服务端看到一个
  * 契约里不存在的字段。放在提交路径上只出现一次，避免漏清。
  *
- * 参数保持 `unknown`（实参类型各异），但**返回**是封闭的 JSONValue：
- * 本函数的契约就是「输入任意 JSON 形状，输出同形状的合法 JSON」。
+ * 泛型 `<T>` 而不是裸 `unknown`：本函数**保持结构不变**（只删键、不改形状），
+ * 因此调用方的 `Record<string, unknown>` 草稿可以直接拿回同一类型，
+ * 不需要在调用点再断言一次。
  */
-function stripInvalidJSONMarkers(value: unknown): JSONValue {
-  if (Array.isArray(value)) return value.map(stripInvalidJSONMarkers)
+function stripInvalidJSONMarkers<T>(value: T): T {
+  if (Array.isArray(value)) {
+    // SAFETY: 运行时的 `value` 已由 Array.isArray 证明是数组；本函数对元素只
+    // 删 `__invalid` 键、不改变元素形状，因此映射结果与原数组同形状。TS 无法
+    // 把「T 是数组」表达成对 `.map` 结果的可判定收窄，故必须显式断言。
+    return value.map(stripInvalidJSONMarkers) as unknown as T
+  }
   if (value && typeof value === 'object') {
-    const result: Record<string, JSONValue> = {}
+    const result: Record<string, unknown> = {}
     for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
       if (key === '__invalid') continue
       result[key] = stripInvalidJSONMarkers(item)
     }
-    return result
+    // SAFETY: 同上 —— 对象分支重建的是同一形状的对象，只是少了 `__invalid` 键。
+    return result as T
   }
-  return value as JSONValue
+  return value
 }

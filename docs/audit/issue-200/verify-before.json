@@ -1,0 +1,40 @@
+{
+  "issue": 200,
+  "phase": "before",
+  "base": "http://127.0.0.1:3210",
+  "viewport": "1600x1000",
+  "account": "admin@company.com",
+  "queueItems": 3,
+  "todaySurface": {
+    "route": "/today",
+    "overviewPendingReview": 3,
+    "pendingReviewTodoCount": null,
+    "pendingReviewTodoSummary": null,
+    "tileEyebrow": "待人工判断",
+    "tileValue": "3",
+    "decisionRows": [
+      {
+        "kind": "pilot_comparable",
+        "text": "试制可比 2 个试制批次可以对比（比较后采纳方案） 2 项待处理 去处理 →"
+      },
+      {
+        "kind": "failed_recovery",
+        "text": "失败恢复 2 个批次有失败项待恢复 2 项待处理 去处理 →"
+      },
+      {
+        "kind": "release_blocked",
+        "text": "候选阻塞 1 个发布候选被门槛挡住 1 项待处理 去处理 →"
+      }
+    ],
+    "tileMatchesQueue": true,
+    "pendingTodoMatchesQueue": false,
+    "cardRendersPending": false
+  },
+  "overviewSurface": {
+    "route": "/p/1/overview",
+    "statsPendingReview": 0,
+    "metricText": "待处理决定0等待人工判断的内容版本",
+    "overviewMatchesQueue": false
+  },
+  "ok": false
+}

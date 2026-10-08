@@ -1,0 +1,43 @@
+{
+  "issue": 202,
+  "phase": "before",
+  "base": "http://127.0.0.1:3210",
+  "viewport": "1600x1000",
+  "account": "admin@company.com",
+  "deployedVersion": "f615353",
+  "maintenanceWaitMs": 45000,
+  "armed": {
+    "armedRow": "running|run|12|0|12|0|t",
+    "failedItems": 12,
+    "retryableItems": 0,
+    "activeJobs": 0
+  },
+  "batch": {
+    "status": "running",
+    "controlState": "run",
+    "plannedUnits": 12,
+    "completedUnits": 0,
+    "failedUnits": 12,
+    "inFlightUnits": 0,
+    "shortfallUnits": 12,
+    "shortfallNote": "",
+    "capabilities": {
+      "canPause": true,
+      "canResume": false,
+      "canRetryFailed": false
+    }
+  },
+  "clickableActionButtons": [
+    "搜索",
+    "A",
+    "暂停",
+    "异常恢复"
+  ],
+  "shortfallCardText": "产出缺口：计划 12，实际产出 0，缺口 12\n覆盖矩阵的方向配额或素材接地不足；补齐后再启动下一批，不要把它当作已完成。",
+  "showsRunningWhileSettled": true,
+  "correctionsBefore": 0,
+  "correctionsAfter": 0,
+  "newCorrectionLogs": 0,
+  "pageErrors": [],
+  "ok": false
+}
