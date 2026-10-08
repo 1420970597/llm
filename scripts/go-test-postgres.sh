@@ -30,6 +30,14 @@ DB_NAME="${POSTGRES_DB:-llm_factory}"
 DB_USER="${POSTGRES_USER:-llm_factory}"
 DB_PASS="${POSTGRES_PASSWORD:-llm_factory_dev}"
 GO_IMAGE="${GO_IMAGE:-golang:1.24-alpine}"
+postgres_limits=()
+go_limits=()
+if [ -n "${TEST_POSTGRES_CPUS:-}" ]; then postgres_limits+=(--cpus "$TEST_POSTGRES_CPUS"); fi
+if [ -n "${TEST_POSTGRES_MEMORY:-}" ]; then postgres_limits+=(--memory "$TEST_POSTGRES_MEMORY"); fi
+if [ -n "${TEST_GO_CPUS:-}" ]; then go_limits+=(--cpus "$TEST_GO_CPUS"); fi
+if [ -n "${TEST_GO_MEMORY:-}" ]; then go_limits+=(--memory "$TEST_GO_MEMORY"); fi
+if [ -n "${TEST_GO_BUILD_CACHE:-}" ]; then go_limits+=(-v "$TEST_GO_BUILD_CACHE:/root/.cache/go-build"); fi
+if [ -n "${TEST_GO_MOD_CACHE:-}" ]; then go_limits+=(-v "$TEST_GO_MOD_CACHE:/go/pkg/mod"); fi
 
 if [ "$#" -eq 0 ]; then
   set -- go test ./...
@@ -41,7 +49,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "[go-test-postgres] 启动临时 Postgres（$IMAGE，宿主端口 $PORT）"
-docker run -d --rm --name "$CONTAINER" \
+docker run -d --rm --name "$CONTAINER" "${postgres_limits[@]}" \
   -e "POSTGRES_DB=$DB_NAME" -e "POSTGRES_USER=$DB_USER" -e "POSTGRES_PASSWORD=$DB_PASS" \
   -p "127.0.0.1:$PORT:5432" "$IMAGE" >/dev/null
 
@@ -97,6 +105,6 @@ export LLM_TEST_POSTGRES_DSN="postgres://$DB_USER:$DB_PASS@127.0.0.1:$PORT/$DB_N
 echo "[go-test-postgres] 执行：$*"
 # 不要用 exec：exec 会替换掉当前 shell，trap 于是不会触发，
 # 临时 Postgres 容器会一直留在后台占着端口（实测踩过一次）。
-docker run --rm --network host -v "$REPO_ROOT:/w" -w /w \
+docker run --rm --network host -v "$REPO_ROOT:/w" -w /w "${go_limits[@]}" \
   -e "LLM_TEST_POSTGRES_DSN=$LLM_TEST_POSTGRES_DSN" \
   "$GO_IMAGE" "$@"

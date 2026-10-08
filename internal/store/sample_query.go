@@ -71,14 +71,14 @@ type SampleListQuery struct {
 //
 // 因此：**任何**按有效处置筛选/计数的查询都必须复用本常量与
 // effectiveReviewStatusSQL，而不是自己再写一遍连接条件。
+// (sample_id, version) 与 sample_version_id 均唯一，直接连接保持至多一行
+// 的语义，并允许计数查询使用集合连接而不是每个样本执行一次 LATERAL。
 const latestReviewProjectionJoin = `
-    LEFT JOIN LATERAL (
-      SELECT p.effective_action, p.aggregate_review_revision, p.conflict
-      FROM review_projections p
-      JOIN sample_versions sv ON sv.id = p.sample_version_id
-      WHERE sv.sample_id = s.id AND sv.version = s.latest_version
-      LIMIT 1
-    ) rp ON TRUE`
+    LEFT JOIN sample_versions review_sv
+      ON review_sv.sample_id = s.id AND review_sv.project_id = s.project_id
+        AND review_sv.version = s.latest_version
+    LEFT JOIN review_projections rp
+      ON rp.sample_version_id = review_sv.id AND rp.project_id = s.project_id`
 
 // effectiveReviewStatusSQL 是「样本当前采用版本的有效处置」的唯一表达式。
 //
@@ -86,11 +86,8 @@ const latestReviewProjectionJoin = `
 // 而 INNER JOIN 会把它们全部排除，得到一个永远空着的队列。
 const effectiveReviewStatusSQL = `COALESCE(rp.effective_action, 'pending')`
 
-// ListSamples 按「同项目内最近」列出样本；keyset 游标（契约 §1.5）。
-//
-// 排序键是 (created_at, id)：created_at 单独不唯一（同一批次的样本往往
-// 在同一毫秒内创建），而游标比较必须全序，否则翻页会重复或漏行。
-func (s *BatchStore) ListSamples(ctx context.Context, query SampleListQuery) ([]SampleWithReview, error) {
+// sampleListParams keeps normalization shared by production reads and EXPLAIN.
+func sampleListParams(query SampleListQuery) []any {
 	limit := query.Limit
 	if limit <= 0 {
 		limit = 20
@@ -103,40 +100,38 @@ func (s *BatchStore) ListSamples(ctx context.Context, query SampleListQuery) ([]
 		truncated := query.Cursor
 		cursorTime = &truncated
 	}
+	return []any{query.ProjectID, query.BatchID, strings.TrimSpace(query.TargetKind),
+		strings.TrimSpace(query.Search), cursorTime, query.CursorID,
+		strings.TrimSpace(query.ReviewStatus), query.UnreviewedOnly, limit}
+}
 
-	// 与 review_projections 左连接：审阅状态是**投影**，因此没有投影行
-	// （从未被判断过）的内容其状态视为 pending —— 那正是「待审阅」。
-	//
-	// 连接条件与「有效处置」表达式来自共享常量（见文件头的
-	// latestReviewProjectionJoin）：总览的待判断计数必须与这里**同一个口径**，
-	// 否则一次判断都没做过的项目上两者必然分叉（issue #200）。
-	rows, err := s.db.Query(ctx, `
+// A single query definition is shared by the real reader and EXPLAIN-based
+// performance checks, so evidence cannot silently measure a different query.
+const listSamplesSQL = `
 	SELECT s.id, s.project_id, s.sample_key, s.target_kind, s.title, s.origin_batch_id,
-	       s.latest_version, COALESCE(latest_sv.id, 0) AS latest_version_id,
+	       s.latest_version, COALESCE(review_sv.id, 0) AS latest_version_id,
 	       s.created_at, s.updated_at,
-	       `+effectiveReviewStatusSQL+` AS review_status,
+	       ` + effectiveReviewStatusSQL + ` AS review_status,
 	       COALESCE(rp.aggregate_review_revision, 0) AS aggregate_review_revision,
 	       COALESCE(rp.conflict, FALSE) AS review_conflict
-    FROM samples s
-    LEFT JOIN LATERAL (
-      SELECT sv.id
-      FROM sample_versions sv
-      WHERE sv.sample_id = s.id AND sv.project_id = s.project_id
-        AND sv.version = s.latest_version
-      LIMIT 1
-    ) latest_sv ON TRUE`+latestReviewProjectionJoin+`
+    FROM samples s` + latestReviewProjectionJoin + `
     WHERE s.project_id = $1
       AND ($2::bigint = 0 OR s.origin_batch_id = $2::bigint)
       AND ($3 = '' OR s.target_kind = $3)
       AND ($4 = '' OR s.title ILIKE '%' || $4 || '%' OR s.sample_key ILIKE '%' || $4 || '%')
-      AND ($7 = '' OR `+effectiveReviewStatusSQL+` = $7)
-      AND ($8 = FALSE OR `+effectiveReviewStatusSQL+` <> 'accepted')
+      AND ($7 = '' OR ` + effectiveReviewStatusSQL + ` = $7)
+      AND ($8 = FALSE OR ` + effectiveReviewStatusSQL + ` <> 'accepted')
       AND ($5::timestamptz IS NULL OR (s.created_at, s.id) < ($5::timestamptz, $6::bigint))
     ORDER BY s.created_at DESC, s.id DESC
-    LIMIT $9`,
-		query.ProjectID, query.BatchID, strings.TrimSpace(query.TargetKind),
-		strings.TrimSpace(query.Search), cursorTime, query.CursorID,
-		strings.TrimSpace(query.ReviewStatus), query.UnreviewedOnly, limit)
+    LIMIT $9`
+
+// ListSamples uses a full-order (created_at, id) keyset. Both joins have unique
+// right-hand keys, so a missing projection remains pending without multiplying
+// rows, and Postgres can plan the count as joins instead of 100K lateral calls.
+func (s *BatchStore) ListSamples(ctx context.Context, query SampleListQuery) ([]SampleWithReview, error) {
+	// The shared projection join keeps list filtering and overview counts on
+	// the same current-version review semantics, including absent projections.
+	rows, err := s.db.Query(ctx, listSamplesSQL, sampleListParams(query)...)
 	if err != nil {
 		return nil, err
 	}
@@ -174,17 +169,16 @@ func (s *BatchStore) CountSampleVersionsByProject(ctx context.Context, projectID
 	return count, err
 }
 
-// CountPendingReviewSamplesByProject 统计项目里**当前待人工判断**的样本数。
-//
-// 口径与审阅队列、`/today` 磁贴完全一致：复用 `latestReviewProjectionJoin` /
-// `effectiveReviewStatusSQL`，因此「一次判断都没做过的项目」也会正确计数，
-// 而直数 `review_projections` 的行在那里恒为 0（issue #200 的缺陷形态）。
-// 计数单位是**样本**（与审阅队列页一致），不是内容版本数。
+const countPendingReviewSamplesSQL = `
+    SELECT COUNT(*) FROM samples s` + latestReviewProjectionJoin + `
+    WHERE s.project_id = $1 AND ` + effectiveReviewStatusSQL + ` = $2`
+
+// CountPendingReviewSamplesByProject counts current sample identities using
+// the same projection join as the queue and overview. Absent projections are
+// pending; historical accepted versions do not hide a newer pending version.
 func (s *BatchStore) CountPendingReviewSamplesByProject(ctx context.Context, projectID int64) (int, error) {
 	var count int
-	err := s.db.QueryRow(ctx, `
-    SELECT COUNT(*) FROM samples s`+latestReviewProjectionJoin+`
-    WHERE s.project_id = $1 AND `+effectiveReviewStatusSQL+` = $2`,
+	err := s.db.QueryRow(ctx, countPendingReviewSamplesSQL,
 		projectID, model.EffectivePending).Scan(&count)
 	return count, err
 }
