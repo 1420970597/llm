@@ -25,7 +25,7 @@ func DefaultProjectDocuments(targetKind, name, goal string) (CoveragePayload, St
 			Directions: []CoverageDirection{{
 				StableID: "direction-1", Name: "核心方向", Quota: 1,
 				DifficultyRatios: []DifficultyRatio{{Difficulty: "medium", Ratio: 100}},
-				Source:           "project-default",
+				Source:           SourceNone,
 			}},
 		}},
 	}

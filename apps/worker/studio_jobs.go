@@ -665,6 +665,8 @@ func classifyStudioJobError(err error) string {
 	}
 	message := strings.ToLower(err.Error())
 	switch {
+	case strings.Contains(message, "config_error:"):
+		return model.ErrorClassConfig
 	case strings.Contains(message, "429"), strings.Contains(message, "rate limit"),
 		strings.Contains(message, "too many requests"):
 		return model.ErrorClassRateLimited

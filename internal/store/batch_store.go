@@ -1395,13 +1395,14 @@ func (s *BatchStore) EnsureSample(ctx context.Context, projectID int64, sampleKe
 
 // AppendSampleVersionInput 是追加一个内容版本的请求。
 type AppendSampleVersionInput struct {
-	ProjectID   int64
-	SampleKey   string
-	TargetKind  string
-	Title       string
-	BatchID     *int64
-	BatchItemID *int64
-	Attempt     int
+	SourceChunkIDs []int64
+	ProjectID      int64
+	SampleKey      string
+	TargetKind     string
+	Title          string
+	BatchID        *int64
+	BatchItemID    *int64
+	Attempt        int
 	// Payload 是 typed 样本内容（SFT 或 GRPO），由调用方按 target_kind 组装。
 	Payload any
 	// GeneratorConfig 是生成配置快照（非秘密标识）。
@@ -1423,71 +1424,13 @@ type AppendSampleVersionInput struct {
 //  3. **同事务推进 samples.latest_version**，并在冲突时重试
 //     （并发生成同一 sample_key 时两个 worker 会争用版本号）。
 func (s *BatchStore) AppendSampleVersion(ctx context.Context, input AppendSampleVersionInput) (model.Sample, model.SampleVersion, error) {
-	if strings.TrimSpace(input.SampleKey) == "" {
-		return model.Sample{}, model.SampleVersion{}, model.FieldErrors{
-			{Field: "sampleKey", Message: "必填"},
-		}
-	}
-	if input.TargetKind != model.TargetKindSFT && input.TargetKind != model.TargetKindGRPO {
-		return model.Sample{}, model.SampleVersion{}, &apiStoreError{Message: "样本目标类型不合法"}
-	}
-
-	schemaVersion := model.SampleSchemaForTarget(input.TargetKind)
-	if err := validateSamplePayload(input.TargetKind, input.Payload); err != nil {
-		return model.Sample{}, model.SampleVersion{}, err
-	}
-	payloadJSON, err := json.Marshal(input.Payload)
-	if err != nil {
-		return model.Sample{}, model.SampleVersion{}, err
-	}
-	contentHash, err := model.ContentHash(input.Payload)
-	if err != nil {
-		return model.Sample{}, model.SampleVersion{}, err
-	}
-
-	attempt := input.Attempt
-	if attempt < 1 {
-		attempt = 1
-	}
-	generatorConfig := input.GeneratorConfig
-	if len(generatorConfig) == 0 {
-		generatorConfig = json.RawMessage(`{}`)
-	}
-
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return model.Sample{}, model.SampleVersion{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	sample, err := EnsureSampleTx(ctx, tx, input.ProjectID, input.SampleKey, input.TargetKind, input.Title, input.BatchID)
-	if err != nil {
-		return model.Sample{}, model.SampleVersion{}, err
-	}
-
-	var version model.SampleVersion
-	err = tx.QueryRow(ctx, `
-    INSERT INTO sample_versions (
-      sample_id, project_id, version, target_kind, schema_version, payload, content_hash,
-      batch_id, batch_item_id, attempt, generator_config,
-      standard_version_id, standard_content_hash, blueprint_version_id, blueprint_content_hash, created_by)
-    VALUES ($1, $2,
-            (SELECT COALESCE(MAX(version), 0) + 1 FROM sample_versions WHERE sample_id = $1),
-            $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-    RETURNING id, sample_id, project_id, version, target_kind, schema_version, payload, content_hash,
-              batch_id, batch_item_id, attempt, generator_config,
-              standard_version_id, standard_content_hash, blueprint_version_id, blueprint_content_hash,
-              created_by, created_at`,
-		sample.ID, input.ProjectID, input.TargetKind, schemaVersion, payloadJSON, contentHash,
-		input.BatchID, input.BatchItemID, attempt, generatorConfig,
-		input.StandardVersionID, input.StandardContentHash,
-		input.BlueprintVersionID, input.BlueprintContentHash, input.CreatedBy,
-	).Scan(&version.ID, &version.SampleID, &version.ProjectID, &version.Version, &version.TargetKind,
-		&version.SchemaVersion, &version.Payload, &version.ContentHash,
-		&version.BatchID, &version.BatchItemID, &version.Attempt, &version.GeneratorConfig,
-		&version.StandardVersionID, &version.StandardContentHash,
-		&version.BlueprintVersionID, &version.BlueprintContentHash,
-		&version.CreatedBy, &version.CreatedAt)
+	version, err := appendSampleVersionTx(ctx, tx, input)
 	if err != nil {
 		if IsUniqueViolation(err) {
 			// 并发生成同一 sample_key：两个 worker 算出同一个 version。
@@ -1504,11 +1447,11 @@ func (s *BatchStore) AppendSampleVersion(ctx context.Context, input AppendSample
 		return model.Sample{}, model.SampleVersion{}, err
 	}
 
+	var sample model.Sample
 	if err := tx.QueryRow(ctx, `
-    UPDATE samples SET latest_version = GREATEST(latest_version, $2), updated_at = NOW()
-    WHERE id = $1
-    RETURNING id, project_id, sample_key, target_kind, title, origin_batch_id, latest_version, created_at, updated_at`,
-		sample.ID, version.Version,
+    SELECT id, project_id, sample_key, target_kind, title, origin_batch_id, latest_version, created_at, updated_at
+    FROM samples WHERE id = $1`,
+		version.SampleID,
 	).Scan(&sample.ID, &sample.ProjectID, &sample.SampleKey, &sample.TargetKind, &sample.Title,
 		&sample.OriginBatchID, &sample.LatestVersion, &sample.CreatedAt, &sample.UpdatedAt); err != nil {
 		return model.Sample{}, model.SampleVersion{}, err
@@ -1632,7 +1575,7 @@ func (s *BatchStore) GetSampleVersion(ctx context.Context, projectID, sampleID i
     SELECT id, sample_id, project_id, version, target_kind, schema_version, payload, content_hash,
            batch_id, batch_item_id, attempt, generator_config,
            standard_version_id, standard_content_hash, blueprint_version_id, blueprint_content_hash,
-           created_by, created_at
+           created_by, created_at, source_chunk_ids
     FROM sample_versions WHERE sample_id = $1 AND project_id = $2 AND version = $3`,
 		sampleID, projectID, version,
 	).Scan(&item.ID, &item.SampleID, &item.ProjectID, &item.Version, &item.TargetKind,
@@ -1640,7 +1583,7 @@ func (s *BatchStore) GetSampleVersion(ctx context.Context, projectID, sampleID i
 		&item.BatchID, &item.BatchItemID, &item.Attempt, &item.GeneratorConfig,
 		&item.StandardVersionID, &item.StandardContentHash,
 		&item.BlueprintVersionID, &item.BlueprintContentHash,
-		&item.CreatedBy, &item.CreatedAt)
+		&item.CreatedBy, &item.CreatedAt, &item.SourceChunkIDs)
 	return item, err
 }
 
@@ -1656,7 +1599,7 @@ func (s *BatchStore) ListSampleVersions(ctx context.Context, projectID, sampleID
     SELECT id, sample_id, project_id, version, target_kind, schema_version, payload, content_hash,
            batch_id, batch_item_id, attempt, generator_config,
            standard_version_id, standard_content_hash, blueprint_version_id, blueprint_content_hash,
-           created_by, created_at
+           created_by, created_at, source_chunk_ids
     FROM sample_versions WHERE sample_id = $1 AND project_id = $2
     ORDER BY version DESC LIMIT $3`, sampleID, projectID, limit)
 	if err != nil {
@@ -1672,7 +1615,7 @@ func (s *BatchStore) ListSampleVersions(ctx context.Context, projectID, sampleID
 			&item.BatchID, &item.BatchItemID, &item.Attempt, &item.GeneratorConfig,
 			&item.StandardVersionID, &item.StandardContentHash,
 			&item.BlueprintVersionID, &item.BlueprintContentHash,
-			&item.CreatedBy, &item.CreatedAt); err != nil {
+			&item.CreatedBy, &item.CreatedAt, &item.SourceChunkIDs); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -1799,14 +1742,14 @@ func (s *BatchStore) CommitBatchItemSuccess(ctx context.Context, batchID, projec
       SELECT id, sample_id, project_id, version, target_kind, schema_version, payload, content_hash,
              batch_id, batch_item_id, attempt, generator_config,
              standard_version_id, standard_content_hash, blueprint_version_id, blueprint_content_hash,
-             created_by, created_at
+             created_by, created_at, source_chunk_ids
       FROM sample_versions WHERE id = $1`, *existingVersionID,
 		).Scan(&existing.ID, &existing.SampleID, &existing.ProjectID, &existing.Version,
 			&existing.TargetKind, &existing.SchemaVersion, &existing.Payload, &existing.ContentHash,
 			&existing.BatchID, &existing.BatchItemID, &existing.Attempt, &existing.GeneratorConfig,
 			&existing.StandardVersionID, &existing.StandardContentHash,
 			&existing.BlueprintVersionID, &existing.BlueprintContentHash,
-			&existing.CreatedBy, &existing.CreatedAt); err != nil {
+			&existing.CreatedBy, &existing.CreatedAt, &existing.SourceChunkIDs); err != nil {
 			return model.SampleVersion{}, false, err
 		}
 		if err := tx.Commit(ctx); err != nil {
@@ -1847,6 +1790,12 @@ func (s *BatchStore) CommitBatchItemSuccess(ctx context.Context, batchID, projec
 // 抽出来是为了让 CommitBatchItemSuccess 能在**同一事务**里追加版本并更新单元，
 // 而不是嵌套事务（pgx 的嵌套需要 savepoint，会让「同事务」的保证变模糊）。
 func appendSampleVersionTx(ctx context.Context, tx pgx.Tx, input AppendSampleVersionInput) (model.SampleVersion, error) {
+	if strings.TrimSpace(input.SampleKey) == "" {
+		return model.SampleVersion{}, model.FieldErrors{{Field: "sampleKey", Message: "必填"}}
+	}
+	if err := validateChunkIDsTx(ctx, tx, input.ProjectID, input.SourceChunkIDs); err != nil {
+		return model.SampleVersion{}, err
+	}
 	if input.TargetKind != model.TargetKindSFT && input.TargetKind != model.TargetKindGRPO {
 		return model.SampleVersion{}, &apiStoreError{Message: "样本目标类型不合法"}
 	}
@@ -1881,10 +1830,10 @@ func appendSampleVersionTx(ctx context.Context, tx pgx.Tx, input AppendSampleVer
     INSERT INTO sample_versions (
       sample_id, project_id, version, target_kind, schema_version, payload, content_hash,
       batch_id, batch_item_id, attempt, generator_config,
-      standard_version_id, standard_content_hash, blueprint_version_id, blueprint_content_hash, created_by)
+      standard_version_id, standard_content_hash, blueprint_version_id, blueprint_content_hash, created_by, source_chunk_ids)
     VALUES ($1, $2,
             (SELECT COALESCE(MAX(version), 0) + 1 FROM sample_versions WHERE sample_id = $1),
-            $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
     RETURNING id, sample_id, project_id, version, target_kind, schema_version, payload, content_hash,
               batch_id, batch_item_id, attempt, generator_config,
               standard_version_id, standard_content_hash, blueprint_version_id, blueprint_content_hash,
@@ -1892,13 +1841,14 @@ func appendSampleVersionTx(ctx context.Context, tx pgx.Tx, input AppendSampleVer
 		sample.ID, input.ProjectID, input.TargetKind, schemaVersion, payloadJSON, contentHash,
 		input.BatchID, input.BatchItemID, attempt, generatorConfig,
 		input.StandardVersionID, input.StandardContentHash,
-		input.BlueprintVersionID, input.BlueprintContentHash, input.CreatedBy,
+		input.BlueprintVersionID, input.BlueprintContentHash, input.CreatedBy, sourceChunkIDsJSON(input.SourceChunkIDs),
 	).Scan(&version.ID, &version.SampleID, &version.ProjectID, &version.Version, &version.TargetKind,
 		&version.SchemaVersion, &version.Payload, &version.ContentHash,
 		&version.BatchID, &version.BatchItemID, &version.Attempt, &version.GeneratorConfig,
 		&version.StandardVersionID, &version.StandardContentHash,
 		&version.BlueprintVersionID, &version.BlueprintContentHash,
 		&version.CreatedBy, &version.CreatedAt)
+	version.SourceChunkIDs = append([]int64{}, input.SourceChunkIDs...)
 	if err != nil {
 		return model.SampleVersion{}, err
 	}
@@ -2275,9 +2225,9 @@ type SampleVersionFact struct {
 //     项目会把历史内容算进当前批次。
 //  2. **方向与难度来自 batch_items.item_key**（形如 `domain/direction#ordinal`）：
 //     它记录的是**产出时**的实际分配，而不是事后拿覆盖版本重算（覆盖可以被改）。
-//  3. **接地与否来自 payload**：`question`/`reasoning`/`answer` 之外的
-//     `sourceChunkIds`（或 `sourceChunk`）字段存在且非空即视为有素材接地。
-//     没有该字段的项目自然全部为 false，这是**如实**的而不是缺陷。
+//  3. 新样本接地来自独立 source_chunk_ids 中仍存在于本项目的素材块；
+//     显式擦除素材后不再计为接地。旧样本无此列引用时仍读取 payload 的
+//     sourceChunkIds/sourceChunk 兼容事实。
 func (s *BatchStore) ListSampleVersionFacts(ctx context.Context, projectID, batchID int64, limit int) ([]SampleVersionFact, error) {
 	if limit <= 0 || limit > 5000 {
 		limit = 2000
@@ -2288,7 +2238,9 @@ func (s *BatchStore) ListSampleVersionFacts(ctx context.Context, projectID, batc
            sv.payload,
            COALESCE(sv.content_hash, ''),
            COALESCE(rp.effective_action, 'pending'),
-           COALESCE(bi.item_key, '')
+           COALESCE(bi.item_key, ''),
+		   jsonb_array_length(sv.source_chunk_ids)>0,
+		   EXISTS(SELECT 1 FROM source_chunks sc WHERE sc.project_id=sv.project_id AND sc.id IN (SELECT value::bigint FROM jsonb_array_elements_text(sv.source_chunk_ids)))
     FROM sample_versions sv
     JOIN samples s ON s.id = sv.sample_id
     LEFT JOIN batch_items bi ON bi.id = sv.batch_item_id
@@ -2308,12 +2260,17 @@ func (s *BatchStore) ListSampleVersionFacts(ctx context.Context, projectID, batc
 		var fact SampleVersionFact
 		var payload []byte
 		var itemKey string
+		var referenced bool
+		var liveSource bool
 		if err := rows.Scan(&fact.SampleVersionID, &fact.SampleKey, &payload,
-			&fact.ContentHash, &fact.ReviewStatus, &itemKey); err != nil {
+			&fact.ContentHash, &fact.ReviewStatus, &itemKey, &referenced, &liveSource); err != nil {
 			return nil, err
 		}
 		fact.DomainStableID, fact.DirectionStableID = splitItemKey(itemKey)
 		fact.Difficulty, fact.PayloadChars, fact.LengthByField, fact.Grounded = summarizePayload(payload)
+		if referenced {
+			fact.Grounded = liveSource
+		}
 		facts = append(facts, fact)
 	}
 	return facts, rows.Err()

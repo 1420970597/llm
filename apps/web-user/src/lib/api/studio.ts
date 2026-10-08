@@ -211,13 +211,14 @@ export type VersionSummary = {
   createdBy?: number
 }
 
-/** 五类版本摘要；没有的为 null，**不伪造**一个空版本。 */
+/** 六类版本摘要；没有的为 null，**不伪造**一个空版本。 */
 export type OverviewVersions = {
   blueprint: VersionSummary | null
   coverage: VersionSummary | null
   standard: VersionSummary | null
   qualityPolicy: VersionSummary | null
   mapping: VersionSummary | null
+  source: VersionSummary | null
 }
 
 /** 批次事实计数。**不按最大 ID 猜「当前运行」**（契约 §3）。 */
@@ -513,6 +514,7 @@ export type SampleVersionSource = {
   standardContentHash: string
   blueprintVersionId?: number
   blueprintContentHash: string
+  sourceChunkIds: number[]
 }
 
 export type SampleVersionView = {

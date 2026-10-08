@@ -33,6 +33,8 @@ func documentPathSegment(kind model.DocumentKind) string {
 		return "quality-policy-versions"
 	case model.KindMapping:
 		return "mapping-versions"
+	case model.KindSource:
+		return "source-versions"
 	default:
 		return ""
 	}
@@ -311,6 +313,12 @@ func decodeDocumentPayload(kind model.DocumentKind, raw json.RawMessage) (any, [
 		return nil, []model.FieldError{{Field: "payload", Message: "必填"}}
 	}
 	switch kind {
+	case model.KindSource:
+		var payload model.SourcePayload
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return nil, jsonFieldErrors(err, "payload")
+		}
+		return payload, nil
 	case model.KindBlueprint:
 		var payload model.BlueprintPayload
 		if err := json.Unmarshal(raw, &payload); err != nil {
