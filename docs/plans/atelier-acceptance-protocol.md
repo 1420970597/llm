@@ -80,7 +80,8 @@
 | 发布具备内容/来源/版本/质量/mapping/manifest/hash；异常不产生假发布；后续修改不改旧下载 | `internal/store/release_store_test.go`、`internal/store/release_artifact_store_test.go` | 部分（hash 与冻结已覆盖；**真实对象存储故障注入待人工**） |
 | owner/reviewer/viewer/admin 能力服务端执行 | `internal/store/authz_store_test.go`、`apps/api/routes_studio_contract_test.go` | 已收集 |
 | 旧资产迁移可 dry-run/续跑/对账/解释缺失 | `internal/legacy/inventory_integration_test.go`、`internal/legacy/import_integration_test.go` | 已收集 |
-| CI 真实执行必要 DB/浏览器用例；桌面/窄屏/键盘/断网通过 | `internal/migrate/migrate_integration_test.go`、`test/l15_studio_browser_router.mjs`、CI `integration` job | 部分（DB 与路由已覆盖；**真实浏览器/窄屏/键盘/断网待 T29 可选路径或人工**） |
+| CI 真实执行必要 DB/浏览器用例；桌面/窄屏/键盘/断网通过 | `internal/migrate/migrate_integration_test.go`、`test/l15_studio_browser_router.mjs`、CI `integration`；真实 Chromium `test/audit/t29_measure.mjs` 与 `docs/audit/issue-160-t29/`；#259 蓝图回归 `docs/audit/issue-197-closure/` | 已收集 DB/路由与真实浏览器断网、390/768/1440、键盘证据。素材导入/工作台五态 Chromium CI 在最终审计 PR 验证，未合 main 前保持待交付；44px 触屏目标仍有未达标控件 |
+| 十万样本分页、当前版本审阅口径与待审计数基准 | [PR #262](https://github.com/1420970597/llm/pull/262)、[十万样本性能报告](https://github.com/1420970597/llm/blob/cd8effc78c84b64a5dc7f48038abe3a3061167cd/docs/architecture/sample-query-performance.md) 及原始 before/after JSON | 已收集真实 PostgreSQL 100K 基准；同资源配置、单并发/4 并发、查询计划齐备。计时不含 HTTP/前端/LLM，不视为生产 SLA |
 | 模型实测、真实用户任务、灰度/回退有记录 | 本文件第 1–4 节 | **待人工**（尚未执行） |
 
 ## 6. 阻塞级问题的处置

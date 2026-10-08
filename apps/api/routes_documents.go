@@ -215,11 +215,30 @@ func (app *application) listDocumentVersions(kind model.DocumentKind) http.Handl
 		}
 		logicalID := r.URL.Query().Get("logicalId")
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		if limit <= 0 || limit > 200 {
+			limit = 50
+		}
+		before := 0
+		if rawCursor := r.URL.Query().Get("cursor"); rawCursor != "" {
+			// document_versions.version is a PostgreSQL integer. Parse its exact
+			// range here so an oversized cursor is a client error, not a query 500.
+			parsedCursor, err := strconv.ParseInt(rawCursor, 10, 32)
+			if err != nil || parsedCursor <= 0 {
+				app.writeAPIError(w, r, http.StatusBadRequest, codeValidation, "版本分页游标必须为正整数", nil)
+				return
+			}
+			before = int(parsedCursor)
+		}
 
-		versions, err := app.documents.ListVersions(r.Context(), project.ID, kind, logicalID, limit)
+		versions, err := app.documents.ListVersions(r.Context(), project.ID, kind, logicalID, limit+1, before)
 		if err != nil {
 			app.writeDocumentError(w, r, err)
 			return
+		}
+		nextCursor := ""
+		if len(versions) > limit {
+			versions = versions[:limit]
+			nextCursor = strconv.Itoa(versions[len(versions)-1].Version)
 		}
 
 		// 头记录可能还不存在（用户从没保存过）——那不是错误：
@@ -236,8 +255,9 @@ func (app *application) listDocumentVersions(kind model.DocumentKind) http.Handl
 			"logicalId": normalizeLogicalID(logicalID),
 			// canEdit 来自 requireProject 已经算出的决定（含归档判断），
 			// 不在这里重算一次 —— 重算会漏掉归档这类「状态相关的拒绝」。
-			"canEdit": model.ProjectCapabilities(decision.Role, project.Status).CanEdit,
-			"sortKey": "version:desc",
+			"canEdit":    model.ProjectCapabilities(decision.Role, project.Status).CanEdit,
+			"sortKey":    "version:desc",
+			"nextCursor": nextCursor,
 		}
 		if current.ID != 0 {
 			body["document"] = current

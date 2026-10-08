@@ -87,11 +87,12 @@ func registerLegacyRoutes(mux *http.ServeMux, app *application) {
 
 // getLegacyMigrationStatus 返回旧资产迁移对账读数与结论。
 func (app *application) getLegacyMigrationStatus(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requestUser(r); !ok {
+	user, ok := requestUser(r)
+	if !ok {
 		app.writeAPIError(w, r, http.StatusUnauthorized, codeUnauthorized, msgAuthRequired, nil)
 		return
 	}
-	status, err := store.NewLegacyImportStore(app.studio.Pool).LegacyMigrationStatus(r.Context())
+	status, err := store.NewLegacyImportStore(app.studio.Pool).LegacyMigrationStatus(r.Context(), user.ID)
 	if err != nil {
 		app.writeError(w, http.StatusInternalServerError, err)
 		return

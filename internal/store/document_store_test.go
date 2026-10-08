@@ -59,6 +59,43 @@ func newDocumentFixture(t *testing.T) documentFixture {
 	}
 }
 
+func TestDocumentVersionPaginationBeyondFiftyAndConcurrentAppend(t *testing.T) {
+	f := newDocumentFixture(t)
+	ctx := context.Background()
+	var revision int64
+	appendVersion := func(index int) {
+		t.Helper()
+		doc, _, err := f.documents.SaveVersion(ctx, f.projectID, model.KindStandard, f.editorA,
+			SaveDocumentVersionInput{ExpectedRevision: revision, Payload: standardPayload(fmt.Sprintf("步骤 %d", index))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		revision = doc.RowVersion
+	}
+	for index := 1; index <= 60; index++ {
+		appendVersion(index)
+	}
+	first, err := f.documents.ListVersions(ctx, f.projectID, model.KindStandard, "main", 50)
+	if err != nil || len(first) != 50 || first[0].Version != 60 || first[49].Version != 11 {
+		t.Fatalf("第一页: count=%d error=%v", len(first), err)
+	}
+	appendVersion(61)
+	second, err := f.documents.ListVersions(ctx, f.projectID, model.KindStandard, "main", 50, first[49].Version)
+	if err != nil || len(second) != 10 || second[0].Version != 10 || second[9].Version != 1 {
+		t.Fatalf("并发新增后历史不可重复或漏项: %+v %v", second, err)
+	}
+	empty, err := f.documents.ListVersions(ctx, f.projectID, model.KindStandard, "main", 50, 1)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("到底: %+v %v", empty, err)
+	}
+}
+
+func TestDocumentVersionPaginationRejectsInvalidCursor(t *testing.T) {
+	if _, err := NewDocumentStore(nil).ListVersions(context.Background(), 1, model.KindBlueprint, "main", 50, -1); err == nil {
+		t.Fatal("非法游标不能到达数据库")
+	}
+}
+
 // standardPayload 返回一份通过校验的标准文档（供引用与被引用测试使用）。
 func standardPayload(title string) model.StandardPayload {
 	return model.StandardPayload{
