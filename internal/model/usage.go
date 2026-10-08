@@ -135,6 +135,7 @@ type PriceVersion struct {
 	// 忘了填会被当成免费（预算永远不涨、超支不报警），
 	// 而确实免费无法表达。分开之后，0/0 且非 IsFree = 未配置 = 费用未知。
 	IsFree        bool      `json:"isFree"`
+	IsEstimated   bool      `json:"isEstimated"`
 	EffectiveFrom time.Time `json:"effectiveFrom"`
 	Note          string    `json:"note"`
 }
@@ -205,6 +206,11 @@ func ComputeCharge(usage TokenUsage, price PriceVersion, priceVersionName string
 			Note:         "供应商未回传 token 用量，费用无法计算（不是 0）",
 		}
 	}
+	if (usage.InputTokens == nil && price.InputPerMillion > 0) ||
+		(usage.OutputTokens == nil && price.OutputPerMillion > 0) {
+		return UsageCharge{AmountState: AmountStateUnknown, Usage: usage,
+			PriceVersion: priceVersionName, Note: "供应商仅回传部分 token 用量，收费方向缺失，完整费用未知"}
+	}
 
 	// 依赖方向未知与已知为 0 的区别：只用已知的方向计价，
 	// 未知方向不参与（不能当作 0 计成免费，但也不能编造一个数量）。
@@ -233,9 +239,9 @@ func ComputeCharge(usage TokenUsage, price PriceVersion, priceVersionName string
 	// token 数来自本地估算时，金额只能是估计值，不能升级成 actual。
 	amountState := AmountStateActual
 	note := "按供应商回传的 token 数与价格版本计算"
-	if source != UsageSourceProvider {
+	if source != UsageSourceProvider || price.IsEstimated {
 		amountState = AmountStateEstimated
-		note = "按本地估算的 token 数与价格版本计算，是上界估计而非精确值"
+		note = "按估算用量或保守报价计算，不是供应商实际账单金额"
 	}
 	amount := total
 	return UsageCharge{

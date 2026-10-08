@@ -1,11 +1,26 @@
 package llm
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
 	"github.com/1420970597/llm/internal/model"
 )
+
+// CallAccounting reserves and settles each HTTP attempt, including retries.
+// It receives bounds and a hash, never credentials or source text.
+type CallAccounting interface {
+	ReserveCall(context.Context, RequestMetadata) (CallSettlement, error)
+}
+
+type RequestMetadata struct {
+	InputTokensUpperBound int64
+	MaxOutputTokens       int64
+	ConfigFingerprint     string
+}
+
+type CallSettlement func(context.Context, ResponseMetadata, error) error
 
 // 本文件实现「从供应商响应里取回用量元数据」（Issue #160 T07）。
 //
@@ -179,6 +194,12 @@ func ExtractIdentityFromBody(raw []byte) (requestID, responseModelID string) {
 // 部分 OpenAI 兼容接入点会拒绝不认识的字段（400 invalid_request_error），
 // 一律加上会让原本可用的部署直接失败。因此它必须是显式选择，
 // 且只在新的 Studio 生成路径（T12）里启用 —— 旧路径行为保持不变。
+type ResponseMetadata struct {
+	Usage     model.TokenUsage
+	RequestID string
+	ModelID   string
+}
+
 func WithUsageReporting(provider ProviderConfig) ProviderConfig {
 	provider.IncludeUsage = true
 	return provider

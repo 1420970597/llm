@@ -99,3 +99,34 @@ func TestUnmarshalStructuredContentHandlesCodeFenceAndProse(t *testing.T) {
 		t.Fatalf("embedded result mismatch: %v", embedded)
 	}
 }
+
+func TestBuildChatCompletionBodiesUsesGPT5OutputField(t *testing.T) {
+	bodies, err := buildChatCompletionBodies(ProviderConfig{Model: "gpt-5.1", MaxTokens: 1234}, map[string]any{"messages": []any{}})
+	if err != nil || len(bodies) == 0 {
+		t.Fatalf("build gpt-5 request: %v", err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(bodies[0], &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["max_completion_tokens"] != float64(1234) {
+		t.Fatalf("gpt-5 output field missing: %s", bodies[0])
+	}
+	if _, ok := body["max_tokens"]; ok {
+		t.Fatalf("gpt-5 primary variant sent max_tokens: %s", bodies[0])
+	}
+}
+
+func TestBuildChatCompletionBodiesKeepsLegacyOutputFieldForOtherModels(t *testing.T) {
+	bodies, err := buildChatCompletionBodies(ProviderConfig{Model: "gpt-4o", MaxTokens: 1234}, map[string]any{"messages": []any{}})
+	if err != nil || len(bodies) != 1 {
+		t.Fatalf("build legacy request: %v bodies=%d", err, len(bodies))
+	}
+	var body map[string]any
+	if err := json.Unmarshal(bodies[0], &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["max_tokens"] != float64(1234) {
+		t.Fatalf("legacy output field missing: %s", bodies[0])
+	}
+}

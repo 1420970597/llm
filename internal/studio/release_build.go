@@ -116,25 +116,38 @@ func (runner *ReleaseBuilder) BuildReleaseArtifact(ctx context.Context, input Re
 			//（数据卡要能解释覆盖损失，§2.3）。
 			continue
 		}
-		record, err := runner.loadRecord(ctx, input.ProjectID, input.TargetKind, item)
+		record, version, err := runner.loadRecord(ctx, input.ProjectID, input.TargetKind, item)
 		if err != nil {
 			return ReleaseBuildOutput{}, err
 		}
 		records = append(records, record)
-		manifestItems = append(manifestItems, model.ManifestItem{
+		manifestItem := model.ManifestItem{
 			SampleID: item.SampleID, SampleVersionID: item.SampleVersionID,
 			ContentHash:             item.ContentHash,
 			StandardContentHash:     item.StandardContentHash,
 			BlueprintContentHash:    item.BlueprintContentHash,
 			AggregateReviewRevision: item.AggregateReviewRevision,
 			EvidenceRevision:        item.EvidenceRevision,
-		})
+		}
+		var sourcePayload map[string]any
+		if err := json.Unmarshal(version.Payload, &sourcePayload); err != nil {
+			return ReleaseBuildOutput{}, err
+		}
+		manifestItem.Source = stringField(sourcePayload, "source")
+		for _, id := range version.SourceChunkIDs {
+			manifestItem.SourceChunks = append(manifestItem.SourceChunks, model.GroundingReference{ID: id, Status: "missing_chunk"})
+		}
+		manifestItems = append(manifestItems, manifestItem)
 	}
 	if len(records) == 0 {
 		return ReleaseBuildOutput{}, NewError(CodeValidation,
 			"发布清单里的内容都被排除了：没有可导出的内容")
 	}
 
+	grounding, err := runner.resolveGrounding(ctx, input.ProjectID, manifestItems)
+	if err != nil {
+		return ReleaseBuildOutput{}, err
+	}
 	itemsContentHash := model.ComputeItemsContentHash(manifestItems)
 
 	var artifactBytes []byte
@@ -182,6 +195,7 @@ func (runner *ReleaseBuilder) BuildReleaseArtifact(ctx context.Context, input Re
 		ItemsContentHash: itemsContentHash,
 		QualitySnapshot:  input.QualitySnapshot, CoverageSummary: input.CoverageSummary,
 		HashScope: model.HashScopeReleaseItems,
+		Grounding: &grounding,
 	}
 	manifestHash, err := model.ComputeManifestHash(manifest)
 	if err != nil {
@@ -235,6 +249,7 @@ func validateGRPORelease(input ReleaseBuildInput, mapping model.ExportMapping) e
 type ReleaseBuilder struct {
 	Batches   *store.BatchStore
 	Documents *store.DocumentStore
+	Sources   *store.SourceChunkStore
 	// EncoderVersion 允许测试注入一个不同的版本（用于断言它进 manifest）。
 	encoderVersionOverride string
 }
@@ -345,13 +360,13 @@ func (runner *ReleaseBuilder) loadMapping(ctx context.Context, mappingVersionID 
 // 原样带进 Record（保留数组与对象结构）；SFT 走既有的扁平字段。
 // 不做统一解析：两者的 payload 字段集不同，统一解析只能靠「缺什么当空」，
 // 而那种做法会把一个写坏的 GRPO payload 当 SFT 内容导出（一个看起来正常的错）。
-func (runner *ReleaseBuilder) loadRecord(ctx context.Context, projectID int64, targetKind string, item store.ReleaseItem) (exporter.Record, error) {
+func (runner *ReleaseBuilder) loadRecord(ctx context.Context, projectID int64, targetKind string, item store.ReleaseItem) (exporter.Record, model.SampleVersion, error) {
 	// 必须带**项目作用域**：GetSampleVersionByID 的查询是
 	// `WHERE id = $1 AND project_id = $2`，传 0 会一条也读不到
 	//（那会让每次发布都以「读取内容失败」告终）。
 	version, err := runner.Batches.GetSampleVersionByID(ctx, projectID, item.SampleVersionID)
 	if err != nil {
-		return exporter.Record{}, NewError(CodeUnavailable, fmt.Sprintf(
+		return exporter.Record{}, model.SampleVersion{}, NewError(CodeUnavailable, fmt.Sprintf(
 			"读取内容版本 %d 失败：%v", item.SampleVersionID, err))
 	}
 
@@ -363,7 +378,7 @@ func (runner *ReleaseBuilder) loadRecord(ctx context.Context, projectID int64, t
 	if targetKind == model.TargetKindGRPO {
 		sample, parseErr := model.ParseGRPOSamplePayload(version.Payload)
 		if parseErr != nil {
-			return exporter.Record{}, NewError(CodeValidation, fmt.Sprintf(
+			return exporter.Record{}, model.SampleVersion{}, NewError(CodeValidation, fmt.Sprintf(
 				"内容版本 %d 不符合 GRPO 样本契约：%v", item.SampleVersionID, parseErr))
 		}
 		record.Question = sample.Question
@@ -372,12 +387,12 @@ func (runner *ReleaseBuilder) loadRecord(ctx context.Context, projectID int64, t
 		record.RewardLevels = sample.Levels
 		record.LevelRubrics = model.ToGRPORubricExports(sample.LevelRubrics)
 		record.FrameworkRef = sample.FrameworkRef
-		return record, nil
+		return record, version, nil
 	}
 
 	var payload map[string]any
 	if err := json.Unmarshal(version.Payload, &payload); err != nil {
-		return exporter.Record{}, NewError(CodeValidation, fmt.Sprintf(
+		return exporter.Record{}, model.SampleVersion{}, NewError(CodeValidation, fmt.Sprintf(
 			"内容版本 %d 不是合法的 JSON 对象", item.SampleVersionID))
 	}
 	record.Question = stringField(payload, "question")
@@ -390,7 +405,70 @@ func (runner *ReleaseBuilder) loadRecord(ctx context.Context, projectID int64, t
 	if difficulty, found := payload["difficulty"].(string); found {
 		record.Difficulty = difficulty
 	}
-	return record, nil
+	return record, version, nil
+}
+
+// resolveGrounding batches lookup of unique evidence IDs. Deleted evidence is
+// retained as a missing_chunk reference so exports remain usable and honest.
+func (runner *ReleaseBuilder) resolveGrounding(ctx context.Context, projectID int64, items []model.ManifestItem) (model.GroundingSummary, error) {
+	ids := make([]int64, 0)
+	seen := map[int64]bool{}
+	for _, item := range items {
+		for _, ref := range item.SourceChunks {
+			if !seen[ref.ID] {
+				seen[ref.ID] = true
+				ids = append(ids, ref.ID)
+			}
+		}
+	}
+	chunks := map[int64]model.SourceChunk{}
+	if len(ids) > 0 && runner.Sources != nil {
+		for start := 0; start < len(ids); start += 500 {
+			end := min(start+500, len(ids))
+			rows, err := runner.Sources.FindChunks(ctx, projectID, ids[start:end])
+			if err != nil {
+				return model.GroundingSummary{}, err
+			}
+			for _, chunk := range rows {
+				chunks[chunk.ID] = chunk
+			}
+		}
+	}
+	return applyGroundingReferences(items, chunks), nil
+}
+
+func applyGroundingReferences(items []model.ManifestItem, chunks map[int64]model.SourceChunk) model.GroundingSummary {
+	summary := model.GroundingSummary{}
+	seen := map[int64]bool{}
+	for i := range items {
+		available := 0
+		for j := range items[i].SourceChunks {
+			ref := &items[i].SourceChunks[j]
+			chunk, found := chunks[ref.ID]
+			if found && strings.TrimSpace(chunk.Content) != "" {
+				ref.ContentHash, ref.HeadingPath, ref.Status = chunk.ContentHash, chunk.HeadingPath, "available"
+				available++
+			} else {
+				ref.Status = "missing_chunk"
+			}
+			if !seen[ref.ID] {
+				seen[ref.ID] = true
+				summary.Chunks++
+				if ref.Status == "missing_chunk" {
+					summary.Missing++
+				}
+			}
+		}
+		if available > 0 && available == len(items[i].SourceChunks) {
+			summary.GroundedSamples++
+		} else {
+			summary.UngroundedSamples++
+		}
+		if items[i].Source == "external_import" {
+			summary.ExternalImports++
+		}
+	}
+	return summary
 }
 
 // stringField 取字符串字段（非字符串返回空串）。

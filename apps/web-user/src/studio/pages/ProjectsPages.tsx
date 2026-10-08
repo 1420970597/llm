@@ -393,6 +393,7 @@ export function ProjectOverviewPage() {
   const versionRows = [
     ['蓝图', overview.versions.blueprint],
     ['覆盖', overview.versions.coverage],
+    ['素材来源', overview.versions.source],
     ['标准', overview.versions.standard],
     ['质量策略', overview.versions.qualityPolicy],
     ['映射', overview.versions.mapping],
@@ -455,6 +456,7 @@ export function ProjectOverviewPage() {
             <div className="atelier-version-list">
               {versionRows.map(([label, version]) => <div key={label}><span>{label}</span><strong>{version ? `v${version.version}` : '未保存'}</strong></div>)}
             </div>
+            <Button theme="borderless" onClick={() => navigate(scope.href('project.sources'))}>查看素材来源 →</Button>
           </section>
         </aside>
       </div>

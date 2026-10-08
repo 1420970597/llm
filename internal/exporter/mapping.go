@@ -27,6 +27,7 @@ func recordFields(record Record) map[string]any {
 		"question_id":      record.QuestionID,
 		"question":         record.Question,
 		"chain_of_thought": record.ChainOfThought,
+		"reasoning":        record.ChainOfThought,
 		"answer":           record.Answer,
 		"judge_prompt":     record.JudgePrompt,
 		"difficulty":       record.Difficulty,

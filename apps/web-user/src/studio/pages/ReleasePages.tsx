@@ -71,6 +71,16 @@ const SFT_FORMAT_OPTIONS = [
 ]
 const GRPO_FORMAT_OPTIONS = [{ value: 'jsonl', label: 'JSONL（GRPO）' }]
 
+type GroundingSummary = { chunks: number; missing: number; groundedSamples: number; ungroundedSamples: number; externalImports: number }
+function groundingSummaryOf(manifest: unknown): GroundingSummary | null {
+  if (!manifest || typeof manifest !== 'object' || !('grounding' in manifest)) return null
+  const summary = manifest.grounding
+  if (!summary || typeof summary !== 'object') return null
+  const fields = ['chunks', 'missing', 'groundedSamples', 'ungroundedSamples', 'externalImports'] as const
+  if (fields.some((key) => !(key in summary) || typeof (summary as Record<string, unknown>)[key] !== 'number' || !Number.isFinite((summary as Record<string, number>)[key]))) return null
+  return summary as GroundingSummary
+}
+
 function statusColor(status: string): 'green' | 'red' | 'amber' | 'grey' {
   switch (status) {
     case 'published':
@@ -855,6 +865,7 @@ export function ReleaseCardPage() {
 
   const { release } = card
   const published = release.status === 'published'
+  const grounding = groundingSummaryOf(card.manifest)
 
   return (
     <div className="console-page" data-studio-page="release-card" data-release-status={release.status}>
@@ -947,6 +958,11 @@ export function ReleaseCardPage() {
       </Card>
 
       <Card className="console-card" bodyStyle={{ padding: 14 }} data-manifest-panel="true">
+        {grounding ? <div data-grounding-summary="true" className="mb-3">
+          <Text strong className="block mb-1">素材依据</Text>
+          <Text className="block">引用 {grounding.chunks} 个素材块，缺失 {grounding.missing} 个；素材可追溯样本 {grounding.groundedSamples} 条，缺少完整素材依据 {grounding.ungroundedSamples} 条，其中成品导入 {grounding.externalImports} 条。</Text>
+          <Text type="tertiary" size="small">素材关联说明来源；答案质量仍需规则检查、独立评估与人工判断。</Text>
+        </div> : <Text type="tertiary" className="block mb-3">此版本未记录素材依据摘要。</Text>}
         <Text strong className="block mb-1">发布清单（manifest）</Text>
         <Text type="tertiary" size="small" className="block mb-2">
           manifest 记录这一版发布了什么：清单项、映射与编码器版本、用途与限制。

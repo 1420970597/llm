@@ -123,6 +123,17 @@ func TestLengthFieldsOfIsEmptyForSamplesWithoutLengthFields(t *testing.T) {
 	}
 }
 
+func TestAnalysisStructureKeepsExplicitSourceGaps(t *testing.T) {
+	coverage := &model.CoveragePayload{Domains: []model.CoverageDomain{{StableID: "d", Directions: []model.CoverageDirection{
+		{StableID: "gap", Source: "document", Quota: 0},
+		{StableID: "legacy", Quota: 0},
+	}}}}
+	groups := analyzeStructure(coverage, nil)
+	if len(groups) != 2 || groups[0].Planned != 0 || groups[1].Planned != 1 {
+		t.Fatalf("planned gap semantics: %+v", groups)
+	}
+}
+
 func TestSampleLengthFieldsIsStableOrder(t *testing.T) {
 	// 口径必须是可重放的：同一份 payload 每次得到同一个读数。
 	first := model.SampleLengthFields()

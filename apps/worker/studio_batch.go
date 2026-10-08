@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	appcrypto "github.com/1420970597/llm/internal/crypto"
 	"github.com/1420970597/llm/internal/llm"
@@ -55,9 +57,9 @@ func handleStudioBatchGenerate(ctx context.Context, env *StudioJobEnv, job model
 	var generator studio.UnitGenerator
 	switch batch.TargetKind {
 	case model.TargetKindGRPO:
-		generator = &grpoUnitGenerator{datasets: datasets, documents: env.Documents()}
+		generator = &grpoUnitGenerator{datasets: datasets, documents: env.Documents(), sources: store.NewSourceChunkStore(env.Pool), usage: env.Usage(), projects: store.NewProjectStore(env.Pool), batches: env.Batches(), jobID: job.ID}
 	case model.TargetKindSFT:
-		generator = &sftUnitGenerator{datasets: datasets, documents: env.Documents()}
+		generator = &sftUnitGenerator{datasets: datasets, documents: env.Documents(), sources: store.NewSourceChunkStore(env.Pool), usage: env.Usage(), projects: store.NewProjectStore(env.Pool), batches: env.Batches(), jobID: job.ID}
 	default:
 		// 未知目标类型必须显式失败：猜一个会让 GRPO 项目产出 SFT 结构的样本，
 		// 而那种错误只在质量实验按错误量表打分时才暴露。
@@ -91,6 +93,11 @@ func handleStudioBatchGenerate(ctx context.Context, env *StudioJobEnv, job model
 type sftUnitGenerator struct {
 	datasets  *store.DatasetStore
 	documents *store.DocumentStore
+	sources   sourceChunkReader
+	usage     *store.UsageStore
+	projects  *store.ProjectStore
+	batches   *store.BatchStore
+	jobID     int64
 }
 
 func (generator *sftUnitGenerator) GenerateUnit(ctx context.Context, request studio.UnitRequest) (studio.UnitResult, error) {
@@ -113,9 +120,21 @@ func (generator *sftUnitGenerator) GenerateUnit(ctx context.Context, request stu
 		ProviderType:    providerType,
 		ReasoningEffort: reasoningEffort,
 		APIKey:          apiKey,
+		MaxTokens:       request.GenerationConfig.MaxTokens,
+		Temperature:     request.GenerationConfig.Temperature,
 	})
+	var receipts generationReceipts
+	provider.ObserveResponse = receipts.observe
+	provider.Accounting = &studioCallAccounting{usage: generator.usage, projects: generator.projects, batches: generator.batches,
+		projectID: request.ProjectID, batchID: &request.BatchID, connectionID: connectionID,
+		idempotencyKey: fmt.Sprintf("batch:%d:item:%s:attempt:%d", request.BatchID, request.ItemKey, request.Attempt),
+		attempt:        request.Attempt, purpose: "batch_generate", provider: provider, jobID: generator.jobID}
 
 	steps, err := generator.standardSteps(ctx, request)
+	if err != nil {
+		return studio.UnitResult{}, err
+	}
+	question, materials, err := questionFor(ctx, provider, request, generator.sources, generator.documents, steps)
 	if err != nil {
 		return studio.UnitResult{}, err
 	}
@@ -123,11 +142,12 @@ func (generator *sftUnitGenerator) GenerateUnit(ctx context.Context, request stu
 	payload, err := llm.GenerateSft(ctx, provider, llm.SftInput{
 		RootKeyword: request.Unit.DirectionName,
 		Question: model.Question{
-			Content:    questionFor(request),
+			Content:    question,
 			Difficulty: request.Unit.Difficulty,
 		},
-		Steps:         steps,
-		IncludeAnswer: true,
+		Steps:           steps,
+		IncludeAnswer:   true,
+		SourceMaterials: materials,
 	})
 	if err != nil {
 		return studio.UnitResult{}, err
@@ -142,12 +162,117 @@ func (generator *sftUnitGenerator) GenerateUnit(ctx context.Context, request stu
 		return studio.UnitResult{}, fmt.Errorf("empty output: 模型没有返回推理过程")
 	}
 	return studio.UnitResult{
-		Title: questionFor(request),
+		Title:           question,
+		Usage:           receipts.usage(),
+		RequestID:       strings.Join(receipts.requestIDs, ","),
+		ResponseModelID: receipts.modelID,
+		SourceChunkIDs:  append([]int64(nil), request.Unit.SourceChunkIDs...),
 		Payload: map[string]any{
-			"question":  questionFor(request),
-			"reasoning": reasoning,
-			"answer":    strings.TrimSpace(payload.Answer),
+			"question":   question,
+			"reasoning":  reasoning,
+			"answer":     strings.TrimSpace(payload.Answer),
+			"source":     questionSource(request.Unit.Source),
+			"difficulty": request.Unit.Difficulty,
 		},
+	}, nil
+}
+
+// studioCallAccounting accounts for every paid HTTP attempt before content is
+// committed. A failed answer still leaves a receipt for its successful question.
+type studioCallAccounting struct {
+	usage          *store.UsageStore
+	projects       *store.ProjectStore
+	batches        *store.BatchStore
+	projectID      int64
+	batchID        *int64
+	connectionID   int64
+	idempotencyKey string
+	attempt        int
+	purpose        string
+	provider       llm.ProviderConfig
+	jobID          int64
+	call           int
+}
+
+func (accounting *studioCallAccounting) ReserveCall(ctx context.Context, meta llm.RequestMetadata) (llm.CallSettlement, error) {
+	if accounting.usage == nil || accounting.projects == nil || (accounting.batchID != nil && accounting.batches == nil) {
+		return nil, fmt.Errorf("configuration: 缺少预算依赖，禁止未记账的模型调用")
+	}
+	if accounting.projectID <= 0 || accounting.connectionID <= 0 || accounting.attempt <= 0 || strings.TrimSpace(accounting.idempotencyKey) == "" || strings.TrimSpace(accounting.purpose) == "" {
+		return nil, fmt.Errorf("configuration: 模型请求缺少可追溯的项目、连接或尝试身份")
+	}
+	project, err := accounting.projects.GetProject(ctx, accounting.projectID)
+	if err != nil {
+		return nil, err
+	}
+	batchLimit := int64(0)
+	if accounting.batchID != nil {
+		batch, err := accounting.batches.GetBatch(ctx, *accounting.batchID)
+		if err != nil {
+			return nil, err
+		}
+		if batch.ProjectID != project.ID {
+			return nil, fmt.Errorf("configuration: 批次预算不属于本项目")
+		}
+		batchLimit = batch.Budget.LimitMinor
+	}
+	connectionID := accounting.connectionID
+	price, found, err := accounting.usage.ResolvePriceVersion(ctx, connectionID, accounting.provider.Model, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fmt.Errorf("configuration: 模型尚未配置价格版本，无法可靠预留预算")
+	}
+	fingerprint := model.EndpointFingerprint(accounting.provider.BaseURL)
+	if price.EndpointFP != "" && price.EndpointFP != fingerprint {
+		return nil, fmt.Errorf("configuration: 模型价格与当前接入点不一致，请更新价格版本")
+	}
+	quote := model.QuoteReservation(meta.InputTokensUpperBound, meta.MaxOutputTokens, price)
+	if !quote.Ok {
+		return nil, fmt.Errorf("configuration: %s", quote.Reason)
+	}
+	accounting.call++
+	var jobID *int64
+	if accounting.jobID > 0 {
+		jobID = &accounting.jobID
+	}
+	entry, created, err := accounting.usage.ReserveUsage(ctx, store.ReserveUsageInput{
+		ProjectID: accounting.projectID, BatchID: accounting.batchID, JobID: jobID, Attempt: accounting.attempt,
+		Purpose: accounting.purpose, IdempotencyKey: fmt.Sprintf("%s:call:%d", accounting.idempotencyKey, accounting.call),
+		ConnectionID: &connectionID, EndpointFP: fingerprint, ModelName: accounting.provider.Model,
+		ConfigFingerprint: meta.ConfigFingerprint, Currency: price.Currency, PriceVersionID: &price.ID,
+		PriceVersion: price.PriceVersion, ReservationMinor: quote.AmountMinor,
+		ProjectLimitMinor: project.Budget.LimitMinor, BatchLimitMinor: batchLimit,
+	})
+	if err != nil {
+		if errors.Is(err, store.ErrBatchPaused) {
+			return nil, studio.ErrBatchPaused
+		}
+		if errors.Is(err, store.ErrBudgetExhausted) && accounting.batchID != nil && project.Budget.OnExhausted != model.BudgetOnExhaustedStop {
+			if _, pauseErr := accounting.batches.PauseBatch(ctx, project.ID, *accounting.batchID, 0); pauseErr != nil && !errors.Is(pauseErr, store.ErrBatchNotControllable) {
+				return nil, fmt.Errorf("configuration: 预算不足且暂停失败，未调用模型: %w", pauseErr)
+			}
+			return nil, fmt.Errorf("configuration: 预算不足，已暂停后续请求: %w", studio.ErrBatchPaused)
+		}
+		return nil, fmt.Errorf("configuration: 预算预留失败，未调用模型: %w", err)
+	}
+	if !created {
+		return nil, fmt.Errorf("configuration: 本次模型请求已预留或结算，需恢复为新尝试，不能重复收费")
+	}
+	return func(settleCtx context.Context, response llm.ResponseMetadata, callErr error) error {
+		errorClass := ""
+		if callErr != nil {
+			errorClass = classifyStudioJobError(callErr)
+		}
+		_, err := accounting.usage.SettleUsage(settleCtx, entry.ID, store.SettleUsageInput{
+			Charge:    model.ComputeCharge(response.Usage, price, price.PriceVersion),
+			RequestID: response.RequestID, ResponseModelID: response.ModelID, ErrorClass: errorClass,
+		})
+		if err != nil {
+			return fmt.Errorf("configuration: 用量结算失败，保留预留待核对: %w", err)
+		}
+		return nil
 	}, nil
 }
 
@@ -201,22 +326,161 @@ func toChainSteps(steps []model.StandardStep) []model.ChainStep {
 	return converted
 }
 
-// questionFor 生成该单元的问题文本。
-//
-// 目前是确定性的模板：一个单元对应一个方向下的第 N 个问题。
-// 真正的「问题内容生成」是 T12 后续与 T13 的规划阶段要接的（问题文本会
-// 作为覆盖分配的一部分冻结进快照），因此这里刻意不调模型 —— 编造一个
-// 看起来像模型输出的问题是更糟的选择。
-func questionFor(request studio.UnitRequest) string {
+type sourceChunkReader interface {
+	GetChunks(context.Context, int64, []int64) ([]model.SourceChunk, error)
+}
+
+type sourceVersionReader interface {
+	GetVersionByID(context.Context, int64) (store.DocumentVersion, error)
+}
+
+// questionFor is shared by SFT and GRPO. Missing evidence requires an explicit
+// keyword-only source choice; an old unspecified source never silently degrades.
+func questionFor(ctx context.Context, provider llm.ProviderConfig, request studio.UnitRequest,
+	sources sourceChunkReader, documents sourceVersionReader, steps []model.ChainStep) (string, []llm.SourceMaterial, error) {
+	var materials []llm.SourceMaterial
+	switch request.Unit.Source {
+	case model.SourceAI:
+		if len(request.Unit.SourceChunkIDs) != 0 {
+			return "", nil, fmt.Errorf("configuration: AI 方向不能混入素材块，请选择素材来源")
+		}
+	case model.SourceDocument:
+		if len(request.Unit.SourceChunkIDs) == 0 || sources == nil || documents == nil || request.BlueprintVersionID == nil {
+			return "", nil, fmt.Errorf("missing source: 请关联素材块并在蓝图生成节点选择已完成采集的素材版本")
+		}
+		blueprintVersion, err := documents.GetVersionByID(ctx, *request.BlueprintVersionID)
+		if err != nil {
+			return "", nil, err
+		}
+		if blueprintVersion.ProjectID != request.ProjectID || blueprintVersion.Kind != model.KindBlueprint {
+			return "", nil, fmt.Errorf("configuration: 蓝图版本不属于本项目")
+		}
+		var blueprint model.BlueprintPayload
+		if err := json.Unmarshal(blueprintVersion.Payload, &blueprint); err != nil {
+			return "", nil, err
+		}
+		if blueprint.Nodes.Generation.SourceVersionID <= 0 {
+			return "", nil, fmt.Errorf("missing source version: 蓝图未冻结素材版本，请保存蓝图后新建批次")
+		}
+		version, err := documents.GetVersionByID(ctx, blueprint.Nodes.Generation.SourceVersionID)
+		if err != nil {
+			return "", nil, err
+		}
+		if version.ProjectID != request.ProjectID || version.Kind != model.KindSource {
+			return "", nil, fmt.Errorf("configuration: 素材版本不属于本项目")
+		}
+		var source model.SourcePayload
+		if err := json.Unmarshal(version.Payload, &source); err != nil {
+			return "", nil, err
+		}
+		allowed := make(map[int64]bool)
+		for _, document := range source.Documents {
+			for _, id := range document.ChunkIDs {
+				allowed[id] = true
+			}
+		}
+		for _, id := range request.Unit.SourceChunkIDs {
+			if !allowed[id] {
+				return "", nil, fmt.Errorf("configuration: 素材块 %d 不在冻结的素材版本中，请采用完整素材版本后新建批次", id)
+			}
+		}
+		chunks, err := sources.GetChunks(ctx, request.ProjectID, request.Unit.SourceChunkIDs)
+		if err != nil {
+			var fields model.FieldErrors
+			if errors.As(err, &fields) {
+				return "", nil, fmt.Errorf("configuration: %w", err)
+			}
+			return "", nil, err
+		}
+		if len(chunks) != len(request.Unit.SourceChunkIDs) {
+			return "", nil, fmt.Errorf("missing source chunk: 素材被擦除或不存在，请重新关联后新建批次")
+		}
+		totalRunes := 0
+		for _, chunk := range chunks {
+			if strings.TrimSpace(chunk.Content) == "" {
+				return "", nil, fmt.Errorf("missing source content: 素材正文已被擦除")
+			}
+			totalRunes += len([]rune(chunk.Content))
+			materials = append(materials, llm.SourceMaterial{ID: chunk.ID, HeadingPath: chunk.HeadingPath, Content: chunk.Content})
+		}
+		if totalRunes > 32000 {
+			return "", nil, fmt.Errorf("configuration: 关联素材超过 32000 字符，请缩小该方向素材范围")
+		}
+	default:
+		return "", nil, fmt.Errorf("missing source: 方向缺少素材；请关联素材或显式选择「AI 按关键词生成」")
+	}
 	direction := request.Unit.DirectionName
 	if direction == "" {
 		direction = request.Unit.DirectionStableID
 	}
-	difficulty := request.Unit.Difficulty
-	if difficulty == "" {
-		difficulty = "normal"
+	difficulty, _ := llm.ReconcileDifficulty(request.Unit.Difficulty)
+	questions, err := llm.GenerateQuestionsV2(ctx, provider, llm.QuestionGenInput{
+		RootKeyword: request.Unit.DomainName, QuestionsPerDirection: 1,
+		DifficultyMix:   map[string]float64{difficulty: 1},
+		Directions:      []llm.DirectionContext{{DomainName: direction, ChainSteps: steps}},
+		SourceMaterials: materials, UnitOrdinal: request.Unit.Ordinal,
+	})
+	if err != nil {
+		return "", nil, err
 	}
-	return fmt.Sprintf("%s（难度 %s）：第 %d 题", direction, difficulty, request.Unit.Ordinal)
+	if len(questions) != 1 || strings.Contains(questions[0].Content, "：第 ") {
+		return "", nil, fmt.Errorf("empty output: 模型未生成可用问题，拒绝编号占位内容")
+	}
+	return questions[0].Content, materials, nil
+}
+
+func questionSource(source string) string {
+	if source == model.SourceDocument {
+		return "document"
+	}
+	return "keyword_only"
+}
+
+type generationReceipts struct {
+	input, output           int64
+	inputKnown, outputKnown bool
+	count                   int
+	requestIDs              []string
+	modelID                 string
+}
+
+func (receipts *generationReceipts) observe(meta llm.ResponseMetadata) {
+	if receipts.count == 0 {
+		receipts.inputKnown, receipts.outputKnown = true, true
+	}
+	receipts.count++
+	if meta.Usage.InputTokens == nil {
+		receipts.inputKnown = false
+	} else {
+		receipts.input += *meta.Usage.InputTokens
+	}
+	if meta.Usage.OutputTokens == nil {
+		receipts.outputKnown = false
+	} else {
+		receipts.output += *meta.Usage.OutputTokens
+	}
+	if meta.RequestID != "" {
+		receipts.requestIDs = append(receipts.requestIDs, meta.RequestID)
+	}
+	if meta.ModelID != "" {
+		receipts.modelID = meta.ModelID
+	}
+}
+
+func (receipts *generationReceipts) usage() model.TokenUsage {
+	usage := model.TokenUsage{Source: model.UsageSourceUnknown}
+	if receipts.count > 0 && receipts.inputKnown {
+		value := receipts.input
+		usage.InputTokens = &value
+	}
+	if receipts.count > 0 && receipts.outputKnown {
+		value := receipts.output
+		usage.OutputTokens = &value
+	}
+	if usage.HasAnyToken() {
+		usage.Source = model.UsageSourceProvider
+	}
+	return usage
 }
 
 // ---------------------------------------------------------------------------

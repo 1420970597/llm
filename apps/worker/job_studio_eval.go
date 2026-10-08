@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/1420970597/llm/internal/eval"
 	"github.com/1420970597/llm/internal/llm"
@@ -58,11 +60,19 @@ func handleStudioExperimentRun(ctx context.Context, env *StudioJobEnv, job model
 		// 而实为部署错误的失败，让排障方向跑偏（与 T12 同一判断）。
 		return nil, fmt.Errorf("worker 未注入 provider 解析依赖，无法执行质量实验")
 	}
+	experiment, err := env.Experiments().GetExperiment(ctx, payload.ExperimentID)
+	if err != nil {
+		return nil, err
+	}
+	if job.ProjectID == nil || *job.ProjectID != experiment.ProjectID || job.ID <= 0 || job.Attempt <= 0 {
+		return nil, fmt.Errorf("configuration: 实验作业缺少本项目的有效尝试身份")
+	}
 
 	runner := &studio.ExperimentRunner{
 		Experiments: env.Experiments(),
 		Batches:     env.Batches(),
-		Judge:       &studioConnectionJudge{datasets: datasets},
+		Judge: &studioConnectionJudge{datasets: datasets, usage: env.Usage(), projects: store.NewProjectStore(env.Pool),
+			projectID: experiment.ProjectID, experimentID: experiment.ID, jobID: job.ID, attempt: job.Attempt},
 		// 确定性判据（GRPO 的档位覆盖）由本地计算，不调模型。
 		Local: grpoLocalJudge{},
 	}
@@ -86,7 +96,15 @@ const sftJudgeSystemPrompt = "你是独立评审，只按给定维度对内容�
 
 // studioConnectionJudge 是按连接解析凭证的真实裁判实现。
 type studioConnectionJudge struct {
-	datasets *store.DatasetStore
+	datasets     *store.DatasetStore
+	usage        *store.UsageStore
+	projects     *store.ProjectStore
+	projectID    int64
+	experimentID int64
+	jobID        int64
+	attempt      int
+	stopMu       sync.Mutex
+	stopErr      error
 }
 
 // JudgeItem 调用一条连接对应的模型完成该样本的评分。
@@ -100,25 +118,58 @@ func (judge *studioConnectionJudge) JudgeItem(ctx context.Context, request studi
 		// 调用一次却什么都记不了会白花一笔钱，也会让 usage 与实际证据对不上。
 		return nil, nil
 	}
+	judge.stopMu.Lock()
+	stopped := judge.stopErr
+	judge.stopMu.Unlock()
+	if stopped != nil {
+		return nil, stopped
+	}
+	if request.ExperimentID != judge.experimentID || request.ItemID <= 0 || judge.projectID <= 0 || judge.jobID <= 0 || judge.attempt <= 0 {
+		return nil, fmt.Errorf("configuration: 裁判请求与冻结实验或作业尝试不一致")
+	}
+	if request.Judge.Config.MaxTokens <= 0 {
+		return nil, fmt.Errorf("configuration: 冻结裁判配置缺少输出上限，请新建有 maxTokens 的实验")
+	}
+	if judge.datasets == nil {
+		return nil, fmt.Errorf("configuration: 裁判连接解析依赖未配置")
+	}
 	baseURL, modelName, providerType, reasoningEffort, apiKey, err := judge.datasets.ResolveProvider(ctx, request.Judge.ConnectionID)
 	if err != nil {
 		// 连接被停用/删除时**不**回退到默认连接：那会让用户在不知情的情况下
 		// 换一个裁判模型，而质量结论的独立性判定是按连接冻结的（T07/T14）。
 		return nil, fmt.Errorf("裁判连接不可用：%w", err)
 	}
-	provider := llm.ProviderConfig{
+	if request.Judge.ModelName != modelName || request.Judge.EndpointFingerprint != model.EndpointFingerprint(baseURL) {
+		return nil, fmt.Errorf("configuration: 裁判模型或接入点已改变，请新建实验以冻结新的计费来源")
+	}
+	provider := llm.WithUsageReporting(llm.ProviderConfig{
 		BaseURL: baseURL, Model: modelName, ProviderType: providerType,
 		ReasoningEffort: reasoningEffort, APIKey: apiKey,
-	}
+		MaxTokens: request.Judge.Config.MaxTokens, Temperature: request.Judge.Config.Temperature,
+	})
+	provider.Accounting = &studioCallAccounting{usage: judge.usage, projects: judge.projects,
+		projectID: judge.projectID, connectionID: request.Judge.ConnectionID, provider: provider,
+		jobID: judge.jobID, attempt: judge.attempt, purpose: "experiment_judge",
+		idempotencyKey: fmt.Sprintf("project:%d:experiment:%d:job:%d:attempt:%d:item:%d:judge:%d",
+			judge.projectID, request.ExperimentID, judge.jobID, judge.attempt, request.ItemID, request.Judge.ConnectionID)}
 
+	var verdicts []studio.JudgeVerdict
 	switch request.TargetKind {
 	case model.TargetKindGRPO:
-		return judge.judgeGRPO(ctx, provider, request)
+		verdicts, err = judge.judgeGRPO(ctx, provider, request)
 	case model.TargetKindSFT:
-		return judge.judgeSFT(ctx, provider, request)
+		verdicts, err = judge.judgeSFT(ctx, provider, request)
 	default:
 		return nil, fmt.Errorf("目标类型 %q 没有对应的质量适配器", request.TargetKind)
 	}
+	if errors.Is(err, store.ErrBudgetExhausted) {
+		// The runner still records error evidence for every frozen item, while
+		// the remaining judges cannot submit paid requests in this job attempt.
+		judge.stopMu.Lock()
+		judge.stopErr = err
+		judge.stopMu.Unlock()
+	}
+	return verdicts, err
 }
 
 // judgeGRPO 用 GRPO 适配器评估一个样本。

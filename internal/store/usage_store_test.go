@@ -154,6 +154,39 @@ func TestReserveUsageWithoutLimitNeverBlocks(t *testing.T) {
 	}
 }
 
+func TestReserveUsageChecksBatchPauseInTransaction(t *testing.T) {
+	fixture := newUsageFixture(t)
+	ctx := context.Background()
+	first, created, err := fixture.usage.ReserveUsage(ctx, fixture.reserve("pause-in-flight", 100, 1000))
+	if err != nil || !created {
+		t.Fatalf("initial running reservation: created=%v err=%v", created, err)
+	}
+	if _, err := fixture.batches.PauseBatch(ctx, fixture.projectID, fixture.batchID, fixture.userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, created, err := fixture.usage.ReserveUsage(ctx, fixture.reserve("pause-new-call", 100, 1000)); !errors.Is(err, ErrBatchPaused) || created {
+		t.Fatalf("paused batch must reject without creation: created=%v err=%v", created, err)
+	}
+	amount := int64(25)
+	if _, err := fixture.usage.SettleUsage(ctx, first.ID, SettleUsageInput{Charge: model.UsageCharge{AmountMinor: &amount, AmountState: model.AmountStateActual}, RequestID: "in-flight"}); err != nil {
+		t.Fatalf("pause must preserve in-flight settlement: %v", err)
+	}
+	budget, err := fixture.usage.ProjectBudget(ctx, fixture.projectID, "CNY")
+	if err != nil || budget.ReservedMinor != 0 || budget.SettledMinor != 25 {
+		t.Fatalf("rejected reservation must roll back counters: budget=%+v err=%v", budget, err)
+	}
+	var count int
+	if err := fixture.pool.QueryRow(ctx, `SELECT COUNT(*) FROM usage_ledger WHERE idempotency_key='pause-new-call'`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("paused call must leave no ledger: count=%d err=%v", count, err)
+	}
+	if _, err := fixture.batches.ResumeBatch(ctx, fixture.projectID, fixture.batchID, fixture.userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, created, err := fixture.usage.ReserveUsage(ctx, fixture.reserve("resume-new-call", 100, 1000)); err != nil || !created {
+		t.Fatalf("explicit resume must allow reservation: created=%v err=%v", created, err)
+	}
+}
+
 // TestConcurrentReservationsDoNotOversell 覆盖验收项 2。
 //
 // 这是本任务的核心并发断言：上限只够 7 笔（每笔 100 分，上限 700），

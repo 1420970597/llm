@@ -275,20 +275,26 @@ type CoverageUnit struct {
 // CoverageCapacity 返回该覆盖版本最多能产出的单元数。
 //
 // 这是 issue #190 的权威口径：`plannedUnits` 与它比较，而不是与用户填的数字比较。
-// quota ≤ 0 视为 1，与 AllocateCoverageUnits 保持一致（否则「有名字但永远不产出」
-// 的方向在容量里消失，而界面上它还在）。
+// Explicit source configurations may reserve a zero-quota gap. Historical
+// versions without a source discriminator keep their former minimum quota.
 func CoverageCapacity(coverage CoveragePayload) int {
 	total := 0
 	for _, domain := range coverage.Domains {
 		for _, direction := range domain.Directions {
-			quota := direction.Quota
-			if quota <= 0 {
-				quota = 1
-			}
-			total += quota
+			total += CoverageDirectionQuota(direction)
 		}
 	}
 	return total
+}
+
+func CoverageDirectionQuota(direction CoverageDirection) int {
+	if direction.Quota > 0 {
+		return direction.Quota
+	}
+	if direction.Source == "" {
+		return 1
+	}
+	return 0
 }
 
 // AllocateCoverageUnits 按覆盖配额展开单元，最多 limit 个。
@@ -302,10 +308,7 @@ func AllocateCoverageUnits(coverage CoveragePayload, limit int) []CoverageUnit {
 	units := make([]CoverageUnit, 0, limit)
 	for _, domain := range coverage.Domains {
 		for _, direction := range domain.Directions {
-			quota := direction.Quota
-			if quota <= 0 {
-				quota = 1
-			}
+			quota := CoverageDirectionQuota(direction)
 			for ordinal := 1; ordinal <= quota; ordinal++ {
 				if len(units) >= limit {
 					return units

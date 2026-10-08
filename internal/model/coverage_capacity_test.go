@@ -2,6 +2,21 @@ package model
 
 import "testing"
 
+func TestExplicitSourceZeroQuotaIsGapAndLegacyCapacityIsPreserved(t *testing.T) {
+	coverage := CoveragePayload{Domains: []CoverageDomain{{StableID: "d", Directions: []CoverageDirection{
+		{StableID: "gap", Quota: 0, Source: "none"},
+		{StableID: "active", Quota: 2, Source: "ai"},
+		{StableID: "legacy", Quota: 0},
+	}}}}
+	if got := CoverageCapacity(coverage); got != 3 {
+		t.Fatalf("capacity=%d want3", got)
+	}
+	units := AllocateCoverageUnits(coverage, 10)
+	if len(units) != 3 || units[0].DirectionStableID != "active" || units[2].DirectionStableID != "legacy" {
+		t.Fatalf("gap must not generate: %+v", units)
+	}
+}
+
 // 本文件验证 issue #190 的权威口径：**覆盖矩阵的可产出量**。
 //
 // 为什么这条口径必须在 model 层：它同时被「保存/启动前的容量校验」与

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/1420970597/llm/internal/model"
 	"github.com/1420970597/llm/internal/store"
@@ -41,7 +42,105 @@ func registerStudioSettingsRoutes(mux *http.ServeMux, app *application) {
 	// 因此新增账号改为「管理员直接设初始密码」：一次命令同时创建账号与成员关系。
 	mux.HandleFunc("POST /api/v1/workspace/members/direct", app.createWorkspaceMemberDirect)
 	mux.HandleFunc("GET /api/v1/settings/connection-options", app.listConnectionOptions)
+	mux.HandleFunc("GET /api/v1/settings/model-prices/{providerId}", app.getModelPrice)
+	mux.HandleFunc("PUT /api/v1/settings/model-prices/{providerId}", app.putModelPrice)
 	mux.HandleFunc("GET "+projectPrefix+"/{projectId}/budget", app.getProjectBudget)
+}
+
+func (app *application) modelPriceProvider(w http.ResponseWriter, r *http.Request) (model.ModelProvider, bool) {
+	if _, ok := requestUser(r); !ok {
+		app.writeStudioError(w, r, studio.NewError(studio.CodeUnauthorized, msgAuthRequired))
+		return model.ModelProvider{}, false
+	}
+	if !requireAdmin(r) {
+		app.writeStudioError(w, r, studio.NewError(studio.CodeForbidden, "需要管理员权限才能配置模型价格"))
+		return model.ModelProvider{}, false
+	}
+	id, err := strconv.ParseInt(r.PathValue("providerId"), 10, 64)
+	if err != nil || id <= 0 {
+		app.writeStudioError(w, r, studio.NewValidationError("模型连接标识无效", nil))
+		return model.ModelProvider{}, false
+	}
+	providers, err := app.store.ListProviders(r.Context())
+	if err != nil {
+		app.writeStudioError(w, r, err)
+		return model.ModelProvider{}, false
+	}
+	for _, provider := range providers {
+		if provider.ID == id {
+			return provider, true
+		}
+	}
+	app.writeStudioError(w, r, studio.NewError(studio.CodeNotFound, "模型连接不存在"))
+	return model.ModelProvider{}, false
+}
+
+func (app *application) getModelPrice(w http.ResponseWriter, r *http.Request) {
+	provider, ok := app.modelPriceProvider(w, r)
+	if !ok {
+		return
+	}
+	price, found, err := app.studio.Usage.ResolvePriceVersion(r.Context(), provider.ID, provider.Model, time.Now())
+	if err != nil {
+		app.writeStudioError(w, r, err)
+		return
+	}
+	var response *model.PriceVersion
+	if found && (price.EndpointFP == "" || price.EndpointFP == model.EndpointFingerprint(provider.BaseURL)) {
+		response = &price
+	}
+	app.writeJSON(w, http.StatusOK, map[string]any{"price": response})
+}
+
+type modelPriceRequest struct {
+	PriceVersion     string `json:"priceVersion"`
+	InputPerMillion  int64  `json:"inputPriceMinorPerMillion"`
+	OutputPerMillion int64  `json:"outputPriceMinorPerMillion"`
+	IsFree           bool   `json:"isFree"`
+	IsEstimated      bool   `json:"isEstimated"`
+	Note             string `json:"note"`
+}
+
+func (request modelPriceRequest) validate() model.FieldErrors {
+	errs := model.FieldErrors{}
+	if strings.TrimSpace(request.PriceVersion) == "" {
+		errs = append(errs, model.FieldError{Field: "priceVersion", Message: "请填写价格版本名"})
+	}
+	if request.InputPerMillion < 0 || request.OutputPerMillion < 0 {
+		errs = append(errs, model.FieldError{Field: "inputPriceMinorPerMillion", Message: "单价必须为非负整数"})
+	}
+	if !request.IsFree && request.InputPerMillion == 0 && request.OutputPerMillion == 0 {
+		errs = append(errs, model.FieldError{Field: "isFree", Message: "单价不能全为0；确实免费请明确勾选"})
+	}
+	return errs
+}
+
+func (app *application) putModelPrice(w http.ResponseWriter, r *http.Request) {
+	provider, ok := app.modelPriceProvider(w, r)
+	if !ok {
+		return
+	}
+	var request modelPriceRequest
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		app.writeStudioError(w, r, studio.NewValidationError("价格格式有误，单价必须是整数分/百万 token", nil))
+		return
+	}
+	if errs := request.validate(); len(errs) > 0 {
+		app.writeStudioError(w, r, studio.NewValidationError("请检查模型价格", errs))
+		return
+	}
+	user, _ := requestUser(r)
+	price, err := app.studio.Usage.UpsertPriceVersion(r.Context(), store.PriceVersionInput{
+		PriceVersion: strings.TrimSpace(request.PriceVersion), ConnectionID: provider.ID, ModelName: provider.Model,
+		EndpointFP: model.EndpointFingerprint(provider.BaseURL), Currency: "CNY", InputPerMillion: request.InputPerMillion, OutputPerMillion: request.OutputPerMillion,
+		IsFree: request.IsFree, IsEstimated: request.IsEstimated, Note: request.Note, CreatedBy: &user.ID,
+	})
+	if err != nil {
+		app.writeStudioError(w, r, err)
+		return
+	}
+	app.writeJSON(w, http.StatusOK, map[string]any{"price": price})
 }
 
 // ---------------------------------------------------------------------------

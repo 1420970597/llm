@@ -101,7 +101,7 @@ func handleReleaseBuild(ctx context.Context, env *StudioJobEnv, job model.Job) (
 		mappingVersionID = *release.MappingVersionID
 	}
 
-	builder := &studio.ReleaseBuilder{Batches: env.Batches(), Documents: env.Documents()}
+	builder := &studio.ReleaseBuilder{Batches: env.Batches(), Documents: env.Documents(), Sources: store.NewSourceChunkStore(env.Pool)}
 	built, err := builder.BuildReleaseArtifact(ctx, studio.ReleaseBuildInput{
 		ProjectID: release.ProjectID, ReleaseID: release.ID, Revision: revision,
 		ReleaseName: release.ReleaseName, TargetKind: release.TargetKind,

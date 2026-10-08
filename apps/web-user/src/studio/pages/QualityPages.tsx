@@ -221,6 +221,7 @@ export function QualityNewPage() {
     [samples, selected],
   )
   const [judgeID, setJudgeID] = useState('')
+  const [judgeMaxTokens, setJudgeMaxTokens] = useState(4096)
   /**
    * 裁判模型候选（issue #197 第 14 条）。
    *
@@ -354,6 +355,7 @@ export function QualityNewPage() {
           ? undefined
           : { dimensions: [{ key: 'accuracy', label: '准确', weight: 1, min: 0, max: 10 }] },
         judgeConnectionIds: [Number(judgeID)],
+        judgeMaxTokens,
         missingScorePolicy: 'exclude',
         batchId: batchID.trim() === '' ? undefined : Number(batchID),
         targetConfig,
@@ -365,7 +367,7 @@ export function QualityNewPage() {
     } finally {
       setBusy(false)
     }
-  }, [baselineAnswerVersion, batchID, boundaryReferenceJSON, canRun, isGRPO, judgeID, navigate, scope.projectId, seed, selected, teacherPromptVersion])
+  }, [baselineAnswerVersion, batchID, boundaryReferenceJSON, canRun, isGRPO, judgeID, judgeMaxTokens, navigate, scope.projectId, seed, selected, teacherPromptVersion])
 
   /**
    * #211 方向 2：勾选了未审阅内容时，**提交前**显式提示一次。
@@ -577,6 +579,11 @@ export function QualityNewPage() {
             <Text type="tertiary" size="small" className="block mt-1">
               服务端会再次检查独立性与同源别名：与生成来源同一接入点的连接不能自评。
             </Text>
+          </div>
+          <div className="wizard-field" data-field="judge-max-tokens">
+            <label className="wizard-field__label" htmlFor="judge-max-tokens">裁判输出上限（token）</label>
+            <InputNumber id="judge-max-tokens" min={512} max={32768} precision={0} value={judgeMaxTokens} onChange={(value) => setJudgeMaxTokens(Number(value ?? 0))} disabled={!canRun} />
+            <Text type="tertiary" size="small">随实验冻结，用于预留预算；每次裁判请求单独记录费用。</Text>
           </div>
           <div className="wizard-field" data-field="sampling-seed">
             <label className="wizard-field__label" htmlFor="sampling-seed">

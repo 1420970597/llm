@@ -229,10 +229,7 @@ func analyzeStructure(coverage *model.CoveragePayload, rows []store.SampleVersio
 		// 把「计划数」与「实际数」都算出来：计划来自配额，实际来自样本版本。
 		for _, domain := range coverage.Domains {
 			for _, direction := range domain.Directions {
-				quota := direction.Quota
-				if quota <= 0 {
-					quota = 1
-				}
+				quota := model.CoverageDirectionQuota(direction)
 				key := domain.StableID + "/" + direction.StableID
 				structure = append(structure, AnalysisGroup{
 					DomainStableID:    domain.StableID,

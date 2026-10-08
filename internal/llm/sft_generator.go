@@ -13,12 +13,13 @@ import (
 // SftInput 生成一条 SFT 样本所需的全部输入。
 // Steps 是该问题所属「方向」的长链思维标准步骤（由 L2 生成，可为空）。
 type SftInput struct {
-	DatasetID      int64
-	RootKeyword    string
-	Question       model.Question
-	Steps          []model.ChainStep
-	IncludeAnswer  bool
-	PromptTemplate *model.PromptTemplate
+	DatasetID       int64
+	RootKeyword     string
+	Question        model.Question
+	Steps           []model.ChainStep
+	IncludeAnswer   bool
+	PromptTemplate  *model.PromptTemplate
+	SourceMaterials []SourceMaterial
 }
 
 // SftPayload 模型返回的 SFT 样本主体。
@@ -94,6 +95,7 @@ func buildSftPrompt(input SftInput) (systemPrompt string, userPrompt string) {
 			userPrompt = strings.ReplaceAll(userPrompt, "{{steps}}", formatChainSteps(steps))
 		}
 	}
+	userPrompt += formatSourceMaterials(input.SourceMaterials)
 	return systemPrompt, userPrompt
 }
 

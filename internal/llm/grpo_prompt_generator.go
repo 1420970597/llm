@@ -11,11 +11,12 @@ import (
 
 // GrpoPromptInput 生成一个问题的教师模型评判提示词所需输入。
 type GrpoPromptInput struct {
-	RootKeyword   string
-	DirectionName string
-	Question      string
-	ChainSteps    []model.ChainStep
-	Levels        []string
+	RootKeyword     string
+	DirectionName   string
+	Question        string
+	ChainSteps      []model.ChainStep
+	Levels          []string
+	SourceMaterials []SourceMaterial
 }
 
 // GrpoPromptOutput 生成结果。
@@ -99,7 +100,7 @@ func generateLevelRubrics(ctx context.Context, provider ProviderConfig, input Gr
 		"model": provider.Model,
 		"messages": []map[string]string{
 			{"role": "system", "content": grpoRubricSystemPrompt},
-			{"role": "user", "content": buildRubricUserPrompt(input, levels)},
+			{"role": "user", "content": buildRubricUserPrompt(input, levels) + formatSourceMaterials(input.SourceMaterials)},
 		},
 	}
 	applyReasoningEffort(payload, provider)
@@ -213,7 +214,7 @@ func buildJudgePrompt(input GrpoPromptInput, levels []string, rubrics []model.Gr
 	fmt.Fprintf(&builder, "{\"level\":\"<%s>\",\"rationale\":\"<不少于 50 字的评判理由%s>\"}\n",
 		strings.Join(levels, "|"), rationaleRequirement(input))
 
-	return builder.String()
+	return builder.String() + formatSourceMaterials(input.SourceMaterials)
 }
 
 func frameworkReference(input GrpoPromptInput) string {

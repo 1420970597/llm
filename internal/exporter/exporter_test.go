@@ -308,3 +308,14 @@ func TestNormalizeKeyVariants(t *testing.T) {
 		}
 	}
 }
+
+func TestStudioReasoningMappingUsesImmutableSampleContent(t *testing.T) {
+	record := Record{ChainOfThought: "依据冻结事实进行推导"}
+	value, _, err := resolveAny(record, "reasoning")
+	if err != nil || value != record.ChainOfThought {
+		t.Fatalf("studio reasoning mapping lost content: %q %v", value, err)
+	}
+	if _, _, err := resolveAny(record, "unknown_reasoning_field"); err == nil {
+		t.Fatal("unknown field must still be rejected")
+	}
+}
