@@ -1,0 +1,55 @@
+{
+  "issue": 201,
+  "phase": "after",
+  "base": "http://127.0.0.1:3210",
+  "viewport": "1600x1000",
+  "account": "admin@company.com",
+  "deployedVersion": "a889b43ba00d1f9b1d6fccbdea735b04ca13e299",
+  "maintenanceWaitMs": 45000,
+  "armed": {
+    "armedRow": "completed|4|1",
+    "batchItemRows": 1
+  },
+  "batch": {
+    "status": "partial_failed",
+    "plannedUnits": 4,
+    "completedUnits": 1,
+    "failedUnits": 0,
+    "inFlightUnits": 0,
+    "shortfallUnits": 3,
+    "shortfallNote": "计划 4，实际产出 1，缺口 3：有 3 个计划单元没有产出（未创建或被跳过），请先查看批次事件确认原因后再新建批次",
+    "capabilities": {
+      "canPause": false,
+      "canResume": true,
+      "canRetryFailed": true
+    }
+  },
+  "clickableActionButtons": [
+    "搜索",
+    "A",
+    "异常恢复",
+    "补齐缺口（继续本批次）"
+  ],
+  "shortfallCardText": "产出缺口：计划 4，实际产出 1，缺口 3\n计划 4，实际产出 1，缺口 3：有 3 个计划单元没有产出（未创建或被跳过），请先查看批次事件确认原因后再新建批次\n补齐缺口（继续本批次）\n同一批次、同一快照；已成功的内容不会被重跑",
+  "noteBlamesCoverage": false,
+  "showsCompletedDespiteShortfall": true,
+  "correctionEvent": {
+    "eventType": "BatchPartialFailed",
+    "eventTypeLabel": "批次部分失败",
+    "detail": {
+      "failed": 0,
+      "reason": "状态与单元事实不符：计划量未被产出，已从终态修正为部分完成",
+      "batchId": 2,
+      "planned": 4,
+      "previous": "completed",
+      "completed": 1,
+      "shortfall": 3,
+      "correctionOf": "completed"
+    }
+  },
+  "correctionsBefore": 6,
+  "correctionsAfter": 7,
+  "newCorrectionEvents": 1,
+  "pageErrors": [],
+  "ok": true
+}
