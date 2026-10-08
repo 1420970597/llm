@@ -65,6 +65,14 @@ SFT 独立探针先遇 HTTP 503，重试后 HTTP 200，但 `finish_reason=length
 
 恢复证据保留 `reusedSFTFromRun` 与旧源码版本/输出上限；产品导入沿用稳定 sourceKey，后续恢复不会再导入一遍同一产品。该流程是多个真实运行的连续验收，不能描述成所有数据都在一次全新运行中生成。
 
+运行 `2026-10-08T06-34-56-014Z` 的 GRPO 项目 8 / 批次 8 完成真实生成，样本版本 7 保留“不合格、合格、优秀”三个中文档位及素材块 15、16。同源裁判拒绝、pending 审阅阻断、自动 accepted 技术流程均通过。发布 4 则进入 build_failed：冻结映射版本 67 使用裸 `levels` / `levelRubrics` 字段引用，既有 exporter 的裸引用按文本转换，将数组变成字符串；逐行 GRPO 校验正确阻止了错误制品发布。
+
+修复只调整新项目默认 GRPO 映射：数组字段使用 `{{levels}}` / `{{levelRubrics}}` 单占位符保留类型，不改变 exporter 既有裸字段语义，不改写旧冻结映射。真实 PostgreSQL 回归从项目创建与原生配置 bootstrap 出发，持久化样本后直接构建发布，验证档位、判据和边界例数组完整；错误裸映射仍拒绝且不返回制品，保存新映射后旧冻结版本的制品 hash 不变，重复 bootstrap 保留现有版本。恢复脚本验证原样本版本、内容 hash 和来源 ID，再显式保存新映射版本、新建发布候选，保留失败发布 4；恢复不重新生成样本或调用模型。
+
+恢复运行 `2026-10-08T06-47-29-957Z` 已完整通过，沿用项目 8 样本版本 7，新增映射版本 73、发布 5，保留旧映射 67 和失败发布 4。GRPO 下载 SHA-256 为 `6f310bf4528d58202de6948a53a357a2f2ccd6d1fa988eec67ce999410a4f7f7`，逐字比对三个中文档位及每档 criteria/accept_case/reject_case；manifest groundedSamples=1、missing=0。项目 8 仍只有两条模型用量记录，恢复无新增模型请求，uncertainMinor=12。三种公开产品格式再次通过 preview/导入/稳定重放、Alpaca 错误第二行、external_import 无素材来源声明、旧 SFT 冻结清单和下载 hash 不变的检查。浏览器保存了 SFT 与 GRPO 发布页截图，显示制品已校验及两块素材、零缺失。
+
+该恢复仍是混合版本及跨轮证据：API/Web 为先前 WIP，Worker 镜像为 `sha256:bec7605fb30d0e9cad41c771c239a66234f38316e175dc49fe2ddf3eb8fd0a4a`；不是精确 main 新项目默认映射验收。合并后将 API/Worker/Web 全部从同一精确 main SHA 重建，再执行不设置 resume/repair 的新 SFT、GRPO 和三格式完整旅程。
+
 ```mermaid
 stateDiagram-v2
     [*] --> Queued
@@ -90,11 +98,12 @@ stateDiagram-v2
 | SSE reasoning_details 隔离 | 多 chunk、同 chunk 混合、思考元数据单独返回覆盖 | 单独结构化思考不会生成最终答案 |
 | SFT 内容准入 | 正常、无答案、占位、缺少必需答案用例覆盖 | 复用既有 validator，不制造平行校验逻辑 |
 | GRPO 自定义档位与内容准入 | 中文/数字 ID、短判据、单边界例、缺档/重复/空档/占位用例覆盖 | 不将模型数字档位伪映射为用户指定档位 |
+| 原生 GRPO 默认映射到发布 | 真实 PostgreSQL bootstrap、样本、冻结映射正常/异常回归通过 | 默认数组用单占位符；旧版本与文本映射语义保持不变 |
 | 输出截断与计费 | JSON、包装、SSE length 与 quoted 示例边界覆盖 | 真实 token 先结算；冻结上限耗尽不重复付费重试 |
-| 最终全量 Go/真实数据库门禁 | 1313 PASS、11 可选 SKIP、必需零缺失 | 43 个迁移完成，gofmt、vet、build 通过 |
-| 完整 SFT/GRPO 到下载 | 尚在复验 | 仅通过导入或 HTTP 200 不算完整成功 |
+| 最终全量 Go/真实数据库门禁 | 1318 PASS、11 可选 SKIP、必需零缺失，包含 SFT 正常/未知目标子用例 | 43 个迁移完成，gofmt、vet、build 通过 |
+| 完整 SFT/GRPO 到下载 | 混合版本跨轮恢复通过，制品与来源核验通过 | 精确 main 全新完整旅程待合并后复验 |
 | 独立裁判、真人接受与 48 小时灰度 | 缺少真实证据 | 保留 Issue #160 的未满足边界 |
 
 真实旅程脚本为 `test/audit/source-grounded-journey.mjs`，必须在 Node/Playwright 容器中指定隔离 API、前端和真实连接 ID。脚本为每轮保存 evidence、制品与截图；它检查素材来源 ID、同源裁判拒绝、pending 审阅阻断发布、自动 accepted 后发布下载及 SHA-256、三种公开格式的导入重放和失败明细、冻结发布内容不变。自动 accepted 仅检验技术流程，不能冒充人工审阅。
 
-响应探针只在内存中解密现有凭据，不打印或保存凭据。输出目录保留脱敏响应与简明正文/usage 形态。原失败项目、批次和样本继续保留，没有通过 SQL 改写结果。下一轮使用新项目，避免以改写旧证据制造成功。
+响应探针只在内存中解密现有凭据，不打印或保存凭据。输出目录保留脱敏响应与简明正文/usage 形态。原失败项目、批次和样本继续保留，没有通过 SQL 改写结果。旧版本恢复显式新增映射与发布；精确 main 复验将使用新项目，避免以改写旧证据制造成功。

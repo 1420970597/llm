@@ -49,8 +49,10 @@ func DefaultProjectDocuments(targetKind, name, goal string) (CoveragePayload, St
 	if targetKind == TargetKindGRPO {
 		fields = append(fields,
 			MappingField{TargetField: "judge_prompt", SourceField: "judgePrompt", Required: true},
-			MappingField{TargetField: "levels", SourceField: "levels", Required: true},
-			MappingField{TargetField: "level_rubrics", SourceField: "levelRubrics", Required: true},
+			// Single placeholders preserve arrays; bare source names use the
+			// exporter's established text conversion contract.
+			MappingField{TargetField: "levels", SourceField: "{{levels}}", Required: true},
+			MappingField{TargetField: "level_rubrics", SourceField: "{{levelRubrics}}", Required: true},
 			MappingField{TargetField: "framework_ref", SourceField: "frameworkRef", Required: false},
 		)
 	} else {
