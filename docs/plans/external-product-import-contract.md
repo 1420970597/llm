@@ -45,7 +45,7 @@ JSON 数组与逐行 JSON 都支持。缺必需字段、类型错误、空答案
 
 三层幂等复用 `legacy_imports`：唯一来源键绑定 project → 本系统内容 hash → 确定性样本键。不同项目同来源键互不冲突；相同键变更内容或策略返回 409，必须用新键。相同 completed 请求返回 200 replay 且零副作用。并发成品按内容身份加事务锁，去重与样本追加同事务；旧版本永不 UPDATE。
 
-第六类 source 文档通过原有循环注册得到 source-versions 三个端点，新增的路径映射与 typed 解码是必要接线。上传排队保存 pending 来源版本，解析完成再追加包含 chunkIds 的版本。generation.sourceVersionId 固定该不可变版本，避免后续上传改变批次接地依据。方向 document 必须关联本项目素材块；ai 为显式关键词降级；none/空串为缺口；manual 不冒充文档接地。
+第六类 source 文档通过原有循环注册得到 source-versions 三个端点，新增的路径映射与 typed 解码是必要接线。上传排队保存 pending 来源版本，解析完成再追加包含 chunkIds 的版本。generation.sourceVersionId 固定该不可变版本，避免后续上传改变批次接地依据。方向 document 必须关联本项目素材块；ai 为显式关键词降级；显式 none 为缺口；manual 不冒充文档接地。既有空来源版本保留旧配额容量语义，避免使历史版本失效，但自动生成不会因此获得来源或静默降级；新方案应显式选择来源，缺少来源的生成仍拒绝执行。
 
 项目概览 `versions.source` 返回当前来源版本摘要，尚未上传为 null。样本版本视图 `source.sourceChunkIds` 固定实际使用素材块 ID，旧样本为空数组。素材块预览可传 `sourceVersionId`，先按该版本 documents 的冻结 chunkIds 过滤，再进行搜索、总数计算与分页；历史版本不混入后来上传的素材。
 

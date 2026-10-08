@@ -2,6 +2,8 @@
 
 对应 Issue #197 第 9 条。默认 `/tools/evaluation` 与 `/tools/cleaning` 读取项目和不可变蓝图版本。历史数据集工具通过 `?mode=legacy` 显式进入；既有 `?datasetId=` 深链继续使用历史链路。
 
+2026-10-08 交付基线：[PR #266](https://github.com/1420970597/llm/pull/266) 已合 main [`e381256`](https://github.com/1420970597/llm/commit/e3812565024e21d402d79e460046f2bb709cac37)。最终 head `57fb7cd` 的 [CI run 37734281360](https://github.com/1420970597/llm/actions/runs/37734281360) 五项 SUCCESS，工作台五态、实际请求与迁移菜单断言的 JSON、截图和 trace 位于 `source217-ui-report` artifact。Chromium 执行生产 UI，API 为受控夹具；该证据不代表真人研究或真实 provider 质量旅程已完成。
+
 ## 操作与配置映射
 
 | 输入 | 质量实验 | 清洗规则预览 |
@@ -104,3 +106,5 @@ stateDiagram-v2
 | 旧接口未明确账号范围 | 保留 | 保留只读 |
 
 真实 PG 回归覆盖账号范围、不可见映射、无成功台账、失败导入、成功导入、无账号和读取错误；真实 Chromium 覆盖上述五种菜单状态及完成后的只读深链。此修改不批量迁移旧资产，也不删除旧数据。
+
+2026-10-08 原 `llm` 数据库只读现状：53 个旧 dataset，9 条 completed dataset 导入台账且 failed_items 合计为 0，9 个 distinct legacy_dataset_id 映射。账号 1 按成功台账及成员可访问目标的完整判据仍有 44 pending，实际菜单应保留。该快照不代表所有账号或后续时刻；本次未批量迁移、改写或删除旧资产。#197 已关闭，技术修复与实际未全迁移的条件说明见 [关单评论](https://github.com/1420970597/llm/issues/197#issuecomment-6053549245)。

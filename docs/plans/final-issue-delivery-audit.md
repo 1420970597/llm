@@ -2,13 +2,17 @@
 
 审计日期：2026-10-08。目标是让每个远程条目都有代码、验证与合并状态，不以旧关单记录代替当前行为。
 
-本文件初稿在 `fix/TASK-197-final-issue-closure`、基线 `abb73a7` 编写。本次核对的 main 为 [`9a453e9`](https://github.com/1420970597/llm/commit/9a453e973a52a5eab8b059ec8bf9b43940528ecf)，包含 #259（`5986da8`）、#261（`6c169af`）、#260（`abb73a7`）、#262（`cd8effc`）及下表三份已合 PR。工作台联动、迁移入口条件与新增素材 Chromium CI 属于候选 [PR #266](https://github.com/1420970597/llm/pull/266)；其最终 CI 与合并完成前仍标“待合并”。
+本文件初稿在 `fix/TASK-197-final-issue-closure`、基线 `abb73a7` 编写。本次代码基线为 main [`bd439eb`](https://github.com/1420970597/llm/commit/bd439ebae5e25b63419a070986e5e3b9ec885e5f)，包含 #259（`5986da8`）、#261（`6c169af`）、#260（`abb73a7`）、#262（`cd8effc`）及下表五份已合 PR。#266 的工作台、迁移条件与素材 Chromium 门禁，及 #267 真实生成和 GRPO 导出修复均已进入 main。#267 最终 head `476619216c0f19776a9327d40712d198d21782e5` 的 [CI run 37740265957](https://github.com/1420970597/llm/actions/runs/37740265957) 五项全部 SUCCESS；合并提交与该 head 的 Git tree 相同。
+
+远程状态复核：#197 已于 2026-10-08 关闭，[关单评论](https://github.com/1420970597/llm/issues/197#issuecomment-6053549245) 保留固定执行依赖和实际迁移条件的边界。[PR #267](https://github.com/1420970597/llm/pull/267) 于 06:58:50 UTC 合并；它修复批次提交后终态、正文与思考隔离、SFT 占位准入、截断结算、GRPO 自定义档位和默认数组映射，并准确显示目标类型支持的发布格式。真实失败和跨轮恢复记录见 [供应商验收记录](../architecture/source-grounded-acceptance.md)，保留原项目、失败发布和旧映射。跨轮恢复通过不等于精确 main 的全新旅程；后者另行记录。
 
 | 已合 PR | main 提交 | 本次核实的证据 |
 | --- | --- | --- |
 | #263 模型价格版本配置 | [`9a453e9`](https://github.com/1420970597/llm/commit/9a453e973a52a5eab8b059ec8bf9b43940528ecf) | 管理员连接页保存价格版本，区分免费与估计报价；价格归属及非免费零价格回归，不把估计金额当实际账单 |
 | #264 发布、回退与真实故障验收 | [`aef49ad`](https://github.com/1420970597/llm/commit/aef49ad6b34cee6c458b0e5660a3fd2637c048de) | [故障报告](2026-10-studio-failure-validation.md)：真实 Postgres/Redis/MinIO，11/11 必需测试及四个 schema 探针 PASS；发布作业同事务入队、失败状态与固定下载 hash 回归 |
 | #265 素材接地与逐请求记账 | [`f10f8fb`](https://github.com/1420970597/llm/commit/f10f8fb5ea8a3247533e9513e40504c0fbcb4229) | [生成与追溯方案](../architecture/source-grounded-generation.md)、[只读盘点](round3-blueprint-workflow-inventory.md)；真实 PG 逐 HTTP 预留/结算、暂停后阻止后续请求与 retry、裁判预算、发布素材擦除回归 |
+| #266 工作台、迁移条件与浏览器门禁 | [`e381256`](https://github.com/1420970597/llm/commit/e3812565024e21d402d79e460046f2bb709cac37) | 最终 head `57fb7cd` 的 [CI run 37734281360](https://github.com/1420970597/llm/actions/runs/37734281360)：Backend、Frontend、Integration、Studio failures、Stack 五项 SUCCESS；生产 UI 的五态 Chromium 报告、截图和 trace 归档为 `source217-ui-report` |
+| #267 真实生成与 GRPO 导出修复 | [`bd439eb`](https://github.com/1420970597/llm/commit/bd439ebae5e25b63419a070986e5e3b9ec885e5f) | 最终 head `4766192` 的 [CI run 37740265957](https://github.com/1420970597/llm/actions/runs/37740265957) 与合并 main 的 [CI run 37740657964](https://github.com/1420970597/llm/actions/runs/37740657964) 均五项 SUCCESS；本地真 PG 1318 PASS、11 可选 SKIP、必需零缺失；跨轮恢复及精确 main 新项目的 SFT/GRPO 发布与三格式导入均已通过 |
 
 ## 判据与证据边界
 
@@ -16,6 +20,7 @@
 | --- | --- | --- |
 | 已合 main | 修复提交可在 main 历史定位，有对应回归或交互证据 | 可以作为对应技术缺陷的关闭依据 |
 | 待合并 | 工作树实现或测试已存在，尚未进入 main | 不能据此关闭依赖该实现的总条目 |
+| 正在验证 | 新修复或真实旅程仍在运行、复核，最终结果尚未归档并合入 | 不提前记为成功旅程或最终门禁通过 |
 | 条件未证实 | 有检测/对账机制，但尚无实际环境证据满足用户条件 | 保留条目中的条件与后续行动 |
 | 外部验收未执行 | 独立真实 provider、真实参与者或部署观察尚无记录 | 不用受控 provider、浏览器自动化或短时压测代替 |
 
@@ -36,7 +41,7 @@ flowchart LR
 
 ## Issue #197：17 条用户反馈
 
-原文：[Issue #197](https://github.com/1420970597/llm/issues/197)。早期证据见 [逐条修复对照](issue-197-remediation-delivery.md)，最新蓝图闭环见 [蓝图浏览器结果](../audit/issue-197-closure/result.json)。
+原文：[Issue #197](https://github.com/1420970597/llm/issues/197)。远程已关闭，见 [2026-10-08 关单评论](https://github.com/1420970597/llm/issues/197#issuecomment-6053549245)。早期证据见 [逐条修复对照](issue-197-remediation-delivery.md)，最新蓝图闭环见 [蓝图浏览器结果](../audit/issue-197-closure/result.json)。
 
 | 子项 | 当前实现与实际边界 | 代码 / 验证证据 | 合并状态 |
 | --- | --- | --- | --- |
@@ -48,17 +53,17 @@ flowchart LR
 | 6 便捷编辑与自动迭代 | 1200ms 自动保存新版本、理由选填、409 保留草稿、请求中继续编辑不丢输入 | #259；11 组真实 Chromium 场景 | 已合 main |
 | 7 连接页新增/编辑 | 当前页弹窗，不跳旧控制台；测试连通性与保存分离 | `SettingsPages.tsx`；#214 原测试确认 | 已合 main |
 | 8 每项编辑入口 | 每行编辑/启停，留空密钥不覆盖既有配置 | `SettingsPages.tsx`；连接行操作证据 | 已合 main |
-| 9 评估/清洗与蓝图联动 | 工作台选项目与不可变蓝图；创建实验消费裁判/seed/SFT 权重；规则预览消费蓝图策略版本。历史模式显式切换，不支持的缺分策略与 GRPO 自定义权重明确阻断，清除深链参数也清除旧上下文 | `blueprintContext.ts`、`LegacyToolPages.tsx`、`QualityPages.tsx`；`project-tools-ui.mjs` 实际请求断言 | 候选 PR #266；最终 CI 与合并待完成 |
+| 9 评估/清洗与蓝图联动 | 工作台选项目与不可变蓝图；创建实验消费裁判/seed/SFT 权重；规则预览消费蓝图策略版本。历史模式显式切换，不支持的缺分策略与 GRPO 自定义权重明确阻断，清除深链参数也清除旧上下文 | `blueprintContext.ts`、`LegacyToolPages.tsx`、`QualityPages.tsx`；`project-tools-ui.mjs` 实际请求断言 | #266 已合 main，五项 CI SUCCESS |
 | 10 今日工作总览 | 项目/运行/缺口/待判断/近期产出/交付来自真实读模型；待判断与队列统一口径，磁贴有具体跳转 | `activity_store.go`、`TodayPages.tsx`；#200/#205 回归 | 已合 main |
 | 11 结构树与工作流 | m×n×z 实际算术、可编辑树、素材块关联；画布表达固定分支依赖、布局拖拽/键盘移动与节点子步骤。执行依赖固定，不承诺任意可编辑执行 DAG | #245/#259/#260；结构树与蓝图 Chromium | 已合 main，固定依赖边界明确 |
 | 12 数据与审阅语义 | 数据查看全部内容；审阅默认待判断，行操作与空态不同 | `ReviewPages.tsx`、`routes.ts`；#194 回归 | 已合 main |
 | 13 生产预览与自动分析 | 打开即读取样本版本事实，实际字段数、Unicode 字符长度、最近秩 P50/P90 与难度占比；最多 2000 条抽样，不声称 token/全量指标 | #247/#259；`dataset_analysis_test.go` | 已合 main |
 | 14 质量文案与模型目录 | 使用“被评测数据集”，裁判目录为可用模型连接；实验冻结裁判模型、接入点与输出上限，每 HTTP 调用受项目/可选批次预算约束 | `QualityPages.tsx`；#211/#238；#265 裁判预算回归；#263 价格版本配置 | 已合 main；预算增量 #265，价格配置 #263 |
 | 15 直接建账号 | 用户名/密码建号并加成员同事务，bcrypt、字段校验；账号可实际登录 | `workspace_member_store.go`、`routes_studio_settings.go`；#214 已实测 | 已合 main |
-| 16 全迁移后移除入口 | 每资产须有来源键/目标一致且无失败的 completed dataset 台账，并映射到当前账号可访问项目；单 SQL 读错直接报错。壳只在可信 scope、旧资产>0、complete=true、pending=0 时收起主入口；空/部分/错误/无 scope 保留，历史深链只读。实际部署未全迁移时应保留菜单 | `legacy_import_store_test.go`、`StudioLayout.tsx`；`project-tools-ui.mjs` 五种对账状态与只读深链 | 条件隐藏机制为候选 PR #266；最终 CI 与合并待完成；不执行批量迁移 |
-| 17 样式与长文本 | 列头、折行、窄屏卡片、加载容器、Markdown 全树守卫；最新页面另有五态/长文本 Chromium 门禁 | `styles.css`、冻结守卫、T29 证据；PR #266 source/workbench 浏览器测试 | 既有修复已合；新增门禁为候选 PR #266，待最终 CI 与合并 |
+| 16 全迁移后移除入口 | 每资产须有来源键/目标一致且无失败的 completed dataset 台账，并映射到当前账号可访问项目；单 SQL 读错直接报错。壳只在可信 scope、旧资产>0、complete=true、pending=0 时收起主入口；空/部分/错误/无 scope 保留，历史深链只读。2026-10-08 原 `llm` 库只读盘点：53 个旧 dataset、9 条 completed dataset 台账（failed_items 合计 0）、9 个 distinct legacy_dataset_id 映射；账号 1 按成功台账与成员可访问映射仍有 44 pending，因此实际未全迁移，菜单应保留 | `legacy_import_store_test.go`、`StudioLayout.tsx`；`project-tools-ui.mjs` 五种对账状态与只读深链；本次仅 SELECT 的账号 1 对账 | 条件隐藏机制 #266 已合 main；此次数字只代表原 `llm` 环境账号 1 的快照，不代表所有账号范围；未批量迁移或删除 |
+| 17 样式与长文本 | 列头、折行、窄屏卡片、加载容器、Markdown 全树守卫；最新页面另有五态/长文本 Chromium 门禁 | `styles.css`、冻结守卫、T29 证据；PR #266 source/workbench 浏览器测试 | 既有修复与 #266 新增门禁均已合 main |
 
-第 9 条是本轮新增的原生工作台联动；第 16 条有条件隐藏机制及回归，实际全迁移结论仍须真实台账证据。第 11 条的布局拖拽与固定依赖展示不能被描述为任意执行 DAG 编辑。
+第 9 条是本轮新增的原生工作台联动；第 16 条的原 `llm` 库账号 1 真实盘点明确未全迁移，不能以 9 条成功台账推导 53 个资产全部完成。其他账号与后续时刻必须重新按权限范围查询。第 11 条的布局拖拽与固定依赖展示不能被描述为任意执行 DAG 编辑。
 
 ## Issue #214：14 条缺陷索引
 
@@ -96,17 +101,17 @@ flowchart LR
 | B4 素材 Store 与上传 | 去重块、分页、200MB 边界、MD/TXT 白名单、403/413/415、正文不进 job/Redis | #261 已合；真实 HTTP+PG 上传/越权/类型回归 |
 | B5 采集台账复用 | `legacy_imports` 新 source_kind 与 actor 快照，来源键绑定项目，行级去重与游标对账 | #261 已合；真实 PG replay/租户作用域测试 |
 | B6 持久 worker 采集 | Studio job/outbox、租约/fencing 校验后提交块与进度；完成追加冻结来源版本 | #261 已合；`TestSourceImportFencesStaleSideEffectsAndRejectsEncoding` |
-| B7 素材页面五态 | 来源目录、章节/块预览、切分设置与上传；影响范围说明、版本冻结与历史查看 | #260 已合；强化五态 Chromium CI 为候选 PR #266，待最终 CI 与合并 |
+| B7 素材页面五态 | 来源目录、章节/块预览、切分设置与上传；影响范围说明、版本冻结与历史查看 | #260/#266 已合；强化五态 Chromium CI 与报告已交付 |
 | C1 公开格式映射 | Alpaca/JSONL/完整多轮 ShareGPT；缺字段/类型/不完整轮次逐行失败；不伪造推理 | #261 已合；`TestProductPublicFormatsAndFailureLineNumbers`、`TestProductMultiTurnPreservedAndIncompleteRejected` |
 | C2 成品导入 | 20MB/5000 行；预检零写入、异步 durable 导入；明确 external_import，GRPO 项目 422 | #261 已合；真实 HTTP/PG 重放、逐行失败、计数对账 |
-| C3 导入向导 | 选格式→上传→只显示实际字段→预检→提交，成品无需模型预算 | #260 已合；新增五态浏览器门禁为候选 PR #266，待最终 CI 与合并 |
+| C3 导入向导 | 选格式→上传→只显示实际字段→预检→提交，成品无需模型预算 | #260/#266 已合；新增五态浏览器门禁与报告已交付 |
 | C4 契约与样例 | 上述公开契约、固定 `test/fixtures/source-import/` 三格式与真实映射测试 | #261 已合；`TestProductContractFixtures` |
 | D1 历史模板盘点 | 只读查询 68 个 sample_versions，编号模板 1 个（项目 13/批次 12）；不改写旧版本；该盘点不证明其余样本事实质量 | #265 已合；[盘点报告与 SQL](round3-blueprint-workflow-inventory.md) |
-| D2 真问题生成 | SFT/GRPO 共用 questionFor；蓝图→素材版本→块 ID 冻结与项目作用域；AI 必须显式、document 有正文；32000 字符上限 | #265 已合；[生成方案](../architecture/source-grounded-generation.md) 与正常/越界/无来源回归；真实外部尝试见下文，不计为成功旅程 |
+| D2 真问题生成 | SFT/GRPO 共用 questionFor；蓝图→素材版本→块 ID 冻结与项目作用域；AI 必须显式、document 有正文；32000 字符上限 | #265/#267 已合；[生成方案](../architecture/source-grounded-generation.md) 与正常/越界/无来源回归；[真实验收记录](../architecture/source-grounded-acceptance.md) 保留失败和成功运行的各自范围 |
 | D3 发布接地追溯 | 保存 source_chunk_ids；冻结样本版本导出 source/ID/hash/章节；删块或擦除正文保留 missing_chunk，制品字节不改 | #265 已合；`TestGroundingReferencesPreserveMissingEvidenceAndExternalImports`、真实 PG `TestReleaseGroundingPersistsAndSurvivesSourceErasure` |
-| E1 全量质量门 | Docker Go 格式/vet/build/test、真实 PG 必需测试、前端 build、全迁移、文档与冻结守卫；以最终合并 head 的 CI 为准 | #263/#264/#265 已合；候选 PR #266 最终 CI 与合并待完成，尚不能宣布本轮最终门禁全部通过 |
-| E2 五态/溢出 CI | 生产目标结构/素材/导入、项目评估/清洗的真实 Chromium、1440/390、请求 payload 与错误恢复门禁；report/trace/screenshot artifacts | 候选 PR #266；使用生产 UI 与受控 API，最终 CI 与合并待完成，不替代后端真实数据流 |
-| E3 文档证据 | 公开导入契约、素材/目标结构原型、蓝图交付与本矩阵；#265 的 D1/D2/D3 文档及 #264 故障报告已在 main | 本矩阵及新增 UI CI 证据属候选 PR #266；真实 provider 成功旅程证据仍缺，需另补 |
+| E1 全量质量门 | Docker Go 格式/vet/build/test、真实 PG 必需测试、前端 build、全迁移、文档与冻结守卫；以最终合并 head 的 CI 为准 | #267 最终 head 与合并 main `bd439eb` 均五项 CI SUCCESS；本地真 PG 1318 PASS、11 可选 SKIP、必需零缺失，43 个迁移及前端 build、24 个冻结守卫通过 |
+| E2 五态/溢出 CI | 生产目标结构/素材/导入、项目评估/清洗的真实 Chromium、1440/390、请求 payload 与错误恢复门禁；report/trace/screenshot artifacts | #266 已合的门禁在 #267 最终 head 与精确 main 的 CI 重新执行且 SUCCESS，`source217-ui-report` 可复查。使用生产 UI 与受控 API；后端真实数据流由供应商旅程单独验证 |
+| E3 文档证据 | 公开导入契约、素材/目标结构原型、蓝图交付、本矩阵及 [供应商验收记录](../architecture/source-grounded-acceptance.md) | 精确 main 全新旅程 passed；结果 JSON、版本绑定、两份 manifest 和实际发布截图已归档，失败与跨轮恢复历史保留 |
 
 ### 原计划与实现差异
 
@@ -148,21 +153,37 @@ sequenceDiagram
 | T07 请求预算与暂停 | #265 已合：每 HTTP 尝试先事务预留再结算，成功/空响应/解码失败/重试各留账；真实 PG `TestStudioAccountingWritesEachReceiptAndUnknownCost`、`TestReserveUsageChecksBatchPauseInTransaction`；`TestStudioAccountingPauseBlocksNextStepAndHTTPRetry` 的 next-step/http-retry 两路径证实在途结算、暂停后零新增请求、显式恢复可继续；裁判冻结输出上限；#263 已合价格配置 | HTTP 回归使用受控模型响应与真实 PG，不能称真实供应商成功旅程；未知费用不记 0，估计价格不冒充实际账单 |
 | T29 浏览器交互 | `t29_measure.mjs`，13/13；断网草稿/同步、390/768/1440、键盘与页面几何，证据归档已存在 | 44px 以下控件仍有读数；真实浏览器测试不是 5–8 名真人会话 |
 | T29 十万基准 | #262 真 PG 100K；2 CPU/2GiB，单并发与 4 并发，before/after JSON、完整 EXPLAIN；首页 P95 378.98→5.08ms | 不含 HTTP/前端/LLM，不以本机测量承诺生产 SLA；准确待审计数仍为 O(n) |
-| T32 故障和 CI | #264 已合：[真实故障验收](2026-10-studio-failure-validation.md) 11/11 必需测试 PASS，真实 Redis stop/start、MinIO 签名拒绝与修复、schema999、租约/fencing、开关回退和固定下载 hash；fresh/current/future rejected/recovered 四个 schema 探针 PASS；蓝图 Chromium 与真实 PG 必需门禁已合 | 新增素材/工作台 Chromium CI 属候选 PR #266，待最终 CI 与合并；11/11 故障验收不调用商业模型、不替代连续灰度或真人会话 |
+| T32 故障和 CI | #264 已合：[真实故障验收](2026-10-studio-failure-validation.md) 11/11 必需测试 PASS，真实 Redis stop/start、MinIO 签名拒绝与修复、schema999、租约/fencing、开关回退和固定下载 hash；fresh/current/future rejected/recovered 四个 schema 探针 PASS；#266 新增素材/工作台 Chromium CI 已合，五项 CI SUCCESS | Chromium 使用生产 UI 与受控 API；11/11 故障验收不调用商业模型，不替代连续灰度或真人会话；后续新修复须单独通过最终 head 门禁 |
 | T33 灰度/回退 | #264 已合：真实服务故障、API/worker 不兼容消息、回退停止写入且已发布文件仍可固定下载；开关、health、schema 兼容与 runbook 已交付 | runbook §4 的连续 48 小时真实部署灰度、生产版本观察和 SLO 标定仍未验；临时故障演练不等于已做生产灰度 |
-| T34 真人与真实 provider | 任务脚本、三角色越权测试、SFT/GRPO 结构与自动路径证据；真实外部连接 1、33 已分别尝试且收到 HTTP 404 | 5–8 名真实参与者未执行；同 endpoint 连接不能充当独立裁判；连接 34 正在另行验证，尚无成功旅程记录；完整真实独立 provider 旅程仍未验 |
+| T34 真人与真实 provider | 任务脚本、三角色越权测试、SFT/GRPO 结构与自动路径证据；供应商失败、跨轮恢复和精确 main 技术旅程分别记录在 [真实验收记录](../architecture/source-grounded-acceptance.md) | 5–8 名真实参与者未执行；实际模型仍使用同一 endpoint，不能充当独立裁判；完整真实独立裁判、两个 pilot 同基准比较、scale 与真人证据审阅仍未验 |
 
 [性能报告](https://github.com/1420970597/llm/blob/cd8effc78c84b64a5dc7f48038abe3a3061167cd/docs/architecture/sample-query-performance.md)、[验收协议](atelier-acceptance-protocol.md) 与 [灰度手册](studio-rollout-runbook.md) 分别记录数据库测量、真人任务和部署观察。#160 因 T33/T34 外部验收缺证据保持开放。
 
 ### 真实外部模型尝试记录
 
-| 连接 ID | 本轮实际结果 | 可得结论 |
+| 配置 / 请求 | 本轮实际结果 | 可得结论 |
 | --- | --- | --- |
-| 1 | 真实外部请求返回 HTTP 404 | 接入尝试失败，不计为生成、独立评估或发布旅程成功 |
-| 33 | 真实外部请求返回 HTTP 404 | 接入尝试失败；无法据此证明模型输出质量或完整业务旅程 |
-| 34 | 正在另行验证，结果待补 | 当前未计为 PASS；后续需补项目/批次/样本/发布 ID、provider 回执与固定下载 hash 等实际证据 |
+| 原配置连接 1：`global:deepseek-v4.1-flash` | 真实外部请求返回 HTTP 404 | 接入尝试失败，不计为生成、独立评估或发布旅程成功 |
+| 原配置连接 33：`global:hy4-preview` | 真实外部请求返回 HTTP 404 | 接入尝试失败；无法据此证明模型输出质量或完整业务旅程 |
+| 原配置连接 34：`global:hy3` | 最小真实请求返回 HTTP 404 / `model_not_found` | 接入尝试失败，不是正在运行生成旅程的连接 |
+| 隔离库 provider 1：`deepseek-v4.1-flash` | `GET /models` 返回 HTTP 200 后使用目录正式名；跨轮 SFT/GRPO 恢复、三格式导入和下载哈希均通过，详见 [验收记录](../architecture/source-grounded-acceptance.md) | 未改原配置；同一 endpoint 的技术运行不等于独立质量验收；费用为 estimated，不能作为实际账单 |
+| 隔离库真实项目 4 | SFT 产出含省略号占位内容，被严格验收拒绝，未发布 | 历史失败保留；相关准入与截断结算修复已合 #267，精确 main 全新项目 9、10 的复验成功另记 |
+| 隔离库真实项目 5、8 | 项目 5 有效 SFT 发布 2；项目 8 有效 GRPO 使用新映射 73 发布 5；恢复运行 `2026-10-08T06-47-29-957Z` 通过 | 混合版本跨轮恢复；保留旧映射 67/失败发布 4，未重复模型调用；不能写成精确 main 单次全新生成 |
+| 精确 main 全新项目 9、10 | `bd439eb` 三服务一致；运行 `2026-10-08T07-06-05-325Z` passed，phaseErrors 为空；SFT 发布 7、GRPO 发布 9 下载/hash/完整数组通过 | 无 resume/repair，直接使用 GRPO 原生默认映射；三格式导入/重放、逐行失败和冻结 SFT 文件不变通过；费用 estimated，不等于独立质量或真人验收 |
 
-连接编号只标识本次隔离验收使用的配置，不代表跨部署稳定身份；这里不保存凭证。自动化提交的接纳决定只用于结构、引用和门槛检查，不充当真人审阅或独立质量判断。新的外部尝试成功后也应保留本表失败记录，另追加其环境、版本、范围和结果。
+连接编号只标识本次隔离验收使用的配置，不代表跨部署稳定身份；这里不保存凭证。自动化提交的接纳决定只用于结构、引用和门槛检查，不充当真人审阅或独立质量判断。404 探针和项目 4 原失败的完整执行 SHA 未独立证实，不归因于精确 main；已知混合版本及运行 ID 见 [验收环境与失败记录](../architecture/source-grounded-acceptance.md)。成功记录保留失败历史，另记环境、版本和范围。
+
+`test/audit/source-grounded-journey.mjs` 的验收范围为单个 pilot、同源裁判拒绝、规则预览、自动接纳、pending 发布阻断与固定下载 hash。本次成功补齐了对应工程运行证据；两个 pilot 的同基准比较、scale、真实人工审阅与独立裁判仍须另有执行记录。
+
+### #160 尚需的外部验收资源与原始记录
+
+| 未完成验收 | 需要的真实资源 | 关单所需原始记录 | 当前不能替代它的证据 |
+| --- | --- | --- | --- |
+| T34 真人任务 | 5–8 名真实数据研发参与者，覆盖 owner/reviewer/viewer；须提供真实可用部署、模型与结果存储 | 两版 pilot 同基准比较、scale、异常恢复、证据审阅与发布下载的任务结果；首次点击、迷路/回退、阻塞、帮助次数、原话及阻塞问题复验 | 自动浏览器、脚本自动接纳与虚构参与者不能生成真人研究记录 |
+| T34 独立质量旅程 | 与生成端实际不同的裁判接入点及可用模型配置；SFT、GRPO 的真实数据、预算与存储 | 冻结生成/裁判配置与实际接入点、provider 回执及用量/费用状态、完整质量报告、人工判断、发布 ID 和固定下载 hash | 同 endpoint 的新连接或模型别名、规则预览和本地确定性裁判不能证明独立外部评估 |
+| T33 连续灰度与 SLO | runbook 第 4 节规定的真实部署、1–2 个 SFT 新项目和 1 个 GRPO 项目，至少连续 48 小时观察窗口 | 起止时间、实际版本、队列/租约/outbox/未知成本/发布失败的 health 记录、阶段推进与回退记录、由真实基线标定的 SLO | 临时容器故障 11/11、100K 查询基准或跳过 48 小时等待不能证明真实运行稳定性 |
+
+这些是既有 #160 验收要求的资源与记录落点，不能通过修改勾选状态、复制同源连接、模拟访谈或把短时测试改名为灰度来补齐。
 
 ```mermaid
 stateDiagram-v2
@@ -178,6 +199,8 @@ stateDiagram-v2
 
 ## 最终复核与关单顺序
 
-已合代码按 main `9a453e9` 核实：#263/#264/#265 不再是待合项。继续以候选 PR #266 的最终 head 检查 CI、文档和合并状态；实际合入前不得将其工作台、迁移入口条件或新增 Chromium 门禁改成“已合 main”。#214/#204 的当前技术行为可据表中证据判断；#217 的 D1–D3 已合，仍须完成 #266 对应 E1–E3 最终收口；#197 第 16 条根据成功台账和可访问映射决定菜单显示，修复不要求批量迁移或删除旧数据。#160 的真实 provider 成功旅程、真人会话与连续灰度仍缺证据，不能因技术修复或一次外部请求而一并关闭。
+代码按 main `bd439eb` 核实，#263–#267 均已合。#267 最终 PR head 与合并 main 五项 CI 全部 SUCCESS；本地同版本 Docker Go 格式/vet/build 与真实 PG 1318 PASS、必需零缺失，43 个迁移冒烟、前端 build、24 个冻结守卫均通过。#217 的 20 项已有逐项落点，E1/E2 门禁在精确 main 再执行，E3 全新供应商旅程及版本/manifest/截图已归档，可据此关单。
+
+#197 已按技术证据关闭；第 16 条原 `llm` 库账号 1 仍有 44/53 pending，菜单保留符合实际，修复不要求批量迁移或删除旧数据。#214/#204 的当前技术行为可据表中证据判断。#160 的完整真实独立质量旅程、真人会话与连续灰度仍缺上表资源对应的执行记录，保持开放。
 
 独立复核者应从本文件直接回答：哪些修复尚未进入 main；Easy Dataset 接入到底依赖什么；同源裁判为何被拒；历史模板与删除素材如何处理；性能数字覆盖哪些层；为什么 #160 仍未完成。若需要依赖对话才能回答，先补证据或说明再关单。

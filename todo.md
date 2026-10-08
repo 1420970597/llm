@@ -685,9 +685,11 @@ PR、自动化测试与实际交互证据；表中的“已完成”不替代 Is
 | M5 | T29 断网待同步、可访问性和大数据量交互 | 技术验证已补齐：离线队列/无障碍 CSS/窄屏守卫；真实浏览器断网与 390/768/1440、键盘走查（`test/audit/t29_measure.mjs`，13/13，通过记录 `docs/audit/issue-160-t29/`）；**十万样本真实 PostgreSQL 基准已执行并随 [PR #262](https://github.com/1420970597/llm/pull/262) 合入 main**，同资源首页 P95 378.98→5.08ms，计数 P95 989.41→304.63ms，完整环境/查询计划见 [性能报告](https://github.com/1420970597/llm/blob/cd8effc78c84b64a5dc7f48038abe3a3061167cd/docs/architecture/sample-query-performance.md)。44px 触屏目标基线仍有未达标控件，不把数据库耗时当全栈 SLA 或真人体验结论 |
 | M6 迁移/门禁/灰度验收 | T30 旧数据迁移盘点、映射与 dry-run 工具 | 已完成 |
 | M6 | T31 幂等导入、旧路由兼容与核对 | 已完成（按项导入；批量吞吐、非 SFT 来源和旧文件字节对账待续） |
-| M6 | T32 真实 DB、API、浏览器与故障验收接入 CI | 已交付真实 DB/全量迁移/必需测试及 UI 路由守卫；#259 真实 Chromium 蓝图回归已有证据。素材/成品导入五态与项目工作台联动的 Chromium 门禁在最终审计 PR 验证，**入 main 前不算已交付**；独立临时 Redis/MinIO 故障注入记录按最终矩阵另行核对，不等于生产演练 |
-| M6 | T33 可观测性、特性开关、灰度与回退手册 | 已完成（代码与手册；真实灰度/演练待执行） |
-| M6 | T34 真实用户任务验收、文档交付与总 Issue 关闭 | 部分交付：验收方案/字段 schema/保留策略/runbook/状态对账已交付；**真实用户会话、真实 provider 与对象存储故障注入未执行**，故验收项不勾选 |
+| M6 | T32 真实 DB、API、浏览器与故障验收接入 CI | 技术门禁已交付：DB/全量迁移/必需测试、UI 路由守卫、蓝图与素材/导入/工作台 Chromium，以及 #267 真实生成回归均已合 main `bd439eb`；[CI run 37740657964](https://github.com/1420970597/llm/actions/runs/37740657964) 五项 SUCCESS，真 PG 1318 PASS、必需零缺失。#264 [真实故障报告](docs/plans/2026-10-studio-failure-validation.md) 11/11 必需测试及四个 schema 探针 PASS；不等于生产灰度 |
+| M6 | T33 可观测性、特性开关、灰度与回退手册 | 代码、手册及 #264 真实 Postgres/Redis/MinIO 故障、回退与固定下载验收已完成；runbook 第 4 节连续 **48 小时真实部署灰度**、版本/health 观察与生产 SLO 标定仍未执行 |
+| M6 | T34 真实用户任务验收、文档交付与总 Issue 关闭 | 部分交付：验收方案/字段 schema/保留策略/runbook/状态对账、真实对象存储故障注入及真实供应商技术发布证据已交付，失败与成功范围见 [验收记录](docs/architecture/source-grounded-acceptance.md)。模型仍为同一 endpoint，自动接纳不等于真人审阅。**5–8 名真实用户会话、完整独立裁判与两版试制比较/扩量/真人证据审阅仍未执行**，故验收项不勾选 |
+
+2026-10-08 远程状态补充：#197 已按 [关单证据](https://github.com/1420970597/llm/issues/197#issuecomment-6053549245) 关闭；原 `llm` 库账号 1 只读盘点为 53 个旧 dataset、9 条无失败的 completed dataset 台账、9 个 distinct 映射与 44 pending，实际未全迁移，历史菜单保留符合条件。#267 已合 main `bd439eb`，最终 PR head 与合并 main 均五项 CI SUCCESS；原项目 4 占位失败、GRPO 旧映射/失败发布保留，新映射与新发布恢复不改旧样本。#217 逐项证据及真实旅程以 [最终矩阵](docs/plans/final-issue-delivery-audit.md) 为准。#160 仍需 [资源表](docs/plans/final-issue-delivery-audit.md#160-尚需的外部验收资源与原始记录) 所列真实参与者、独立裁判与连续 48 小时部署观察记录。
 
 > 状态口径：`已完成` 表示该任务的代码、测试与文档已交付并通过本地/CI 门禁；
 > 带括号说明的条目表示**部分验收项**需要真实环境或真实用户参与，尚未执行。
