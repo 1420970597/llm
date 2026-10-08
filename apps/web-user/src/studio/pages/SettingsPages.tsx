@@ -15,6 +15,7 @@ import type {
   WorkspaceMemberRecord,
 } from '../../lib/api/studio'
 import { APP_BUILD_TIME, APP_VERSION, versionSummary } from '../../buildInfo'
+import { ModelPriceModal } from '../ModelPriceModal'
 
 /**
  * 设置页（Issue #160 T28）：连接与存储选项、团队与角色、帮助。
@@ -98,6 +99,7 @@ export function ConnectionsPage() {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<string | null>(null)
   const [rowBusy, setRowBusy] = useState<number | null>(null)
+  const [priceConnection, setPriceConnection] = useState<ConnectionProviderOption | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -333,7 +335,8 @@ export function ConnectionsPage() {
                     {/* issue #197 第 8 条：列表项必须有**元素级**编辑按钮。
                         以前 11 行连接的行内按钮数是 0，用户只能去旧控制台。 */}
                     {isAdmin ? (
-                      <span data-label="操作" className="connection-row-actions">
+                      <span data-label="操作" className="connection-row-actions flex flex-wrap gap-1">
+                        <Button size="small" theme="borderless" data-connection-price={provider.id} onClick={() => setPriceConnection(provider)}>价格配置</Button>
                         <Button
                           size="small"
                           theme="borderless"
@@ -543,6 +546,7 @@ export function ConnectionsPage() {
           </div>
         ) : null}
       </Modal>
+      <ModelPriceModal connection={priceConnection} onClose={() => setPriceConnection(null)} onSaved={() => Toast.success('模型价格新版本已保存。')} />
     </div>
   )
 }
