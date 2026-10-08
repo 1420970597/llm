@@ -118,64 +118,23 @@ func AnalyzeDataset(ctx context.Context, batches *store.BatchStore, documents *s
 	//
 	// 为什么两段都做：只列实际产出时「本该有但一条都没有」的方向会**消失**，
 	// 而缺口恰恰是最需要被看见的信息（issue #190 的同类错误）。
-	producedByDirection := map[string]int{}
 	rows, err := batches.ListSampleVersionFacts(ctx, batch.ProjectID, batch.ID, unitLimit)
 	if err != nil {
 		return DatasetAnalysis{}, err
 	}
 
+	var coverage *model.CoveragePayload
 	if batch.Snapshot.CoverageVersionID > 0 {
 		version, err := documents.GetVersionByID(ctx, batch.Snapshot.CoverageVersionID)
 		if err != nil {
 			return DatasetAnalysis{}, err
 		}
-		var coverage model.CoveragePayload
-		if err := json.Unmarshal(version.Payload, &coverage); err != nil {
+		coverage = &model.CoveragePayload{}
+		if err := json.Unmarshal(version.Payload, coverage); err != nil {
 			return DatasetAnalysis{}, NewError(CodeValidation, "覆盖版本内容无法解析，请重新保存覆盖方案")
 		}
-		for _, unit := range model.AllocateCoverageUnits(coverage, unitLimit) {
-			key := unit.DomainStableID + "/" + unit.DirectionStableID
-			producedByDirection[key]++
-		}
-		// 把「计划数」与「实际数」都算出来：计划来自配额，实际来自样本版本。
-		for _, domain := range coverage.Domains {
-			for _, direction := range domain.Directions {
-				quota := direction.Quota
-				if quota <= 0 {
-					quota = 1
-				}
-				key := domain.StableID + "/" + direction.StableID
-				analysis.Structure = append(analysis.Structure, AnalysisGroup{
-					DomainStableID:    domain.StableID,
-					DomainName:        domain.Name,
-					DirectionStableID: direction.StableID,
-					DirectionName:     direction.Name,
-					Planned:           quota,
-					Produced:          producedByDirection[key],
-				})
-			}
-		}
 	}
-	if len(analysis.Structure) == 0 {
-		// 没有覆盖版本时退化成「按实际产出的方向聚合」，而不是返回空结构。
-		byKey := map[string]AnalysisGroup{}
-		for _, row := range rows {
-			key := row.DomainStableID + "/" + row.DirectionStableID
-			group := byKey[key]
-			group.DomainStableID = row.DomainStableID
-			group.DirectionStableID = row.DirectionStableID
-			group.Produced++
-			byKey[key] = group
-		}
-		for _, group := range byKey {
-			group.Planned = group.Produced
-			analysis.Structure = append(analysis.Structure, group)
-		}
-		sort.Slice(analysis.Structure, func(i, j int) bool {
-			return analysis.Structure[i].DomainStableID+analysis.Structure[i].DirectionStableID <
-				analysis.Structure[j].DomainStableID+analysis.Structure[j].DirectionStableID
-		})
-	}
+	analysis.Structure = analyzeStructure(coverage, rows)
 
 	// 2) 内容分析：长度分布、难度占比、接地率、重复率、待审阅率。
 	lengths := make([]int, 0, len(rows))
@@ -256,6 +215,57 @@ func lengthFieldsOf(rows []store.SampleVersionFact) []string {
 		}
 	}
 	return fields
+}
+
+// analyzeStructure preserves planned directions with zero output and counts
+// only persisted sample facts, never allocated/planned generation units.
+func analyzeStructure(coverage *model.CoveragePayload, rows []store.SampleVersionFact) []AnalysisGroup {
+	structure := []AnalysisGroup{}
+	producedByDirection := map[string]int{}
+	for _, row := range rows {
+		producedByDirection[row.DomainStableID+"/"+row.DirectionStableID]++
+	}
+	if coverage != nil {
+		// 把「计划数」与「实际数」都算出来：计划来自配额，实际来自样本版本。
+		for _, domain := range coverage.Domains {
+			for _, direction := range domain.Directions {
+				quota := direction.Quota
+				if quota <= 0 {
+					quota = 1
+				}
+				key := domain.StableID + "/" + direction.StableID
+				structure = append(structure, AnalysisGroup{
+					DomainStableID:    domain.StableID,
+					DomainName:        domain.Name,
+					DirectionStableID: direction.StableID,
+					DirectionName:     direction.Name,
+					Planned:           quota,
+					Produced:          producedByDirection[key],
+				})
+			}
+		}
+	}
+	if len(structure) == 0 {
+		// 没有覆盖版本时退化成「按实际产出的方向聚合」，而不是返回空结构。
+		byKey := map[string]AnalysisGroup{}
+		for _, row := range rows {
+			key := row.DomainStableID + "/" + row.DirectionStableID
+			group := byKey[key]
+			group.DomainStableID = row.DomainStableID
+			group.DirectionStableID = row.DirectionStableID
+			group.Produced++
+			byKey[key] = group
+		}
+		for _, group := range byKey {
+			structure = append(structure, group)
+		}
+		sort.Slice(structure, func(i, j int) bool {
+			return structure[i].DomainStableID+structure[i].DirectionStableID <
+				structure[j].DomainStableID+structure[j].DirectionStableID
+		})
+	}
+
+	return structure
 }
 
 // summarizeLengths 计算长度分布（无数据时由调用方保证不进来）。

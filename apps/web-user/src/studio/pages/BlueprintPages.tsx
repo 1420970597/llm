@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button, Card, Empty, Input, Select, Spin, TextArea, Typography } from '@douyinfe/semi-ui'
-import { AlertTriangle, CheckCircle2, Copy, FileCog, History, Plus, Save, Trash2, WandSparkles, XCircle } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, Copy, FileCog, History, Maximize2, Minus, Plus, Save, Trash2, WandSparkles, XCircle } from 'lucide-react'
 import { client } from '../../lib/api'
 import { newIdempotencyKey, projectPath } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
@@ -113,6 +113,64 @@ type BlueprintChoices = {
   connections: BlueprintChoice[]
 }
 
+type CanvasPoint = { x: number; y: number }
+const NODE_SIZE = { width: 236, height: 124 }
+const INITIAL_POSITIONS: Record<string, CanvasPoint> = {
+  coverage: { x: 30, y: 30 }, standard: { x: 30, y: 230 },
+  source: { x: 30, y: 410 },
+  generation: { x: 350, y: 130 }, evaluation: { x: 670, y: 30 },
+  rules: { x: 670, y: 230 }, human_review: { x: 990, y: 130 },
+  delivery: { x: 1310, y: 130 },
+}
+// These are configuration/data dependencies of the existing pipeline, not an
+// editable execution DAG. Evaluation and rules both provide review evidence.
+const BLUEPRINT_DEPENDENCIES = [
+  ['coverage', 'generation'], ['standard', 'generation'],
+  ['source', 'generation'],
+  ['generation', 'evaluation'], ['generation', 'rules'],
+  ['evaluation', 'human_review'], ['rules', 'human_review'],
+  ['human_review', 'delivery'],
+]
+
+const FIELD_STEPS: Record<string, Array<{ key: string; label: string; fields: string[] }>> = {
+  coverage: [{ key: 'scope', label: '规划领域、方向与数量', fields: ['coverageVersionId'] }],
+  standard: [
+    { key: 'reference', label: '选择思维标准', fields: ['standardVersionId'] },
+    { key: 'reasoning', label: '配置思考步骤与检查点', fields: ['steps'] },
+  ],
+  generation: [
+    { key: 'input', label: '素材输入', fields: ['sourceVersionId'] },
+    { key: 'model', label: '选择生成模型', fields: ['modelConnectionId', 'modelVersion'] },
+    { key: 'output', label: '定义输出结构', fields: ['schemaVersion', 'jsonSchema'] },
+    { key: 'limits', label: '配置生成边界', fields: ['maxTokens', 'temperature'] },
+    { key: 'dispatch', label: '并发与失败处理', fields: ['concurrency', 'failurePolicy'] },
+  ],
+  evaluation: [
+    { key: 'judges', label: '独立裁判', fields: ['judgeConnectionIds'] },
+    { key: 'rubric', label: '评分标准与权重', fields: ['rubricVersionId', 'weights'] },
+    { key: 'sampling', label: '抽样与缺分处理', fields: ['samplingSeed', 'missingScorePolicy'] },
+  ],
+  rules: [{ key: 'policy', label: '规则与风险检查', fields: ['qualityPolicyVersionId'] }],
+  human_review: [
+    { key: 'assignment', label: '安排人工检查', fields: ['assignment', 'riskScope', 'sampleRate'] },
+    { key: 'evidence', label: '确认必需证据', fields: ['requiredEvidence'] },
+  ],
+  delivery: [
+    { key: 'mapping', label: '字段映射与文件格式', fields: ['mappingVersionId', 'format'] },
+    { key: 'use', label: '用途与限制', fields: ['intendedUse', 'limitations'] },
+  ],
+}
+
+function configurableSteps(spec: NodeSpec) {
+  const groups = (FIELD_STEPS[spec.key] ?? []).map((step) => ({
+    ...step, fields: spec.fields.filter((field) => step.fields.includes(field.name)),
+  })).filter((step) => step.fields.length > 0)
+  const known = new Set(groups.flatMap((group) => group.fields.map((field) => field.name)))
+  const remaining = spec.fields.filter((field) => !known.has(field.name))
+  if (remaining.length) groups.push({ key: 'other', label: '其他配置', fields: remaining })
+  return groups
+}
+
 /** 版本详情端点返回 `{ document, version, references, readOnly }`。 */
 function versionFromResponse(body: unknown): DocumentVersion {
   if (body && typeof body === 'object') {
@@ -184,6 +242,19 @@ export function BlueprintPage() {
   const [compareVersion, setCompareVersion] = useState<number | null>(null)
   const [canEdit, setCanEdit] = useState(false)
   const [choices, setChoices] = useState<BlueprintChoices>({ versions: {}, connections: [] })
+  const [standardVersions, setStandardVersions] = useState<DocumentVersion[]>([])
+  const [standardRevision, setStandardRevision] = useState(0)
+  const [positions, setPositions] = useState<Record<string, CanvasPoint>>(INITIAL_POSITIONS)
+  const [zoom, setZoom] = useState(1)
+  const [autoSave, setAutoSave] = useState(true)
+  const canvasRef = useRef<HTMLDivElement | null>(null)
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+  const savingRef = useRef(false)
+  const pendingStandard = useRef<{ fingerprint: string; version: DocumentVersion } | null>(null)
+  const [pendingStandardVersion, setPendingStandardVersion] = useState<number | null>(null)
+  const dragging = useRef<{ key: string; start: CanvasPoint; origin: CanvasPoint } | null>(null)
+  const dragged = useRef(false)
   const bootstrapAttempted = useRef(false)
   const preserveDraftAfterNavigation = useRef(false)
   /**
@@ -217,15 +288,21 @@ export function BlueprintPage() {
       const list = versionsResponse.data.items ?? []
       setVersions(list)
       setHeadRevision(versionsResponse.data.document?.revision ?? 0)
+      setStandardVersions(standardResponse.data.items ?? [])
+      setStandardRevision(standardResponse.data.document?.revision ?? 0)
       const editable = versionsResponse.data.canEdit === true
       setCanEdit(editable)
       const versionChoices = (response: VersionsResponse): BlueprintChoice[] =>
         (response.items ?? []).map((item) => ({
           value: String(item.id),
-        label: `v${item.version}${item.changeReason ? ` · ${item.changeReason}` : ''}`,
-        meta: item.contentHash ? item.contentHash.slice(0, 8) : undefined,
-        version: item.version,
+          label: `v${item.version}${item.changeReason ? ` · ${item.changeReason}` : ''}`,
+          meta: item.contentHash ? item.contentHash.slice(0, 8) : undefined,
+          version: item.version,
         }))
+      const hasSources = nodesResponse.data.items?.some((spec) => spec.fields.some((field) => field.name === 'sourceVersionId'))
+      const sourceChoices = hasSources
+        ? versionChoices((await client.get<VersionsResponse>(`${projectPath(scope.projectId)}/source-versions?limit=50`)).data)
+        : []
       setChoices({
         versions: {
           coverageVersionId: versionChoices(coverageResponse.data),
@@ -234,6 +311,7 @@ export function BlueprintPage() {
           mappingVersionId: versionChoices(mappingResponse.data),
           // 量表版本目前与质量策略共用项目版本目录；服务端保存的仍是明确的版本行 ID。
           rubricVersionId: versionChoices(qualityResponse.data),
+          ...(hasSources ? { sourceVersionId: sourceChoices } : {}),
         },
         connections: (connectionsResponse.data.providers ?? []).map((item) => ({
           value: String(item.id),
@@ -329,50 +407,133 @@ export function BlueprintPage() {
     const node = nodeRefs.current[activeSpec.key]
     if (!node) return
     node.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' })
-  }, [activeSpec, loading])
+  }, [activeSpec, loading, zoom])
 
   // URL 中存在 version 就代表「历史查看」；current 此时恰好也是被查看的
   // 历史版本，拿两者比较会把只读状态错误地判成可编辑。
   const isReadOnly = viewingVersion !== null
+  const changed = draft !== null && JSON.stringify(draft) !== JSON.stringify(current?.payload ?? { schemaVersion: 'blueprint.v1', nodes: {} })
+  const activeSteps = activeSpec ? configurableSteps(activeSpec) : []
+  const selectedStep = searchParams.get('step')
+  const activeStep = activeSteps.find((step) => step.key === selectedStep) ?? activeSteps[0]
+
+  const fitCanvas = useCallback(() => {
+    if (!canvasRef.current) return
+    setZoom(Math.max(0.25, Math.min(1, (canvasRef.current.clientWidth - 24) / 1580)))
+  }, [])
+
+  useEffect(() => {
+    if (loading || !canvasRef.current) return
+    let previousWidth = 0
+    const resize = () => {
+      const width = canvasRef.current?.clientWidth ?? 0
+      if (width === previousWidth) return
+      previousWidth = width
+      setZoom(width < 600 ? 1 : 0.75)
+    }
+    const observer = new ResizeObserver(resize)
+    observer.observe(canvasRef.current)
+    resize()
+    return () => observer.disconnect()
+  }, [loading])
 
   const save = useCallback(async () => {
-    if (!draft || !activeSpec || !canEdit) return
+    if (!draft || !activeSpec || !canEdit || isReadOnly || !changed || savingRef.current) return
     if (containsInvalidJSONMarker(draft)) {
       setSaveError('请先修正 JSON 格式，再保存蓝图。')
       return
     }
     // 提交前清理「非法 JSON 中间态」标记：它是编辑器的临时状态，
     // 不能进入 payload（那会让服务端看到一个不认识的字段）。
-    const cleaned = stripInvalidJSONMarkers(draft)
-    if (changeReason.trim() === '') {
-      // 变更理由是契约 §2.2 的一部分：没有理由的历史版本无法解释
-      // 「为什么当时这么改」，而那是回溯与审计的唯一线索。
-      setSaveError('请填写变更理由（它会被写入版本历史，供以后回溯）')
-      return
-    }
+    const submittedDraft = draft
+    let cleaned = stripInvalidJSONMarkers(draft)
+    const changedLabels = specs.filter((spec) => JSON.stringify(nodeValues(current?.payload ?? null, spec)) !== JSON.stringify(nodeValues(cleaned, spec))).map((spec) => spec.label)
+    const reason = changeReason.trim() || `调整${changedLabels.join('、') || '蓝图配置'}`
+    savingRef.current = true
     setSaving(true)
     setSaveError(null)
     try {
-      await client.post(
+      const standardSpec = specs.find((spec) => spec.key === 'standard')
+      const standard = standardSpec ? nodeValues(cleaned, standardSpec) : {}
+      if (standardSpec && Array.isArray(standard.steps)) {
+        const referenced = standardVersions.find((version) => version.id === Number(standard.standardVersionId))
+        const steps: Array<Record<string, unknown>> = (standard.steps as Array<Record<string, unknown>>).map((step, index) => ({ ...step, order: index + 1 }))
+        if (steps.length === 0 || steps.some((step) => !String(step.title ?? '').trim() || !String(step.checkpoint ?? '').trim())) {
+          throw new Error('思考步骤至少保留一步，每步都需要填写「做什么」和「完成检查点」。草稿已保留。')
+        }
+        const referencedSteps = Array.isArray(referenced?.payload?.steps)
+          ? (referenced.payload.steps as Array<Record<string, unknown>>).map((step, index) => ({ ...step, order: index + 1 })) : []
+        if (JSON.stringify(steps) !== JSON.stringify(referencedSteps)) {
+          const fingerprint = JSON.stringify(steps)
+          let savedStandard = pendingStandard.current?.fingerprint === fingerprint ? pendingStandard.current.version : null
+          if (!savedStandard) {
+            const standardResult = await client.post<{ revision: number; data: { version: DocumentVersion } }>(
+              `${projectPath(scope.projectId)}/standard-versions`,
+              { expectedRevision: standardRevision, logicalId: 'main', changeReason: reason,
+                payload: { ...(referenced?.payload ?? {}), schemaVersion: 'standard.v1', steps } },
+              { headers: { 'Idempotency-Key': newIdempotencyKey() } },
+            )
+            savedStandard = standardResult.data.data.version
+            setStandardRevision(standardResult.data.revision)
+            setStandardVersions((items) => [savedStandard!, ...items])
+            pendingStandard.current = { fingerprint, version: savedStandard }
+            setPendingStandardVersion(savedStandard.version)
+          }
+          cleaned = withNodeValues(cleaned, standardSpec, { ...standard, standardVersionId: savedStandard.id, steps })
+        } else {
+          cleaned = withNodeValues(cleaned, standardSpec, { ...standard, steps })
+        }
+      }
+      // Editing a form can remove derived step order fields. Restore the
+      // canonical shape before deciding whether a real version is needed.
+      if (JSON.stringify(cleaned) === JSON.stringify(current?.payload)) {
+        if (draftRef.current === submittedDraft) setDraft(cleaned)
+        setAutoSave(true)
+        return
+      }
+      const response = await client.post<{ revision: number; data: { version: DocumentVersion } }>(
         `${projectPath(scope.projectId)}/blueprint-versions`,
         {
           // expectedRevision 用**当前头记录**的 revision：不匹配返回 409 并保留草稿
           //（契约 §1.4「不匹配返回 409，并保留用户草稿」）。
           expectedRevision: headRevision,
           logicalId: 'main',
-          changeReason: changeReason.trim(),
+          changeReason: reason,
           payload: cleaned,
         },
         { headers: { 'Idempotency-Key': newIdempotencyKey() } },
       )
+      const saved = response.data.data.version
+      setAutoSave(true)
+      setHeadRevision(response.data.revision)
+      setCurrent(saved)
+      setVersions((items) => [saved, ...items])
+      if (draftRef.current === submittedDraft) {
+        setDraft(saved.payload)
+      } else if (standardSpec && draftRef.current) {
+        // Preserve edits made while the request was in flight while adopting
+        // the standard version created by this request. Otherwise a second
+        // autosave of unrelated fields would duplicate that standard version.
+        const latest = draftRef.current
+        const latestStandard = nodeValues(latest, standardSpec)
+        const submittedStandard = nodeValues(submittedDraft, standardSpec)
+        if (latestStandard.standardVersionId === submittedStandard.standardVersionId) {
+          const savedStandard = nodeValues(saved.payload, standardSpec)
+          const steps = JSON.stringify(latestStandard.steps) === JSON.stringify(submittedStandard.steps)
+            ? savedStandard.steps : latestStandard.steps
+          setDraft(withNodeValues(latest, standardSpec, { ...latestStandard, standardVersionId: savedStandard.standardVersionId, ...(steps ? { steps } : {}) }))
+        }
+      }
+      pendingStandard.current = null
+      setPendingStandardVersion(null)
       setChangeReason('')
       // 保存后**留在当前节点**（T11 验收项），只刷新版本列表与 current。
       setSearchParams((params) => {
         params.delete('version')
         return params
       })
-      await load(null)
     } catch (saveErrorValue) {
+      setAutoSave(false)
       const apiError = saveErrorValue as { statusCode?: number; message?: string }
       if (apiError.statusCode === 409) {
         setSaveError('版本已被其他人修改（乐观锁冲突）。你的草稿已保留，请刷新后比较差异再保存。')
@@ -380,9 +541,16 @@ export function BlueprintPage() {
         setSaveError(apiError.message ?? '保存失败')
       }
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
-  }, [activeSpec, canEdit, changeReason, draft, headRevision, load, scope.projectId, setSearchParams])
+  }, [activeSpec, canEdit, changed, changeReason, current, draft, headRevision, isReadOnly, scope.projectId, setSearchParams, specs, standardRevision, standardVersions])
+
+  useEffect(() => {
+    if (loading || saving || !autoSave || !changed || isReadOnly || !canEdit || containsInvalidJSONMarker(draft)) return
+    const timer = window.setTimeout(() => void save(), 1200)
+    return () => window.clearTimeout(timer)
+  }, [autoSave, canEdit, changed, draft, isReadOnly, loading, save, saving])
 
   if (loading) {
     return (
@@ -412,10 +580,14 @@ export function BlueprintPage() {
   const nodeHealth = activeSpec ? getNodeHealth(activeSpec, nodeValuesForActive, choices) : null
   const hasInvalidJSON = draft ? containsInvalidJSONMarker(draft) : false
   const dirty = draft !== null && (current === null || JSON.stringify(draft) !== JSON.stringify(current.payload))
+  const generationSpec = specs.find((spec) => spec.key === 'generation')
+  const sourceVersionId = generationSpec ? nodeValues(draft, generationSpec).sourceVersionId : undefined
   const relatedPage = activeSpec?.key === 'coverage'
     ? { route: 'project.coverage', label: '覆盖矩阵' }
     : activeSpec?.key === 'standard'
       ? { route: 'project.standard', label: '思维标准' }
+      : activeSpec?.key === 'generation' && activeStep?.key === 'input'
+        ? { route: 'project.sources', label: '素材来源' }
       : activeSpec?.key === 'generation' || activeSpec?.key === 'evaluation'
         ? { route: 'settings.connections', label: '模型连接' }
       : activeSpec?.key === 'rules'
@@ -424,11 +596,11 @@ export function BlueprintPage() {
           ? { route: 'project.newRelease', label: '交付映射' }
         : null
   const relatedVersion = activeSpec
-    ? choices.versions[activeSpec.fields.find((field) => field.kind === 'id')?.name ?? '']?.find(
-      (option) => String(nodeValuesForActive[activeSpec.fields.find((field) => field.kind === 'id')?.name ?? '']) === option.value,
+    ? choices.versions[(activeStep?.fields ?? activeSpec.fields).find((field) => field.kind === 'id')?.name ?? '']?.find(
+      (option) => String(nodeValuesForActive[(activeStep?.fields ?? activeSpec.fields).find((field) => field.kind === 'id')?.name ?? '']) === option.value,
     )
     : undefined
-  const selectedConnections = activeSpec?.key === 'generation'
+  const selectedConnections = activeSpec?.key === 'generation' && activeStep?.key !== 'input'
     ? choices.connections.filter((option) => option.value === String(nodeValuesForActive.modelConnectionId))
     : activeSpec?.key === 'evaluation'
       ? choices.connections.filter((option) => Array.isArray(nodeValuesForActive.judgeConnectionIds) && nodeValuesForActive.judgeConnectionIds.map(String).includes(option.value))
@@ -450,28 +622,48 @@ export function BlueprintPage() {
         <div>
           <div className="eyebrow">DESIGN / BLUEPRINT</div>
           <h1>生产蓝图</h1>
-          <Text type="tertiary">先确认每一步需要什么，再保存为新的配置版本。已经运行的批次不会被覆盖。</Text>
+          <Text type="tertiary">点击流程或小步骤配置。编辑停止后自动保存为新版本，已经运行的批次保持原来的配置。</Text>
         </div>
-        <Button theme="solid" type="primary" onClick={() => navigate(scope.href('project.pilot'))}>小批试制 →</Button>
+        <div className="flex flex-wrap gap-2">
+          {choices.versions.sourceVersionId ? <Button icon={<FileCog size={14} />} onClick={() => navigate(scope.href('project.sources'))}>素材来源</Button> : null}
+          <Button theme="solid" type="primary" onClick={() => navigate(scope.href('project.pilot'))}>小批试制 →</Button>
+        </div>
       </header>
 
       <div className="blueprint-layout">
         <section className="blueprint-canvas" aria-label="生产流程画布">
           <div className="blueprint-canvas__eyebrow">ATELIER / PRODUCTION BLUEPRINT / v{current?.version ?? '—'}</div>
-          {/*
-            issue #197 第 11 条：蓝图的定位是**工作流**，应当横向展示流程，
-            点击某个节点在右侧（同一页）看它的配置。
-            这里把纵向卡片堆叠改为横向流程带：节点按数据流左→右排列，
-            节点之间用 CSS 箭头表示依赖方向。
-            拖拽**刻意不做**：设计文档 R2 明确要求「拖拽是增强不是唯一路径」，
-            而现状的键盘可访问性（每个节点是可聚焦按钮、Tab 顺序 = 视觉顺序）
-            必须保留 —— 横向 flex 布局天然满足这一点，不需要引入拖拽库。
-          */}
-          <div className="blueprint-canvas__hint">
-            流程从左到右：先定范围与标准，再生成，最后评估与交付。点任一节点在右侧配置它。
+          <div className="blueprint-canvas__tools" role="toolbar" aria-label="画布工具">
+            <Button size="small" icon={<Minus size={14} />} aria-label="缩小画布" onClick={() => setZoom((value) => Math.max(0.25, value - 0.1))} />
+            <span aria-live="polite">{Math.round(zoom * 100)}%</span>
+            <Button size="small" icon={<Plus size={14} />} aria-label="放大画布" onClick={() => setZoom((value) => Math.min(1.5, value + 0.1))} />
+            <Button size="small" icon={<Maximize2 size={14} />} onClick={fitCanvas}>适应画布</Button>
+            <Button size="small" theme="borderless" onClick={() => setPositions(INITIAL_POSITIONS)}>重置布局</Button>
           </div>
-          <div className="blueprint-nodes" role="list">
+          <div className="blueprint-canvas__hint">
+            先定范围与标准，再生成内容；独立评估与规则检查提供不同证据。可横向滚动或适应画布查看全部流程，拖动节点整理布局，Alt + 方向键也可移动。
+          </div>
+          <div className="blueprint-canvas__viewport" ref={canvasRef}>
+          <div className="blueprint-canvas__extent" style={{ width: 1580 * zoom, height: 490 * zoom }}>
+          <div className="blueprint-nodes" role="list" style={{ width: 1580, height: 490, transform: `scale(${zoom})` }}>
+          <svg className="blueprint-edges" width="1580" height="490" aria-label="配置与证据依赖">
+            <defs><marker id="blueprint-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" /></marker></defs>
+            {BLUEPRINT_DEPENDENCIES.map(([from, to]) => {
+              if (from === 'source' && !choices.versions.sourceVersionId) return null
+              const a = positions[from]; const b = positions[to]
+              if (!a || !b) return null
+              const start = { x: a.x + NODE_SIZE.width, y: a.y + NODE_SIZE.height / 2 }
+              const end = { x: b.x, y: b.y + NODE_SIZE.height / 2 }
+              return <path key={`${from}-${to}`} data-dependency={`${from}:${to}`} d={`M${start.x},${start.y} C${start.x + 45},${start.y} ${end.x - 45},${end.y} ${end.x},${end.y}`} markerEnd="url(#blueprint-arrow)" />
+            })}
+          </svg>
+          {choices.versions.sourceVersionId ? <div className="blueprint-source-input" style={{ left: INITIAL_POSITIONS.source.x, top: INITIAL_POSITIONS.source.y }}>
+            <strong>素材来源</strong>
+            <span>{choices.versions.sourceVersionId.find((choice) => choice.value === String(sourceVersionId))?.label ?? '尚未选择素材来源版本'}</span>
+            <Button size="small" onClick={() => navigate(scope.href('project.sources'))}>管理素材</Button>
+          </div> : null}
           {specs.map((spec) => (
+            <div key={spec.key} className="blueprint-node-group" style={{ left: positions[spec.key]?.x ?? 30, top: positions[spec.key]?.y ?? 30 }}>
             <button
               key={spec.key}
               type="button"
@@ -481,9 +673,36 @@ export function BlueprintPage() {
               }
               aria-current={spec.key === activeSpec?.key ? 'true' : undefined}
               ref={(element) => { nodeRefs.current[spec.key] = element }}
+              draggable={!isReadOnly}
+              onDragStart={(event) => event.preventDefault()}
+              onPointerDown={(event) => {
+                if (isReadOnly || event.button !== 0) return
+                dragging.current = { key: spec.key, start: { x: event.clientX, y: event.clientY }, origin: positions[spec.key] ?? { x: 30, y: 30 } }
+                dragged.current = false
+                event.currentTarget.setPointerCapture(event.pointerId)
+              }}
+              onPointerMove={(event) => {
+                const drag = dragging.current
+                if (!drag || drag.key !== spec.key) return
+                const dx = (event.clientX - drag.start.x) / zoom
+                const dy = (event.clientY - drag.start.y) / zoom
+                if (Math.abs(dx) + Math.abs(dy) < 5) return
+                dragged.current = true
+                setPositions((previous) => ({ ...previous, [spec.key]: { x: Math.max(0, Math.min(1340, drag.origin.x + dx)), y: Math.max(0, Math.min(260, drag.origin.y + dy)) } }))
+              }}
+              onPointerUp={() => { dragging.current = null }}
+              onPointerCancel={() => { dragging.current = null }}
+              onKeyDown={(event) => {
+                if (!event.altKey || isReadOnly || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return
+                event.preventDefault()
+                const delta = { x: event.key === 'ArrowLeft' ? -20 : event.key === 'ArrowRight' ? 20 : 0, y: event.key === 'ArrowUp' ? -20 : event.key === 'ArrowDown' ? 20 : 0 }
+                setPositions((previous) => ({ ...previous, [spec.key]: { x: Math.max(0, Math.min(1340, (previous[spec.key]?.x ?? 30) + delta.x)), y: Math.max(0, Math.min(260, (previous[spec.key]?.y ?? 30) + delta.y)) } }))
+              }}
               onClick={() => {
+                if (dragged.current) { dragged.current = false; return }
                 setSearchParams((params) => {
                   params.set('node', spec.key)
+                  params.delete('step')
                   return params
                 })
               }}
@@ -496,7 +715,13 @@ export function BlueprintPage() {
                 {getNodeHealth(spec, nodeValues(draft, spec), choices).label}
               </span>
             </button>
+            {spec.key === activeSpec?.key ? <div className="blueprint-substeps" aria-label={`${spec.label}配置步骤`}>
+              {configurableSteps(spec).map((step) => <button key={step.key} type="button" aria-current={activeStep?.key === step.key ? 'step' : undefined} onClick={() => setSearchParams((params) => { params.set('node', spec.key); params.set('step', step.key); return params })}>{step.label}</button>)}
+            </div> : null}
+            </div>
           ))}
+          </div>
+          </div>
           </div>
         </section>
 
@@ -568,17 +793,29 @@ export function BlueprintPage() {
                   </div>
                 </Card>
               ) : (
+                <>
+                <div className="blueprint-step-tabs" role="group" aria-label="选择配置小步骤">
+                  {activeSteps.map((step) => <Button key={step.key} size="small" type={activeStep?.key === step.key ? 'primary' : 'tertiary'} theme={activeStep?.key === step.key ? 'light' : 'borderless'} onClick={() => setSearchParams((params) => { params.set('step', step.key); return params })}>{step.label}</Button>)}
+                </div>
+                <h3 className="blueprint-step-title">{activeStep?.label}</h3>
                 <NodeFields
-                  spec={activeSpec}
-                  values={nodeValuesForActive}
+                  spec={{ ...activeSpec, fields: activeStep?.fields ?? activeSpec.fields }}
+                  values={activeSpec.key === 'standard' && !Array.isArray(nodeValuesForActive.steps)
+                    ? { ...nodeValuesForActive, steps: standardVersions.find((version) => version.id === Number(nodeValuesForActive.standardVersionId))?.payload?.steps ?? [] }
+                    : nodeValuesForActive}
                   disabled={isReadOnly || !canEdit}
                   choices={choices}
                   onChange={(name, value) => {
                     if (!draft || !activeSpec) return
                     const nextValues = { ...nodeValuesForActive, [name]: value }
-                    setDraft(withNodeValues(draft, activeSpec, nextValues))
+                    if (activeSpec.key === 'standard' && name === 'standardVersionId') delete nextValues.steps
+                    const nextDraft = withNodeValues(draft, activeSpec, nextValues)
+                    setDraft(nextDraft)
+                    if (JSON.stringify(nextDraft) === JSON.stringify(current?.payload)) setAutoSave(true)
+                    setSaveError(null)
                   }}
                 />
+                </>
               )}
 
               {relatedPage ? (
@@ -601,7 +838,7 @@ export function BlueprintPage() {
 
               <div className="mt-4">
                 <Text type="tertiary" size="small" className="block mb-1">
-                  变更理由（必填，方便团队回溯）
+                  变更说明（可选，留空时自动记录修改的步骤）
                 </Text>
                 <TextArea
                   value={changeReason}
@@ -616,8 +853,20 @@ export function BlueprintPage() {
               {saveError ? (
                 <div className="wizard-field__error mt-2" role="alert">
                   {saveError}
+                  <Button size="small" onClick={async () => {
+                    try {
+                      const [blueprintHead, standardHead] = await Promise.all([
+                        client.get<VersionsResponse>(`${projectPath(scope.projectId)}/blueprint-versions?limit=1`),
+                        client.get<VersionsResponse>(`${projectPath(scope.projectId)}/standard-versions?limit=1`),
+                      ])
+                      setHeadRevision(blueprintHead.data.document?.revision ?? 0)
+                      setStandardRevision(standardHead.data.document?.revision ?? 0)
+                      setSaveError('已重读最新版本。你的草稿仍保留，请确认修改后点击保存重试。')
+                    } catch { setSaveError('读取最新版本失败，草稿已保留。请恢复连接后重试。') }
+                  }}>重读版本并保留草稿</Button>
                 </div>
               ) : null}
+              {pendingStandardVersion !== null ? <div role="status" className="blueprint-save-notice">思维标准 v{pendingStandardVersion} 已保存；蓝图关联保存中。若保存失败，重试会继续关联这一版本。</div> : null}
 
               {hasInvalidJSON ? (
                 <div className="blueprint-validation-error" role="alert">
@@ -626,13 +875,13 @@ export function BlueprintPage() {
               ) : null}
 
               <div className="blueprint-save-bar mt-3">
-                <span className={dirty ? 'blueprint-dirty' : 'blueprint-clean'}>{dirty ? '有未保存修改' : '已保存'}</span>
+                <span className={dirty ? 'blueprint-dirty' : 'blueprint-clean'} role="status">{saving ? '正在保存新版本' : dirty ? autoSave ? '等待自动保存' : '草稿保留，请重试保存' : '已保存'}</span>
                 <Button
                   theme="solid"
                   type="primary"
                   icon={<Save size={14} />}
                   loading={saving}
-                  disabled={isReadOnly || !canEdit || hasInvalidJSON}
+                  disabled={isReadOnly || !canEdit || hasInvalidJSON || !dirty}
                   onClick={() => void save()}
                 >
                   保存为新版本
@@ -641,7 +890,7 @@ export function BlueprintPage() {
                   <Button
                     icon={<Copy size={14} />}
                     onClick={() => {
-                      // 复制 = 把当前版本内容作为新草稿（仍要填理由、仍会新建版本）。
+                      // Copy immutable history into the current editable draft.
                       preserveDraftAfterNavigation.current = viewingVersion !== null
                       setDraft(current.payload)
                       setSearchParams((params) => {
@@ -1015,6 +1264,14 @@ function StandardStepsEditor({
   const update = (next: StepDraft[]) => onChange(fromStepDrafts(next))
   const patch = (index: number, changes: Partial<StepDraft>) =>
     update(steps.map((step, position) => (position === index ? { ...step, ...changes } : step)))
+  const dragIndex = useRef<number | null>(null)
+  const moveStep = (from: number, to: number) => {
+    if (disabled || from === to || from < 0 || to < 0 || to >= steps.length) return
+    const next = [...steps]
+    const [step] = next.splice(from, 1)
+    next.splice(to, 0, step)
+    update(next)
+  }
   const missingCheckpoint = steps.filter((step) => step.title.trim() !== '' && step.checkpoint.trim() === '').length
   return (
     <div className="blueprint-steps-editor" data-steps-editor="true">
@@ -1044,7 +1301,12 @@ function StandardStepsEditor({
       ) : (
         <div className="blueprint-steps-editor__list">
           {steps.map((step, index) => (
-            <div className="blueprint-steps-editor__row" key={`${step.id}-${index}`} data-step-index={index}>
+            <div className="blueprint-steps-editor__row" key={`${step.id}-${index}`} data-step-index={index}
+              draggable={!disabled}
+              onDragStart={() => { dragIndex.current = index }}
+              onDragOver={(event) => { if (!disabled) event.preventDefault() }}
+              onDrop={(event) => { event.preventDefault(); if (dragIndex.current !== null) moveStep(dragIndex.current, index); dragIndex.current = null }}
+              onDragEnd={() => { dragIndex.current = null }}>
               <div className="wizard-field">
                 <label className="wizard-field__label" htmlFor={`${id}-title-${index}`}>
                   步骤 {index + 1}：做什么
@@ -1083,6 +1345,8 @@ function StandardStepsEditor({
                 />
               </div>
               <div className="blueprint-steps-editor__actions">
+                <Button size="small" type="tertiary" icon={<ArrowUp size={13} />} aria-label={`上移步骤 ${index + 1}`} disabled={disabled || index === 0} onClick={() => moveStep(index, index - 1)} />
+                <Button size="small" type="tertiary" icon={<ArrowDown size={13} />} aria-label={`下移步骤 ${index + 1}`} disabled={disabled || index === steps.length - 1} onClick={() => moveStep(index, index + 1)} />
                 <Button
                   size="small"
                   type="tertiary"
@@ -1098,7 +1362,7 @@ function StandardStepsEditor({
       )}
       {missingCheckpoint > 0 ? (
         <Text type="warning" size="small" className="block mt-2" data-steps-missing-checkpoint="true">
-          有 {missingCheckpoint} 步只写了「做什么」而没有「怎么算完成」。保存后这些步骤无法被验证。
+          有 {missingCheckpoint} 步只写了「做什么」而没有「怎么算完成」。补齐检查点后才能保存。
         </Text>
       ) : null}
     </div>

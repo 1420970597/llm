@@ -3429,12 +3429,11 @@ a {
 .blueprint-page .blueprint-canvas {
   grid-area: canvas;
   min-width: 0;
-  min-height: 680px;
+  min-height: 420px;
   position: relative;
   /* issue #197 第 11 条：横向流程带在窄屏上必须**在画布内部**滚动，
      而不是把整页推出横向滚动条（#197 第 17 条明确禁止整页横向溢出）。 */
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
   padding: 30px;
   border: 1px solid var(--panel-border);
   border-radius: 8px;
@@ -3444,24 +3443,35 @@ a {
 }
 
 /*
- * 横向工作流（issue #197 第 11 条）。
- *
- * 旧形态是 `flex-direction: column` 的纵向卡片堆叠（890×791 实测），
- * 画布内没有任何连线，因此「步骤之间是什么关系」只能靠读文字。
- * 现在：
- *   - 节点横向排列，按数据流顺序（覆盖 → 标准 → 生成 → 评估 → 规则 → 人工 → 交付）；
- *   - 节点之间用 `::after` 画箭头，明确「依赖方向」；
- *   - Tab 顺序天然等于视觉顺序（DOM 顺序即渲染顺序），键盘可访问性不退化。
+ * 依赖画布（issue #197 第 11 条）。SVG 表示真实配置与证据依赖：
+ * 覆盖、标准、素材汇入生成，独立评估和规则检查并行提供人工检查证据。
+ * 节点可拖动整理布局，执行依赖不随布局变化；键盘可选节点和移动布局。
  */
 .blueprint-page .blueprint-nodes {
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
-  justify-content: flex-start;
-  gap: 0;
-  margin-top: 18px;
+  display: block;
+  position: relative;
+  transform-origin: top left;
+  margin: 0;
   min-height: 0;
 }
+.blueprint-canvas__tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.blueprint-canvas__viewport { overflow: auto; min-height: 260px; max-height: 440px; margin-top: 18px; }
+.blueprint-canvas__extent { position: relative; }
+.blueprint-edges { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.blueprint-edges > path { fill: none; stroke: var(--text-muted); stroke-width: 1.6; }
+.blueprint-edges marker path { fill: var(--text-muted); }
+.blueprint-node-group { position: absolute; width: 236px; }
+.blueprint-page .blueprint-node-group .blueprint-node { width: 236px; min-height: 124px; margin: 0; touch-action: none; cursor: grab; }
+.blueprint-page .blueprint-node-group .blueprint-node:active { cursor: grabbing; }
+.blueprint-page .blueprint-node-group .blueprint-node::before { display: none; }
+.blueprint-substeps { display: grid; gap: 4px; margin-top: 8px; }
+.blueprint-substeps button { min-height: 30px; padding: 5px 10px; border: 1px solid var(--panel-border); border-radius: 5px; background: var(--panel-strong); text-align: left; color: var(--text); }
+.blueprint-substeps button[aria-current] { border-color: var(--accent); font-weight: 600; }
+.blueprint-step-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 16px 0; }
+.blueprint-step-title { font-size: 14px; margin: 8px 0 12px; }
+.blueprint-save-notice { font-size: 12px; color: var(--text-muted); margin-top: 12px; }
+.blueprint-source-input { position: absolute; width: 236px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px; border: 1px solid var(--panel-border); border-radius: 6px; background: var(--panel-strong); }
+.blueprint-source-input span { width: 100%; font-size: 12px; overflow-wrap: anywhere; }
 /* 连接线的旧实现（绝对定位的竖线）在横向布局下没有意义，必须关掉。 */
 .blueprint-page .blueprint-nodes::before { display: none; }
 

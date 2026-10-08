@@ -8,6 +8,52 @@ import (
 	"github.com/1420970597/llm/internal/store"
 )
 
+func TestAnalysisStructureCountsProducedSampleFacts(t *testing.T) {
+	coverage := &model.CoveragePayload{Domains: []model.CoverageDomain{{StableID: "domain", Name: "领域", Directions: []model.CoverageDirection{
+		{StableID: "left", Name: "方向一", Quota: 2}, {StableID: "right", Name: "方向二", Quota: 1},
+	}}}}
+	rows := []store.SampleVersionFact{
+		{DomainStableID: "domain", DirectionStableID: "left"},
+		{DomainStableID: "domain", DirectionStableID: "left"},
+		{DomainStableID: "domain", DirectionStableID: "right"},
+	}
+	groups := analyzeStructure(coverage, rows)
+	if len(groups) != 2 || groups[0].Produced != 2 || groups[1].Produced != 1 {
+		t.Fatalf("产出必须与真实样本版本逐方向对账: %+v", groups)
+	}
+}
+
+func TestAnalysisStructureKeepsUnproducedAndPartiallyProducedDirections(t *testing.T) {
+	coverage := &model.CoveragePayload{Domains: []model.CoverageDomain{{StableID: "domain", Directions: []model.CoverageDirection{
+		{StableID: "partial", Quota: 4}, {StableID: "missing", Quota: 3},
+	}}}}
+	for _, test := range []struct {
+		name     string
+		rows     []store.SampleVersionFact
+		produced int
+	}{
+		{"partial", []store.SampleVersionFact{{DomainStableID: "domain", DirectionStableID: "partial"}}, 1},
+		{"empty", nil, 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			groups := analyzeStructure(coverage, test.rows)
+			if len(groups) != 2 || groups[0].Planned != 4 || groups[0].Produced != test.produced || groups[1].Planned != 3 || groups[1].Produced != 0 {
+				t.Fatalf("不得把计划分配量当已产出，零产出方向仍需显示: %+v", groups)
+			}
+		})
+	}
+}
+
+func TestAnalysisStructureWithoutCoverageDoesNotInventAPlan(t *testing.T) {
+	groups := analyzeStructure(nil, []store.SampleVersionFact{
+		{DomainStableID: "domain", DirectionStableID: "direction"},
+		{DomainStableID: "domain", DirectionStableID: "direction"},
+	})
+	if len(groups) != 1 || groups[0].Produced != 2 || groups[0].Planned != 0 {
+		t.Fatalf("无覆盖版本只能报告真实产出，不能虚构计划: %+v", groups)
+	}
+}
+
 // 本文件验证数据集分析里的**长度口径**（issue #197 第 13 条）。
 //
 // 缺陷形态：`LengthAnalysis.FieldCount` 硬编码为 1，而读数实际是多个文本字段的
