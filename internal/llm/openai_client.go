@@ -50,6 +50,8 @@ type chatCompletionStreamChunk struct {
 	} `json:"choices"`
 }
 
+var errCompletionTruncated = fmt.Errorf("provider output truncated: completion length limit reached")
+
 func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload map[string]any, timeout time.Duration) (chatCompletionResponse, error) {
 	var decoded chatCompletionResponse
 	if timeout <= 0 {
@@ -166,6 +168,11 @@ func requestChatCompletion(ctx context.Context, provider ProviderConfig, payload
 			return decoded, accountingErr
 		}
 		if err != nil {
+			if err == errCompletionTruncated {
+				// Repeating the same frozen output limit only incurs another
+				// charge; a new batch must explicitly increase that limit.
+				return decoded, err
+			}
 			lastErr = err
 			if attempt < maxAttempts {
 				time.Sleep(time.Duration(attempt) * time.Second)
@@ -315,6 +322,9 @@ func readProviderError(res *http.Response) (string, bool) {
 
 func decodeChatCompletionBody(raw []byte, target *chatCompletionResponse) error {
 	trimmed := bytes.TrimSpace(raw)
+	if completionReachedLengthLimit(trimmed) {
+		return errCompletionTruncated
+	}
 	if err := json.Unmarshal(trimmed, target); err == nil {
 		if len(target.Choices) > 0 && target.Choices[0].Message.Content == "" {
 			target.Choices[0].Message.Content = firstNonEmpty(
@@ -363,6 +373,43 @@ func decodeChatCompletionBody(raw []byte, target *chatCompletionResponse) error 
 
 	preview := string(trimmed)
 	return fmt.Errorf("provider returned undecodable response (len=%d): %s", len(trimmed), preview)
+}
+
+func completionReachedLengthLimit(raw []byte) bool {
+	var hasLengthLimit func(any) bool
+	hasLengthLimit = func(value any) bool {
+		switch typed := value.(type) {
+		case map[string]any:
+			if reason, _ := typed["finish_reason"].(string); reason == "length" {
+				return true
+			}
+			for _, nested := range typed {
+				if hasLengthLimit(nested) {
+					return true
+				}
+			}
+		case []any:
+			for _, nested := range typed {
+				if hasLengthLimit(nested) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	var envelope map[string]any
+	if json.Unmarshal(raw, &envelope) == nil {
+		return hasLengthLimit(envelope)
+	}
+	// Existing object extraction handles both JSON wrappers and complete SSE
+	// chunks without treating a quoted example in content as provider metadata.
+	for _, payload := range extractJSONObjectPayloads(string(raw)) {
+		var decoded map[string]any
+		if json.Unmarshal([]byte(payload), &decoded) == nil && hasLengthLimit(decoded) {
+			return true
+		}
+	}
+	return false
 }
 
 func decodeChatCompletionSSE(raw []byte) (string, error) {

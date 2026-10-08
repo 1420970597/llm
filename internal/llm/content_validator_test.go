@@ -79,6 +79,66 @@ func testQuestion() model.Question {
 	return model.Question{ID: 7, Content: "在某某位置有某某单位巡逻，遇到突发情况，请做出规划。"}
 }
 
+func TestGenerateSftValidatesFinalContentAndOptionalAnswer(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		reasoning     string
+		answer        string
+		includeAnswer bool
+		valid         bool
+	}{
+		{"valid-full-output", validReasoningText, validAnswerText, true, true},
+		{"reasoning-only-output", validReasoningText, "", false, true},
+		{"disabled-answer-is-cleared", validReasoningText, "...", false, true},
+		{"format-example-is-not-output", "...", "...", true, false},
+		{"placeholder-reasoning-only", "...", "", false, false},
+		{"placeholder-answer", validReasoningText, "...", true, false},
+		{"missing-requested-answer", validReasoningText, "", true, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body, err := json.Marshal(SftPayload{ChainOfThought: test.reasoning, Answer: test.answer})
+			if err != nil {
+				t.Fatal(err)
+			}
+			calls := 0
+			server := payloadProvider(t, string(body), &calls)
+			result, err := GenerateSft(context.Background(), payloadProviderConfig(server), SftInput{
+				Question: testQuestion(), IncludeAnswer: test.includeAnswer,
+			})
+			if calls != 1 {
+				t.Fatalf("actual provider calls=%d, want=1", calls)
+			}
+			if !test.valid {
+				if !errors.Is(err, ErrInvalidContent) {
+					t.Fatalf("placeholder output must fail content validation, result=%+v err=%v", result, err)
+				}
+				return
+			}
+			if err != nil || result.ChainOfThought != test.reasoning {
+				t.Fatalf("valid output=%+v err=%v", result, err)
+			}
+			if !test.includeAnswer && result.Answer != "" {
+				t.Fatalf("disabled answer retained: %q", result.Answer)
+			}
+		})
+	}
+}
+
+func TestDefaultSftPromptUsesFieldContractWithoutCopyablePlaceholder(t *testing.T) {
+	for _, includeAnswer := range []bool{true, false} {
+		_, prompt := buildSftPrompt(SftInput{Question: testQuestion(), IncludeAnswer: includeAnswer})
+		if strings.Contains(prompt, `"chainOfThought":"..."`) || strings.Contains(prompt, `"answer":"..."`) {
+			t.Fatalf("prompt contains a copyable placeholder: %s", prompt)
+		}
+		if !strings.Contains(prompt, "chainOfThought 和 answer 两个字符串字段") || !strings.Contains(prompt, "不得复制格式示例") {
+			t.Fatalf("prompt must specify fields and forbid format examples: %s", prompt)
+		}
+		if !includeAnswer && !strings.Contains(prompt, "answer 字段返回空字符串") {
+			t.Fatalf("reasoning-only contract lost: %s", prompt)
+		}
+	}
+}
+
 // TestGenerateReasoningRejectsPlaceholderContent 是 issue #7 的回归用例。
 //
 // 表中每一条都是**合法 JSON**，此前会被判为 generated。修复后必须判为 invalid。

@@ -51,6 +51,12 @@ sequenceDiagram
 
 该失败最初呈现 invalid_json。随后独立安全探针发现供应商 SSE 在 `delta.reasoning_details[].text` 中发送思考；原 generic SSE 解析把该 text 合并入正文。探针并非上次请求回放，只证明当前供应商形态：HTTP 200、3418 个 SSE 记录、`finish_reason=stop`、最终 JSON 完整、思考正文 5052 字符、input=214、output=3417，其中 reasoning_tokens=3245。因此不将问题归咎于 HTTP 状态或未经证实的截断。修复扩展原有思考字段隔离；正文多个 chunk 仍按顺序合并，同 chunk 的思考元数据不混入正文。
 
+第三轮运行 ID `2026-10-08T06-09-29-692Z` 新建项目 4、批次 4。真实问题生成通过，批次正常收敛 completed；随后脚本拒绝 reasoning/answer 均为“...”的样本，未进入发布。问题回执 `gen_01M4D2397J2T7BEJ6E73R23YFG` 报告 input=546、output=2987；SFT 回执 `gen_01M4D23RN2RF6FC8C5KYMFXD3F` 报告 input=760、output=4097。旧生成器只检查推理非空，因此合法 JSON 占位内容通过了结构校验。
+
+SFT 独立探针先遇 HTTP 503，重试后 HTTP 200，但 `finish_reason=length`，final content 为空，4096 个 completion token 全为 reasoning token。该探针也不是原请求的回放；不能断言第三轮对应回执具有完全相同响应体。它证明 4096 输出上限存在真实的思考耗尽边界。现在客户端在正文或思考 fallback 前检查 `finish_reason=length`，明确返回 truncated，仍先结算真实用量，不再重复请求同一冻结上限。`GenerateSft` 复用原内容校验拒绝占位、过短与自我复制；不需要答案时仅校验推理并清空答案。默认提示改为字段说明，去除可复制的省略号 JSON 示例。
+
+下一轮脚本通过 `JOURNEY_MAX_TOKENS` 显式设置输出上限，并把实际值写入 evidence；改变上限只对新项目和新蓝图生效，不改写原批次或样本。
+
 ```mermaid
 stateDiagram-v2
     [*] --> Queued
@@ -74,7 +80,9 @@ stateDiagram-v2
 | 维护循环处理提交后崩溃窗口 | 真 Postgres pending/leased/committed 测试通过 | 活跃作业不能被误收敛 |
 | 包装 JSON 正文与思考隔离 | 正常、空正文、示例 JSON、嵌套思考测试通过 | 兼容既有字符串 reasoning-only 行为 |
 | SSE reasoning_details 隔离 | 多 chunk、同 chunk 混合、思考元数据单独返回覆盖 | 单独结构化思考不会生成最终答案 |
-| 最终全量 Go/真实数据库门禁 | 1291 PASS、11 可选 SKIP、必需零缺失 | 43 个迁移完成，gofmt、vet、build 通过 |
+| SFT 内容准入 | 正常、无答案、占位、缺少必需答案用例覆盖 | 复用既有 validator，不制造平行校验逻辑 |
+| 输出截断与计费 | JSON、包装、SSE length 与 quoted 示例边界覆盖 | 真实 token 先结算；冻结上限耗尽不重复付费重试 |
+| 最终全量 Go/真实数据库门禁 | 1302 PASS、11 可选 SKIP、必需零缺失 | 43 个迁移完成，gofmt、vet、build 通过 |
 | 完整 SFT/GRPO 到下载 | 尚在复验 | 仅通过导入或 HTTP 200 不算完整成功 |
 | 独立裁判、真人接受与 48 小时灰度 | 缺少真实证据 | 保留 Issue #160 的未满足边界 |
 

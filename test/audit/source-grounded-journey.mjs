@@ -16,9 +16,11 @@ assert(baseURL, 'JOURNEY_URL must point to an isolated acceptance stack')
 const webURL = process.env.JOURNEY_WEB_URL || baseURL
 const providerID = Number(process.env.JOURNEY_PROVIDER_ID)
 assert(providerID > 0, 'A real provider ID is required')
+const generationMaxTokens = Number(process.env.JOURNEY_MAX_TOKENS || 8192)
+assert(Number.isInteger(generationMaxTokens) && generationMaxTokens > 0, 'JOURNEY_MAX_TOKENS must be a positive integer')
 const api = await request.newContext({ baseURL, timeout: 30000 })
 const runID = new Date().toISOString().replace(/[:.]/g, '-')
-const evidence = { runID, baseURL, webURL, sourceRevision: process.env.JOURNEY_SHA || 'working-tree', projects: [], checks: [] }
+const evidence = { runID, baseURL, webURL, generationMaxTokens, sourceRevision: process.env.JOURNEY_SHA || 'working-tree', projects: [], checks: [] }
 const outputDir = `output/playwright/grounding-${runID}`
 mkdirSync(outputDir, { recursive: true })
 
@@ -101,7 +103,7 @@ async function runTarget(targetKind) {
   const blueprintOld = await document(projectID, 'blueprint')
   const blueprintPayload = structuredClone(blueprintOld.payload)
   blueprintPayload.nodes.coverage.coverageVersionId = coverage.id
-  Object.assign(blueprintPayload.nodes.generation, { sourceVersionId: source.id, modelConnectionId: providerID, concurrency: 1, maxTokens: 4096 })
+  Object.assign(blueprintPayload.nodes.generation, { sourceVersionId: source.id, modelConnectionId: providerID, concurrency: 1, maxTokens: generationMaxTokens })
   const blueprint = await save(projectID, 'blueprint', blueprintOld, blueprintPayload)
   const batch = await call('POST', `${prefix}/batches`, { purpose: 'pilot', unitCount: 1, blueprintVersionId: blueprint.id })
   result.batchID = Number(batch.id.replace(/^b_/, ''))

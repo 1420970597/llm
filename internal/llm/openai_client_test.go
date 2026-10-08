@@ -176,6 +176,30 @@ func TestDecodeWrappedChatCompletionRejectsEmptyContent(t *testing.T) {
 	}
 }
 
+func TestDecodeChatCompletionReportsLengthLimitBeforeReasoningFallback(t *testing.T) {
+	for _, body := range []string{
+		`{"choices":[{"message":{"content":"{\"answer\":\"...\"}"},"finish_reason":"length"}]}`,
+		`{"success":true,"data":{"choices":[{"message":{"content":"","reasoning_content":"格式示例：{\"answer\":\"...\"}"},"finish_reason":"length"}]}}`,
+		`{"success":true,"data":{"output_text":"partial","finish_reason":"length"}}`,
+		"data: {\"choices\":[{\"delta\":{\"reasoning_details\":[{\"text\":\"内部推理\"}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n",
+		"data: {\"choices\":[{\"delta\":{\"content\":\"{\\\"answer\\\":\\\"已返回但未完成\\\"}\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n",
+	} {
+		var decoded chatCompletionResponse
+		if err := decodeChatCompletionBody([]byte(body), &decoded); err != errCompletionTruncated {
+			t.Fatalf("length limit err=%v, want explicit truncation", err)
+		}
+		if len(decoded.Choices) != 0 {
+			t.Fatalf("truncated response exposed usable choices: %+v", decoded.Choices)
+		}
+	}
+	// Metadata-looking JSON inside the final answer is ordinary content.
+	const valid = `{"choices":[{"message":{"content":"{\"finish_reason\":\"length\"}"},"finish_reason":"stop"}]}`
+	var decoded chatCompletionResponse
+	if err := decodeChatCompletionBody([]byte(valid), &decoded); err != nil {
+		t.Fatalf("quoted metadata caused false truncation: %v", err)
+	}
+}
+
 func TestUnmarshalStructuredContentHandlesCodeFenceAndProse(t *testing.T) {
 	var fenced []string
 	if err := unmarshalStructuredContent("```json\n[\"甲\",\"乙\"]\n```", &fenced); err != nil {
