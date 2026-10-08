@@ -366,6 +366,14 @@ func (app *application) listConnectionOptions(w http.ResponseWriter, r *http.Req
 		IsActive     bool   `json:"isActive"`
 		// APIKeyMasked 是掩码后的标识（**永远不是密钥本体**）。
 		APIKeyMasked string `json:"apiKeyMasked"`
+		// ConfigIssues 是「这条连接当前不能用于生成」的原因清单（issue #209）。
+		//
+		// 为什么由服务端下发而不是让前端判空字符串：判据只有一份
+		// （store.ProviderConfigIssues，与保存路径 ValidateProviderInput 同源）。
+		// 前端各自判断会让蓝图下拉与连接设置列表出现两种口径 —— 实测形态是
+		// 6 个**没有任何文字**的下拉选项，用户无法判断该选哪个，
+		// 选中后要到批次已开跑才报 `model connection unavailable`。
+		ConfigIssues []string `json:"configIssues"`
 	}
 	type storageOption struct {
 		ID           int64  `json:"id"`
@@ -383,6 +391,7 @@ func (app *application) listConnectionOptions(w http.ResponseWriter, r *http.Req
 			ID: provider.ID, Name: provider.Name, Model: provider.Model,
 			ProviderType: provider.ProviderType, IsActive: provider.IsActive,
 			APIKeyMasked: provider.APIKeyMasked,
+			ConfigIssues: store.ProviderConfigIssues(provider),
 		})
 	}
 	storageOptions := make([]storageOption, 0, len(profiles))
@@ -399,6 +408,7 @@ func (app *application) listConnectionOptions(w http.ResponseWriter, r *http.Req
 		"notes": []string{
 			"这里只返回非秘密标识：密钥永不回显，也不会因为选择连接而被复制到别处",
 			"新增/修改连接与「测试连接」属于管理员设置页（测试与保存分离：测试不会覆盖已保存配置）",
+			"configIssues 列出该连接当前不能用于生成的原因（配置完整性由服务端判定，与保存时的校验同一份规则）",
 		},
 	})
 }

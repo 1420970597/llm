@@ -21,7 +21,7 @@
  * 是被证明的，而不是被声称的（与 `l15_app_ux.mjs` 同一约定）。
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -30,6 +30,27 @@ import { fileURLToPath } from 'node:url'
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relative) => readFileSync(path.join(REPO_ROOT, relative), 'utf8')
 
+/**
+ * 递归收集 `apps/web-user/src` 下全部 `.ts` / `.tsx`（#211 方向 3）。
+ *
+ * 为什么要递归而不是手工清单：#211 的成因就是「同一取值域有**第四条**渲染路径没被覆盖」
+ * —— 清单式守卫只能证明「我列出的那些文件是好的」，证明不了「没有第五处」。
+ * 这与 #192（Markdown 星号守卫退回手工清单）是同一教训。
+ */
+function collectFrontendSources(directory) {
+  const found = []
+  for (const entry of readdirSync(directory).sort()) {
+    const full = path.join(directory, entry)
+    if (statSync(full).isDirectory()) {
+      found.push(...collectFrontendSources(full))
+      continue
+    }
+    if (entry.endsWith('.ts') || entry.endsWith('.tsx')) {
+      found.push(full)
+    }
+  }
+  return found
+}
 // #197 第 11 条 §A：覆盖矩阵 m×n×z 结构读数必须在**真实模块**里可调用，
 // 因此这里用 esbuild 打包生产模块 src/studio/coverageStructure.ts，
 // 让「公式算术是否成立」成为可核对的读数，而不是匹配固定字符串。
@@ -62,6 +83,11 @@ const EVAL_CATEGORY_ROUTE = read('apps/api/routes_eval_dimensions.go')
 const BATCH_FAILURE_VIEW = read('apps/api/routes_studio_batches.go')
 const CD_WORKFLOW = read('.github/workflows/cd.yml')
 const MARKDOWN_GUARD = read('test/l15_markdown_ui.mjs')
+// #209：连接配置完整性的两个消费方（判定表、两条读路径、蓝图下拉）。
+const ADMIN_VALIDATION = read('internal/store/admin_validation.go')
+const ADMIN_STORE = read('internal/store/admin_store.go')
+const SETTINGS_ROUTES = read('apps/api/routes_studio_settings.go')
+const BLUEPRINT_PAGE = read('apps/web-user/src/studio/pages/BlueprintPages.tsx')
 
 const failures = []
 const results = []
@@ -561,6 +587,60 @@ function problemsWithReviewStatusLabels(qualitySrc, reviewSrc, enumSrc) {
   if (!/unreviewedScopeNotice/.test(qualitySrc)) {
     problems.push('QualityPages 未说明「未审阅内容能否纳入评测」（#211 第 2 项要求）')
   }
+  // #211 方向 2：行内标记 + 提交前提示。只有页顶一句背景说明是不够的 ——
+  // 用户点「创建并冻结实验」时不会再读一遍背景文案。
+  if (!/data-scope-unreviewed-row/.test(qualitySrc)) {
+    problems.push('已勾选的未审阅内容没有行内标记（用户无法回答「我刚勾的这条算不算已验证」）')
+  }
+  if (!/Modal\.confirm\(/.test(qualitySrc) || !/selectedUnreviewedCount/.test(qualitySrc)) {
+    problems.push('提交前没有针对「本次纳入了未审阅内容」的确认（#211 方向 2 的提交前提示）')
+  }
+  return problems
+}
+
+/**
+ * #211 方向 3：审阅枚举不得在**任何**前端渲染点裸渲染（全树递归扫描）。
+ *
+ * 为什么必须是递归扫描而不是手工清单：#211 的成因就是「同一个取值域有
+ * **第四条**渲染路径没被覆盖」（前三条已由 #191 修）。清单式断言只能证明
+ * 「我列出的文件是好的」，证明不了「没有第五处」—— 这正是 #192 的教训
+ * （Markdown 守卫退回手工清单后星号又漏了 5 个页面）。
+ *
+ * 裸渲染的形态：JSX 子节点直接输出枚举字段
+ * （`>{sample.reviewStatus}<` / `>{item.effectiveAction}<`）。
+ * 以下用法**不**算裸渲染，不得误报（误报会让人直接关掉守卫）：
+ *   - `title={x.reviewStatus}`     —— 刻意保留原值供排查（守卫只认 `>{...}` 形式）；
+ *   - `describeReviewStatus(x)`    —— 正确走单一来源；
+ *   - `reviewStatusColor(x)`       —— 颜色映射；
+ *   - `x.reviewStatus === 'pending'` —— 比较，不是渲染。
+ * 因此用 `>{` 前缀锚定「JSX 子节点位置」，而不是只要出现字段名就报错。
+ *
+ * sources 是 `{ name, source }` 列表（由调用方递归收集）：把「扫什么」与
+ * 「怎么判」分开，变异自证才能把伪造源码喂进来。
+ */
+function problemsWithBareReviewStatusRender(sources) {
+  const problems = []
+  if (!Array.isArray(sources) || sources.length === 0) {
+    problems.push('没有可扫描的前端源码（守卫会空转）')
+    return problems
+  }
+  // 字尾边界（\b）让 `reviewStatusColor(` / `describeReviewStatus(` 不被当成裸渲染；
+  // `(?:[A-Za-z_$][\w$]*\.)*` 允许 `sample.` / `detail.sample.` 这类前缀。
+  const bare = />\{\s*(?:[A-Za-z_$][\w$]*\.)*(reviewStatus|effectiveAction)\b\s*\}/g
+  let scanned = 0
+  for (const entry of sources) {
+    scanned++
+    const code = stripComments(entry.source)
+    code.split('\n').forEach((line, index) => {
+      bare.lastIndex = 0
+      if (bare.test(line)) {
+        problems.push(`${entry.name}:${index + 1} 裸渲染审阅枚举（应用 describeReviewStatus）：${line.trim().slice(0, 90)}`)
+      }
+    })
+  }
+  if (scanned < 40) {
+    problems.push(`只扫到 ${scanned} 个前端源码文件（递归收集可能失效）`)
+  }
   return problems
 }
 
@@ -617,6 +697,74 @@ function problemsWithBatchTimelineLabels(runSrc, modelSrc, apiSrc, storeSrc) {
 // 磁贴与当前页共用一个 href、文档承诺与实现分家、审计记录与「查看」目标脱钩、
 // 服务端字段错误与页面提示脱钩。因此断言的都是**接线**，而不只是「函数存在」。
 // ---------------------------------------------------------------------------
+
+/**
+ * #209：模型连接的「配置完整性」必须只有一份权威判据，且两个消费方都用它。
+ *
+ * 缺陷形态：连接的**可用性**在保存路径（校验）与展示路径（列表/下拉）各自实现，
+ * 于是 6 条完全空的连接（含 2 条 is_active=true）既混进了蓝图「模型服务」下拉
+ * （选不到懂哪个是可用的），又能在被选中后跑到批次开跑才报
+ * `model connection unavailable`。
+ *
+ * 断言三条：
+ *   1. `providerFieldRules` 是唯一规则表，且**两个**导出函数都按它驱动；
+ *   2. 服务端在两条读路径上都派生 `configIssues`（admin 列表 + 连接选项），
+ *      否则前端只能自己判空字符串（就是漂移的起点）；
+ *   3. 蓝图下拉不得再把 `item.name` 直接当选项文案（空名 → 无字选项）。
+ */
+function problemsWithProviderConfigIssues(validationSrc, storeSrc, settingsRoutesSrc, blueprintSrc, settingsPageSrc) {
+  const problems = []
+  const validation = stripComments(validationSrc)
+  if (!/var providerFieldRules = \[\]providerFieldRule\{/.test(validation)) {
+    problems.push('缺少 providerFieldRules 规则表（判定会重新分家）')
+  }
+  // 两个消费方都必须遍历同一张表。
+  const validateBody = validation.match(/func ValidateProviderInput\([\s\S]*?\n\}/)
+  if (!validateBody || !/for _, rule := range providerFieldRules/.test(validateBody[0])) {
+    problems.push('ValidateProviderInput 没有按规则表驱动（保存与展示会漂移）')
+  }
+  const issuesBody = validation.match(/func ProviderConfigIssues\([\s\S]*?\n\}/)
+  if (!issuesBody || !/for _, rule := range providerFieldRules/.test(issuesBody[0])) {
+    problems.push('ProviderConfigIssues 没有按规则表驱动（会退回各自实现）')
+  }
+  // 展示口径不得把「停用」混进配置问题（停用是显式意图）。
+  if (issuesBody && /IsActive/.test(issuesBody[0])) {
+    problems.push('ProviderConfigIssues 把「停用」当成了配置问题')
+  }
+  // 两条读路径都要派生 configIssues。
+  if (!/item\.ConfigIssues = ProviderConfigIssues\(item\)/.test(stripComments(storeSrc))) {
+    problems.push('ListProviders 没有派生 configIssues（同名列表与下拉口径会分叉）')
+  }
+  if (!/ConfigIssues: store\.ProviderConfigIssues\(provider\)/.test(stripComments(settingsRoutesSrc))) {
+    problems.push('connection-options 端点没有下发 configIssues（蓝图下拉拿不到可用性）')
+  }
+  const blueprint = stripComments(blueprintSrc)
+  // 缺陷形态：`label: item.name` —— 名称为空时选项没有任何文字。
+  if (/label:\s*item\.name\s*,/.test(blueprint)) {
+    problems.push('蓝图下拉仍把空名称直接当选项文案（#209 的实测形态）')
+  }
+  if (!/connectionMeta\(/.test(blueprint)) {
+    problems.push('蓝图下拉没有把配置问题拼进选项（用户选择前仍看不出哪个不可用）')
+  }
+  // 配置不完整的连接必须**灰显不可选**（#209 建议方向 2 的「灰显 + 不可用」）。
+  if (!/disabled:\s*\(item\.configIssues\?\.length \?\? 0\) > 0/.test(blueprint)) {
+    problems.push('配置不完整的连接仍可被选择（选中后会在批次开跑时才报错）')
+  }
+  // 选项必须真的把 disabled 传给 Select，否则上面那行等于没接。
+  if (!/disabled:\s*option\.disabled/.test(blueprint)) {
+    problems.push('optionList 没有把 disabled 传给 Select（灰显不会生效）')
+  }
+  // 连接列表必须有显式标记，而不是留一个只能靠推断的空行。
+  const settingsPage = stripComments(settingsPageSrc)
+  if (!/配置不完整，不可用于生成/.test(settingsPage)) {
+    problems.push('连接列表没有标出「配置不完整，不可用于生成」')
+  }
+  // 空名称不得渲染成一个**空单元格**（用户无法区分「暂未配置」与「配置坏了」）。
+  if (!/未命名连接/.test(settingsPage)) {
+    problems.push('连接列表没有给空名称任何可读兼底')
+  }
+  return problems
+}
 
 /** #200：总览的待判断计数必须与审阅队列共用同一条谓词。 */
 function problemsWithOverviewQueueParity(activitySrc, sampleQuerySrc) {
@@ -717,6 +865,47 @@ function problemsWithAuditActivityLinks(activitySrc) {
   return problems
 }
 
+/** #212：批次详情「阶段进度」必须是 batch_items 的事实投影，而不是恒空的表。 */
+function problemsWithBatchStepProgress(batchStoreSrc, workerSrc, runPageSrc) {
+  const problems = []
+  const store = stripComments(batchStoreSrc)
+  const run = stripComments(runPageSrc)
+  // 阶段读数必须来自 batch_items（唯一事实来源），不得退回读 batch_steps 表。
+  const listSteps = store.match(/func \(s \*BatchStore\) ListBatchSteps[\s\S]*?\n\}/)
+  const derived = store.match(/func \(s \*BatchStore\) derivedBatchSteps[\s\S]*?\n\}/)
+  if (!listSteps || !derived) {
+    problems.push('找不到阶段投影函数（本断言会空转）')
+    return problems
+  }
+  if (!/RefreshBatchSteps|derivedBatchSteps/.test(listSteps[0])) {
+    problems.push('ListBatchSteps 没有走事实投影（会退回「batch_steps 恒空」的缺陷形态）')
+  }
+  if (!/FROM batch_items/.test(derived[0])) {
+    problems.push('阶段投影没有从 batch_items 取事实（恒空区块的同一形态）')
+  }
+  if (!/sample_version_id IS NOT NULL/.test(derived[0])) {
+    problems.push('阶段进度的「已产出」口径不是样本版本事实')
+  }
+  if (/FROM batch_steps WHERE batch_id = \$1 ORDER BY id/.test(store)) {
+    problems.push('阶段进度仍直接读 batch_steps 表（T12/T13 从未写入该表）')
+  }
+  // 可达性：历史批次不会再被 runner 碰到，必须由维护循环收敛。
+  if (!/ListBatchIDsWithStaleSteps/.test(store)) {
+    problems.push('缺少存量批次的可扫描依据（历史批次永远补不出阶段行）')
+  }
+  if (!/ListBatchIDsWithStaleSteps/.test(workerSrc)) {
+    problems.push('维护循环没有调用阶段收敛（修复只对未来批次生效）')
+  }
+  // 前端不得再无条件声明「还没有阶段记录」（那是用空态断言「没执行任何阶段」）。
+  if (/还没有阶段记录/.test(run)) {
+    problems.push('页面仍用「还没有阶段记录」声明一个并不成立的事实')
+  }
+  if (!/data-batch-steps=/.test(run)) {
+    problems.push('阶段进度区块缺少可断言的锚点')
+  }
+  return problems
+}
+
 /** #213：映射复选框必须有行内可访问名；发布表单必须按字段展示错误。 */
 function problemsWithAccessibleMappingAndFieldErrors(editorSrc, releaseSrc) {
   const problems = []
@@ -748,6 +937,12 @@ const TODAY_PAGE = read('apps/web-user/src/studio/pages/TodayPages.tsx')
 const DOCUMENT_EDITORS = read('apps/web-user/src/studio/DocumentEditors.tsx')
 const RELEASE_PAGE = read('apps/web-user/src/studio/pages/ReleasePages.tsx')
 const STUDIO_API_TYPES = read('apps/web-user/src/lib/api/studio.ts')
+// #212：维护循环的收敛点（只修 runner 修不到已经跑完的历史批次）。
+const STUDIO_JOBS = read('apps/worker/studio_jobs.go')
+// #211 方向 3：递归收集全部前端源码（不是手工清单）。
+const FRONTEND_SOURCES = collectFrontendSources(path.join(REPO_ROOT, 'apps/web-user/src')).map(
+  (absolute) => ({ name: path.relative(REPO_ROOT, absolute), source: readFileSync(absolute, 'utf8') }),
+)
 
 const checks = [
   ['#190 批次容量校验（服务端事实 + 字段级拒绝）',
@@ -761,6 +956,8 @@ const checks = [
   ['#211 审阅状态不再裸渲染 + 说明未审阅内容口径',
     problemsWithReviewStatusLabels(read('apps/web-user/src/studio/pages/QualityPages.tsx'),
       REVIEW_PAGE, ENUM_LABELS)],
+  ['#211 全树递归：审计/审阅枚举无旁枝裸渲染点',
+    problemsWithBareReviewStatusRender(FRONTEND_SOURCES)],
   ['#191 扫描发现的 3 条渲染路径接线不变式',
     problemsWithSweepDiscoveredPaths(EVAL_DIMENSION_MANAGER, EVAL_REPORT, EVAL_CATEGORY_ROUTE,
       BATCH_FAILURE_VIEW, RUN_PAGE)],
@@ -796,6 +993,10 @@ const checks = [
     problemsWithAuditActivityLinks(ACTIVITY_STORE)],
   ['#213 交付映射复选框可访问名 + 发布表单字段级错误',
     problemsWithAccessibleMappingAndFieldErrors(DOCUMENT_EDITORS, RELEASE_PAGE)],
+  ['#212 阶段进度是 batch_items 的事实投影且存量批次可收敛',
+    problemsWithBatchStepProgress(BATCH_STORE, STUDIO_JOBS, RUN_PAGE)],
+  ['#209 连接可用性单一来源 + 下拉不出现无字选项',
+    problemsWithProviderConfigIssues(ADMIN_VALIDATION, ADMIN_STORE, SETTINGS_ROUTES, BLUEPRINT_PAGE, SETTINGS_PAGE)],
 ]
 
 for (const [name, problems] of checks) {
@@ -831,6 +1032,16 @@ const mutations = [
   ['#211 让颜色/文案映射退化', problemsWithReviewStatusLabels(
     read('apps/web-user/src/studio/pages/QualityPages.tsx'),
     REVIEW_PAGE.replace(/describeReviewStatus\(/g, 'noop('), ENUM_LABELS)],
+  ['#211 摘掉行内未审阅标记与提交前提示', problemsWithReviewStatusLabels(
+    read('apps/web-user/src/studio/pages/QualityPages.tsx')
+      .replaceAll('data-scope-unreviewed-row', 'data-removed')
+      .replace(/Modal\.confirm\(/, 'noopConfirm('), REVIEW_PAGE, ENUM_LABELS)],
+  ['#211 让某条渲染路径退回裸枚举', problemsWithBareReviewStatusRender(
+    [...FRONTEND_SOURCES, { name: 'injected/Leak.tsx', source: 'export const A = () => <span>{sample.reviewStatus}</span>' }])],
+  ['#211 让全树扫描退化成手工清单', (() => {
+    const only = FRONTEND_SOURCES.filter((entry) => entry.name.endsWith('QualityPages.tsx'))
+    return problemsWithBareReviewStatusRender(only)
+  })()],
   ['#191 摘掉维度管理的分类中文映射', problemsWithSweepDiscoveredPaths(
     EVAL_DIMENSION_MANAGER.replace(/categoryLabels\[/g, 'categoryKeys['), EVAL_REPORT,
     EVAL_CATEGORY_ROUTE, BATCH_FAILURE_VIEW, RUN_PAGE)],
@@ -898,6 +1109,26 @@ const mutations = [
     DOCUMENT_EDITORS.replace(/aria-label=\{`把\$\{accessible\}设为必填`\}/, ''), RELEASE_PAGE)],
   ['#213 让发布错误退回单行总体提示', problemsWithAccessibleMappingAndFieldErrors(
     DOCUMENT_EDITORS, RELEASE_PAGE.replaceAll('fieldErrors.intendedUse', 'errorLines.intendedUse'))],
+  ['#212 让阶段进度退回读恒空的 batch_steps 表', problemsWithBatchStepProgress(
+    BATCH_STORE.replace(/func \(s \*BatchStore\) derivedBatchSteps[\s\S]*?\n\}/,
+      'func (s *BatchStore) derivedBatchSteps(ctx context.Context, q queryable, batchID int64) ([]model.BatchStep, error) {\n\treturn nil, nil\n}'),
+    STUDIO_JOBS, RUN_PAGE)],
+  ['#212 摘掉存量批次的阶段收敛', problemsWithBatchStepProgress(
+    BATCH_STORE.replaceAll('ListBatchIDsWithStaleSteps', 'RemovedStaleStepsScan'),
+    STUDIO_JOBS, RUN_PAGE)],
+  ['#212 让页面退回「还没有阶段记录」', problemsWithBatchStepProgress(
+    BATCH_STORE, STUDIO_JOBS,
+    RUN_PAGE.replace(/data-batch-steps-empty="true">[\s\S]*?<\/Text>/, 'data-batch-steps-empty="true">还没有阶段记录。</Text>'))],
+  ['#209 让连接判定退回两处各自实现', problemsWithProviderConfigIssues(
+    ADMIN_VALIDATION.replace(/for _, rule := range providerFieldRules \{\n\t\tif !rule\.Invalid\(input\) \{\n\t\t\tcontinue\n\t\t\}/, 'if true {'),
+    ADMIN_STORE, SETTINGS_ROUTES, BLUEPRINT_PAGE, SETTINGS_PAGE)],
+  ['#209 让蓝图下拉退回 label: item.name', problemsWithProviderConfigIssues(
+    ADMIN_VALIDATION, ADMIN_STORE, SETTINGS_ROUTES,
+    BLUEPRINT_PAGE.replace(/label: item\.name \|\| `未命名连接 #\$\{item\.id\}`/, 'label: item.name'), SETTINGS_PAGE)],
+  ['#209 让不完整连接重新可选', problemsWithProviderConfigIssues(
+    ADMIN_VALIDATION, ADMIN_STORE, SETTINGS_ROUTES,
+    BLUEPRINT_PAGE.replace('disabled: (item.configIssues?.length ?? 0) > 0', 'disabled: false'),
+    SETTINGS_PAGE)],
 ]
 
 for (const [name, problems] of mutations) {

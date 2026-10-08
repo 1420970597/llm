@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Card, Empty, Input, InputNumber, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
+import { Button, Card, Empty, Input, InputNumber, Modal, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 // AlertTriangle 来自 lucide-react（图标库），不是 semi-ui 的组件。
 import { AlertTriangle } from 'lucide-react'
 import { client } from '../../lib/api'
@@ -202,8 +202,24 @@ export function QualityNewPage() {
     () => samples.filter((sample) => sample.reviewStatus === 'pending').length,
     [samples],
   )
+  // #211 方向 2：**已勾选**里有多少条尚未人工判断。
+  //
+  // 为什么与 unreviewedCount 分开：那是「页面上有多少条未审阅」的**事实陈述**，
+  // 这是「你这次评测将要纳入多少条未审阅内容」的**行动后果**。
+  // 用户需要的是后者 —— 它决定了提交前提示要不要出现。
+  // 声明必须在 selected 之后（useMemo 的依赖会被立即求值）。
   const [batchID, setBatchID] = useState('')
   const [selected, setSelected] = useState<number[]>([])
+  const selectedUnreviewedCount = useMemo(
+    () =>
+      samples.filter(
+        (sample) =>
+          sample.latestVersionId > 0 &&
+          selected.includes(sample.latestVersionId) &&
+          sample.reviewStatus === 'pending',
+      ).length,
+    [samples, selected],
+  )
   const [judgeID, setJudgeID] = useState('')
   /**
    * 裁判模型候选（issue #197 第 14 条）。
@@ -351,6 +367,39 @@ export function QualityNewPage() {
     }
   }, [baselineAnswerVersion, batchID, boundaryReferenceJSON, canRun, isGRPO, judgeID, navigate, scope.projectId, seed, selected, teacherPromptVersion])
 
+  /**
+   * #211 方向 2：勾选了未审阅内容时，**提交前**显式提示一次。
+   *
+   * 为什么必须在提交前而不是只靠页顶一句说明：页顶的说明是常驻背景信息，
+   * 用户点「创建并冻结实验」时不会再读一遍；而未审阅内容的后果（结论不得作为
+   * 发布证据、发布时仍会被 PENDING_REVIEW 拦住）是**这次操作**带来的。
+   * 用 Modal.confirm 而不是直接拦截：评测本来就可以纳入未审阅内容（它只是度量），
+   * 因此这里要的是「知情确认」而不是「禁止」。
+   */
+  const confirmSubmit = useCallback(() => {
+    if (selectedUnreviewedCount === 0) {
+      void submit()
+      return
+    }
+    Modal.confirm({
+      title: `本次将纳入 ${selectedUnreviewedCount} 个尚未人工判断的内容版本`,
+      content: (
+        <div className="console-stack">
+          <Text className="block">
+            评测可以纳入未审阅内容（评测只是度量），实验照常创建与冻结。
+          </Text>
+          <Text type="tertiary" className="block">
+            但这些版本的结论不作为发布证据：发布时仍会被未审阅门槛（PENDING_REVIEW）拦住。
+            若希望评测结论能直接支撑发布，请先到「审阅」页完成判断。
+          </Text>
+        </div>
+      ),
+      okText: '仍然创建实验',
+      cancelText: '返回先审阅',
+      onOk: () => void submit(),
+    })
+  }, [selectedUnreviewedCount, submit])
+
   return (
     <div className="console-page" data-studio-page="quality-new">
       <div className="console-page__header">
@@ -469,6 +518,20 @@ export function QualityNewPage() {
                     {describeReviewStatus(sample.reviewStatus)}
                   </Tag>
                 </span>
+                {/* #211 方向 2：已勾选的未审阅内容要**行内**标出代价，
+                    而不是只靠页顶一句背景说明 —— 行内标记能回答
+                    「我刚勾的这条算不算已验证证据」。 */}
+                {sample.reviewStatus === 'pending' &&
+                sample.latestVersionId > 0 &&
+                selected.includes(sample.latestVersionId) ? (
+                  <Tag
+                    size="small"
+                    color="orange"
+                    data-scope-unreviewed-row="true"
+                  >
+                    未审阅：结论不作为发布证据
+                  </Tag>
+                ) : null}
               </span>
             </div>
           ))}
@@ -535,7 +598,7 @@ export function QualityNewPage() {
         </div>
       ) : null}
 
-      <Button theme="solid" type="primary" loading={busy} disabled={!canRun} onClick={() => void submit()}>
+      <Button theme="solid" type="primary" loading={busy} disabled={!canRun} onClick={confirmSubmit}>
         创建并冻结实验
       </Button>
     </div>

@@ -231,6 +231,14 @@ func (runner *BatchRunner) RunBatch(ctx context.Context, batchID int64) (BatchRu
 	if err != nil {
 		return result, err
 	}
+	// 阶段投影落盘（issue #212）：`batch_steps` 在本次修改前从未被写入过，
+	// 因此批次详情的「阶段进度」对**所有**批次恒为空。投影随时可从 batch_items
+	// 重算，但落盘才能保住 started_at/finished_at 这些投影算不出的历史时刻。
+	//
+	// 写入失败**不得**让批次执行失败（阶段进度是读模型，不是业务结果）；
+	// 缺失/落后的阶段行由 worker 维护循环的同一投影收敛，它的可扫描依据是
+	// ListBatchIDsWithStaleSteps。因此这里显式忽略返回值。
+	_, _ = runner.Batches.RefreshBatchSteps(ctx, batch.ID)
 	result.CompletedUnits = refreshed.CompletedUnits
 	result.FailedUnits = refreshed.FailedUnits
 	result.PlannedUnits = refreshed.PlannedUnits

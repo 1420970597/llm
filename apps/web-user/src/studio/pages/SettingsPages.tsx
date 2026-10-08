@@ -305,14 +305,30 @@ export function ConnectionsPage() {
                         390px 下表格无法横向展开时，如果只把 5 个单元格倒进两列，
                         用户看到的是「表头与数据行错位混合」。这里让每个单元格
                         自带字段名，行变成卡片式列表（表头整行隐藏）。 */}
-                    <span data-label="名称">{provider.name}</span>
-                    <span data-label="模型">{provider.model}</span>
-                    <span data-label="类型">{provider.providerType}</span>
+                    {/* issue #209：名称为空的历史记录以前渲染成一个**空单元格**，
+                        用户无法区分「暂未配置」与「配置坏了」。这里给可读兼底 + 原值保留在 title。 */}
+                    <span data-label="名称" title={provider.name || undefined}>
+                      {provider.name || <Text type="tertiary" size="small">未命名连接</Text>}
+                    </span>
+                    <span data-label="模型">
+                      {provider.model || <Text type="tertiary" size="small">未设置</Text>}
+                    </span>
+                    <span data-label="类型">{provider.providerType || '—'}</span>
                     <span data-label="密钥标识">{provider.apiKeyMasked || '—'}</span>
                     <span data-label="状态">
                       <Tag size="small" color={provider.isActive ? 'green' : 'grey'}>
                         {provider.isActive ? '启用' : '停用'}
                       </Tag>
+                      {/* issue #209：配置不完整的连接必须显式标出「不能用于生成」，
+                          而不是留一个只能靠推断的空行。原因由服务端下发（与保存校验同源），
+                          逐条清单放 title（Semi 的 Tag 不接 title，用 span 包住是本仓既有写法）。 */}
+                      {provider.configIssues.length > 0 ? (
+                        <span title={provider.configIssues.join('；')}>
+                          <Tag size="small" color="red" data-connection-config-issues="true">
+                            配置不完整，不可用于生成
+                          </Tag>
+                        </span>
+                      ) : null}
                     </span>
                     {/* issue #197 第 8 条：列表项必须有**元素级**编辑按钮。
                         以前 11 行连接的行内按钮数是 0，用户只能去旧控制台。 */}

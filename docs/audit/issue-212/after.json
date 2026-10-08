@@ -1,0 +1,82 @@
+{
+  "issue": 212,
+  "phase": "after",
+  "base": "http://127.0.0.1:3210",
+  "batch": "b_4",
+  "viewport": "1600x1000",
+  "account": "admin@company.com",
+  "deployedVersion": {
+    "version": "e4a2bed3e76541d16a3a83c3d986e18c320ab210",
+    "buildTime": "2026-10-01T10:38:04Z",
+    "source": "apps/web-user"
+  },
+  "page": {
+    "cardFound": true,
+    "cardText": "阶段进度（按单位，不编造总体百分比） 规划单元 4 / 4 生成单元 4 / 4 批次预算：上限 0 分 · 在途 0 · 已结算 0 · 未知 0",
+    "stepRows": [
+      "规划单元 4 / 4",
+      "生成单元 4 / 4"
+    ]
+  },
+  "detail": {
+    "found": true,
+    "status": 200,
+    "batchId": 4,
+    "batchStatus": "completed",
+    "plannedUnits": 4,
+    "completedUnits": 4,
+    "steps": [
+      {
+        "id": 7,
+        "batchId": 4,
+        "phase": "plan",
+        "unitLabel": "规划单元",
+        "status": "completed",
+        "totalUnits": 4,
+        "doneUnits": 4,
+        "failedUnits": 0,
+        "errorSummary": "",
+        "createdAt": "2026-10-01T10:39:55.892436Z",
+        "updatedAt": "2026-10-01T10:39:55.892436Z"
+      },
+      {
+        "id": 8,
+        "batchId": 4,
+        "phase": "generate",
+        "unitLabel": "生成单元",
+        "status": "completed",
+        "totalUnits": 4,
+        "doneUnits": 4,
+        "failedUnits": 0,
+        "errorSummary": "",
+        "createdAt": "2026-10-01T10:39:55.895968Z",
+        "updatedAt": "2026-10-01T10:39:55.895968Z"
+      }
+    ]
+  },
+  "stepCount": 2,
+  "stepRowsFromApi": [
+    {
+      "phase": "plan",
+      "unitLabel": "规划单元",
+      "status": "completed",
+      "totalUnits": 4,
+      "doneUnits": 4,
+      "failedUnits": 0
+    },
+    {
+      "phase": "generate",
+      "unitLabel": "生成单元",
+      "status": "completed",
+      "totalUnits": 4,
+      "doneUnits": 4,
+      "failedUnits": 0
+    }
+  ],
+  "consoleErrors": [],
+  "verdict": {
+    "emptyStepBlock": false,
+    "completedBatchWithEmptyProgress": false,
+    "progressMatches": true
+  }
+}
