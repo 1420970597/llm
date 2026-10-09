@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Avatar, Button, Typography } from '@douyinfe/semi-ui'
+import { Avatar, Button, Dropdown, Typography } from '@douyinfe/semi-ui'
 import {
   Activity,
   Archive,
   BookOpen,
   ChevronRight,
+  ChevronDown,
   Compass,
   Filter,
   FlaskConical,
@@ -14,8 +15,6 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
   Settings,
   Users,
   Wrench,
@@ -37,20 +36,8 @@ import { useProjectName } from './projectName'
 import { client } from '../lib/api'
 
 /**
- * 全局壳（Issue #160 T09）：4 全局入口 + 辅助入口 + 目录评审（仅非生产）。
- *
- * 与旧控制台壳的区别（契约 §3.1「三层清楚分开」）：
- *
- *	第一层  全局四入口   今日工作 / 数据项目 / 方案库 / 交付库
- *	第二层  项目六工作区  由 ProjectLayout 承担（进入某个项目之后）
- *	第三层  辅助入口     动态 / 设置 / 帮助（不与主流程争菜单位置）
- *
- * 旧控制台把**所有**功能平铺在一条侧边栏里（7 个用户项 + 6 个管理项 +
- * 阶段页），因此用户无法从菜单判断「我现在在哪一层」。这里把层级做成结构，
- * 而不是靠文案说明。
- *
- * 导航项**全部**由 routes.ts 派生：本文件不写任何路由字符串字面量，
- * 于是「菜单与路由漂移」在结构上不可能发生（test/l15_studio_shell.mjs 断言）。
+ * 项目优先的全局导航。辅助能力集中在工具菜单，项目内主线由 ProjectLayout 展示。
+ * 链接与能力状态仍只从 routes.ts 派生；不复制另一套业务路由。
  */
 
 const GLOBAL_ICONS: Record<string, LucideIcon> = {
@@ -82,8 +69,8 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
   const location = useLocation()
   const navigate = useNavigate()
   const breadcrumbs = useBreadcrumbs()
-  const [collapsed, setCollapsed] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
   const [legacyMigrationComplete, setLegacyMigrationComplete] = useState(false)
   useEffect(() => {
     let cancelled = false
@@ -97,6 +84,12 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
   }, [userEmail, location.pathname])
   const mobileMenuRef = useRef<HTMLButtonElement>(null)
   const mobileNavFocusTimer = useRef<number | null>(null)
+  const toolsTriggerRef = useRef<HTMLButtonElement>(null)
+
+  const primaryRoutes = useMemo(() => ['projects', 'today', 'recipes', 'deliveries']
+    .flatMap((key) => globalRoutes.filter((route) => route.key === key)), [])
+  const toolRoutes = useMemo(() => auxiliaryRoutes
+    .filter((route) => !route.navParent && !(route.key === 'legacy.history' && legacyMigrationComplete)), [legacyMigrationComplete])
 
   const openMobileNav = useCallback(() => {
     setMobileNavOpen(true)
@@ -113,6 +106,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
       window.clearTimeout(mobileNavFocusTimer.current)
       mobileNavFocusTimer.current = null
     }
+    setToolsOpen(false)
     setMobileNavOpen(false)
     if (restoreFocus) window.setTimeout(() => mobileMenuRef.current?.focus(), 0)
   }, [])
@@ -122,12 +116,25 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
+      if (event.defaultPrevented) return
       event.preventDefault()
       closeMobileNav()
     }
     document.addEventListener('keydown', closeOnEscape)
     return () => document.removeEventListener('keydown', closeOnEscape)
   }, [closeMobileNav, mobileNavOpen])
+
+  useEffect(() => {
+    if (!toolsOpen) return
+    const timer = window.setTimeout(() => {
+      document.querySelector<HTMLElement>('[data-studio-tools-menu] [role="menuitem"]')?.focus()
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [toolsOpen])
+
+  useEffect(() => () => {
+    if (mobileNavFocusTimer.current !== null) window.clearTimeout(mobileNavFocusTimer.current)
+  }, [])
 
   const handleLogout = () => {
     // 退出账号时清理本机待同步队列（T29）：敏感正文不在本机留存；
@@ -147,7 +154,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
   const [announcement, setAnnouncement] = useState('')
   useEffect(() => {
     const current = menuRoutes().find((route) => route.key === activeKey)
-    const label = current?.label ?? ''
+    const label = current?.key === 'today' ? '待处理' : current?.label ?? ''
     setAnnouncement(label ? `已进入${label}` : '')
     document.title = label ? `${label} · Atelier · 数据项目工作室` : 'Atelier · 数据项目工作室'
   }, [activeKey])
@@ -159,77 +166,87 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
         className="app-layout__sidebar"
         aria-label="主导航"
         data-mobile-open={mobileNavOpen ? 'true' : 'false'}
-        style={{ width: collapsed ? 48 : 232 }}
       >
-        {collapsed ? (
-          <>
+        <div className="sidebar-workspace-header">
+          <Link className="sidebar-workspace-name" to={fillRoutePathByKey('projects', {})} onClick={() => closeMobileNav(false)}>Atelier</Link>
+        </div>
+
+        <div className="sidebar-nav-section studio-primary-navigation">
+          {primaryRoutes.map((route) => renderNavItem(
+            route.path,
+            GLOBAL_ICONS[route.key],
+            route.key === 'today' ? '待处理' : route.label,
+            route.caption,
+            activeKey === route.key || (route.key === 'projects' && activeKey.startsWith('project.')),
+            () => closeMobileNav(false),
+          ))}
+        </div>
+
+        <div className="sidebar-footer">
+          <Dropdown
+            trigger="click"
+            motion={false}
+            position="bottomRight"
+            visible={toolsOpen}
+            onVisibleChange={setToolsOpen}
+            closeOnEsc
+            onEscKeyDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              setToolsOpen(false)
+              toolsTriggerRef.current?.focus()
+            }}
+            render={
+              <Dropdown.Menu data-studio-tools-menu="true">
+                {toolRoutes.map((route) => {
+                  const Icon = AUXILIARY_ICONS[route.key]
+                  return <Dropdown.Item
+                    key={route.key}
+                    icon={Icon ? <Icon size={16} aria-hidden /> : undefined}
+                    active={activeKey === route.key}
+                    onClick={() => {
+                      setToolsOpen(false)
+                      closeMobileNav(false)
+                      navigate(route.path)
+                    }}
+                  >{route.label}</Dropdown.Item>
+                })}
+              </Dropdown.Menu>
+            }
+          >
             <button
               type="button"
-              className="sidebar-collapse-button"
-              aria-label="展开导航"
-              onClick={() => setCollapsed(false)}
+              className="studio-tools-trigger"
+              aria-label="工具与设置"
+              aria-haspopup="menu"
+              aria-expanded={toolsOpen}
+              ref={toolsTriggerRef}
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowDown') return
+                event.preventDefault()
+                setToolsOpen(true)
+              }}
             >
-              <PanelLeftOpen size={16} />
+              <Settings size={16} aria-hidden />
+              <span>工具与设置</span>
+              <ChevronDown size={14} aria-hidden />
             </button>
-            <div className="sidebar-footer sidebar-footer--collapsed">
-              <button
-                type="button"
-                className="sidebar-account-button"
-                aria-label={`退出登录 ${userEmail}`}
-                title={`退出登录 ${userEmail}`}
-                onClick={handleLogout}
-              >
-                <Avatar color="purple" size="small">{userEmail.slice(0, 1).toUpperCase() || 'A'}</Avatar>
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="sidebar-workspace-header">
-              <div className="sidebar-workspace-info">
-                <div className="sidebar-workspace-name">Atelier</div>
-                <div className="sidebar-workspace-plan">数据项目工作室 · {isAdmin ? '管理员' : '普通用户'}</div>
-              </div>
-              <button
-                type="button"
-                className="sidebar-collapse-button"
-                aria-label="收起导航"
-                onClick={() => setCollapsed(true)}
-              >
-                <PanelLeftClose size={16} />
-              </button>
-            </div>
-
-            {/* 第一层：全局四入口。 */}
-            <div className="sidebar-nav-section">
-              <div className="sidebar-nav-heading">工作区</div>
-              {globalRoutes.map((route) => renderNavItem(route.path, GLOBAL_ICONS[route.key], route.label, route.caption, activeKey === route.key, () => closeMobileNav(false)))}
-            </div>
-
-            {/* 第三层：辅助入口。刻意放在下方且样式更轻，不与主流程争位置。 */}
-            <div className="sidebar-nav-section">
-              <div className="sidebar-nav-heading">辅助</div>
-              {auxiliaryRoutes.filter((route) => !route.navParent && !(route.key === 'legacy.history' && legacyMigrationComplete)).map((route) =>
-                renderNavItem(route.path, AUXILIARY_ICONS[route.key], route.label, route.caption, activeKey === route.key, () => closeMobileNav(false)),
-              )}
-            </div>
-
-            <div className="sidebar-footer">
-              <div className="sidebar-account" title={userEmail}>
-                {userEmail}
-              </div>
-              <Button
-                size="small"
-                icon={<LogOut size={14} />}
-                aria-label="退出登录"
-                title="退出登录"
-                onClick={handleLogout}
-              >
-                退出
-              </Button>
-            </div>
-          </>
-        )}
+          </Dropdown>
+          <div className="sidebar-account" title={`${userEmail} · ${isAdmin ? '管理员' : '普通用户'}`}>
+            <Avatar color="blue" size="small">{userEmail.slice(0, 1).toUpperCase() || 'A'}</Avatar>
+            <span className="studio-account-email">{userEmail}</span>
+            <span className="sr-only">{isAdmin ? '管理员' : '普通用户'}</span>
+          </div>
+          <Button
+            size="small"
+            icon={<LogOut size={14} />}
+            aria-label="退出登录"
+            title="退出登录"
+            onClick={handleLogout}
+          >
+            退出
+          </Button>
+        </div>
       </nav>
 
       {mobileNavOpen ? (
@@ -259,15 +276,6 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
           </div>
           <div className="atelier-topbar__actions">
             <CommandSearch />
-            <button
-              type="button"
-              className="atelier-account-button"
-              aria-label={`退出登录 ${userEmail}`}
-              title={`退出登录 ${userEmail}`}
-              onClick={handleLogout}
-            >
-              <Avatar color="purple" size="small">{userEmail.slice(0, 1).toUpperCase() || 'A'}</Avatar>
-            </button>
           </div>
         </header>
         {/* 屏幕阅读器播报当前层级：视觉用户从高亮看出所在位置，

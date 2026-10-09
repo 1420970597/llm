@@ -121,6 +121,26 @@ export function useVersionedDocument(projectId: ProjectResourceId, segment: stri
   const dirty = payload !== null && JSON.stringify(payload) !== JSON.stringify(current?.payload ?? null)
   const isReadOnly = viewingVersion !== null
 
+  // New stage links must not discard the document being edited.
+  useEffect(() => {
+    if (!dirty && !saving) return
+    const unload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    const leave = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || !(event.target instanceof Element)) return
+      const anchor = event.target.closest<HTMLAnchorElement>('a[href]')
+      if (!anchor || anchor.download || anchor.target === '_blank') return
+      const target = new URL(anchor.href, window.location.href)
+      if (target.href === window.location.href) return
+      if (saving || !window.confirm('有未保存修改，确定离开并丢弃草稿吗？')) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    }
+    window.addEventListener('beforeunload', unload)
+    document.addEventListener('click', leave, true)
+    return () => { window.removeEventListener('beforeunload', unload); document.removeEventListener('click', leave, true) }
+  }, [dirty, saving])
+
   const save = useCallback(async () => {
     if (!payload || !canEdit || isReadOnly) return false
     setSaving(true)
@@ -164,9 +184,9 @@ export function DocumentSaveBar({ state, label }: { state: DocumentEditorState; 
     <Card className="document-editor__save-card" bodyStyle={{ padding: 16 }}>
       <div className="document-editor__save-head">
         <div>
-          <Text strong>{state.isReadOnly ? `历史版本 v${state.current?.version ?? '—'}（只读）` : state.dirty ? '有未保存修改' : '当前版本已保存'}</Text>
+          <Text strong>{state.isReadOnly ? `历史版本 v${state.current?.version ?? '—'}（只读）` : state.dirty ? '有未保存修改' : state.current ? '当前版本已保存' : '尚未配置'}</Text>
           <Text type="tertiary" size="small" className="block">
-            {state.current ? `当前为 v${state.current.version}，指纹 ${state.current.contentHash.slice(0, 10)}` : '尚未保存版本'}
+            {state.current ? `v${state.current.version}` : '保存后可供生产使用'}
           </Text>
         </div>
         <Button theme="solid" type="primary" icon={<Save size={14} />} loading={state.saving} disabled={state.isReadOnly || !state.canEdit || !state.dirty} onClick={() => void state.save()}>
@@ -239,7 +259,6 @@ export function CoveragePayloadEditor({ payload, disabled, projectId, sourceVers
   const structure = deriveCoverageStructure(payload)
   return (
     <div className="document-editor document-editor--coverage">
-      <div className="document-editor__intro"><Text strong>覆盖范围编辑器</Text><Text type="tertiary" size="small">把领域拆成可执行方向，并为每个方向设置计划数量。稳定 ID 用于让历史批次继续指向原版本。</Text></div>
       <div className="coverage-tree" data-coverage-tree="true">
         <div className="coverage-tree__formula">
           <span className="eyebrow">数据集结构</span>
@@ -333,7 +352,6 @@ export function StandardPayloadEditor({ payload, disabled, onChange }: { payload
     updateSteps(next)
   }
   return <div className="document-editor document-editor--standard">
-    <div className="document-editor__intro"><Text strong>思维步骤编辑器</Text><Text type="tertiary" size="small">每一步都要写清“做什么”和“怎么判断完成”，否则生产过程无法自查。</Text></div>
     {steps.map((step, index) => <Card className="document-editor__section" key={`${String(step.id)}-${index}`} bodyStyle={{ padding: 14 }}>
       <div className="document-editor__section-head"><strong>第 {index + 1} 步</strong><div className="document-editor__icon-actions"><Button type="tertiary" icon={<ChevronUp size={14} />} aria-label="上移步骤" disabled={disabled || index === 0} onClick={() => move(index, -1)} /><Button type="tertiary" icon={<ChevronDown size={14} />} aria-label="下移步骤" disabled={disabled || index === steps.length - 1} onClick={() => move(index, 1)} /><Button type="tertiary" icon={<Trash2 size={14} />} aria-label="删除步骤" disabled={disabled || steps.length <= 1} onClick={() => updateSteps(removeAt(steps, index))} /></div></div>
       <div className="document-editor__grid document-editor__grid--two">

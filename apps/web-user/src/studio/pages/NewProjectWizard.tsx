@@ -51,19 +51,19 @@ type StepCopy = {
 
 const STEP_COPY: Record<WizardStep, StepCopy> = {
   basic: {
-    title: '第一步：这是什么项目',
+    title: '项目信息',
     description:
-      '只填意图与目标类型。这一步不会调用模型，也不要求已经配置好连接 —— 设计与运行是分开的。',
+      '创建草稿不会调用模型。',
   },
   coverage: {
-    title: '第二步：目标量与覆盖',
+    title: '生产规模',
     description:
-      'n × m × x 是计划量，不是已产出。试制数量是小批验证用的，不会影响后面的扩量范围。',
+      '设置计划量和首次试制数量。',
   },
   quality: {
-    title: '第三步：质量门槛与预算',
+    title: '质量与预算',
     description:
-      '接纳率是「接纳数 / 纳入检查的样本版本数」。预算以分为单位，留空表示不设上限。',
+      '确认门槛与支出上限。',
   },
 }
 
@@ -204,13 +204,15 @@ export function NewProjectWizard({ step, userId }: NewProjectWizardProps) {
         <Banner
           type="info"
           closeIcon={null}
-          description="已恢复上次未提交的草稿。草稿按当前账号保存，切换账号不会看到别人的内容。"
+          description="已恢复未提交的草稿。"
         />
       ) : null}
 
       {serverError ? (
         <Banner type="danger" closeIcon={null} description={serverError} />
       ) : null}
+
+      <nav className="product-wizard__steps" aria-label="创建项目步骤">{(['basic', 'coverage', 'quality'] as WizardStep[]).map((item, index) => <span key={item} className={item === step ? 'is-active' : index < stepIndex - 1 ? 'is-complete' : ''} aria-current={item === step ? 'step' : undefined}>{index + 1} · {STEP_COPY[item].title}</span>)}</nav>
 
       <Card className="console-card" bodyStyle={{ padding: 20 }}>
         {step === 'basic' ? (
@@ -224,7 +226,7 @@ export function NewProjectWizard({ step, userId }: NewProjectWizardProps) {
         ) : null}
       </Card>
 
-      <div className="wizard-actions">
+      <div className="wizard-actions product-stage-footer">
         {step !== 'basic' ? (
           <Button
             icon={<ArrowLeft size={14} />}
@@ -301,8 +303,7 @@ function BasicStep({ draft, errors, update }: StepProps) {
           <Radio value="grpo">GRPO（判据与档位）</Radio>
         </RadioGroup>
         <Text type="tertiary" size="small" className="block mt-1">
-          训练类型在项目运行后不可直接切换：蓝图节点、样本结构与发布格式都由它派生，
-          要换类型必须复制为新项目。
+          运行后不可切换类型。
         </Text>
       </Field>
     </div>
@@ -354,7 +355,7 @@ function CoverageStep({ draft, errors, update }: StepProps) {
       <div className="wizard-hint">
         <Info size={14} aria-hidden />
         <Text type="tertiary" size="small">
-          计划问题数：{planned}（= n × m × x，<strong>计划量</strong>，不是当前已产出）
+          计划问题数：<strong>{planned.toLocaleString()}</strong>
         </Text>
       </div>
 
@@ -367,7 +368,7 @@ function CoverageStep({ draft, errors, update }: StepProps) {
           onChange={(value) => update('pilotSize', value === undefined ? '' : String(value))}
         />
         <Text type="tertiary" size="small" className="block mt-1">
-          取值范围 {MIN_PILOT_SIZE}–{MAX_PILOT_SIZE}。试制不会覆盖生产内容。
+          {MIN_PILOT_SIZE}–{MAX_PILOT_SIZE} 题
         </Text>
       </Field>
     </div>
@@ -390,7 +391,7 @@ function QualityStep({ draft, errors, update }: StepProps) {
           placeholder="0.85"
         />
         <Text type="tertiary" size="small" className="block mt-1">
-          0–1 之间。接纳率 = 接纳数 / 纳入检查的样本版本数；没有纳入检查时显示「无结论」。
+          0–1，例如 0.85 表示 85%。
         </Text>
       </Field>
 
@@ -411,7 +412,7 @@ function QualityStep({ draft, errors, update }: StepProps) {
           placeholder="留空或填 0 表示不设上限"
         />
         <Text type="tertiary" size="small" className="block mt-1">
-          以「分」为单位的整数。非 0 时至少为 {MIN_BUDGET_LIMIT_MINOR}（1 元）。
+          最低 {MIN_BUDGET_LIMIT_MINOR} 分（1 元）；0 为不限额。
         </Text>
       </Field>
 
@@ -424,8 +425,8 @@ function QualityStep({ draft, errors, update }: StepProps) {
             update('budgetOnExhausted', event.target.value === 'stop' ? 'stop' : 'pause')
           }
         >
-          <Radio value="pause">暂停（保留在途，阻止新提交）</Radio>
-          <Radio value="stop">停止（不再自动执行）</Radio>
+          <Radio value="pause">暂停新提交</Radio>
+          <Radio value="stop">停止执行</Radio>
         </RadioGroup>
       </Field>
     </div>

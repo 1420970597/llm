@@ -218,7 +218,7 @@ export function studioRouteTree({ user, onLogout }: StudioRouteTreeProps) {
           </AuthenticatedShell>
         }
       >
-        {/* Atelier 的默认落点是「今日工作」。放在 pathless 认证壳内，
+        {/* Atelier 的默认落点是「数据项目」。放在 pathless 认证壳内，
             未登录时仍由 AuthenticatedShell 统一带回登录页；已登录访问根路径
             不应再落入旧 /console 外壳。 */}
         <Route index element={<Navigate to={studioDefaultPath()} replace />} />
@@ -250,7 +250,7 @@ export function studioRouteTree({ user, onLogout }: StudioRouteTreeProps) {
             ))
           : null}
 
-        {/* 项目壳：六工作区 + 子页。`/p/:projectId` 本身重定向到概览。 */}
+        {/* 项目壳：项目首页、四生产阶段及兼容子页。`/p/:projectId` 重定向到概览。 */}
         <Route path="/p/:projectId" element={<ProjectLayout />}>
           <Route index element={<Navigate to="overview" replace />} />
           {projectRoutes.map((route) => (
@@ -355,10 +355,10 @@ function ModuleElement({ route }: { route: StudioRouteMeta }) {
 /**
  * StudioFallback 是 `/` 的落点。
  *
- * 今日工作是 Atelier 的默认入口，用户进入系统后先看到待办和下一决定。
+ * 数据项目是 Atelier 的默认入口，用户先选择当前项目，再进入生产主线。
  */
 export function studioDefaultPath(): string {
-  return fillRoutePathByKey('today', {})
+  return fillRoutePathByKey('projects', {})
 }
 
 /** 供测试引用：当前构建下已挂载的目录评审路由数（生产必须为 0）。 */

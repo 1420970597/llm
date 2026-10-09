@@ -116,7 +116,8 @@ async function buildBrowserRenderer(workDir) {
     "import { createElement } from 'react'",
     "import { renderToStaticMarkup } from 'react-dom/server'",
     "import { BrowserRouter, Routes } from 'react-router-dom'",
-    `import { studioRouteTree } from ${JSON.stringify(STUDIO_ROUTES_SOURCE)}`,
+    `import { studioRouteTree, studioDefaultPath } from ${JSON.stringify(STUDIO_ROUTES_SOURCE)}`,
+    'export function defaultPath() { return studioDefaultPath() }',
     'export function renderAt(pathname) {',
     '  globalThis.__l15SetPath(pathname)',
     '  try {',
@@ -159,6 +160,7 @@ async function buildBrowserRenderer(workDir) {
   const mod = new Module.Module('l15-studio-browser-router')
   mod.paths = Module.Module._nodeModulePaths(REPO_ROOT)
   mod._compile(build.outputFiles[0].text, path.join(workDir, 'browser-router.cjs'))
+  mod.exports.renderAt.defaultPath = mod.exports.defaultPath
   return mod.exports.renderAt
 }
 
@@ -264,9 +266,23 @@ try {
   }
 
   if (renderAt) {
+    record('默认入口以数据项目为主线', renderAt.defaultPath() === '/projects',
+      `studioDefaultPath() = ${renderAt.defaultPath()}`)
     const first = renderAt('/p/7/overview').html
     record('深链接渲染项目壳', first.includes('data-studio-project-id="7"'),
       '输出包含 data-studio-project-id="7"（项目 ID 来自 URL，而非全局状态）')
+
+    const workflowNav = first.match(/<nav class="project-layout__tabs atelier-project-tabs"[\s\S]*?<\/nav>/)?.[0] ?? ''
+    const workflowLabels = [...workflowNav.matchAll(/<span>(项目|设计|生产|审阅|发布)<\/span>/g)].map((match) => match[1])
+    record('项目壳明确展示五阶段主线',
+      JSON.stringify(workflowLabels) === JSON.stringify(['项目', '设计', '生产', '审阅', '发布']),
+      `实际阶段：${workflowLabels.join(' → ')}`)
+    const review = renderAt('/p/7/review').html
+    const reviewNav = review.match(/<nav class="project-layout__tabs atelier-project-tabs"[\s\S]*?<\/nav>/)?.[0] ?? ''
+    const reviewStageLink = reviewNav.match(/<a\b[^>]*data-workflow-stage="4"[^>]*>/)?.[0] ?? ''
+    record('审阅深链显示第四阶段且保留原地址',
+      reviewStageLink.includes('aria-current="page"') && reviewStageLink.includes('href="/p/7/review"'),
+      '原 /review 路径仍挂载真实审阅页面，并选中主线第四阶段')
 
     // 第二个项目：同一进程内再次渲染，不得复用上一次的 ID（状态泄漏）。
     const second = renderAt('/p/9/data').html

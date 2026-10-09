@@ -127,14 +127,11 @@ export function QualityListPage() {
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">
-            质量实验室
+            质量实验
           </Title>
           {/* issue #197 第 14 条：不用「分母/分子」，改用「被评测数据集」表达。
               统计口径**没有变**（依旧是实验创建时冻结的样本版本数），
               变的是说法：甲方看到「分母」不知道它在说什么。 */}
-          <Text type="tertiary">
-            实验创建时会<strong>冻结</strong>一份「被评测数据集」（当时的样本版本数）；之后的审阅、隔离都不会改变这份数据集。
-          </Text>
         </div>
         <Button theme="solid" type="primary" disabled={!canRun} onClick={() => navigate(projectHref('project.qualityNew', scope.projectId))}>
           新建质量实验
@@ -143,7 +140,7 @@ export function QualityListPage() {
 
       {experiments.length === 0 ? (
         <Card className="console-card">
-          <Empty description="还没有质量实验。创建后会冻结本次检查的范围与量表。" />
+          <Empty description="还没有质量实验" />
         </Card>
       ) : (
         <div className="batch-table" data-experiment-table="true">

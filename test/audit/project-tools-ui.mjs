@@ -2,6 +2,8 @@
 import assert from 'node:assert/strict'
 
 export async function verifyProjectTools(page, baseURL) {
+  // 来源 suite 以移动端结束；本 suite 的菜单验收明确使用桌面导航。
+  await page.setViewportSize({ width: 1440, height: 1024 })
   await page.unrouteAll({ behavior: 'wait' })
   const capabilities = { canEdit: true, canRun: true, canReview: true, canPublish: true, canDownload: true, canManageMembers: true }
   let mode = 'default', targetKind = 'sft', migrationMode = 'partial', experiment, preview, projectReads = 0
@@ -97,13 +99,20 @@ export async function verifyProjectTools(page, baseURL) {
     const statusRead = page.waitForResponse((response) => response.url().endsWith('/legacy/migration-status'))
     await page.goto(`${baseURL}/tools/evaluation?projectId=7&blueprintVersionId=101`)
     await statusRead
-    const historyLink = page.locator('#studio-main-navigation a[href="/legacy/history"]')
-    await historyLink.waitFor({ state: state === 'complete' ? 'detached' : 'attached' })
+    await page.getByRole('button', { name: '工具与设置', exact: true }).click()
+    await page.locator('[data-studio-tools-menu]').waitFor()
+    const historyItem = page.getByRole('menuitem', { name: '历史资产', exact: true })
+    if (state === 'complete') assert.equal(await historyItem.count(), 0)
+    else await historyItem.waitFor({ state: 'visible' })
+    await page.keyboard.press('Escape')
   }
   migrationMode = 'complete'
   await page.goto(`${baseURL}/legacy/history`)
   await page.getByText('历史资产（只读）', { exact: true }).waitFor()
-  await page.locator('#studio-main-navigation a[href="/legacy/history"]').waitFor({ state: 'detached' })
+  await page.getByRole('button', { name: '工具与设置', exact: true }).click()
+  await page.locator('[data-studio-tools-menu]').waitFor()
+  assert.equal(await page.getByRole('menuitem', { name: '历史资产', exact: true }).count(), 0)
+  await page.keyboard.press('Escape')
   targetKind = 'grpo'; experiment = undefined
   await page.goto(`${baseURL}/p/7/quality/new?projectId=7&blueprintVersionId=101`)
   await page.getByRole('alert').getByText(/GRPO 实验仅支持服务端内置量表/).waitFor()

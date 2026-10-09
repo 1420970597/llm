@@ -35,13 +35,11 @@ type ProjectEnvelope = {
     pilotSize: number
   }
 }
-
 type PageEnvelope<T> = {
   items: T[]
   nextCursor: string
   sortKey: string
 }
-
 /**
  * 项目状态 → 用户可见文案（issue #191）。
  *
@@ -60,7 +58,6 @@ const PROJECT_STATUS_LABEL: Record<string, string> = {
   published: '已发布',
   archived: '已归档',
 }
-
 function projectStatusLabel(status: string): string {
   return PROJECT_STATUS_LABEL[status] ?? '状态未知'
 }
@@ -174,9 +171,8 @@ export function ProjectsPage() {
           <Title heading={4} className="!mb-1">
             数据项目
           </Title>
-          <Text type="tertiary">按项目组织设计、运行与发布；一个项目可以有多个并行批次。</Text>
         </div>
-        <div className="flex gap-2">
+        <div className="console-page__actions">
           <Input
             value={search}
             onChange={(value) => setSearch(value)}
@@ -250,7 +246,8 @@ export function ProjectsPage() {
         </Card>
       ) : projects.length === 0 ? (
         <Card className="console-card">
-          <Empty description="还没有数据项目。创建第一个项目只建立草稿，不会调用模型，也不要求已配置连接。" />
+          <Empty description={search ? '没有匹配的项目' : '还没有项目'} />
+          {!search ? <Button theme="solid" type="primary" onClick={() => navigate('/new')}>创建项目</Button> : <Button onClick={() => setSearch('')}>清除搜索</Button>}
         </Card>
       ) : (
         <div className="project-card-grid">
@@ -276,10 +273,10 @@ export function ProjectsPage() {
               </Text>
               <div className="mt-3 flex flex-wrap gap-3">
                 <Text type="tertiary" size="small">
-                  领域 {project.data.domainCount} · 每领域方向 {project.data.directionsPerDomain} · 每方向问题{' '}
-                  {project.data.questionsPerDirection}
+                  计划 {(project.data.domainCount * project.data.directionsPerDomain * project.data.questionsPerDirection).toLocaleString()} 条
                 </Text>
               </div>
+              <span className="project-card__continue">进入项目 →</span>
               <div className="mt-2 flex items-center gap-2">
                 <Tag size="small">{projectStatusLabel(project.status)}</Tag>
                 {!project.capabilities.canRun ? (
@@ -304,11 +301,8 @@ export function ProjectsPage() {
       */}
       <div className="project-list-footer" data-projects-pagination="true">
         <Text type="tertiary" size="small">
-          已显示 {projects.length} 个项目 · 这是第 {pageIndex} 页
+          已显示 {projects.length} 个项目 · 第 {pageIndex} 页
           {nextCursor !== '' ? ' · 还有更多' : ' · 已到底'}
-        </Text>
-        <Text type="tertiary" size="small" className="block">
-          翻页方式：游标分页（只往后追加，不会重复显示同一条）。
         </Text>
         {nextCursor !== '' ? (
           <div className="mt-2 flex justify-center">
@@ -330,15 +324,11 @@ export function ProjectsPage() {
     </div>
   )
 }
-
 /**
- * 项目概览页（P01）。
+ * 项目首页（P01）。
  *
- * 只用真实数据填充，三条与契约 §3.1 相关的规则体现在这里：
- *
- *  1. 计划量与实际产出**分列**显示，不合成「完成度」；
- *  2. 接纳率在分母为 0 时显示「无结论」而不是 100%（文案来自服务端）；
- *  3. 「下一决定」由服务端按事实与权限给出，前端不自己猜。
+ * 页面只保留一条主线：当前阶段、阻塞事实和下一步。详细配置仍由阶段
+ * 页面承载，避免项目首页变成版本账本、统计报表和帮助文档的混合物。
  */
 export function ProjectOverviewPage() {
   const scope = useProjectScope()
@@ -390,90 +380,67 @@ export function ProjectOverviewPage() {
     )
   }
 
-  const versionRows = [
-    ['蓝图', overview.versions.blueprint],
-    ['覆盖', overview.versions.coverage],
-    ['素材来源', overview.versions.source],
-    ['标准', overview.versions.standard],
-    ['质量策略', overview.versions.qualityPolicy],
-    ['映射', overview.versions.mapping],
-  ] as const
-
+  const designConfigured = Boolean(overview.versions.blueprint && overview.versions.coverage && overview.versions.standard)
+  const hasProduction = overview.batches.total > 0
+  const reviewComplete = overview.stats.pendingReview === 0 && overview.stats.accepted + overview.stats.quarantined > 0
+  const published = overview.nextAction.kind === 'done'
+  const stages = [
+    { key: 'design', label: '设计', ready: designConfigured, value: designConfigured ? '已配置 · 执行前仍需校验' : '待配置', href: scope.href('project.blueprint') },
+    { key: 'run', label: '生产', ready: hasProduction && overview.batches.completed === overview.batches.total, value: hasProduction ? `${overview.batches.completed}/${overview.batches.total} 批次完成` : '未开始 · 也可导入数据', href: scope.href('project.runs') },
+    { key: 'review', label: '审阅', ready: reviewComplete, value: overview.stats.pendingReview > 0 ? `${overview.stats.pendingReview} 条待判断` : `${overview.stats.accepted} 条已接纳`, href: scope.href('project.review') },
+    { key: 'release', label: '发布', ready: published, value: published ? '当前接纳数据已发布' : overview.stats.accepted > 0 ? '查看候选与质量门槛' : '暂无可发布数据', href: scope.href('project.releases') },
+  ]
+  const currentStage = stages.findIndex((stage) => stage.key === (published ? 'release' : overview.nextAction.kind))
+  const currentStageIndex = currentStage >= 0 ? currentStage : stages.findIndex((stage) => !stage.ready)
+  const blockers = [
+    !overview.versions.blueprint ? { text: '完成生产蓝图', href: scope.href('project.blueprint') } : null,
+    !overview.versions.coverage ? { text: '补充目标结构', href: scope.href('project.coverage') } : null,
+    !overview.versions.standard ? { text: '设置思维标准', href: scope.href('project.standard') } : null,
+    overview.batches.failed > 0 ? { text: `处理 ${overview.batches.failed} 个失败批次`, href: scope.href('project.runs') } : null,
+  ].filter((item): item is { text: string; href: string } => Boolean(item))
+  const nextLabel = overview.nextAction.message || '继续项目'
   return (
-    <div className="console-page atelier-overview-page" data-studio-page="overview">
-      <header className="atelier-page-intro">
+    <div className="console-page project-command-center" data-studio-page="overview">
+      <header className="project-command-center__header">
         <div>
-          <div className="eyebrow">PROJECT / {overview.targetKind === 'grpo' ? 'GRPO' : 'SFT'}</div>
+          <div className="eyebrow">项目 · {overview.targetKind === 'grpo' ? 'GRPO' : 'SFT'}</div>
           <h1>{projectName ?? '数据项目'}</h1>
-          <Text type="tertiary">目标：{overview.goal || '尚未填写交付目标'}</Text>
+          <p>{overview.goal || '尚未填写交付目标'}</p>
         </div>
-        <Button theme="solid" type="primary" onClick={() => navigate(overview.nextAction.href)}>
-          进入工作区 →
-        </Button>
       </header>
 
-      <section className="atelier-overview-metrics" aria-label="项目摘要">
-        <div><span>目标问题</span><strong>{overview.stats.plannedQuestions.toLocaleString()}</strong><small>计划量，不是已产出</small></div>
-        <div><span>当前方案</span><strong>v{overview.versions.blueprint?.version ?? '—'}</strong><small>{overview.versions.blueprint ? '所有历史版本保留' : '尚未保存'}</small></div>
-        <div><span>待处理决定</span><strong>{overview.stats.pendingReview.toLocaleString()}</strong><small>等待人工判断的内容版本</small></div>
-        <div><span>交付映射</span><strong>{overview.versions.mapping ? `v${overview.versions.mapping.version}` : '—'}</strong><small>{overview.stats.acceptanceRateDisplay}</small></div>
+      <section className="project-command-progress" aria-label="项目进度">
+        {stages.map((stage, index) => (
+          <button type="button" className={index === currentStageIndex ? 'is-current' : stage.ready ? 'is-complete' : ''} key={stage.key} onClick={() => navigate(stage.href)}>
+            <span>{index + 1}</span>
+            <strong>{stage.label}</strong>
+            <small>{stage.value}</small>
+          </button>
+        ))}
       </section>
 
-      <div className="atelier-overview-grid">
-        <section className="atelier-journey-panel">
-          <div className="atelier-section-heading"><div><div className="eyebrow">PROJECT JOURNEY</div><h2>当前旅程</h2></div></div>
-          <div className="atelier-journey-list">
-            {[
-              ['01 设计', '范围与方案已经就绪', '方案节点有独立职责，改动后可以先做试制。', 'project.blueprint', '生产蓝图 →'],
-              ['02 试制', '比较方案，再投入下一批', `试制 ${overview.batches.pilot} 批 · 扩量 ${overview.batches.scale} 批`, 'project.compare', '查看试制对比 →'],
-              ['03 数据与质量', '把质量证据转成具体判断', `${overview.stats.generated} 个已生成版本 · ${overview.stats.acceptanceRateDisplay}`, 'project.quality', '进入质量实验室 →'],
-              ['04 发布', '冻结内容，交付可复现版本', `${overview.batches.failed} 个失败/部分失败批次仍可恢复`, 'project.releases', '准备发布 →'],
-            ].map(([step, title, detail, route, action]) => (
-              <div className="atelier-journey-row" key={step}>
-                <div><Tag size="small">{step}</Tag><h3>{title}</h3><Text type="tertiary" size="small">{detail}</Text></div>
-                <Button theme="borderless" onClick={() => navigate(scope.href(route))}>{action}</Button>
-              </div>
-            ))}
+      <div className="project-command-grid">
+        <section className="project-command-next">
+          <div className="project-command-section-head"><div><span className="eyebrow">下一步</span><h2>{nextLabel}</h2></div><Tag color="blue">阶段 {Math.max(1, currentStageIndex + 1)}/4</Tag></div>
+          <p className="project-command-next__status">{published ? '查看已冻结的交付文件。' : '继续处理当前任务。'}</p>
+          <Button theme="solid" type="primary" onClick={() => navigate(overview.nextAction.href)}>{nextLabel}</Button>
+        </section>
+
+        <section className="project-command-facts">
+          <div className="project-command-section-head"><div><span className="eyebrow">关键事实</span><h2>项目现在的状态</h2></div></div>
+          <div className="project-command-facts__grid">
+            <div><strong>{overview.stats.plannedQuestions.toLocaleString()}</strong><span>计划题数</span></div>
+            <div><strong>{overview.stats.generated.toLocaleString()}</strong><span>已生成</span></div>
+            <div><strong>{overview.stats.pendingReview.toLocaleString()}</strong><span>待审阅</span></div>
+            <div><strong>{overview.stats.acceptanceRateDisplay}</strong><span>接纳率</span></div>
           </div>
         </section>
 
-        <aside className="atelier-overview-side">
-          <section className="atelier-detail-panel">
-            <div className="eyebrow">PROJECT PROMISE</div><h2>项目约定</h2>
-            <dl>
-              <div><dt>训练类型</dt><dd>{overview.targetKind === 'grpo' ? 'GRPO' : 'SFT'}</dd></div>
-              <div><dt>计划规模</dt><dd>{overview.stats.plannedQuestions.toLocaleString()} 题</dd></div>
-              <div><dt>批次</dt><dd>{overview.batches.total}（试制 {overview.batches.pilot}）</dd></div>
-              <div><dt>预算占用</dt><dd>{formatMinor(overview.budget.settledMinor + overview.budget.uncertainMinor + overview.budget.reservedMinor)}</dd></div>
-            </dl>
-          </section>
-          <section className="atelier-detail-panel">
-            <div className="eyebrow">NEXT DECISION</div><h2>{overview.nextAction.message}</h2>
-            <Button theme="solid" type="primary" onClick={() => navigate(overview.nextAction.href)}>继续这一步</Button>
-          </section>
-          <section className="atelier-detail-panel">
-            <div className="eyebrow">VERSION LEDGER</div><h2>当前版本</h2>
-            <div className="atelier-version-list">
-              {versionRows.map(([label, version]) => <div key={label}><span>{label}</span><strong>{version ? `v${version.version}` : '未保存'}</strong></div>)}
-            </div>
-            <Button theme="borderless" onClick={() => navigate(scope.href('project.sources'))}>查看素材来源 →</Button>
-          </section>
-        </aside>
+        <section className="project-command-blockers">
+          <div className="project-command-section-head"><div><h2>{blockers.length ? `${blockers.length} 项待处理` : '配置与批次'}</h2></div></div>
+          {blockers.length ? <ul>{blockers.map((blocker) => <li key={blocker.href}><span>{blocker.text}</span><Button theme="borderless" size="small" onClick={() => navigate(blocker.href)}>查看 →</Button></li>)}</ul> : <p>没有缺失版本或失败批次。发布门槛以候选检查结果为准。</p>}
+        </section>
       </div>
     </div>
   )
-}
-
-/**
- * 金额显示。
- *
- * 后端一律用整数最小货币单位（分）传输（契约 §2.4）。前端**只在展示时**
- * 转成元，且不使用浮点运算做累加 —— 这里的输入已经是服务端算好的整数和。
- */
-function formatMinor(minor: number): string {
-  const negative = minor < 0
-  const value = Math.abs(minor)
-  const yuan = Math.floor(value / 100)
-  const cents = String(value % 100).padStart(2, '0')
-  return `${negative ? '-' : ''}${yuan}.${cents} 元`
 }

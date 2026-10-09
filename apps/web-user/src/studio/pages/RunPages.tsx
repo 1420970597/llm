@@ -143,6 +143,13 @@ export function RunsPage() {
     void load()
   }, [load])
 
+  const hasActiveBatches = batches.some((batch) => ['running', 'queued', 'pause_requested'].includes(batch.status))
+  useEffect(() => {
+    if (!hasActiveBatches) return
+    const timer = window.setInterval(() => void load(), 5000)
+    return () => window.clearInterval(timer)
+  }, [hasActiveBatches, load])
+
   const control = useCallback(
     async (batchId: number, action: 'pause' | 'resume' | 'retry-failed') => {
       setBusy(batchId)
@@ -163,24 +170,22 @@ export function RunsPage() {
   )
 
   return (
-    <div className="console-page" data-studio-page="runs">
+    <div className="console-page production-workbench" data-studio-page="runs">
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">
             生产批次
           </Title>
-          <Text type="tertiary">
-            同一项目可以有多个并行批次；列表按最近创建排序，不按「最大 ID 猜当前运行」。
-          </Text>
+          <Text type="tertiary">{batches.filter((batch) => batch.status === 'running' || batch.status === 'queued').length} 个运行中 · {batches.filter((batch) => batch.failedUnits > 0).length} 个需要恢复</Text>
         </div>
         <div className="flex gap-2">
           <Button icon={<RefreshCw size={14} />} onClick={() => void load()} disabled={loading}>
             刷新批次
           </Button>
-          {canRun ? <Button onClick={() => navigate(projectHref('project.pilot', scope.projectId))}>新建试制</Button> : null}
-          {canRun ? (
-            <Button theme="solid" type="primary" onClick={() => navigate(projectHref('project.runNew', scope.projectId))}>
-              扩量规划
+          {canRun && batches.some((batch) => batch.purpose === 'pilot') ? <Button onClick={() => navigate(projectHref('project.pilot', scope.projectId))}>新建试制</Button> : null}
+          {canRun && batches.length > 0 ? (
+            <Button theme="solid" type="primary" onClick={() => navigate(projectHref(batches.some((batch) => batch.purpose === 'pilot') ? 'project.runNew' : 'project.pilot', scope.projectId))}>
+              {batches.some((batch) => batch.purpose === 'pilot') ? '开始扩量' : '开始试制'}
             </Button>
           ) : null}
         </div>
@@ -192,7 +197,7 @@ export function RunsPage() {
         </div>
       ) : null}
 
-      {loading ? (
+      {loading && batches.length === 0 ? (
         <div className="flex justify-center py-10">
           <Spin tip="正在加载批次" />
         </div>
@@ -210,7 +215,7 @@ export function RunsPage() {
         </Card>
       ) : batches.length === 0 ? (
         <Card className="console-card">
-          <Empty description="还没有批次。先跑一次小批试制验证方案，再规划扩量。" />
+          <Empty description="还没有生产批次。"><Button theme="solid" type="primary" disabled={!canRun} onClick={() => navigate(scope.href('project.pilot'))}>开始试制</Button></Empty>
         </Card>
       ) : (
         <div className="batch-table" data-batch-table="true">
@@ -243,6 +248,8 @@ export function RunsPage() {
               <span data-count="failed">{batch.failedUnits}</span>
               <span data-count="inFlight">{batch.inFlightUnits}</span>
               <span className="batch-row__actions">
+                <Button size="small" onClick={() => navigate(projectHref(batch.failedUnits > 0 ? 'project.runFailures' : 'project.runDetail', scope.projectId, { batchId: batch.resourceId }))}>{batch.failedUnits > 0 ? batch.capabilities?.canRetryFailed ? '处理失败' : '查看异常' : '查看进度'}</Button>
+                <details className="production-row-controls"><summary>控制</summary>
                 {batch.capabilities?.canPause && (batch.status === 'running' || batch.status === 'queued') ? (
                   <Button
                     size="small"
@@ -273,6 +280,7 @@ export function RunsPage() {
                     恢复失败项
                   </Button>
                 ) : null}
+                </details>
               </span>
             </div>
           ))}
@@ -421,7 +429,13 @@ export function BatchDetailPage() {
   const isRunning = status === 'running' || status === 'queued'
   const isPaused = status === 'paused' || status === 'pause_requested'
 
-  if (loading) {
+  useEffect(() => {
+    if (!isRunning && status !== 'pause_requested') return
+    const timer = window.setInterval(() => void load(), 5000)
+    return () => window.clearInterval(timer)
+  }, [isRunning, load, status])
+
+  if (loading && !detail) {
     return (
       <div className="flex justify-center py-10">
         <Spin tip="正在加载批次" />
@@ -445,7 +459,7 @@ export function BatchDetailPage() {
   }
 
   return (
-    <div className="console-page" data-studio-page="batch-detail" data-batch-status={status}>
+    <div className="console-page production-batch-detail" data-studio-page="batch-detail" data-batch-status={status}>
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">
@@ -458,6 +472,7 @@ export function BatchDetailPage() {
           </Text>
         </div>
         <div className="flex gap-2">
+          {detail.batch.completedUnits > 0 ? <Button theme="solid" type="primary" onClick={() => navigate(scope.href('project.review'))}>审阅产出</Button> : null}
           {capabilities.canPause && isRunning ? (
             <Button
               icon={<Pause size={14} />}
@@ -493,6 +508,13 @@ export function BatchDetailPage() {
         </div>
       ) : null}
 
+      <Card className="console-card production-progress-panel mb-3" bodyStyle={{ padding: 16 }} data-batch-steps="true">
+        <div className="production-progress-panel__heading"><Text strong>生产进度</Text><Text>{detail.batch.completedUnits} / {detail.batch.plannedUnits} 已完成</Text></div>
+        <progress aria-label="本批次已完成单元" value={detail.batch.completedUnits} max={Math.max(detail.batch.plannedUnits, 1)} />
+        {detail.steps.length === 0 ? <Text type="tertiary" data-batch-steps-empty="true">阶段记录缺失，请刷新重试。</Text> : <ul className="batch-steps">{detail.steps.map((step) => <li key={step.phase} data-batch-step={step.phase} data-batch-step-status={step.status}><span>{step.unitLabel || step.phase}</span><span>{step.doneUnits} / {step.totalUnits}{step.failedUnits > 0 ? `（失败 ${step.failedUnits}）` : ''}</span></li>)}</ul>}
+        <Text type="tertiary" size="small">预算上限 {detail.batchBudget.limitMinor || '不限'} 分 · 在途 {detail.batchBudget.reservedMinor} · 已结算 {detail.batchBudget.settledMinor} · 待确认 {detail.batchBudget.uncertainMinor}</Text>
+      </Card>
+
       {/* 暂停语义必须显式说明：用户点完暂停会以为不再花钱（§2.4）。 */}
       {isPaused ? (
         <Card className="console-card mb-3" bodyStyle={{ padding: 14 }} data-pause-notice="true">
@@ -514,6 +536,7 @@ export function BatchDetailPage() {
         issue #197 第 13 条：生产工作区必须能预览数据集结构与内容，并自动分析。
         「自动」是硬要求：这里**没有**「分析」按钮 —— 打开页面就已经算好。
       */}
+      <details className="production-analysis-panel"><summary>产出分析与结构</summary>
       <Card className="console-card mb-3" bodyStyle={{ padding: 14 }} data-batch-analysis="true">
         <Text strong className="block mb-2">
           数据集结构与内容分析
@@ -665,6 +688,7 @@ export function BatchDetailPage() {
           </>
         )}
       </Card>
+      </details>
 
       {/* issue #190：缺口必须显式可见，且不能等用户点开某个面板才看得到。 */}
       {(detail.batch.shortfallNote || (detail.batch.shortfallUnits ?? 0) > 0) ? (
@@ -718,9 +742,10 @@ export function BatchDetailPage() {
             本批已完成
           </Text>
           <Text type="tertiary" size="small">
-            下一步可以创建质量实验（固定范围与量表）或与另一个试制批次做同基准比较。
+            产出已就绪，可以开始审阅。
           </Text>
           <div className="mt-3 flex gap-2">
+            <Button size="small" theme="solid" type="primary" onClick={() => navigate(scope.href('project.review'))}>开始审阅</Button>
             <Button size="small" onClick={() => navigate(projectHref('project.qualityNew', scope.projectId))}>
               创建质量实验
             </Button>
@@ -731,6 +756,7 @@ export function BatchDetailPage() {
         </Card>
       ) : null}
 
+      <details className="production-snapshot-panel"><summary>本批次配置快照</summary>
       <div className="batch-detail-grid">
         <Card className="console-card" bodyStyle={{ padding: 16 }}>
           <Text strong className="block mb-2">
@@ -763,42 +789,10 @@ export function BatchDetailPage() {
           </div>
         </Card>
 
-        <Card className="console-card" bodyStyle={{ padding: 16 }} data-batch-steps="true">
-          <Text strong className="block mb-2">
-            阶段进度（按单位，不编造总体百分比）
-          </Text>
-          {/* issue #212：以前这里对所有批次都显示「还没有阶段记录」——
-              对已跑完的批次，那句空态等于断言「这次没有执行任何阶段」，
-              而同一页上方的分析面板却有完整数据。服务端现在把阶段做成
-              batch_items 的投影，因此正常批次一定有行；保留的兜底文案
-              也只能陈述「记录缺失」，不得再暗示「没执行」。 */}
-          {detail.steps.length === 0 ? (
-            <Text type="tertiary" size="small" data-batch-steps-empty="true">
-              阶段记录缺失（服务端未返回阶段投影），请刷新重试；这不表示本批没有执行阶段。
-            </Text>
-          ) : (
-            <ul className="batch-steps">
-              {/* key 用 phase 而不是 id：投影在尚未落盘时 id 为 0，
-                  用 id 做 key 会让两行撞 key 并互相复渲染。 */}
-              {detail.steps.map((step) => (
-                <li key={step.phase} data-batch-step={step.phase} data-batch-step-status={step.status}>
-                  <span>{step.unitLabel || step.phase}</span>
-                  <span>
-                    {step.doneUnits} / {step.totalUnits}
-                    {step.failedUnits > 0 ? `（失败 ${step.failedUnits}）` : ''}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Text type="tertiary" size="small" className="block mt-2">
-            批次预算：上限 {detail.batchBudget.limitMinor} 分 · 在途{' '}
-            {detail.batchBudget.reservedMinor} · 已结算 {detail.batchBudget.settledMinor} · 未知{' '}
-            {detail.batchBudget.uncertainMinor}
-          </Text>
-        </Card>
       </div>
+      </details>
 
+      <details className="production-events-panel"><summary>运行事件（{events.length}）</summary>
       <Card className="console-card mt-3" bodyStyle={{ padding: 16 }}>
         <Text strong className="block mb-2">
           事件时间线
@@ -833,6 +827,7 @@ export function BatchDetailPage() {
           </ul>
         )}
       </Card>
+      </details>
     </div>
   )
 }
@@ -1023,13 +1018,6 @@ type BlueprintPlanningPayload = {
 
 type PlanningBlueprintVersion = PlanningVersion & { payload?: BlueprintPlanningPayload }
 
-const BLUEPRINT_EXECUTION_REQUIREMENTS = [
-  '模型服务、输出内容类型、并发和单次输出上限',
-  '独立检查模型与量表',
-  '质量策略、交付映射、输出格式和用途',
-  '人工检查方式和必需依据',
-]
-
 function planningVersionLabel(items: PlanningVersion[], id: string): string {
   const version = items.find((item) => String(item.id) === id)
   return version ? `v${version.version}` : '未选择'
@@ -1120,16 +1108,18 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       }
       setVersionOptions(next)
       const latestID = (items: PlanningVersion[]) => items[0] && String(items[0].id)
-      setBlueprintVersionId((value) => value || latestID(next.blueprint) || '')
+      setBlueprintVersionId((value) => value || String(overview.data.versions.blueprint?.versionId || '') || latestID(next.blueprint) || '')
       setCoverageVersionId((value) => value || latestID(next.coverage) || '')
       setStandardVersionId((value) => value || latestID(next.standard) || '')
       setQualityPolicyVersionId((value) => value || latestID(next.qualityPolicy) || '')
       setMappingVersionId((value) => value || latestID(next.mapping) || '')
+      setUnitCount((value) => value === (purpose === 'pilot' ? '12' : '500')
+        ? String(Math.max(1, Math.min(overview.data.stats.plannedQuestions || Number(value), purpose === 'pilot' ? MAX_PILOT_UNITS : MAX_SCALE_UNITS, Number(value)))) : value)
     }).catch(() => {
       if (!cancelled) setCanRun(false)
     })
     return () => { cancelled = true }
-  }, [scope.projectId])
+  }, [scope.projectId, purpose])
 
   // 选择蓝图不应要求用户再逐项复述一次已经在蓝图中保存的引用。读取版本
   // 本体后，把其中的覆盖、标准、规则和映射带入本次快照；用户仍可以在下面
@@ -1363,16 +1353,14 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   ])
 
   return (
-    <div className="console-page" data-studio-page={purpose === 'pilot' ? 'pilot' : 'scale-planning'}>
+    <div className="console-page production-planning-page" data-studio-page={purpose === 'pilot' ? 'pilot' : 'scale-planning'}>
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">
             {title}
           </Title>
           <Text type="tertiary">
-            {purpose === 'pilot'
-              ? '先用小批验证方案；结果不会覆盖主生产。蓝图里未完成的步骤会在执行前明确拦截。'
-              : '按范围与预算规划一次扩量；执行前会核对蓝图中的每个配置步骤。'}
+            采用当前方案，只需确认数量与预算。
           </Text>
         </div>
       </div>
@@ -1403,10 +1391,18 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
 
       <Card className="console-card" bodyStyle={{ padding: 20 }}>
         <div className="planning-configuration-note" role="note">
-          <strong>这次批次会固定蓝图里的配置</strong>
-          <span>蓝图负责定义生成、评估、规则、人工检查和交付边界；本页只决定本次范围、数量和预算。</span>
-          <span>执行前需要完成：{BLUEPRINT_EXECUTION_REQUIREMENTS.join('；')}。</span>
+          <strong>当前方案 {selectedBlueprint ? `v${selectedBlueprint.version}` : '未就绪'}</strong>
+          <Button size="small" onClick={() => navigate(scope.href('project.blueprint'))}>编辑方案</Button>
         </div>
+        <div className="wizard-fields production-planning-basics">
+          <Field label={`生产数量（1–${maxUnits}）`} required fieldId="plan-units">
+            <InputNumber id="plan-units" value={Number(unitCount) || undefined} min={1} max={maxUnits} onChange={(value) => setUnitCount(value === undefined ? '' : String(value))} />
+          </Field>
+          <Field label="预算上限（分）" fieldId="plan-budget">
+            <Input id="plan-budget" value={budgetLimitMinor} onChange={setBudgetLimitMinor} placeholder="留空或 0 = 不设上限" />
+          </Field>
+        </div>
+        <details className="production-version-overrides"><summary>高级：调整本批次采用的版本</summary>
         <div className="wizard-fields">
           <Field label="生产蓝图版本" required fieldId="plan-blueprint" action={<Button size="small" theme="borderless" onClick={() => navigate(scope.href('project.blueprint'))}>编辑蓝图</Button>}>
             <Select
@@ -1466,24 +1462,8 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
             />
             {versionOptions.mapping.length === 0 ? <VersionChoiceEmpty message="还没有保存交付映射版本，发布时无法冻结字段映射。" actionLabel="去交付映射创建" onAction={() => navigate(scope.href('project.newRelease'))} /> : null}
           </Field>
-          <Field label={`计划单元数（1–${maxUnits}）`} required fieldId="plan-units">
-            <InputNumber
-              id="plan-units"
-              value={Number(unitCount) || undefined}
-              min={1}
-              max={maxUnits}
-              onChange={(value) => setUnitCount(value === undefined ? '' : String(value))}
-            />
-          </Field>
-          <Field label="预算上限（分）" fieldId="plan-budget">
-            <Input
-              id="plan-budget"
-              value={budgetLimitMinor}
-              onChange={(value) => setBudgetLimitMinor(value)}
-              placeholder="留空或 0 = 不设上限"
-            />
-          </Field>
         </div>
+        </details>
       </Card>
 
       <Card className="console-card mt-3" bodyStyle={{ padding: 16 }} data-preflight="true">
@@ -1509,7 +1489,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
         </div>
       ) : null}
 
-      <div className="mt-3">
+      <div className="production-planning-actions mt-3">
         {!canRun ? (
           <Text type="tertiary" size="small" className="block mb-2">
             当前账号没有启动批次的权限。

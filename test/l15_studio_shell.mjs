@@ -133,11 +133,11 @@ const todayPageSource = readFileSync(TODAY_PAGE_SOURCE, 'utf8')
 const stylesSource = readFileSync(STYLES_SOURCE, 'utf8')
 
 record(
-  '生产/数据/发布刷新动作带作用域文案',
+  '生产/数据/发布刷新动作保留作用域名称',
   runPageSource.includes('刷新批次') &&
     reviewPageSource.includes('刷新样本') &&
     releasePageSource.includes('刷新发布列表'),
-  '批次、样本与发布列表不再共用含义不明的「刷新」文案',
+  '可视文案可简化，但 aria-label 或按钮文字仍说明刷新哪个列表',
 )
 record(
   '命令搜索只渲染顶栏实例',
@@ -162,8 +162,8 @@ record(
     studioLayoutSource.includes('}, 500)') &&
     studioLayoutSource.includes("document.querySelector<HTMLElement>('#studio-main-navigation a[href]')?.focus()") &&
     studioLayoutSource.includes("if (event.key !== 'Escape') return") &&
-    /\.atelier-shell \.app-layout__sidebar \{[\s\S]*?visibility: hidden;[\s\S]*?pointer-events: none;/.test(stylesSource) &&
-    /\.atelier-shell \.app-layout__sidebar\[data-mobile-open='true'\] \{[\s\S]*?visibility: visible;[\s\S]*?pointer-events: auto;/.test(stylesSource),
+    /\.atelier-shell\s+\.app-layout__sidebar\s*\{[^}]*visibility\s*:\s*hidden\s*;[^}]*pointer-events\s*:\s*none\s*;/.test(stylesSource) &&
+    /\.atelier-shell\s+\.app-layout__sidebar\[data-mobile-open\s*=\s*['"]true['"]\]\s*\{[^}]*visibility\s*:\s*visible\s*;[^}]*pointer-events\s*:\s*auto\s*;/.test(stylesSource),
   '窄屏侧栏关闭时退出可见与 Tab 顺序；打开时焦点进入导航，Escape 可返回菜单',
 )
 record(
@@ -175,17 +175,18 @@ record(
   '能力位关闭或没有可重试项时保留按钮但禁止无效提交，并解释原因',
 )
 record(
-  '今日工作移动端标题控制在 28px',
-  /\.atelier-today-hero h1\s*\{[\s\S]*?font-size: 28px;/.test(stylesSource),
-  '移动端首屏优先呈现待处理内容',
+  '待处理行动台使用紧凑业务页头',
+  todayPageSource.includes('<h1>待处理</h1>') &&
+    todayPageSource.includes('className="console-page__header"') &&
+    todayPageSource.includes('atelier-action-queue'),
+  '首屏呈现真实待办，而不是营销 Hero',
 )
 record(
-  '目标到交付入口是真实 CTA',
-  todayPageSource.includes('className="atelier-hero-journey-cta"') &&
-    todayPageSource.includes('aria-label="查看从目标到证据再到交付的项目流程"') &&
-    stylesSource.includes('.atelier-hero-journey-cta:focus-visible') &&
-    !stylesSource.includes('.atelier-hero-mark::before'),
-  '流程入口使用可点击按钮、明确去向并提供 hover/focus 状态',
+  '待办直接提供可处理动作',
+  todayPageSource.includes("pending_review: { routeKey: 'project.review', label: '开始审阅' }") &&
+    todayPageSource.includes("failed_recovery: { routeKey: 'project.runs', label: '恢复批次' }") &&
+    !todayPageSource.includes('atelier-hero-journey-cta'),
+  '用具体任务动作替代装饰性的旅程按钮',
 )
 
 record(
@@ -248,10 +249,10 @@ record(
 )
 record(
   'Atelier 默认入口与错误边界使用路由元数据',
-  studioRoutesSource.includes("fillRoutePathByKey('today', {})") &&
+  /export function studioDefaultPath\(\): string \{\s*return fillRoutePathByKey\('projects', \{\}\)/.test(studioRoutesSource) &&
     studioRoutesSource.includes("fillRoutePathByKey('projects', {})") &&
     studioRoutesSource.includes('<Route index element={<Navigate to={studioDefaultPath()} replace />} />'),
-  '默认入口为 today，根路径在认证壳内跳转，错误边界回到 projects',
+  '默认入口为 projects，根路径在认证壳内跳转，错误边界回到 projects',
 )
 record(
   '未知路由显示明确状态而不是静默跳转',

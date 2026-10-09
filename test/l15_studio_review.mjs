@@ -1,5 +1,5 @@
 /**
- * L15 三栏审阅与选择范围守卫（Issue #160 T17）。
+ * L15 审阅与选择范围守卫（Issue #160 T17）。
  *
  * 运行：node test/l15_studio_review.mjs
  *
@@ -17,7 +17,7 @@
  *
  * 另三条同样只能靠断言守住：
  *   * 请求竞态不得把上一条的证据显示到下一条；
- *   * 保存判断刷新队列但**保留条件与返回位置**（URL 不动）；
+ *   * 保存判断刷新队列；自动下一条也**保留条件与返回位置**；
  *   * 409 时保留用户输入（清空理由会让用户重打一遍）。
  *
  * 分层（与其它 L15 守卫同一约定：默认路径不依赖容器/浏览器）：
@@ -153,13 +153,13 @@ record(
   )
 }
 
-/** 三栏独立且内容只读。 */
+/** 内容与判断常驻，队列/证据按需展开，内容只读。 */
 record(
-  '三栏独立且内容只读',
+  '内容与判断独立且内容只读',
   /review-pane__columns/.test(source) &&
     /data-content-readonly="true"/.test(source) &&
     /data-content-focus="true"/.test(source),
-  'queue/content/evidence 三栏独立；内容区标记为只读且可聚焦',
+  '正文保持只读和可聚焦，辅助区不挤占默认正文',
 )
 
 /** 最后一条必须可解释。 */
@@ -195,8 +195,10 @@ record(
 )
 record(
   '审阅页不再指向不存在的冻结按钮（issue #203）',
-  /本页没有冻结按钮/.test(source) && !/判断完成后可用下方/.test(source),
-  '审阅队列模式没有 data-snapshot-all，说明文字不得指向不存在的按钮',
+  source.includes(') : queueMode ? (') &&
+    !/data-snapshot-all/.test(source.slice(source.indexOf(') : queueMode ? ('), source.indexOf(') : (', source.indexOf(') : queueMode ? (')))) &&
+    !/判断完成后可用下方/.test(source),
+  '默认审阅队列分支不显示冻结操作；明确选择后才能准备发布',
 )
 record(
   '候选页标题按服务端构成渲染（issue #203）',
@@ -298,8 +300,8 @@ for (const field of ['reviewStatus', 'aggregateReviewRevision', 'reviewConflict'
 // 变异 5：候选页标题退回写死「已接纳」 → 必须被捕获。
 {
   const mutated = releaseSource.replace(
-    ": '发布范围'}",
-    ": '发布范围（已接纳的内容版本）'}",
+    '<Text strong>发布范围</Text>',
+    '<Text strong>发布范围（已接纳的内容版本）</Text>',
   )
   const problems = problemsWithReleaseRangeComposition(mutated)
   record(

@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { Button, Card, Empty, Input, Modal, Select, Spin, Tag, TextArea, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, Download, RefreshCw } from 'lucide-react'
 import { client } from '../../lib/api'
 import type { ApiFieldError } from '../../lib/api/studio'
-import { projectNumericId, projectPath, studioApi } from '../../lib/api/studio'
+import { newIdempotencyKey, projectNumericId, projectPath, studioApi } from '../../lib/api/studio'
 import type {
   BatchSummary,
   DeliveryItem,
@@ -27,7 +27,6 @@ type BlockerLinkProps = {
   link: string
   children: ReactNode
 }
-
 /** 服务端可返回页面链接或外部链接；项目内页面必须保留 Atelier 壳与上下文。 */
 function BlockerLink({ link, children }: BlockerLinkProps) {
   if (link.startsWith('/')) {
@@ -167,15 +166,13 @@ export function ReleasesListPage() {
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">发布版本</Title>
-          <Text type="tertiary">
-            候选与已发布分开显示；已发布的内容、映射、数据卡与 hash 只读。
-          </Text>
+          <Text type="tertiary">检查候选门槛，下载已发布数据。</Text>
         </div>
         <div className="flex gap-2">
-          <Button icon={<RefreshCw size={14} />} onClick={() => void load()}>刷新发布列表</Button>
+          <Button aria-label="刷新发布列表" icon={<RefreshCw size={14} />} onClick={() => void load()}>刷新</Button>
           {canPublish ? (
             <Button theme="solid" type="primary" onClick={() => navigate(projectHref('project.newRelease', scope.projectId))}>
-              准备发布
+              新建发布
             </Button>
           ) : null}
         </div>
@@ -183,7 +180,9 @@ export function ReleasesListPage() {
 
       {releases.length === 0 ? (
         <Card className="console-card">
-          <Empty description="还没有发布版本。先完成质量检查与人工判断，再准备发布。" />
+          <Empty description="暂无发布版本。" />
+          {canPublish ? <Button theme="solid" type="primary" onClick={() => navigate(projectHref('project.newRelease', scope.projectId))}>发布已接纳数据</Button>
+            : <Button onClick={() => navigate(projectHref('project.review', scope.projectId))}>查看审阅结果</Button>}
         </Card>
       ) : (
         <div className="batch-table" data-release-table="true">
@@ -206,7 +205,7 @@ export function ReleasesListPage() {
               <span>{release.intendedUse || '（未填写）'}</span>
               <span>
                 <Button size="small" onClick={() => navigate(projectHref('project.releaseCard', scope.projectId, { releaseId: release.id }))}>
-                  数据卡
+                  {release.status === 'published' ? '下载 / 详情' : '检查 / 发布'}
                 </Button>
               </span>
             </div>
@@ -260,6 +259,10 @@ export function ReleaseNewPage() {
   const [batches, setBatches] = useState<BatchSummary[]>([])
   const [samplesNextCursor, setSamplesNextCursor] = useState('')
   const [samplesLoading, setSamplesLoading] = useState(false)
+  const [rangeSearch, setRangeSearch] = useState('')
+  const [rangeBatch, setRangeBatch] = useState('')
+  const [rangeFreezing, setRangeFreezing] = useState(false)
+  const [step, setStep] = useState<0 | 1 | 2>(0)
   const [selected, setSelected] = useState<number[]>([])
   const [selectionSnapshotItems, setSelectionSnapshotItems] = useState<number[] | null>(null)
   /**
@@ -282,6 +285,9 @@ export function ReleaseNewPage() {
   // 而不是让他在构建失败后才从错误里推出来。
   const [targetKind, setTargetKind] = useState('sft')
   const [projectCapabilities, setProjectCapabilities] = useState<ProjectCapabilities | null>(null)
+  const [permissionsError, setPermissionsError] = useState<string | null>(null)
+  const [permissionsLoading, setPermissionsLoading] = useState(true)
+  const [permissionsRefresh, setPermissionsRefresh] = useState(0)
   const [blockers, setBlockers] = useState<ReleaseBlocker[]>([])
   const [error, setError] = useState<string | null>(null)
   /**
@@ -295,27 +301,37 @@ export function ReleaseNewPage() {
    */
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
+  const command = useRef<{ fingerprint: string; key: string } | null>(null)
+  const commandBusy = useRef(false)
+  const sampleRequest = useRef(0)
+  const savedMappingID = useRef<number | null>(null)
 
   /**
    * 已接纳范围也必须走游标分页。此前只取前 100 条并在 UI 截断到 50 条，
    * 会让用户误以为「可发布范围」只有首屏内容，且无法完成大项目的精确选择。
    */
   const loadAcceptedSamples = useCallback(async (cursor = '', append = false) => {
+    const requestID = ++sampleRequest.current
     setSamplesLoading(true)
     try {
       const params = new URLSearchParams({ status: 'accepted', limit: '100' })
+      if (rangeSearch.trim()) params.set('q', rangeSearch.trim())
+      if (rangeBatch) params.set('batch', rangeBatch)
       if (cursor !== '') params.set('cursor', cursor)
       const response = await client.get<Page<SampleSummary>>(
         `${projectPath(scope.projectId)}/samples?${params.toString()}`,
       )
+      if (requestID !== sampleRequest.current) return
       setSamples((previous) => (append ? [...previous, ...(response.data.items ?? [])] : (response.data.items ?? [])))
       setSamplesNextCursor(response.data.nextCursor ?? '')
+      if (!append) setSelected([])
     } catch (loadError) {
+      if (requestID !== sampleRequest.current) return
       setError(loadError instanceof Error ? loadError.message : '加载可选范围失败')
     } finally {
-      setSamplesLoading(false)
+      if (requestID === sampleRequest.current) setSamplesLoading(false)
     }
-  }, [scope.projectId])
+  }, [rangeBatch, rangeSearch, scope.projectId])
 
   useEffect(() => {
     let cancelled = false
@@ -323,16 +339,20 @@ export function ReleaseNewPage() {
       try {
         const batchResponse = await client.get<Page<BatchSummary>>(`${projectPath(scope.projectId)}/batches?limit=50`)
         if (!cancelled) setBatches(batchResponse.data.items ?? [])
-        if (!cancelled) await loadAcceptedSamples()
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : '加载可选范围失败')
       }
     })()
     return () => { cancelled = true }
-  }, [loadAcceptedSamples, scope.projectId])
+  }, [scope.projectId])
+
+  useEffect(() => { void loadAcceptedSamples() }, [loadAcceptedSamples])
 
   useEffect(() => {
     let cancelled = false
+    setPermissionsLoading(true)
+    setPermissionsError(null)
+    setProjectCapabilities(null)
     void (async () => {
       try {
         const response = await studioApi.overviewEnvelope(scope.projectId)
@@ -347,19 +367,24 @@ export function ReleaseNewPage() {
           ))
           if (nextTargetKind === 'grpo') setFormat('jsonl')
         }
-      } catch {
-        // 读取失败时回退 SFT：该值只影响提示文案，不参与服务端校验，
-        // 因此失败方向是「少一条提示」而不是「提交错格式」。
+      } catch (permissionError) {
+        if (!cancelled) setPermissionsError(permissionError instanceof Error ? permissionError.message : '权限读取失败')
+      } finally {
+        if (!cancelled) setPermissionsLoading(false)
       }
     })()
     return () => { cancelled = true }
-  }, [scope.projectId])
+  }, [permissionsRefresh, scope.projectId])
 
   useEffect(() => {
-    if (mappingState.current && mappingVersionId === '') {
-      setMappingVersionId(String(mappingState.current.id))
+    if (mappingState.current && !mappingState.loading) {
+      const currentID = mappingState.current.id
+      if (mappingVersionId === '' || (savedMappingID.current !== null && currentID !== savedMappingID.current && !mappingState.isReadOnly)) {
+        setMappingVersionId(String(currentID))
+      }
+      savedMappingID.current = currentID
     }
-  }, [mappingState.current, mappingVersionId])
+  }, [mappingState.current, mappingState.isReadOnly, mappingState.loading, mappingVersionId])
 
   // 从服务端选择快照恢复范围（**重新鉴权**由服务端完成）。
   useEffect(() => {
@@ -431,6 +456,7 @@ export function ReleaseNewPage() {
   const setFieldError = useCallback((field: string, message: string) => {
     setError(message)
     setFieldErrors(message ? { [field]: message } : {})
+    setStep(field === 'range' ? 0 : field === 'format' || field === 'mappingVersionId' ? 1 : 2)
   }, [])
 
   /** 把服务端返回的 fieldErrors 落成字段级提示；返回是否真的用上了字段级。 */
@@ -447,10 +473,68 @@ export function ReleaseNewPage() {
     if (Object.keys(next).length === 0) return false
     setFieldErrors(next)
     setError(errors.map((item) => item.message).filter(Boolean).join('；'))
+    const firstField = Object.keys(next)[0]
+    setStep(firstField === 'range' ? 0 : firstField === 'format' || firstField === 'mappingVersionId' ? 1 : 2)
     return true
   }, [])
 
+  const checkStep = useCallback((currentStep: 0 | 1 | 2): boolean => {
+    if (currentStep === 0) {
+      if (hasInvalidSelectionParam || selectionSnapshotState === 'invalid') {
+        setFieldError('range', '快照无效或已过期，请重新选择范围')
+        return false
+      }
+      if (selectionSnapshotID > 0 && selectionSnapshotState !== 'ready') {
+        setFieldError('range', '正在恢复发布范围，请稍候')
+        return false
+      }
+      if ((selectionSnapshotID > 0 ? selectionSnapshotItems?.length ?? 0 : selected.length) === 0) {
+        setFieldError('range', '请选择至少一个内容版本')
+        return false
+      }
+    }
+    if (currentStep === 1) {
+      if (!['jsonl', 'alpaca', 'csv'].includes(format) || (targetKind === 'grpo' && format !== 'jsonl')) {
+        setFieldError('format', '请选择适用于当前项目的交付格式')
+        return false
+      }
+      if (!Number.isSafeInteger(Number(mappingVersionId)) || Number(mappingVersionId) <= 0 || mappingState.dirty) {
+        setFieldError('mappingVersionId', mappingState.dirty ? '映射有未保存修改，请先保存再继续' : '请保存并选择交付映射版本')
+        return false
+      }
+    }
+    if (currentStep === 2) {
+      if (!releaseName.trim() || releaseName.trim().toLowerCase() === 'latest') {
+        setFieldError('releaseName', '请输入明确版本名，不能使用 latest')
+        return false
+      }
+      if (!intendedUse.trim()) {
+        setFieldError('intendedUse', '请填写数据用途')
+        return false
+      }
+    }
+    setError(null)
+    setFieldErrors({})
+    return true
+  }, [format, hasInvalidSelectionParam, intendedUse, mappingState.dirty, mappingVersionId, releaseName,
+    selected.length, selectionSnapshotID, selectionSnapshotItems, selectionSnapshotState, setFieldError, targetKind])
+
+  const freezeAcceptedFilter = useCallback(async () => {
+    setRangeFreezing(true)
+    setError(null)
+    try {
+      const snapshot = await studioApi.createSelectionSnapshot(scope.projectId, {
+        purpose: 'release',
+        fromFilter: { reviewStatus: 'accepted', search: rangeSearch.trim() || undefined, batchId: rangeBatch ? Number(rangeBatch.replace(/^b_/, '')) : undefined },
+      })
+      navigate(`${projectHref('project.newRelease', scope.projectId)}?selection=${snapshot.id}`, { replace: true })
+    } catch (snapshotError) {
+      setError(snapshotError instanceof Error ? snapshotError.message : '冻结范围失败')
+    } finally { setRangeFreezing(false) }
+  }, [navigate, rangeBatch, rangeSearch, scope.projectId])
+
   const submit = useCallback(async () => {
+    if (commandBusy.current) return
     setError(null)
     setFieldErrors({})
     setBlockers([])
@@ -458,6 +542,7 @@ export function ReleaseNewPage() {
       setError('当前项目没有发布权限；请联系项目负责人')
       return
     }
+    if (!checkStep(0) || !checkStep(1) || !checkStep(2)) return
     if (hasInvalidSelectionParam || selectionSnapshotState === 'invalid') {
       setFieldError('range', '发布范围快照无效或已过期，请返回样本工作区重新选择')
       return
@@ -488,8 +573,9 @@ export function ReleaseNewPage() {
       return
     }
     setBusy(true)
+    commandBusy.current = true
     try {
-      const result = await studioApi.createReleaseCandidate(scope.projectId, {
+      const payload = {
         releaseName: releaseName.trim(),
         // 从审阅页进入时只提交服务端快照 ID；后端会在候选事务内
         // 重新鉴权并解析明细，客户端不能通过篡改版本列表改变发布范围。
@@ -507,7 +593,12 @@ export function ReleaseNewPage() {
           .split('\n')
           .map((line) => line.trim())
           .filter((line) => line !== ''),
-      })
+      }
+      const fingerprint = JSON.stringify(payload)
+      if (!command.current || command.current.fingerprint !== fingerprint) {
+        command.current = { fingerprint, key: newIdempotencyKey() }
+      }
+      const result = await studioApi.createReleaseCandidate(scope.projectId, payload, { idempotencyKey: command.current.key })
       setBlockers(result.blockers ?? [])
       // 导航到**服务端分配的**稳定 releaseId。
       navigate(projectHref('project.releaseCard', scope.projectId, { releaseId: result.release.id }))
@@ -519,6 +610,7 @@ export function ReleaseNewPage() {
         setError(submitError instanceof Error ? submitError.message : '创建发布候选失败')
       }
     } finally {
+      commandBusy.current = false
       setBusy(false)
     }
   }, [
@@ -538,222 +630,158 @@ export function ReleaseNewPage() {
     applyServerFieldErrors,
     setFieldError,
     projectCapabilities?.canPublish,
+    checkStep,
   ])
 
+  const rangeCount = selectionSnapshotID > 0 ? selectionSnapshotItems?.length ?? 0 : selected.length
+  const stepLabels = ['选择范围', '格式与映射', '检查确认']
+
   return (
-    <div className="console-page" data-studio-page="release-new">
+    <div className="console-page product-wizard" data-studio-page="release-new" data-release-step={step + 1}>
       <div className="console-page__header">
-        <div>
-          <Title heading={4} className="!mb-1">准备发布</Title>
-          <Text type="tertiary">
-            候选创建时同时分配候选 ID、稳定的发布 ID 与项目内唯一的版本名；
-            发布失败重试沿用同一身份。
-          </Text>
-        </div>
+        <div><Title heading={4} className="!mb-1">发布数据</Title><Text type="tertiary">选择内容，检查门槛，生成交付文件。</Text></div>
+        <Button onClick={() => navigate(projectHref('project.releases', scope.projectId))}>返回发布列表</Button>
       </div>
+      {permissionsError ? <div className="product-notice product-notice--warning mb-3" role="alert" data-release-permissions-error="true">
+        权限读取失败：{permissionsError}<Button size="small" theme="borderless" onClick={() => setPermissionsRefresh((previous) => previous + 1)}>重试权限读取</Button>
+      </div> : null}
+      <nav className="product-wizard__steps" aria-label="发布步骤">
+        {stepLabels.map((label, index) => (
+          <button key={label} type="button" className="product-wizard__step" disabled={busy}
+            aria-current={step === index ? 'step' : undefined} data-active={step === index}
+            onClick={() => {
+              const next = index as 0 | 1 | 2
+              if (next <= step || (checkStep(0) && (next !== 2 || checkStep(1)))) setStep(next)
+            }}><span>{index + 1}</span>{label}</button>
+        ))}
+      </nav>
 
-      <div id="mapping-editor">
-        <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-mapping-editor="true">
-          <div className="console-page__header document-editor__embedded-header">
-            <div>
-              <Text strong>交付映射</Text>
-              <Text type="tertiary" size="small" className="block">先在这里维护字段对应关系，下面的发布候选会引用你保存的版本。</Text>
+      {step === 0 ? <Card className="console-card" bodyStyle={{ padding: 20 }} data-range-picker="true" data-field="range">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3"><Text strong>发布范围</Text><Tag size="large">{rangeCount} 条</Tag></div>
+        {selectionSnapshotID > 0 || hasInvalidSelectionParam ? <>
+          {selectionSnapshotState === 'loading' ? <Spin tip="正在恢复发布范围" /> : null}
+          {snapshotNotice ? <div className="product-notice mb-3" data-selection-restored="true">{snapshotNotice}</div> : null}
+          {selectionComposition ? <Text className="block mb-3">{selectionCompositionSummary(selectionComposition)}</Text> : null}
+          {selectionComposition && selectionComposition.pending > 0 ? <div className="product-notice product-notice--warning mb-3" data-range-unreviewed-warning="true">
+            含 {selectionComposition.pending} 条未审阅内容，发布门槛会阻止未接纳内容。
+            <Link className="console-link" to={`${projectHref('project.review', scope.projectId)}?status=pending`}>去审阅</Link>
+          </div> : null}
+          <Text type="tertiary" size="small" className="block mb-3">范围已由服务端快照锁定。</Text>
+          <Button size="small" onClick={() => navigate(projectHref('project.newRelease', scope.projectId), { replace: true })}>重新选择范围</Button>
+        </> : <>
+          <div className="product-data-toolbar mb-3">
+            <Input value={rangeSearch} onChange={setRangeSearch} aria-label="搜索发布范围" placeholder="搜索已接纳样本" />
+            <Select value={rangeBatch || 'all'} aria-label="按生产批次筛选"
+              optionList={[{ value: 'all', label: '全部批次' }, ...batches.map((batch) => ({ value: batch.resourceId, label: `批次 #${batch.batchId}` }))]}
+              onChange={(value) => setRangeBatch(value === 'all' ? '' : String(value))} />
+            <Button size="small" loading={rangeFreezing} disabled={samplesLoading || samples.length === 0} onClick={() => void freezeAcceptedFilter()} data-release-freeze-filter="true">选择全部筛选结果</Button>
+          </div>
+          {samplesLoading && samples.length === 0 ? <Spin tip="正在加载已接纳样本" /> : samples.length === 0 ? <Empty description="没有已接纳样本。" /> : <>
+            <div className="flex items-center gap-2 mb-2">
+              <Button size="small" theme="borderless" onClick={() => setSelected(samples.filter((sample) => sample.latestVersionId > 0).map((sample) => sample.latestVersionId))}>选择已加载 {samples.length} 条</Button>
+              <Button size="small" theme="borderless" onClick={() => setSelected([])}>清空</Button>
             </div>
-            <CopyVersionButton state={mappingState} />
-          </div>
-          {mappingState.loading ? <Spin tip="正在加载映射版本" /> : <>
-            <MappingPayloadEditor payload={mappingState.payload ?? { schemaVersion: 'mapping.v1', format: targetKind === 'grpo' ? 'jsonl' : 'jsonl', fields: [] }} disabled={mappingState.isReadOnly || !mappingState.canEdit} onChange={mappingState.setPayload} />
-            <DocumentSaveBar state={mappingState} label="交付映射" />
-            <DocumentHistory state={mappingState} />
+            <div className="sample-table product-range-table">
+              <div className="sample-row sample-row--head"><span /><span>已接纳内容</span><span>批次</span></div>
+              {samples.map((sample) => (
+                <div key={sample.sampleId} className="sample-row">
+                  <input type="checkbox" aria-label={`选择 ${sample.title || sample.sampleKey}`}
+                    checked={sample.latestVersionId > 0 && selected.includes(sample.latestVersionId)} disabled={sample.latestVersionId <= 0 || busy}
+                    onChange={(event) => {
+                      const versionID = sample.latestVersionId
+                      if (versionID <= 0) return
+                      setSelected((previous) => event.target.checked ? [...new Set([...previous, versionID])] : previous.filter((id) => id !== versionID))
+                    }} />
+                  <span>{sample.title || sample.sampleKey} · v{sample.latestVersion}</span>
+                  <span>{sample.originBatchId ? `#${sample.originBatchId}` : '—'}</span>
+                </div>
+              ))}
+            </div>
           </>}
-        </Card>
-      </div>
+          {samplesNextCursor ? <Button size="small" className="mt-3" loading={samplesLoading} onClick={() => void loadAcceptedSamples(samplesNextCursor, true)}>加载更多</Button> : null}
+          {samples.length === 0 && !samplesLoading ? <Button className="mt-3" onClick={() => navigate(projectHref('project.review', scope.projectId))}>去审阅</Button> : null}
+        </>}
+        {fieldErrors.range ? <div className="wizard-field__error mt-3" role="alert" data-range-error="true">{fieldErrors.range}</div> : null}
+      </Card> : null}
 
-      {snapshotNotice ? (
-        <Card className="console-card mb-3" bodyStyle={{ padding: 12 }} data-selection-restored="true">
-          <Text size="small">{snapshotNotice}</Text>
-        </Card>
-      ) : null}
-
-      <Card className="console-card mb-3" bodyStyle={{ padding: 16 }}>
+      {step === 1 ? <Card className="console-card" bodyStyle={{ padding: 20 }}>
         <div className="wizard-fields">
-          {/*
-            issue #213：每个字段的错误渲染在**它自己的输入框下方**，并用
-            `aria-describedby` 关联，而不是只在页底给一行字。页底提示在长页面里
-            要求用户自己找字段，而读屏用户拿不到任何关联。
-          */}
-          <div className="wizard-field" data-field="releaseName" data-invalid={fieldErrors.releaseName ? 'true' : undefined}>
-            <label className="wizard-field__label" htmlFor="release-name">版本名</label>
-            <Input id="release-name" value={releaseName} onChange={(value) => setReleaseName(value)}
-              placeholder="例如 v1.2（不能叫 latest）"
-              aria-invalid={fieldErrors.releaseName ? true : undefined}
-              aria-describedby={fieldErrors.releaseName ? 'release-name-error' : undefined} />
-            <Text type="tertiary" size="small" className="block mt-1">
-              版本名用于展示与文件名；下载路径只用稳定的发布 ID。
-            </Text>
-            {fieldErrors.releaseName ? (
-              <div className="wizard-field__error" id="release-name-error" role="alert">{fieldErrors.releaseName}</div>
-            ) : null}
-          </div>
-          <div className="wizard-field">
-            <label className="wizard-field__label" htmlFor="mapping-version">用于本次发布的映射版本</label>
-            <Select id="mapping-version" value={mappingVersionId || undefined}
-              optionList={mappingState.versions.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '未填写理由'}` }))}
-              onChange={(value) => setMappingVersionId(String(value))}
-              placeholder={mappingState.versions.length > 0 ? '请选择已保存的映射版本' : '暂无可用映射版本'}
-              disabled={mappingState.versions.length === 0} />
-            <Text type="tertiary" size="small" className="block mt-1">
-              发布会冻结这个版本的字段映射；后续修改需要保存为新版本。
-            </Text>
-            {mappingState.versions.length === 0 ? (
-              <div className="version-choice-empty" role="status">
-                <Text type="tertiary" size="small">还没有保存映射版本，请先在上方编辑并保存交付映射。</Text>
-                <Button size="small" theme="borderless" onClick={() => document.getElementById('mapping-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>去创建映射版本 →</Button>
-              </div>
-            ) : null}
-          </div>
           <div className="wizard-field" data-field="format" data-invalid={fieldErrors.format ? 'true' : undefined}>
             <label className="wizard-field__label" htmlFor="release-format">交付格式</label>
-            <Select
-              id="release-format"
-              value={format}
-              optionList={targetKind === 'grpo' ? GRPO_FORMAT_OPTIONS : SFT_FORMAT_OPTIONS}
-              onChange={(value) => setFormat(String(value))}
-              aria-label="选择交付格式"
-              aria-invalid={fieldErrors.format ? true : undefined}
-              aria-describedby={fieldErrors.format ? 'release-format-error' : undefined}
-              style={{ width: '100%' }}
-            />
-            <Text type="tertiary" size="small" className="block mt-1">
-              {targetKind === 'grpo'
-                ? 'GRPO 只允许 JSONL，服务端会逐行校验教师评判字段。'
-                : 'SFT 可选择 JSONL、Alpaca JSON 或 CSV；格式会写入不可变发布清单。'}
-            </Text>
-            {fieldErrors.format ? (
-              <div className="wizard-field__error" id="release-format-error" role="alert">{fieldErrors.format}</div>
-            ) : null}
-            {targetKind === 'grpo' ? (
-              <Text type="tertiary" size="small" className="block mt-1" data-grpo-release-hint="true">
-                映射必须包含 question / judge_prompt / levels / level_rubrics；
-                levels 与 level_rubrics 必须保留数组与对象结构，不能压成逗号字符串。
-              </Text>
-            ) : null}
+            <Select id="release-format" value={format} optionList={targetKind === 'grpo' ? GRPO_FORMAT_OPTIONS : SFT_FORMAT_OPTIONS}
+              onChange={(value) => setFormat(String(value))} aria-label="选择交付格式" aria-invalid={fieldErrors.format ? true : undefined}
+              aria-describedby={fieldErrors.format ? 'release-format-error' : undefined} style={{ width: '100%' }} />
+            {fieldErrors.format ? <div className="wizard-field__error" id="release-format-error" role="alert">{fieldErrors.format}</div> : null}
+            {targetKind === 'grpo' ? <Text type="tertiary" size="small" className="block mt-2" data-grpo-release-hint="true">GRPO 仅 JSONL；映射需包含 question / judge_prompt / levels / level_rubrics，并保留数组与对象。</Text> : null}
+          </div>
+          <div className="wizard-field" data-field="mappingVersionId" data-invalid={fieldErrors.mappingVersionId ? 'true' : undefined}>
+            <label className="wizard-field__label" htmlFor="mapping-version">映射版本</label>
+            <Select id="mapping-version" value={mappingVersionId || undefined}
+              optionList={mappingState.versions.map((version) => ({ value: String(version.id), label: `v${version.version} · ${version.changeReason || '交付映射'}` }))}
+              onChange={(value) => setMappingVersionId(String(value))} aria-label="选择映射版本"
+              aria-invalid={fieldErrors.mappingVersionId ? true : undefined} aria-describedby={fieldErrors.mappingVersionId ? 'mapping-version-error' : undefined}
+              placeholder="请选择已保存的映射版本" disabled={mappingState.versions.length === 0} />
+            {fieldErrors.mappingVersionId ? <div className="wizard-field__error" id="mapping-version-error" role="alert">{fieldErrors.mappingVersionId}</div> : null}
+          </div>
+        </div>
+        <details className="product-disclosure mt-3" id="mapping-editor" open={mappingState.versions.length === 0 || undefined} data-mapping-editor="true">
+          <summary>{mappingState.versions.length === 0 ? '创建交付映射' : '编辑映射与查看版本'}</summary>
+          <div className="mt-3">
+            <div className="flex items-center justify-between mb-2"><Text strong>交付映射</Text><CopyVersionButton state={mappingState} /></div>
+            {mappingState.error ? <div className="wizard-field__error mb-2" role="alert">{mappingState.error}<Button size="small" onClick={() => void mappingState.reload()}>重试</Button></div> : null}
+            {mappingState.loading ? <Spin tip="正在加载映射版本" /> : <>
+              <MappingPayloadEditor payload={mappingState.payload ?? { schemaVersion: 'mapping.v1', format: 'jsonl', fields: [] }}
+                disabled={mappingState.isReadOnly || !mappingState.canEdit} onChange={mappingState.setPayload} />
+              <DocumentSaveBar state={mappingState} label="交付映射" />
+              <DocumentHistory state={mappingState} />
+            </>}
+          </div>
+        </details>
+      </Card> : null}
+
+      {step === 2 ? <Card className="console-card" bodyStyle={{ padding: 20 }} data-release-confirmation="true">
+        <div className="product-release-summary mb-4">
+          <div><Text type="tertiary">内容范围</Text><Text strong className="block">{rangeCount} 条{selectionSnapshotID ? ` · 快照 #${selectionSnapshotID}` : ' · 已接纳内容'}</Text><Button size="small" theme="borderless" onClick={() => setStep(0)}>修改范围</Button></div>
+          <div><Text type="tertiary">交付配置</Text><Text strong className="block">{format.toUpperCase()} · 映射 #{mappingVersionId}</Text><Button size="small" theme="borderless" onClick={() => setStep(1)}>修改格式与映射</Button></div>
+        </div>
+        <div className="wizard-fields">
+          <div className="wizard-field" data-field="releaseName" data-invalid={fieldErrors.releaseName ? 'true' : undefined}>
+            <label className="wizard-field__label" htmlFor="release-name">版本名</label>
+            <Input id="release-name" value={releaseName} onChange={setReleaseName} placeholder="例如 v1.2"
+              aria-invalid={fieldErrors.releaseName ? true : undefined} aria-describedby={fieldErrors.releaseName ? 'release-name-error' : undefined} />
+            {fieldErrors.releaseName ? <div className="wizard-field__error" id="release-name-error" role="alert">{fieldErrors.releaseName}</div> : null}
           </div>
           <div className="wizard-field" data-field="intendedUse" data-invalid={fieldErrors.intendedUse ? 'true' : undefined}>
             <label className="wizard-field__label" htmlFor="intended-use">用途</label>
-            <Input id="intended-use" value={intendedUse} onChange={(value) => setIntendedUse(value)}
-              placeholder="例如 SFT 训练"
-              aria-invalid={fieldErrors.intendedUse ? true : undefined}
-              aria-describedby={fieldErrors.intendedUse ? 'intended-use-error' : undefined} />
-            {fieldErrors.intendedUse ? (
-              <div className="wizard-field__error" id="intended-use-error" role="alert">{fieldErrors.intendedUse}</div>
-            ) : null}
-          </div>
-          <div className="wizard-field">
-            <label className="wizard-field__label" htmlFor="limitations">限制（每行一条）</label>
-            <TextArea id="limitations" value={limitations} onChange={(value) => setLimitations(value)}
-              autosize={{ minRows: 2, maxRows: 4 }} placeholder="例如：仅覆盖冷链领域" />
+            <Input id="intended-use" value={intendedUse} onChange={setIntendedUse} placeholder="例如 SFT 训练"
+              aria-invalid={fieldErrors.intendedUse ? true : undefined} aria-describedby={fieldErrors.intendedUse ? 'intended-use-error' : undefined} />
+            {fieldErrors.intendedUse ? <div className="wizard-field__error" id="intended-use-error" role="alert">{fieldErrors.intendedUse}</div> : null}
           </div>
         </div>
-      </Card>
+        <details className="product-disclosure mt-3"><summary>用途限制（可选）</summary>
+          <label className="wizard-field__label mt-2" htmlFor="limitations">限制（每行一条）</label>
+          <TextArea id="limitations" value={limitations} onChange={setLimitations} autosize={{ minRows: 2, maxRows: 4 }} placeholder="例如：仅覆盖冷链领域" />
+        </details>
+        <div className="product-notice mt-3">下一步检查质量门槛。通过后才能冻结并发布；创建候选不会立即发布。</div>
+      </Card> : null}
 
-      <Card className="console-card mb-3" bodyStyle={{ padding: 16 }} data-range-picker="true">
-        {/* issue #203：标题必须按**实际构成**渲染。旧实现写死「已接纳的内容版本」，
-            而冻结范围含未审阅内容 —— 用户因此建立「进了候选就已审过」的错误心智模型。 */}
-        <Text strong className="block mb-2">
-          {selectionSnapshotID > 0 && selectionComposition
-            ? `发布范围（快照 ${selectionSnapshotID}：${selectionCompositionSummary(selectionComposition)}）`
-            : '发布范围'}
-        </Text>
-        {selectionSnapshotID > 0 && selectionComposition && selectionComposition.pending > 0 ? (
-          <Text type="warning" size="small" className="block mb-2" data-range-unreviewed-warning="true">
-            这份范围含 {selectionComposition.pending} 条未审阅内容；候选门槛会拦住未接纳的内容，
-            但它们已进入你的心智模型 —— 请确认这确实是你想发布的范围。
-          </Text>
-        ) : null}
-        <Text type="tertiary" size="small" className="block mb-2">
-          已选 {selectionSnapshotID > 0 ? selectionSnapshotItems?.length ?? 0 : selected.length} 条
-          {selectionSnapshotID > 0 ? '（来自服务端冻结快照，范围已锁定）' : '（当前页）'}。候选保存的是具体内容版本，不是筛选条件。
-        </Text>
-        {/*
-          issue #213：「范围为空」不是一个输入框的错，而是这一整块筛选区的错。
-          因此错误渲染在这一区（而不是页底），并给出 `data-field="range"`
-          供守卫与焦点定位使用。
-        */}
-        {fieldErrors.range ? (
-          <div className="wizard-field__error mb-2" role="alert" data-range-error="true">{fieldErrors.range}</div>
-        ) : null}
-        {samples.length === 0 ? (
-          <Empty description="还没有已接纳的内容。请先在审阅队列中完成判断。" />
-        ) : (
-          <div className="sample-table">
-            <div className="sample-row sample-row--head"><span /><span>内容版本</span><span>批次</span></div>
-            {samples.map((sample) => (
-              <div key={sample.sampleId} className="sample-row">
-                <input type="checkbox" aria-label={`选择 ${sample.title || sample.sampleKey}`}
-                  checked={sample.latestVersionId > 0 && selected.includes(sample.latestVersionId)}
-                  disabled={selectionSnapshotID > 0 || sample.latestVersionId <= 0}
-                  onChange={(event) => {
-                    const versionID = sample.latestVersionId
-                    if (versionID <= 0) return
-                    setSelected((previous) => event.target.checked
-                      ? [...previous, versionID]
-                      : previous.filter((id) => id !== versionID))
-                  }} />
-                <span>{sample.title || sample.sampleKey} · v{sample.latestVersion}
-                  {sample.latestVersionId > 0 ? `（版本 ID ${sample.latestVersionId}）` : '（暂无内容版本）'}
-                </span>
-                <span>{sample.originBatchId ? `#${sample.originBatchId}` : '—'}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {samplesNextCursor !== '' ? (
-          <div className="mt-3 flex justify-center">
-            <Button
-              size="small"
-              loading={samplesLoading}
-              onClick={() => void loadAcceptedSamples(samplesNextCursor, true)}
-            >
-              加载更多已接纳内容
-            </Button>
-          </div>
-        ) : null}
-        {batches.length === 0 ? null : (
-          <Text type="tertiary" size="small" className="block mt-2">
-            提示：同一批次的输出通常一起发布；跨批次混合会扩大数据卡的覆盖范围。
-          </Text>
-        )}
-      </Card>
-
-      {blockers.length > 0 ? (
-        <Card className="console-card mb-3" bodyStyle={{ padding: 14 }} data-candidate-blockers="true">
-          <Text strong className="block mb-1">候选门槛未通过</Text>
-          {blockers.map((blocker, index) => (
-            <div key={`${blocker.code}-${index}`} className="flex items-start gap-2">
-              <AlertTriangle size={14} className="mt-1 text-amber-500" aria-hidden />
-              {blocker.link ? (
-                <BlockerLink link={blocker.link}>{blocker.message}</BlockerLink>
-              ) : (
-                <Text size="small">{blocker.message}</Text>
-              )}
-            </div>
-          ))}
-        </Card>
-      ) : null}
-
-      {/*
-        issue #213：字段级提示已经在各自的输入框下方渲染，因此页底这行只在
-        「错误没有对应字段」时才出现。否则同一句话会在页面顶部与底部各出现一次，
-        而用户会以为发生了两件事。
-      */}
-      {error && Object.keys(fieldErrors).length === 0 ? (
-        <div className="wizard-field__error mb-3" role="alert" data-release-error="true">{error}</div>
-      ) : null}
-
-      <Button theme="solid" type="primary" loading={busy} disabled={!projectCapabilities?.canPublish} onClick={() => void submit()}>
-        创建发布候选
-      </Button>
+      {blockers.length > 0 ? <Card className="console-card mt-3" bodyStyle={{ padding: 14 }} data-candidate-blockers="true">
+        <Text strong className="block mb-1">候选门槛未通过</Text>
+        {blockers.map((blocker, index) => <div key={`${blocker.code}-${index}`} className="flex items-start gap-2">
+          <AlertTriangle size={14} aria-hidden />{blocker.link ? <BlockerLink link={blocker.link}>{blocker.message}</BlockerLink> : <Text size="small">{blocker.message}</Text>}
+        </div>)}
+      </Card> : null}
+      {error && Object.keys(fieldErrors).length === 0 ? <div className="wizard-field__error mt-3" role="alert" data-release-error="true">{error}</div> : null}
+      {permissionsLoading ? <div className="product-notice mt-3" role="status">正在读取发布权限。</div>
+        : !permissionsError && projectCapabilities && !projectCapabilities.canPublish ? <div className="product-notice mt-3">只读：当前账号没有发布权限。</div> : null}
+      <div className="product-wizard__footer">
+        <Text type="tertiary">已选 {rangeCount} 条 · 第 {step + 1} / 3 步</Text>
+        <div className="flex gap-2">
+          {step > 0 ? <Button disabled={busy} onClick={() => setStep((step - 1) as 0 | 1)}>上一步</Button> : null}
+          {step < 2 ? <Button theme="solid" type="primary" disabled={busy || rangeFreezing} onClick={() => { if (checkStep(step)) setStep((step + 1) as 1 | 2) }} data-release-next="true">下一步</Button>
+            : <Button theme="solid" type="primary" loading={busy} disabled={!projectCapabilities?.canPublish} onClick={() => void submit()} data-release-create="true">检查并创建候选</Button>}
+        </div>
+      </div>
     </div>
   )
 }
@@ -799,7 +827,19 @@ export function ReleaseCardPage() {
     void load()
   }, [load])
 
+  useEffect(() => {
+    if (card?.release.status !== 'building') return
+    let cancelled = false
+    const timer = window.setInterval(() => {
+      void studioApi.getReleaseCardEnvelope(scope.projectId, releaseID).then((response) => {
+        if (!cancelled) { setCard(response.data); setCapabilities(response.capabilities) }
+      }).catch(() => { /* 保留上次状态；刷新按钮可重试。 */ })
+    }, 3000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [card?.release.status, releaseID, scope.projectId])
+
   const publish = useCallback(async () => {
+    if (!capabilities.canPublish || !card || card.blockers.length > 0 || busy || card.release.status === 'building') return
     setBusy(true)
     setActionError(null)
     try {
@@ -816,7 +856,7 @@ export function ReleaseCardPage() {
     } finally {
       setBusy(false)
     }
-  }, [load, releaseID, scope.projectId])
+  }, [busy, capabilities.canPublish, card, load, releaseID, scope.projectId])
 
   const confirmPublish = useCallback(() => {
     Modal.confirm({
@@ -871,105 +911,86 @@ export function ReleaseCardPage() {
     <div className="console-page" data-studio-page="release-card" data-release-status={release.status}>
       <div className="console-page__header">
         <div>
-          <Title heading={4} className="!mb-1">
-            发布 {release.releaseName}
-          </Title>
-          <Text type="tertiary">
-            稳定发布 ID：<code>{release.id}</code> · 候选修订 {release.candidateRevision}
-            {card.manifestHash ? ` · manifest ${card.manifestHash.slice(0, 20)}…` : ''}
-          </Text>
+          <Title heading={4} className="!mb-1">{release.releaseName}</Title>
+          <div className="flex flex-wrap items-center gap-2">
+            <Tag color={statusColor(release.status)}>{RELEASE_STATUS_LABEL[release.status] ?? release.status}</Tag>
+            <Text type="tertiary">{release.format.toUpperCase()} · {release.intendedUse || '用途未填写'}</Text>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Tag color={statusColor(release.status)}>{RELEASE_STATUS_LABEL[release.status] ?? release.status}</Tag>
-          {!published && capabilities.canPublish ? (
-            <Button theme="solid" type="primary" loading={busy} onClick={confirmPublish}>
-              冻结并发布
+          <Button icon={<RefreshCw size={14} />} onClick={() => void load()} disabled={busy}>刷新状态</Button>
+          {!published && release.status !== 'building' && capabilities.canPublish ? (
+            <Button theme="solid" type="primary" loading={busy} disabled={card.blockers.length > 0} onClick={confirmPublish} data-release-publish="true">
+              {release.status === 'build_failed' ? '重试构建' : '冻结并发布'}
             </Button>
-          ) : published && capabilities.canCreateNext ? (
-            <Button loading={busy} onClick={() => void createNext()}>创建下一版</Button>
-          ) : null}
+          ) : published && capabilities.canCreateNext ? <Button loading={busy} onClick={() => void createNext()}>创建下一版</Button> : null}
         </div>
       </div>
-
       {actionError ? <div className="wizard-field__error mb-3" role="alert">{actionError}</div> : null}
 
-      {published ? (
-        <Card className="console-card mb-3" bodyStyle={{ padding: 12 }} data-published-notice="true">
-          <Text size="small">
-            该版本已发布：内容、映射、数据卡与指纹只读。之后修改项目配置、隔离样本或切换默认存储，
-            都不会改变这些文件；后续风险通过独立警告表达。
-          </Text>
-        </Card>
-      ) : null}
-
-      {/* 阻塞项：每条链到具体对象（服务端给 link）。 */}
       {card.blockers.length > 0 ? (
-        <Card className="console-card mb-3" bodyStyle={{ padding: 14 }} data-release-blockers="true">
-          <Text strong className="block mb-1">发布阻塞项</Text>
+        <Card className="console-card mb-3" bodyStyle={{ padding: 18 }} data-release-blockers="true">
+          <Text strong className="block mb-2">有 {card.blockers.length} 项阻止发布</Text>
           {card.blockers.map((blocker, index) => (
-            <div key={`${blocker.code}-${index}`} className="flex items-start gap-2 mb-1">
-              <AlertTriangle size={14} className="mt-1 text-amber-500" aria-hidden />
-              {blocker.link ? (
-                <BlockerLink link={blocker.link}>{blocker.message}</BlockerLink>
-              ) : (
-                <Text size="small">{blocker.message}</Text>
-              )}
+            <div key={`${blocker.code}-${index}`} className="flex items-start gap-2 mb-2">
+              <AlertTriangle size={16} aria-hidden />
+              {blocker.link ? <BlockerLink link={blocker.link}>{blocker.message}</BlockerLink> : <Text>{blocker.message}</Text>}
             </div>
           ))}
+          <Text type="tertiary" size="small">完成修复后刷新状态。</Text>
         </Card>
-      ) : null}
+      ) : !published ? <div className="product-notice mb-3" role="status" data-release-gate="true">
+        {release.status === 'building' ? '正在构建并校验文件，状态自动刷新。' : release.status === 'build_failed' ? '构建失败，可沿用此版本重试。' : '发布门槛已通过，可以冻结并发布。'}
+      </div> : <div className="product-notice mb-3" data-published-notice="true">已发布：内容、映射与交付文件已冻结，只读。</div>}
 
-      <div className="console-stat-grid">
-        <StatTile label="用途" value={release.intendedUse || '（未填写）'} hint="数据卡必须写清用途" />
-        <StatTile label="格式" value={release.format} hint={release.targetKind === 'grpo' ? 'GRPO 仅支持 JSONL，保留档位与判据数组' : 'SFT 支持 JSONL/CSV/Alpaca'} />
-        <StatTile label="限制" value={String(release.limitations.length)} hint="每行一条；空限制表示无声明" />
-        <StatTile label="制品" value={String(card.artifacts.length)} hint="注册/校验/失败三态" />
-      </div>
-
-      <Card className="console-card mb-3" bodyStyle={{ padding: 14 }}>
-        <Text strong className="block mb-2">交付文件</Text>
-        {card.artifacts.length === 0 ? (
-          <Text type="tertiary" size="small">
-            还没有制品。{published ? '' : '发布后由构建作业产出并校验。'}
-          </Text>
-        ) : (
-          card.artifacts.map((artifact: ReleaseArtifact) => (
-            <div key={artifact.id} className="flex flex-wrap items-center gap-2 mb-2"
-              data-artifact-id={artifact.id} data-artifact-state={artifact.state}>
+      <Card className="console-card mb-3 product-release-files" bodyStyle={{ padding: 20 }} data-release-files="true">
+        <Text strong className="block mb-3">交付文件</Text>
+        {card.artifacts.length === 0 ? <Text type="tertiary">{release.status === 'building' ? '文件正在生成。' : published ? '未生成可下载文件，请检查构建记录。' : '发布后生成并校验交付文件。'}</Text> : card.artifacts.map((artifact: ReleaseArtifact) => (
+          <div key={artifact.id} className="product-release-files__row" data-artifact-id={artifact.id} data-artifact-state={artifact.state}>
+            <div>
+              <Text strong>{artifact.format.toUpperCase()} · {Math.max(1, Math.ceil(artifact.sizeBytes / 1024))} KB</Text>
               <Tag size="small" color={artifact.state === 'verified' ? 'green' : artifact.state === 'failed' ? 'red' : 'grey'}>
                 {artifact.state === 'verified' ? '已校验' : artifact.state === 'failed' ? '失败' : '待校验'}
               </Tag>
-              <Text size="small">
-                {artifact.format} · {artifact.sizeBytes} 字节 · 文件指纹 {artifact.artifactHash.slice(0, 16)}…
-              </Text>
-              {artifact.state === 'verified' && capabilities.canDownload ? (
-                // 下载走同源 /api，因此复用统一会话与错误处理（401/403 有中文提示）。
-                // 文件名由服务端设置（含类型与版本名，不叫 latest）。
-                <a className="console-link" href={studioApi.downloadArtifactURL(scope.projectId, release.id, artifact.id)}>
-                  <Download size={13} aria-hidden /> 下载
-                </a>
-              ) : null}
-              {artifact.errorMessage ? (
-                <Text type="tertiary" size="small">失败原因：{artifact.errorMessage}</Text>
-              ) : null}
+              {artifact.errorMessage ? <Text type="danger" size="small" className="block mt-1">{artifact.errorMessage}</Text> : null}
             </div>
-          ))
-        )}
+            {artifact.state === 'verified' && capabilities.canDownload ? (
+              <a className="console-link product-download" href={studioApi.downloadArtifactURL(scope.projectId, release.id, artifact.id)}><Download size={16} aria-hidden />下载</a>
+            ) : null}
+            <details className="product-disclosure">
+              <summary>文件指纹与构建信息</summary>
+              <Text size="small" className="block">SHA256：<code>{artifact.artifactHash}</code></Text>
+              <Text type="tertiary" size="small">编码器 {artifact.encoderVersion} · {artifact.sizeBytes} 字节</Text>
+            </details>
+          </div>
+        ))}
       </Card>
 
-      <Card className="console-card" bodyStyle={{ padding: 14 }} data-manifest-panel="true">
-        {grounding ? <div data-grounding-summary="true" className="mb-3">
-          <Text strong className="block mb-1">素材依据</Text>
-          <Text className="block">引用 {grounding.chunks} 个素材块，缺失 {grounding.missing} 个；素材可追溯样本 {grounding.groundedSamples} 条，缺少完整素材依据 {grounding.ungroundedSamples} 条，其中成品导入 {grounding.externalImports} 条。</Text>
-          <Text type="tertiary" size="small">素材关联说明来源；答案质量仍需规则检查、独立评估与人工判断。</Text>
-        </div> : <Text type="tertiary" className="block mb-3">此版本未记录素材依据摘要。</Text>}
-        <Text strong className="block mb-1">发布清单（manifest）</Text>
-        <Text type="tertiary" size="small" className="block mb-2">
-          manifest 记录这一版发布了什么：清单项、映射与编码器版本、用途与限制。
-          指纹分层：内容指纹 → 清单指纹 → 文件指纹 → manifest 指纹（不含它自己）。
-        </Text>
+      <details className="product-disclosure mb-3">
+        <summary>用途限制与素材依据</summary>
+        <div className="mt-3">
+          <Text strong className="block mb-1">用途</Text><Text>{release.intendedUse || '未填写'}</Text>
+          <Text strong className="block mt-3 mb-1">限制</Text>
+          {release.limitations.length ? <ul>{release.limitations.map((limitation, index) => <li key={index}>{limitation}</li>)}</ul> : <Text type="tertiary">未声明限制。</Text>}
+          {grounding ? <div data-grounding-summary="true" className="mt-3"><Text strong className="block mb-1">素材依据</Text>
+            <Text>素材块 {grounding.chunks} 个，缺失 {grounding.missing} 个；可追溯样本 {grounding.groundedSamples} 条，缺少完整依据 {grounding.ungroundedSamples} 条，成品导入 {grounding.externalImports} 条。</Text>
+          </div> : <Text type="tertiary" className="block mt-3">未记录素材依据摘要。</Text>}
+        </div>
+      </details>
+      <details className="product-disclosure mb-3" data-manifest-panel="true">
+        <summary>发布清单与指纹</summary>
+        <Text type="tertiary" size="small" className="block mt-3">Manifest SHA256：<code>{card.manifestHash || '尚未生成'}</code></Text>
         <pre className="review-content">{JSON.stringify(card.manifest, null, 2)}</pre>
-      </Card>
+      </details>
+      <details className="product-disclosure">
+        <summary>版本记录</summary>
+        <ul className="review-evidence">
+          <li>发布 ID：{release.id} · 候选修订 {release.candidateRevision} · 映射版本 {release.mappingVersionId || '未记录'}</li>
+          <li>创建：{release.createdAt}</li><li>更新：{release.updatedAt}</li>
+          {release.publishedAt ? <li>发布：{release.publishedAt}</li> : null}
+        </ul>
+        <Button size="small" onClick={() => navigate(projectHref('project.releases', scope.projectId))}>全部版本</Button>
+      </details>
     </div>
   )
 }
@@ -1049,16 +1070,5 @@ export function DeliveriesPage() {
         </div>
       )}
     </div>
-  )
-}
-
-function StatTile({ label, value, hint }: { label: string; value: string; hint: string }) {
-  const { Text } = Typography
-  return (
-    <Card className="console-card" bodyStyle={{ padding: 14 }}>
-      <Text type="tertiary" size="small" className="block">{label}</Text>
-      <div className="console-stat-value">{value}</div>
-      <Text type="tertiary" size="small" className="block">{hint}</Text>
-    </Card>
   )
 }

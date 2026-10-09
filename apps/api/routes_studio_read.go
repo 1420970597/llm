@@ -45,44 +45,11 @@ func (app *application) projectOverview(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	overview, err := app.studio.LoadProjectOverview(r.Context(), projectID)
+	overview, err := app.studio.LoadProjectOverview(r.Context(), projectID, decision.Role)
 	if err != nil {
 		app.writeStudioError(w, r, err)
 		return
 	}
-
-	// 统计：计划量来自项目的 n/m/x，实际产出按**样本版本**计。
-	// 两者都返回，但绝不合成一个「完成度」—— 合成会让「生成了 231 条
-	// 但一条都没审」看起来像 60% 完成（契约 §3.1 明确禁止）。
-	stats := studio.SampleStats{
-		PlannedQuestions: studio.PlannedQuestions(
-			decision.Project.DomainCount,
-			decision.Project.DirectionsPerDomain,
-			decision.Project.QuestionsPerDirection),
-	}
-	if generated, err := app.studio.Batches.CountSampleVersionsByProject(r.Context(), projectID); err == nil {
-		stats.Generated = generated
-	} else {
-		app.logInternal(r, "count sample versions failed", err)
-	}
-	if samples, err := app.studio.Batches.CountSamplesByProject(r.Context(), projectID); err == nil {
-		stats.StructureValid = samples
-	} else {
-		app.logInternal(r, "count samples failed", err)
-	}
-	// 待判断与审阅队列、`/today` 磁贴同一条谓词（issue #200）。以前这个字段
-	// 从未被赋值，于是概览页「待处理决定」恒为 0，而队列里躺着待判断样本 ——
-	// 同一个事实两个读数，且这个 0 会让用户以为没有活要干。
-	if pending, err := app.studio.Batches.CountPendingReviewSamplesByProject(r.Context(), projectID); err == nil {
-		stats.PendingReview = pending
-	} else {
-		app.logInternal(r, "count pending review samples failed", err)
-	}
-	// 纳入检查（inspected）由实验结果定义（T14），因此现在保持 0 且
-	// 接纳率显示「无结论」—— 伪造一个分母会让「可以发布」看起来成立。
-	rate, display := studio.AcceptanceRateOf(stats.Accepted, stats.Inspected)
-	stats.AcceptanceRate = rate
-	stats.AcceptanceRateDisplay = display
 
 	envelope := studio.NewEnvelope(
 		projectResourceID(projectID), decision.Project.Status, decision.Project.RowVersion,
@@ -91,14 +58,11 @@ func (app *application) projectOverview(w http.ResponseWriter, r *http.Request) 
 		studio.Links{
 			"self":      projectPrefix + "/" + strconv.FormatInt(projectID, 10),
 			"overview":  projectPrefix + "/" + strconv.FormatInt(projectID, 10) + "/overview",
-			"blueprint": "/p/" + strconv.FormatInt(projectID, 10) + "/blueprint",
+			"blueprint": "/p/" + projectResourceID(projectID) + "/blueprint",
 		},
 		nil,
 	)
-	envelope.Data = struct {
-		studio.ProjectOverview
-		Stats studio.SampleStats `json:"stats"`
-	}{ProjectOverview: overview, Stats: stats}
+	envelope.Data = overview
 	app.writeStudioEnvelope(w, http.StatusOK, envelope)
 }
 

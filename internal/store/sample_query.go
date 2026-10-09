@@ -183,6 +183,81 @@ func (s *BatchStore) CountPendingReviewSamplesByProject(ctx context.Context, pro
 	return count, err
 }
 
+// ProjectWorkflowCounts is one consistent database snapshot for the project's
+// main workflow. Review, experiment and publication counts refer to the current
+// content version; Generated alone includes historical generated versions.
+type ProjectWorkflowCounts struct {
+	Generated, CurrentVersions, Inspected, Scored int
+	Accepted, Quarantined, Pending, Conflicts     int
+	AcceptedInspected, PublishedAccepted          int
+	BatchTotal, Pilot, Scale, Running             int
+	Paused, Failed, Completed                     int
+	ReleasePending, Published                     int
+}
+
+const projectWorkflowCountsSQL = `
+WITH current_samples AS (
+    SELECT review_sv.id,
+           ` + effectiveReviewStatusSQL + ` AS review_status,
+           COALESCE(rp.conflict, FALSE) AS review_conflict,
+           EXISTS (SELECT 1 FROM experiment_items ei
+                   WHERE ei.project_id = s.project_id AND ei.sample_version_id = review_sv.id) AS inspected,
+           EXISTS (SELECT 1 FROM experiment_items ei
+                   WHERE ei.project_id = s.project_id AND ei.sample_version_id = review_sv.id
+                     AND ei.status = 'scored') AS scored,
+           EXISTS (SELECT 1 FROM release_items ri
+                   JOIN releases r ON r.id = ri.release_id
+                   WHERE r.project_id = s.project_id AND r.status = 'published'
+                     AND ri.sample_version_id = review_sv.id AND ri.excluded_reason = ''
+                     AND ri.effective_action = 'accepted') AS published
+    FROM samples s` + latestReviewProjectionJoin + `
+    WHERE s.project_id = $1
+), sample_counts AS (
+    SELECT COUNT(id) AS current_versions,
+           COUNT(*) FILTER (WHERE inspected) AS inspected,
+           COUNT(*) FILTER (WHERE scored) AS scored,
+           COUNT(*) FILTER (WHERE review_status = 'accepted' AND NOT review_conflict) AS accepted,
+           COUNT(*) FILTER (WHERE review_status = 'quarantined' AND NOT review_conflict) AS quarantined,
+           COUNT(*) FILTER (WHERE review_status = 'pending' AND NOT review_conflict) AS pending,
+           COUNT(*) FILTER (WHERE review_status = 'conflict' OR review_conflict) AS conflicts,
+           COUNT(*) FILTER (WHERE review_status = 'accepted' AND NOT review_conflict AND inspected) AS accepted_inspected,
+           COUNT(*) FILTER (WHERE review_status = 'accepted' AND NOT review_conflict AND published) AS published_accepted
+    FROM current_samples
+), batch_counts AS (
+    SELECT COUNT(*) AS total,
+           COUNT(*) FILTER (WHERE purpose = 'pilot') AS pilot,
+           COUNT(*) FILTER (WHERE purpose = 'scale') AS scale,
+           COUNT(*) FILTER (WHERE status IN ('queued', 'running', 'pause_requested')) AS running,
+           COUNT(*) FILTER (WHERE status = 'paused') AS paused,
+           COUNT(*) FILTER (WHERE status IN ('failed', 'partial_failed')) AS failed,
+           COUNT(*) FILTER (WHERE status = 'completed') AS completed
+    FROM batches WHERE project_id = $1
+), release_counts AS (
+    SELECT COUNT(*) FILTER (WHERE status <> 'published') AS pending,
+           COUNT(*) FILTER (WHERE status = 'published') AS published
+    FROM releases WHERE project_id = $1
+)
+SELECT (SELECT COUNT(*) FROM sample_versions WHERE project_id = $1),
+       s.current_versions, s.inspected, s.scored, s.accepted, s.quarantined,
+       s.pending, s.conflicts, s.accepted_inspected, s.published_accepted,
+       b.total, b.pilot, b.scale, b.running, b.paused, b.failed, b.completed,
+       r.pending, r.published
+FROM sample_counts s CROSS JOIN batch_counts b CROSS JOIN release_counts r`
+
+// ProjectWorkflowCounts never converts a failed read into a successful zero.
+// EXISTS prevents several experiments/releases for one version from inflating
+// counts, and the project predicates also protect against cross-project rows.
+func (s *BatchStore) ProjectWorkflowCounts(ctx context.Context, projectID int64) (ProjectWorkflowCounts, error) {
+	var counts ProjectWorkflowCounts
+	err := s.db.QueryRow(ctx, projectWorkflowCountsSQL, projectID).Scan(
+		&counts.Generated, &counts.CurrentVersions, &counts.Inspected, &counts.Scored,
+		&counts.Accepted, &counts.Quarantined, &counts.Pending, &counts.Conflicts,
+		&counts.AcceptedInspected, &counts.PublishedAccepted,
+		&counts.BatchTotal, &counts.Pilot, &counts.Scale, &counts.Running,
+		&counts.Paused, &counts.Failed, &counts.Completed, &counts.ReleasePending, &counts.Published)
+	return counts, err
+}
+
 // GetSampleVersionByID 按**样本版本行 ID** 读取内容（Issue #160 T14 的执行侧需要）。
 //
 // 为什么需要它：`experiment_items` 冻结的是 `sample_version_id`（行 ID），

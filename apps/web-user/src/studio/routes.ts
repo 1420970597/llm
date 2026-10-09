@@ -57,8 +57,8 @@ export type StudioRouteMeta = {
 /**
  * 全局四入口（契约 §3.1）。
  *
- * 顺序即菜单顺序：今日工作在最前（它是默认落点），
- * 数据项目是主线，方案库与交付库是横向复用入口。
+ * 保留稳定的四入口元数据。展示以项目为先，默认落点是项目列表；
+ * 待处理是行动收件箱，方案库与交付库是横向复用入口。
  */
 export const globalRoutes: StudioRouteMeta[] = [
   {
@@ -104,7 +104,7 @@ export const globalRoutes: StudioRouteMeta[] = [
 ]
 
 /**
- * 项目六工作区（契约 §3.1）。
+ * 兼容旧六工作区元数据（契约 §3.1），展示归属由 projectWorkflowStages 派生。
  *
  * 顺序对应数据流：先设计与范围，再跑生产，然后看数据与质量，最后发布。
  * 「概览」在第一位，因为它是进入项目后的默认落点（P01）。
@@ -241,8 +241,8 @@ export const projectDetailRoutes: StudioRouteMeta[] = [
   {
     key: 'project.sample',
     path: '/p/:projectId/data/:sampleId',
-    label: '三栏审阅',
-    caption: '队列、只读内容与版本化证据三栏独立',
+    label: '审阅样本',
+    caption: '查看内容、接纳或隔离，保存后继续下一条',
     kind: 'project',
     moduleStatus: 'available',
     task: 'T17',
@@ -341,7 +341,7 @@ export const projectDetailRoutes: StudioRouteMeta[] = [
     key: 'project.review',
     path: '/p/:projectId/review',
     label: '审阅',
-    caption: '只列需要你判断的样本，进入三栏判断',
+    caption: '逐条处理待审阅样本',
     kind: 'project',
     moduleStatus: 'available',
     task: 'T17',
@@ -384,7 +384,7 @@ export const projectDetailRoutes: StudioRouteMeta[] = [
   {
     key: 'project.newRelease',
     path: '/p/:projectId/releases/new',
-    label: '准备发布',
+    label: '发布数据',
     caption: '范围、用途与限制',
     kind: 'project',
     moduleStatus: 'available',
@@ -393,6 +393,27 @@ export const projectDetailRoutes: StudioRouteMeta[] = [
     permission: 'publish',
   },
 ]
+
+/** 展示阶段与阶段内任务，和路由放在同一处，避免壳层复制归属表。 */
+export const projectWorkflowStages = [
+  { key: 'project.overview', label: '项目', taskKeys: [] },
+  { key: 'project.blueprint', label: '设计', taskKeys: ['project.blueprint', 'project.coverage', 'project.sources', 'project.standard', 'project.sourceImport'] },
+  { key: 'project.runs', label: '生产', taskKeys: ['project.runs', 'project.pilot', 'project.compare'] },
+  { key: 'project.review', label: '审阅', taskKeys: ['project.review', 'project.data', 'project.quality', 'project.rules'] },
+  { key: 'project.releases', label: '发布', taskKeys: ['project.releases', 'project.newRelease'] },
+] as const
+
+export type ProjectWorkflowKey = (typeof projectWorkflowStages)[number]['key']
+
+export function projectWorkflowForPath(pathname: string) {
+  let route = matchRoute(pathname)
+  while (route) {
+    const stage = projectWorkflowStages.find((item) => item.key === route?.key || (item.taskKeys as readonly string[]).includes(route?.key ?? ''))
+    if (stage) return stage
+    route = route.navParent ? [...projectRoutes, ...projectDetailRoutes].find((item) => item.key === route?.navParent) : undefined
+  }
+  return projectWorkflowStages[0]
+}
 
 /**
  * 项目向导的三步（W03–W05）。

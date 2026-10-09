@@ -329,7 +329,7 @@ function problemsWithDataReviewSplit(pageSrc, routesSrc) {
   if (!/queueMode \? 'pending' : ''/.test(pageSrc)) {
     problems.push('两个入口的默认筛选相同（都进同一张表，观感上仍是同一页）')
   }
-  if (!/const description = queueMode/.test(pageSrc)) {
+  if (!/const description = queueMode|<Text type="tertiary">\{queueMode \? '[^']+' : '[^']+'\}/.test(pageSrc)) {
     problems.push('两个入口共用同一段说明文案')
   }
   if (!/queueMode \? '审阅队列' : '数据'/.test(pageSrc)) {

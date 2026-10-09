@@ -130,17 +130,17 @@ export function SourceDocumentsPage() {
 
   return <div className="console-page source-page" data-studio-page="sources" data-source-state={documents.length ? 'default' : 'empty'}>
     <div className="console-page__header">
-      <div><Title heading={4}>素材来源</Title><Text type="tertiary">上传资料、查看分块，再把素材关联到目标方向。</Text></div>
+      <div><Title heading={4}>素材来源</Title></div>
       <div className="console-page__actions"><Link to={scope.href('project.coverage')}>目标结构</Link><Link to={scope.href('project.sourceImport')}>导入外部数据集</Link><Button icon={<Upload size={14} />} theme="solid" type="primary" loading={uploading} disabled={!canRun || readOnly || state.dirty} onClick={() => fileInput.current?.click()}>上传素材</Button></div>
       <input ref={fileInput} className="source-file-input" type="file" accept=".md,.markdown,.txt,text/plain,text/markdown" aria-label="选择 Markdown 或 TXT 素材" onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); event.target.value = '' }} />
     </div>
     {notice ? <Card className="console-card mb-3"><div role="status">{notice}</div></Card> : null}
     {uploadError ? <div className="source-error" role="alert">{uploadError}</div> : null}
     {state.dirty ? <Text type="warning" className="block mb-3">请先保存切分策略，再上传素材，避免尚未保存的参数与来源记录不一致。</Text> : null}
-    <div className="source-workspace">
+    <div className="source-workspace product-source-workspace">
       <Card className="console-card source-list" bodyStyle={{ padding: 16 }}>
         <Text strong>来源清单 · {documents.length}</Text>
-        {documents.length === 0 ? <Empty description="还没有素材。上传 Markdown/TXT，或导入已有数据集。"><Button disabled={!canRun || readOnly} onClick={() => fileInput.current?.click()}>添加素材</Button></Empty> : <ul>
+        {documents.length === 0 ? <Empty description="暂无素材"><Button disabled={!canRun || readOnly} onClick={() => fileInput.current?.click()}>上传第一份素材</Button></Empty> : <ul>
           {documents.map((entry) => <li key={entry.stableId}><button type="button" className={selected?.stableId === entry.stableId ? 'source-document is-selected' : 'source-document'} onClick={() => { setSelectedDocument(entry.stableId); setChunkOffset(0); setQuery('') }}>
             <FileText size={16} /><span><strong title={entry.fileName}>{entry.fileName}</strong><small>{entry.parsedAt ? `${entry.chunkCount} 个素材块` : '等待解析'} · {entry.kind === 'markdown' ? 'Markdown' : '文本'}</small></span>
           </button></li>)}
@@ -155,10 +155,14 @@ export function SourceDocumentsPage() {
         </div>}
         <div className="source-pagination"><Button size="small" disabled={chunkOffset === 0 || chunksLoading} onClick={() => setChunkOffset(Math.max(0, chunkOffset - PAGE_SIZE))}>上一页</Button><Text size="small">{chunks.total ? `${chunkOffset + 1}–${Math.min(chunkOffset + PAGE_SIZE, chunks.total)} / ${chunks.total}` : '0 个素材块'}</Text><Button size="small" disabled={chunkOffset + PAGE_SIZE >= chunks.total || chunksLoading} onClick={() => setChunkOffset(chunkOffset + PAGE_SIZE)}>下一页</Button></div>
       </Card>
-      <Card className="console-card source-settings" bodyStyle={{ padding: 16 }}><Text strong className="block mb-3">切分策略</Text><SourceChunkingFields value={chunking} disabled={readOnly} onChange={(next) => state.setPayload({ ...payload, chunking: next })} /><Text type="tertiary" size="small">保存只影响后续上传，已解析素材与历史批次保持原有分块。</Text></Card>
     </div>
-    <DocumentSaveBar state={state} label="素材来源" />
+    <details className="product-disclosure" open={state.dirty ? true : undefined}><summary>切分策略{state.dirty ? ' · 有未保存的修改' : ''}</summary>
+      <Card className="console-card source-settings" bodyStyle={{ padding: 16 }}><SourceChunkingFields value={chunking} disabled={readOnly} onChange={(next) => state.setPayload({ ...payload, chunking: next })} /><Text type="tertiary" size="small">仅影响后续上传。</Text></Card>
+      <DocumentSaveBar state={state} label="素材来源" />
+    </details>
+    <div className="product-stage-footer"><span>{documents.length} 份素材</span><Link className="product-primary-link" to={scope.href('project.coverage')}>关联到目标结构 →</Link></div>
     <details className="source-history"><summary>素材来源版本历史（只读）</summary><DocumentHistory state={state} /></details>
+    <details className="product-disclosure"><summary>导入记录 · {imports.total} 次{importError ? ' · 读取失败' : ''}</summary>
     <Card className="console-card mt-3" bodyStyle={{ padding: 16 }}>
       <div className="source-panel-head"><Text strong>导入记录</Text><Button size="small" icon={<RefreshCw size={14} />} onClick={() => void loadImportsRef.current()}>刷新记录</Button></div>
       {importError ? <div className="source-error" role="alert">{importError}</div> : imports.items.length === 0 ? <Empty description="还没有导入记录。" /> : <ul className="source-ledgers">{imports.items.map((entry) => <li key={entry.id}>
@@ -169,5 +173,6 @@ export function SourceDocumentsPage() {
       </li>)}</ul>}
       <div className="source-pagination"><Button size="small" disabled={importOffset === 0} onClick={() => setImportOffset(Math.max(0, importOffset - PAGE_SIZE))}>上一页</Button><Text size="small">共 {imports.total} 次导入</Text><Button size="small" disabled={importOffset + PAGE_SIZE >= imports.total} onClick={() => setImportOffset(importOffset + PAGE_SIZE)}>下一页</Button></div>
     </Card>
+    </details>
   </div>
 }

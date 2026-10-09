@@ -30,6 +30,12 @@ fi
 #   studio      GRPO 确定性维度与模型裁判分离（T24）
 #   api         createDataset 的 provider/storage 前置校验（真实 DB 才有意义）
 required="TestRunAppliesAllMigrationsAndIsIdempotent
+TestProjectOverviewHTTPStatsAndRoleAwareWorkflow
+TestLoadProjectOverviewImportedContentAndCurrentVersionStats
+TestLoadProjectOverviewAcceptanceRateUsesInspectedCurrentVersions
+TestProjectWorkflowCountsCurrentVersionsAndDistinctEvidence
+TestProjectWorkflowCountsEmptyScopeBatchPaginationAndErrors
+TestProjectWorkflowCountsDoesNotCreditOtherProjectEvidence
 TestCreateExperimentFreezesSnapshot
 TestRefreshBatchCountsCorrectsStaleCompletedWithShortfall
 TestRefreshBatchCountsConvergesZombieRunningBatch
