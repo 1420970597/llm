@@ -1268,6 +1268,473 @@ select:focus {
   [data-studio-page="release-card"] .console-stat-grid { grid-template-columns: 1fr; }
 }
 
+/* -------------------------------------------------------------------------
+ * EasyDataset-inspired product shell
+ *
+ * EasyDataset uses a compact 64px blue application bar, horizontal work-area
+ * tabs, a #F8F9FA canvas and small 8px surfaces.  Atelier keeps its route
+ * metadata and accessible navigation, but presents that same hierarchy as a
+ * top application bar instead of a narrow icon rail.  This block is kept at
+ * the end of the sheet on purpose: the file has legacy and Atelier rules from
+ * different delivery rounds, so the product shell needs one final source of
+ * truth for the active visual system.
+ * ------------------------------------------------------------------------- */
+:root {
+  --header-height: 64px;
+  --bg: #f8f9fa;
+  --bg-strong: #f3f4f6;
+  --panel: #ffffff;
+  --panel-strong: #ffffff;
+  --panel-border: #e5e7eb;
+  --panel-border-strong: #cbd5e1;
+  --text: #2d2d2d;
+  --text-soft: #6b7280;
+  --text-muted: #9ca3af;
+  --accent: #2a5caa;
+  --accent-soft: #edf3ff;
+  --accent-strong: #1e4785;
+  --success: #10b981;
+  --danger: #ef4444;
+  --danger-soft: #fef2f2;
+  --warning: #f59e0b;
+  --rail: #2a5caa;
+  --rail-border: #1e4785;
+  --ink-deep: #1e4785;
+  --canvas: #f8f9fa;
+  --canvas-grid: #e5e7eb;
+  --shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  --shadow-soft: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --ring: 0 0 0 3px rgba(42, 92, 170, 0.2);
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: Inter, "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+body {
+  background: var(--bg);
+}
+
+/* The authenticated Atelier shell follows EasyDataset's AppBar pattern. */
+.atelier-shell {
+  grid-template-areas: "sidebar" "content" !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: var(--header-height) minmax(0, 1fr) !important;
+  background: var(--bg);
+}
+
+.atelier-shell .app-layout__sidebar {
+  position: sticky;
+  inset: 0 0 auto;
+  z-index: 100;
+  width: 100% !important;
+  height: var(--header-height);
+  min-height: var(--header-height);
+  flex-direction: row;
+  align-items: stretch;
+  overflow: visible;
+  background: var(--accent);
+  border: 0;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14);
+}
+
+.atelier-shell .sidebar-workspace-header {
+  flex: 0 0 218px;
+  min-height: var(--header-height);
+  padding: 0 20px;
+  border: 0;
+  background: transparent;
+}
+
+.atelier-shell .sidebar-workspace-info {
+  display: block;
+  min-width: 0;
+}
+
+.atelier-shell .sidebar-workspace-name,
+.atelier-shell .sidebar-workspace-plan {
+  color: #fff;
+}
+
+.atelier-shell .sidebar-workspace-name {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.atelier-shell .sidebar-workspace-plan {
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 11px;
+}
+
+.atelier-shell .sidebar-workspace-header::after {
+  display: none;
+}
+
+.atelier-shell .sidebar-collapse-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+
+.atelier-shell .sidebar-nav-section {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.atelier-shell .sidebar-nav-section::-webkit-scrollbar {
+  display: none;
+}
+
+.atelier-shell .sidebar-nav-heading {
+  display: none;
+}
+
+.atelier-shell .sidebar-nav-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: max-content;
+  min-height: var(--header-height);
+  padding: 0 15px;
+  border: 0;
+  border-radius: 0;
+  color: rgba(255, 255, 255, 0.78);
+  background: transparent;
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.atelier-shell .sidebar-nav-item:hover,
+.atelier-shell .sidebar-nav-item--active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.atelier-shell .sidebar-nav-item--active::after {
+  position: absolute;
+  right: 12px;
+  bottom: 0;
+  left: 12px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: #fff;
+  content: "";
+}
+
+.atelier-shell .sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: max-content;
+  margin-left: auto;
+  padding: 0 18px;
+  border: 0;
+  color: #fff;
+}
+
+.atelier-shell .sidebar-account {
+  max-width: 160px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.atelier-shell .sidebar-footer > .semi-button {
+  min-width: 32px;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.atelier-shell .app-layout__content {
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.atelier-topbar {
+  min-height: 48px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--panel-border);
+  background: var(--panel);
+}
+
+.atelier-topbar__actions .semi-button,
+.atelier-shell [data-command-search-trigger] {
+  min-height: 34px;
+  min-width: 188px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--text-soft);
+  background: var(--bg-strong);
+  box-shadow: none;
+}
+
+.atelier-shell .console-breadcrumbs {
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.atelier-shell .console-breadcrumbs__item:last-child {
+  color: var(--text);
+}
+
+.atelier-shell .atelier-project-shell,
+.atelier-shell .atelier-today-page,
+.atelier-shell .atelier-overview-page,
+.atelier-shell .blueprint-page,
+.atelier-shell .review-pane,
+.atelier-shell [data-studio-page="release-card"],
+.atelier-shell [data-studio-page="releases"],
+.atelier-shell [data-studio-page="release-new"] {
+  max-width: 1480px;
+  padding: 28px 36px 64px;
+}
+
+.atelier-shell .atelier-project-header {
+  padding: 0 36px;
+}
+
+.atelier-shell .atelier-project-tabs {
+  margin: 0 36px;
+  gap: 4px;
+  padding: 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.atelier-shell .atelier-project-tabs .project-tab {
+  min-height: 44px;
+  padding: 13px 14px 11px;
+  border-radius: 8px 8px 0 0;
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+.atelier-shell .atelier-project-tabs .project-tab:hover,
+.atelier-shell .atelier-project-tabs .project-tab--active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.atelier-shell .atelier-project-tabs .project-tab--active::after {
+  right: 0;
+  left: 0;
+  height: 3px;
+  background: var(--accent);
+}
+
+.atelier-shell .console-card,
+.atelier-shell .console-panel,
+.atelier-shell .panel,
+.atelier-shell .atelier-journey-panel,
+.atelier-shell .atelier-detail-panel,
+.atelier-shell .blueprint-inspector,
+.atelier-shell .review-pane__columns {
+  border-color: var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow-soft);
+}
+
+.atelier-shell .console-card h4,
+.atelier-shell .console-card h5,
+.atelier-shell .console-panel h4,
+.atelier-shell .console-panel h5 {
+  color: var(--text);
+}
+
+.atelier-shell .console-page__header h1,
+.atelier-shell .console-page__header h2,
+.atelier-shell .console-page__header h4,
+.atelier-shell .atelier-page-intro h1,
+.atelier-shell .atelier-today-hero h1 {
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.atelier-shell .atelier-today-hero {
+  min-height: 240px;
+  padding: 30px 34px;
+  border-color: var(--panel-border);
+  border-radius: 8px;
+  background: linear-gradient(135deg, #edf3ff 0%, #f5f3ff 100%);
+}
+
+.atelier-shell .atelier-today-hero h1 {
+  font-size: clamp(34px, 4vw, 52px);
+}
+
+.atelier-shell .atelier-overview-metrics {
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+}
+
+.atelier-shell .atelier-overview-tile {
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.atelier-shell input,
+.atelier-shell select,
+.atelier-shell textarea,
+.atelier-shell .semi-input-wrapper,
+.atelier-shell .semi-select {
+  border-radius: 8px;
+}
+
+@media (max-width: 900px) {
+  .atelier-shell .sidebar-workspace-header {
+    flex-basis: 180px;
+    padding-inline: 14px;
+  }
+
+  .atelier-shell .sidebar-nav-item {
+    padding-inline: 11px;
+  }
+
+  .atelier-shell .atelier-project-header,
+  .atelier-shell .atelier-project-tabs,
+  .atelier-shell .atelier-project-shell,
+  .atelier-shell .atelier-today-page,
+  .atelier-shell .atelier-overview-page,
+  .atelier-shell .blueprint-page,
+  .atelier-shell .review-pane {
+    padding-inline: 20px;
+    margin-inline: 20px;
+  }
+
+  .atelier-shell .atelier-project-tabs {
+    margin-inline: 20px;
+  }
+}
+
+@media (max-width: 760px) {
+  .atelier-shell {
+    grid-template-rows: 60px minmax(0, 1fr) !important;
+  }
+
+  .atelier-shell .app-layout__sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 42;
+    display: block;
+    width: min(320px, 85vw) !important;
+    height: 100dvh;
+    transform: translateX(-110%);
+    transition: transform 0.18s ease;
+    visibility: hidden;
+    pointer-events: none;
+    box-shadow: 10px 0 24px rgba(15, 23, 42, 0.16);
+  }
+
+  .atelier-shell .app-layout__sidebar[data-mobile-open="true"] {
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .atelier-shell .sidebar-workspace-header {
+    min-height: 64px;
+    padding: 0 18px;
+  }
+
+  .atelier-shell .sidebar-nav-section {
+    display: grid;
+    gap: 2px;
+    padding: 10px 12px;
+    overflow: visible;
+  }
+
+  .atelier-shell .sidebar-nav-item {
+    justify-content: flex-start;
+    min-height: 48px;
+    padding: 0 14px;
+    border-radius: 8px;
+  }
+
+  .atelier-shell .sidebar-nav-item--active::after {
+    top: 8px;
+    right: auto;
+    bottom: 8px;
+    left: 0;
+    width: 3px;
+    height: auto;
+    border-radius: 0 3px 3px 0;
+  }
+
+  .atelier-shell .sidebar-footer {
+    padding: 14px 18px;
+  }
+
+  .atelier-shell .atelier-topbar {
+    min-height: 60px;
+    padding: 0 14px;
+  }
+
+  .atelier-shell .atelier-mobile-menu {
+    display: inline-flex;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    color: var(--text);
+    background: var(--panel);
+  }
+
+  .atelier-shell .atelier-topbar__actions .semi-button,
+  .atelier-shell [data-command-search-trigger] {
+    min-width: 36px;
+    width: 36px;
+    overflow: hidden;
+    padding-inline: 10px;
+  }
+
+  .atelier-shell .atelier-project-header,
+  .atelier-shell .atelier-project-shell,
+  .atelier-shell .atelier-today-page,
+  .atelier-shell .atelier-overview-page,
+  .atelier-shell .blueprint-page,
+  .atelier-shell .review-pane,
+  .atelier-shell [data-studio-page="release-card"],
+  .atelier-shell [data-studio-page="releases"],
+  .atelier-shell [data-studio-page="release-new"] {
+    padding: 20px 14px 48px;
+    margin-inline: 0;
+  }
+
+  .atelier-shell .atelier-project-tabs {
+    margin: 0;
+    gap: 0;
+  }
+}
+
 /*
  * m × n × z 结构树（issue #197 第 11 条）。
  *
@@ -3700,5 +4167,253 @@ a {
 
   [data-studio-page='release-card'] .console-stat-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * EasyDataset shell final cascade
+ *
+ * The stylesheet contains historical Atelier rail rules for legacy screenshots
+ * and responsive behavior. Keep this final block as the single authority for
+ * the active product shell so the authenticated workspace uses EasyDataset's
+ * 64px horizontal AppBar on desktop while retaining the drawer on mobile.
+ * --------------------------------------------------------------------------- */
+.atelier-shell {
+  grid-template-areas: "sidebar" "content" !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: 64px minmax(0, 1fr) !important;
+  background: var(--bg) !important;
+}
+
+.atelier-shell .app-layout__sidebar {
+  position: sticky !important;
+  inset: 0 0 auto !important;
+  z-index: 100 !important;
+  grid-area: sidebar !important;
+  width: 100% !important;
+  height: 64px !important;
+  min-height: 64px !important;
+  flex-direction: row !important;
+  align-items: stretch !important;
+  overflow: visible !important;
+  background: var(--accent) !important;
+  border: 0 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14) !important;
+}
+
+.atelier-shell .sidebar-workspace-header {
+  flex: 0 0 218px !important;
+  min-height: 64px !important;
+  padding: 0 20px !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.atelier-shell .sidebar-workspace-info {
+  display: block !important;
+  min-width: 0;
+}
+
+.atelier-shell .sidebar-workspace-name,
+.atelier-shell .sidebar-workspace-plan {
+  color: #fff !important;
+}
+
+.atelier-shell .sidebar-workspace-name {
+  font-size: 17px !important;
+  font-weight: 700 !important;
+}
+
+.atelier-shell .sidebar-workspace-plan {
+  color: rgba(255, 255, 255, 0.74) !important;
+  font-size: 11px !important;
+}
+
+.atelier-shell .sidebar-workspace-header::after {
+  display: none !important;
+}
+
+.atelier-shell .sidebar-collapse-button {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.atelier-shell .sidebar-nav-section {
+  display: flex !important;
+  align-items: stretch;
+  gap: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.atelier-shell .sidebar-nav-section::-webkit-scrollbar {
+  display: none;
+}
+
+.atelier-shell .sidebar-nav-heading {
+  display: none !important;
+}
+
+.atelier-shell .sidebar-nav-item {
+  position: relative;
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: max-content;
+  min-height: 64px !important;
+  padding: 0 15px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.atelier-shell .sidebar-nav-item:hover,
+.atelier-shell .sidebar-nav-item--active {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+.atelier-shell .sidebar-nav-item--active::after {
+  position: absolute;
+  right: 12px;
+  bottom: 0;
+  left: 12px;
+  width: auto;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: #fff;
+  content: "";
+}
+
+.atelier-shell .sidebar-footer {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  min-width: max-content;
+  margin-left: auto;
+  padding: 0 18px !important;
+  border: 0 !important;
+  color: #fff;
+}
+
+.atelier-shell .sidebar-account {
+  display: block !important;
+  max-width: 160px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.82) !important;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.atelier-shell .sidebar-footer > .semi-button {
+  min-width: 32px !important;
+  width: auto !important;
+  height: 32px !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  border-radius: 8px !important;
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.atelier-shell .app-layout__content {
+  grid-area: content !important;
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--bg) !important;
+}
+
+@media (max-width: 760px) {
+  .atelier-shell {
+    grid-template-rows: 60px minmax(0, 1fr) !important;
+  }
+
+  .atelier-shell .app-layout__sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    z-index: 42 !important;
+    width: min(320px, 85vw) !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    flex-direction: column !important;
+    transform: translateX(-110%);
+    transition: transform 0.18s ease;
+    visibility: hidden;
+    pointer-events: none;
+    box-shadow: 10px 0 24px rgba(15, 23, 42, 0.16) !important;
+  }
+
+  .atelier-shell .app-layout__sidebar[data-mobile-open="true"] {
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .atelier-shell .sidebar-workspace-header {
+    flex: 0 0 auto !important;
+    min-height: 64px !important;
+    padding: 0 18px !important;
+  }
+
+  .atelier-shell .sidebar-nav-section {
+    display: grid !important;
+    gap: 2px;
+    padding: 10px 12px !important;
+    overflow: visible;
+  }
+
+  .atelier-shell .sidebar-nav-item {
+    justify-content: flex-start;
+    min-height: 48px !important;
+    padding: 0 14px !important;
+    border-radius: 8px !important;
+  }
+
+  .atelier-shell .sidebar-nav-item--active::after {
+    top: 8px;
+    right: auto;
+    bottom: 8px;
+    left: 0;
+    width: 3px;
+    height: auto;
+    border-radius: 0 3px 3px 0;
+  }
+
+  .atelier-shell .sidebar-footer {
+    margin-top: auto;
+    padding: 14px 18px !important;
+  }
+
+  .atelier-shell .atelier-topbar {
+    min-height: 60px;
+    padding: 0 14px;
+  }
+
+  .atelier-shell .atelier-mobile-menu {
+    display: inline-flex;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    color: var(--text);
+    background: var(--panel);
   }
 }
