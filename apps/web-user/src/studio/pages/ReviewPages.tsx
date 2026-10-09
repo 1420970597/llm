@@ -74,7 +74,8 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
   const { Title, Text } = Typography
 
   const reviewStatus = reviewStatusFrom(searchParams, queueMode)
-  const showAllStatuses = searchParams.get('status') === 'all'
+  // 数据默认全量也必须显式传 all；服务端缺省 status 是待判断，不能靠缺省表达全量。
+  const showAllStatuses = reviewStatus === ''
   const search = searchParams.get('q') ?? ''
 
   const [samples, setSamples] = useState<SampleSummary[]>([])
@@ -85,6 +86,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [snapshotNotice, setSnapshotNotice] = useState<string | null>(null)
   const [snapshotID, setSnapshotID] = useState<number | null>(null)
+  const [freezing, setFreezing] = useState(false)
   const [projectCapabilities, setProjectCapabilities] = useState<ProjectCapabilities | null>(null)
 
   useEffect(() => {
@@ -111,7 +113,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
         // 空字符串有两种语义：未指定状态时后端默认 pending；显式
         // `status=all` 则必须把 all 传给服务端，才能真正查询全量。
         if (showAllStatuses) params.set('status', 'all')
-        else if (reviewStatus !== '') params.set('status', reviewStatus)
+        else params.set('status', reviewStatus)
         if (search.trim() !== '') params.set('q', search.trim())
         if (cursor !== '') params.set('cursor', cursor)
         const response = await client.get<Page<SampleSummary>>(
@@ -156,7 +158,9 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
    */
   const freezeForRelease = useCallback(
     async (sampleVersionIDs?: number[]) => {
+      if (freezing) return
       setSnapshotNotice(null)
+      setFreezing(true)
       try {
         const snapshot = await studioApi.createSelectionSnapshot(scope.projectId, {
           purpose: 'release',
@@ -178,9 +182,11 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
         navigate(`${projectHref('project.newRelease', scope.projectId)}?selection=${encodeURIComponent(String(snapshot.id))}`)
       } catch (snapshotError) {
         setSnapshotNotice(snapshotError instanceof Error ? snapshotError.message : '冻结选择范围失败')
+      } finally {
+        setFreezing(false)
       }
     },
-    [navigate, reviewStatus, scope.projectId, search],
+    [freezing, navigate, reviewStatus, scope.projectId, search],
   )
 
   /** 大范围选择：让**服务端**按当前筛选解析并冻结成快照。 */
@@ -209,9 +215,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
    * 但**默认值、说明文案、主操作与空状态**必须不同。
    */
   const title = queueMode ? '审阅队列' : '数据'
-  const description = queueMode
-    ? '这里只列需要你判断的样本（默认「待判断」，按等待时长排序）。点「审阅」进入三栏判断界面。'
-    : '浏览这一版里的全部样本内容与版本来源（默认包含已接纳与已隔离）。需要判断时切到「审阅队列」。'
+  const firstReviewable = samples.find((sample) => sample.capabilities?.canReview)
 
   return (
     <div className="console-page" data-studio-page={queueMode ? 'review-queue' : 'sample-list'}>
@@ -220,11 +224,13 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
           <Title heading={4} className="!mb-1">
             {title}
           </Title>
-          <Text type="tertiary">{description}</Text>
-          <Text type="tertiary" size="small" className="block mt-1">
-            按审阅状态与关键词在<strong>服务端</strong>筛选与分页；按钮上的数量是服务端统计，不是当前页条目数。
-          </Text>
+          <Text type="tertiary">{queueMode ? '接纳合格样本，隔离不合格样本。' : '查看、审阅并发布内容版本。'}</Text>
         </div>
+        {firstReviewable ? <Button theme="solid" type="primary" onClick={() => navigate(
+          `${projectHref('project.sample', scope.projectId, { sampleId: firstReviewable.resourceId })}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`,
+        )}>开始审阅</Button> : null}
+      </div>
+      <div className="product-data-toolbar">
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={search}
@@ -258,8 +264,8 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
               })
             }}
           />
-          <Button icon={<RefreshCw size={14} />} onClick={() => void load('', false)} disabled={loading}>
-            刷新样本
+          <Button aria-label="刷新样本" icon={<RefreshCw size={14} />} onClick={() => void load('', false)} disabled={loading}>
+            刷新
           </Button>
         </div>
       </div>
@@ -267,22 +273,21 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
       {selected.size > 0 ? (
         <Card className="console-card mb-3" bodyStyle={{ padding: 12 }} data-selection-summary="true">
           <Text size="small">
-            已选 {selected.size} 条（当前页）。跨页选择请用下方「按筛选条件冻结范围」——
-            它由服务端解析，因此不会出现「以为选了 40 条、实际提交 12 条」。
+            已选 {selected.size} 条（当前页）
           </Text>
           <div className="mt-2 flex gap-2">
             {projectCapabilities?.canPublish ? (
-              <Button size="small" theme="solid" type="primary" onClick={() => void snapshotSelected()} data-selection-release="true">
-                导出所选并准备发布
+              <Button size="small" theme="solid" type="primary" loading={freezing} onClick={() => void snapshotSelected()} data-selection-release="true">
+                发布所选
               </Button>
             ) : null}
             {projectCapabilities?.canPublish ? (
-              <Button size="small" onClick={() => void snapshotAll()} data-snapshot-all="true">
-                按筛选条件全选并准备发布
+              <Button size="small" disabled={freezing} onClick={() => void snapshotAll()} data-snapshot-all="true">
+                发布当前筛选
               </Button>
             ) : null}
             <Button size="small" onClick={() => setSelected(new Set())}>
-              清空当前页选择
+              清空选择
             </Button>
           </div>
         </Card>
@@ -291,17 +296,15 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
            还没看内容的情况下就进入发布流程（issue #194 的 CTA 完全相同的成因）。 */
         <div className="mb-3">
           <Text type="tertiary" size="small">
-            待判断 {samples.length} 条{samples.length > 0 ? '，点每行的「审阅」逐条判断' : ''}。
-            需要把这个范围交给发布流程时，请回到「数据」页用「按当前筛选冻结并准备发布」——
-            本页没有冻结按钮，避免在还没判断的情况下把未审阅内容当成发布范围。
+            已加载 {samples.length} 条{nextCursor ? '，还有更多' : ''}。
           </Text>
         </div>
       ) : (
         <div className="mb-3">
           {projectCapabilities?.canPublish ? (
             <>
-              <Button size="small" onClick={() => void snapshotAll()} data-snapshot-all="true">
-                按当前筛选冻结并准备发布（服务端解析）
+              <Button size="small" loading={freezing} onClick={() => void snapshotAll()} data-snapshot-all="true">
+                发布当前筛选
               </Button>
               {/* issue #203：按钮必须如实声明冻结范围的**语义**。
                   在「全部」筛选（reviewStatus 为空串）下，冻结的是全量，
@@ -314,8 +317,8 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
                 data-snapshot-scope-intent="true"
               >
                 {reviewStatus === ''
-                  ? '当前筛选是「全部」：冻结范围含未审阅内容，候选页会标出其中已接纳与未审阅各多少条。'
-                  : `当前筛选是「${describeReviewStatus(reviewStatus)}」：只冻结该状态的内容版本。`}
+                  ? '范围含未审阅内容；发布前会检查接纳状态。'
+                  : `范围：${describeReviewStatus(reviewStatus)}`}
               </Text>
             </>
           ) : null}
@@ -356,8 +359,8 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
           <Empty
             description={
               queueMode
-                ? '这个筛选下没有待判断的样本。已接纳的内容不会再出现在队列里；要回看它们请切到「数据」。'
-                : '这个项目还没有任何样本版本。先在「生产」里跑一个批次产生内容。'
+                ? '没有待判断样本。'
+                : '暂无样本，请先生产数据。'
             }
           />
         </Card>
@@ -388,7 +391,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
                     {sample.resourceId}
                   </Text>
                 </span>
-                <span>v{sample.latestVersion}（版本 ID {sample.latestVersionId || '暂无'}）</span>
+                <span>v{sample.latestVersion}</span>
                 <span>
                   <span title={sample.reviewStatus}>
                     <Tag size="small" color={reviewStatusColor(sample.reviewStatus)}>
@@ -568,7 +571,8 @@ export function SampleReviewPage() {
   const [queueCursor, setQueueCursor] = useState('')
   const [queueLoading, setQueueLoading] = useState(false)
   const [queueError, setQueueError] = useState<string | null>(null)
-  const [focusContent, setFocusContent] = useState(false)
+  const [focusContent, setFocusContent] = useState(true)
+  const [autoNext, setAutoNext] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [action, setAction] = useState<'accepted' | 'quarantined'>('accepted')
@@ -580,10 +584,70 @@ export function SampleReviewPage() {
   const [offlineNotice, setOfflineNotice] = useState<string | null>(null)
   const [pending, setPending] = useState(0)
   const [copyFallback, setCopyFallback] = useState<string | null>(null)
+  const [reviewProjectCapabilities, setReviewProjectCapabilities] = useState<ProjectCapabilities | null>(null)
+  const [reviewPermissionError, setReviewPermissionError] = useState<string | null>(null)
+  const [reviewPermissionRefresh, setReviewPermissionRefresh] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    setReviewProjectCapabilities(null)
+    setReviewPermissionError(null)
+    void studioApi.overviewEnvelope(scope.projectId).then((overview) => {
+      if (!cancelled) setReviewProjectCapabilities(overview.capabilities)
+    }).catch((permissionError: unknown) => {
+      if (!cancelled) setReviewPermissionError(permissionError instanceof Error ? permissionError.message : '权限读取失败')
+    })
+    return () => { cancelled = true }
+  }, [reviewPermissionRefresh, scope.projectId])
 
   // 竞态防护：切样本时丢弃过期响应（见文件头说明）。
   const latestRequest = useRef(0)
   const contentRef = useRef<HTMLDivElement | null>(null)
+  const submittingRef = useRef(false)
+  const draftDirty = reason.trim() !== '' || action !== 'accepted'
+
+  useEffect(() => {
+    if (!draftDirty) return
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [draftDirty])
+
+  const allowNavigation = useCallback(() => {
+    if (submittingRef.current) return false
+    return !draftDirty || window.confirm('判断尚未保存。放弃当前理由并切换样本？')
+  }, [draftDirty])
+
+  useEffect(() => {
+    const guardLinkNavigation = (event: MouseEvent) => {
+      const link = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[href]')
+      if (!link || event.defaultPrevented || link.target === '_blank') return
+      const target = new URL(link.href, window.location.href)
+      if (target.pathname === window.location.pathname && target.search === window.location.search) return
+      if (!allowNavigation()) { event.preventDefault(); event.stopPropagation() }
+    }
+    document.addEventListener('click', guardLinkNavigation, true)
+    return () => document.removeEventListener('click', guardLinkNavigation, true)
+  }, [allowNavigation])
+
+  useEffect(() => {
+    // BrowserRouter 已为每个站内历史项写 idx；capture 必须先于它的 bubble 监听。
+    const entryState = window.history.state as { idx?: number } | null
+    const entryURL = window.location.href
+    const guardHistoryNavigation = (event: PopStateEvent) => {
+      if (allowNavigation()) return
+      event.stopImmediatePropagation()
+      event.preventDefault()
+      // popstate 已经发生，preventDefault 本身不能撤销地址变化；恢复当前
+      // entry 并停止 Router 的监听，避免脏理由随路由卸载。
+      window.history.pushState(entryState, '', entryURL)
+    }
+    window.addEventListener('popstate', guardHistoryNavigation, true)
+    return () => window.removeEventListener('popstate', guardHistoryNavigation, true)
+  }, [allowNavigation, sampleID])
 
   // 队列筛选沿用数据页 URL。默认只取待判断，显式 status=all 才查看全部。
   const rawQueueStatus = searchParams.get('status')
@@ -593,6 +657,8 @@ export function SampleReviewPage() {
       : 'pending'
   const queueSearch = searchParams.get('q')?.trim() ?? ''
   const queueRequest = useRef(0)
+
+  useEffect(() => () => { queueRequest.current += 1; latestRequest.current += 1 }, [sampleID])
 
   const loadQueue = useCallback(async (cursor = '', append = false) => {
     const requestID = queueRequest.current + 1
@@ -627,7 +693,7 @@ export function SampleReviewPage() {
 
   useEffect(() => {
     void loadQueue()
-  }, [loadQueue])
+  }, [loadQueue, sampleID])
 
   const refreshPending = useCallback(() => {
     const actorId = currentActorID()
@@ -693,19 +759,32 @@ export function SampleReviewPage() {
   }, [detail, queueItems])
 
   const navigateToQueueItem = useCallback((resourceId: string) => {
+    if (resourceId === sampleID || !allowNavigation()) return
     const query = searchParams.toString()
     navigate(`${projectHref('project.sample', scope.projectId, { sampleId: resourceId })}${query ? `?${query}` : ''}`)
-  }, [navigate, scope.projectId, searchParams])
+  }, [allowNavigation, navigate, sampleID, scope.projectId, searchParams])
 
   /** 下一条 / 上一条：沿用当前筛选条件，并用服务端游标走完队列。 */
   const goRelative = useCallback(
-    async (direction: 'next' | 'prev') => {
+    async (direction: 'next' | 'prev', afterSave = false, preferredNext?: string) => {
+      if (!afterSave && !allowNavigation()) return
       // 取消此前的「加载更多」响应，避免它在相对导航完成后覆盖完整队列。
       queueRequest.current += 1
+      const requestID = queueRequest.current
       setQueueLoading(true)
       setQueueError(null)
       const items: SampleSummary[] = []
       let cursor = ''
+      let remainingCursor = ''
+      const relativeTarget = (candidates: SampleSummary[]) => {
+        const index = candidates.findIndex((item) => item.resourceId === sampleID)
+        const followingCurrent = index < 0 && afterSave && detail?.sample.createdAt
+          ? candidates.find((item) => item.createdAt < detail.sample.createdAt || (item.createdAt === detail.sample.createdAt && item.sampleId < detail.sample.sampleId))
+          : candidates[index + 1]
+        return direction === 'next'
+          ? (preferredNext ? candidates.find((item) => item.resourceId === preferredNext) : undefined) ?? followingCurrent
+          : candidates[index - 1]
+      }
       try {
         // 相对导航不能只看首屏：游标分页后的样本也必须可以到达。
         for (let pageIndex = 0; pageIndex < 100; pageIndex += 1) {
@@ -715,24 +794,29 @@ export function SampleReviewPage() {
             q: queueSearch || undefined,
             cursor: cursor || undefined,
           })
+          if (requestID !== queueRequest.current) return
           items.push(...(page.items ?? []))
+          remainingCursor = page.nextCursor ?? ''
+          const currentIndex = items.findIndex((item) => item.resourceId === sampleID)
+          // 只查到目标所需的页面；逐条审阅不能每次遍历整个大项目。
+          if ((afterSave || currentIndex >= 0) && (relativeTarget(items) || (direction === 'prev' && currentIndex === 0))) break
           if (!page.nextCursor) break
           cursor = page.nextCursor
         }
       } catch (relativeError) {
+        if (requestID !== queueRequest.current) return
         setQueueError(relativeError instanceof Error ? relativeError.message : '加载审阅队列失败')
         setQueueLoading(false)
         return
       }
       const deduped = items.filter((item, index, all) => all.findIndex((candidate) => candidate.resourceId === item.resourceId) === index)
       setQueueItems(deduped)
-      setQueueCursor('')
+      setQueueCursor(remainingCursor)
       setQueueLoading(false)
-      const index = deduped.findIndex((item) => item.resourceId === sampleID)
-      const target = direction === 'next' ? deduped[index + 1] : deduped[index - 1]
+      const target = relativeTarget(deduped) ?? (afterSave ? deduped.find((item) => item.resourceId !== sampleID) : undefined)
       if (!target) {
         // 「最后一条」必须可解释：明确告知，而不是静默什么都不做。
-        setSavedNotice(direction === 'next' ? '已经是当前筛选下的最后一条' : '已经是第一条')
+        setSavedNotice(afterSave ? '判断已保存，当前队列已完成。' : direction === 'next' ? '已经是当前筛选下的最后一条' : '已经是第一条')
         return
       }
       setSavedNotice(null)
@@ -742,7 +826,7 @@ export function SampleReviewPage() {
           (searchParams.toString() ? `?${searchParams.toString()}` : ''),
       )
     },
-    [navigate, queueSearch, queueStatus, sampleID, scope.projectId, searchParams],
+    [allowNavigation, detail, navigate, queueSearch, queueStatus, sampleID, scope.projectId, searchParams],
   )
 
   /**
@@ -770,7 +854,7 @@ export function SampleReviewPage() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'j' && event.key !== 'k' && event.key !== 'J' && event.key !== 'K') return
-      if (event.altKey || event.ctrlKey || event.metaKey) return
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
       const target = event.target as HTMLElement | null
       if (target) {
         const tag = target.tagName
@@ -784,7 +868,7 @@ export function SampleReviewPage() {
   }, [])
 
   const submit = useCallback(async () => {
-    if (!detail) return
+    if (!detail || submittingRef.current || queueLoading) return
     if (!capabilities.canReview) {
       setSubmitError('当前账号没有审阅权限；内容保持只读')
       return
@@ -793,8 +877,10 @@ export function SampleReviewPage() {
       setSubmitError('理由必填：没有理由的判断无法被复核')
       return
     }
+    submittingRef.current = true
     setSubmitting(true)
     setSubmitError(null)
+    const nextBeforeSave = queueWithCurrent[queueWithCurrent.findIndex((item) => item.resourceId === sampleID) + 1]?.resourceId
     try {
       const result = await studioApi.submitDecision(scope.projectId, sampleID, detail.version.version, {
         // 两套序号都必须带：证据版本防「旧证据迟到提交」，
@@ -810,14 +896,51 @@ export function SampleReviewPage() {
       // 刷新数据但**不动 URL**：因此返回时回到同一筛选与同一屏（T17 验收项）。
       await load()
       await loadQueue()
+      setAction('accepted')
+      // 只有服务端确认成功且没有并发冲突才推进；离线 / 409 保留当前理由与位置。
+      if (autoNext && !result.projection.conflict && result.projection.effectiveAction !== 'conflict') {
+        await goRelative('next', true, nextBeforeSave)
+      } else if (result.projection.conflict || result.projection.effectiveAction === 'conflict') {
+        setSavedNotice('判断已保存，但存在相反判断。请先处理冲突。')
+      }
     } catch (submitErrorValue) {
       // 409 时必须保留用户输入 —— 清空理由会让用户重打一遍，
       // 而那正是「过期返回 409 并保留输入」要避免的。
       setSubmitError(submitErrorValue instanceof Error ? submitErrorValue.message : '提交失败')
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
-  }, [action, capabilities.canReview, detail, load, loadQueue, projection, reason, sampleID, scope.projectId])
+  }, [action, autoNext, capabilities.canReview, detail, goRelative, load, loadQueue, projection, queueLoading, queueWithCurrent, reason, sampleID, scope.projectId])
+
+  const coordinateConflict = useCallback(async () => {
+    if (!detail || submittingRef.current || queueLoading) return
+    if (!reviewProjectCapabilities?.canPublish || !capabilities.canReview) {
+      setSubmitError('只有项目负责人可以协调冲突')
+      return
+    }
+    if (!reason.trim()) { setSubmitError('请填写协调理由'); return }
+    const coordinatedDecisionID = decisions[decisions.length - 1]?.id
+    if (!coordinatedDecisionID) { setSubmitError('无法读取冲突判断记录，请刷新后重试'); return }
+    submittingRef.current = true
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      const result = await studioApi.resolveConflict(scope.projectId, sampleID, detail.version.version, { action, reason: reason.trim(), supersedes: coordinatedDecisionID })
+      setBlockers(result.blockers ?? [])
+      setReason('')
+      setAction('accepted')
+      setSavedNotice(result.projection.conflict ? '协调决定已记录，冲突仍未解除，请核对判断历史。' : '冲突已协调')
+      await load()
+      await loadQueue()
+      // 协调结果先留在当前内容，便于负责人复核；不把冲突当普通判断重放。
+    } catch (coordinateError) {
+      setSubmitError(coordinateError instanceof Error ? coordinateError.message : '协调失败，请重试')
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
+  }, [action, capabilities.canReview, decisions, detail, load, loadQueue, queueLoading, reason, reviewProjectCapabilities?.canPublish, sampleID, scope.projectId])
 
   /**
    * 保存为本地草稿（T29）。
@@ -896,329 +1019,153 @@ export function SampleReviewPage() {
   }
 
   const effective = projection?.effectiveAction ?? 'pending'
+  const canCoordinate = reviewProjectCapabilities?.canPublish === true && capabilities.canReview
+  const canDecide = capabilities.canReview && (effective !== 'conflict' || canCoordinate)
 
   return (
-    <div className="console-page review-pane" data-studio-page="sample-review" data-effective-action={effective}>
+    <div className="console-page review-pane product-review" data-studio-page="sample-review" data-effective-action={effective}>
       <div className="console-page__header">
         <div>
-          <Title heading={4} className="!mb-1">
-            {detail.sample.title || detail.sample.sampleKey}
-          </Title>
-          <Text type="tertiary">
-            {detail.sample.resourceId} · v{detail.version.version} · 内容 hash{' '}
-            {detail.version.contentHash.slice(0, 12)}
-          </Text>
+          <Title heading={4} className="!mb-1">{detail.sample.title || detail.sample.sampleKey}</Title>
+          <Text type="tertiary">{detail.sample.resourceId} · v{detail.version.version}</Text>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span title={effective}>
-            <Tag color={reviewStatusColor(effective)} data-effective-tag="true">
-              {describeReviewStatus(effective)}
-            </Tag>
-          </span>
-          <Button size="small" icon={<ChevronLeft size={14} />} onClick={() => void goRelative('prev')}>
-            上一条
-          </Button>
-          <Button size="small" icon={<ChevronRight size={14} />} onClick={() => void goRelative('next')}>
-            下一条
-          </Button>
-          <Button size="small" onClick={() => navigate(projectHref('project.sampleHistory', scope.projectId, { sampleId: sampleID }))}>
-            版本与来源
-          </Button>
-          <Button
-            size="small"
-            icon={focusContent ? <Minimize2 size={14} /> : <Expand size={14} />}
-            title={focusContent ? '显示队列与证据' : '专注内容'}
-            aria-label={focusContent ? '显示队列与证据' : '专注内容'}
-            onClick={() => setFocusContent((current) => !current)}
-          >
-            {focusContent ? '显示队列与证据' : '专注内容'}
-          </Button>
+          <Tag color={reviewStatusColor(effective)} data-effective-tag="true">{describeReviewStatus(effective)}</Tag>
+          <Button size="small" disabled={submitting || queueLoading} icon={<ChevronLeft size={14} />} onClick={() => void goRelative('prev')}>上一条</Button>
+          <Button size="small" disabled={submitting || queueLoading} icon={<ChevronRight size={14} />} onClick={() => void goRelative('next')}>下一条</Button>
+          <Button size="small" icon={focusContent ? <Expand size={14} /> : <Minimize2 size={14} />}
+            aria-expanded={!focusContent} aria-controls="review-support"
+            onClick={() => setFocusContent((current) => !current)}>{focusContent ? '队列与证据' : '收起辅助信息'}</Button>
         </div>
       </div>
-
-      {savedNotice ? (
-        <Card className="console-card mb-3" bodyStyle={{ padding: 10 }} data-review-notice="true">
-          <Text size="small">{savedNotice}</Text>
-        </Card>
-      ) : null}
-
+      {savedNotice ? <div className="product-notice mb-3" role="status" data-review-notice="true">{savedNotice}</div> : null}
       {!capabilities.canReview ? (
-        <Card className="console-card mb-3" bodyStyle={{ padding: 10 }} data-capability-readonly="review">
-          <Text size="small">当前账号可以查看内容与来源，但没有提交人工判断的权限。</Text>
-        </Card>
+        <div className="product-notice mb-3" data-capability-readonly="review">只读：当前账号没有审阅权限。</div>
       ) : null}
 
-      {/* 三栏：队列 / 内容 / 证据。每栏独立，因此「内容 focus」不会因
-          判断保存而丢失（保存只刷新数据，不卸载内容栏）。 */}
-      <div
-        className="review-pane__columns"
-        style={focusContent ? { gridTemplateColumns: 'minmax(0, 1fr)' } : undefined}
-        data-review-focus={focusContent ? 'content' : 'all'}
-      >
-        {!focusContent ? (
-          <section className="review-pane__column" aria-label="待判断内容">
-            <div className="flex items-center justify-between mb-2">
-              <Text strong>队列</Text>
-              <Tag size="small" color="amber">
-                {queueItems.length}{queueCursor ? '+' : ''} 条
-              </Tag>
-            </div>
-            {queueError ? (
-              <div className="wizard-field__error mb-2" role="alert" data-review-queue-error="true">
-                {queueError}
-                <Button size="small" theme="borderless" onClick={() => void loadQueue()}>
-                  重试
-                </Button>
-              </div>
-            ) : null}
-            {queueLoading && queueItems.length === 0 ? <Spin size="small" tip="正在加载队列" /> : null}
-            <ul className="review-queue" data-review-queue="true">
-              {queueWithCurrent.length === 0 && !queueLoading ? (
-                <li className="review-queue__empty">这个筛选下没有待判断内容</li>
-              ) : (
-                queueWithCurrent.map((item) => {
-                  const active = item.resourceId === sampleID
-                  return (
-                    <li
-                      key={item.resourceId}
-                      className={active ? 'review-queue__item--active' : undefined}
-                      style={active ? { border: '1px solid #d6cdf7', borderRadius: 8, background: '#faf8ff' } : undefined}
-                    >
-                      <button
-                        type="button"
-                        className="review-queue__button"
-                        aria-current={active ? 'page' : undefined}
-                        aria-label={`打开 ${item.title || item.sampleKey}`}
-                        onClick={() => navigateToQueueItem(item.resourceId)}
-                        style={{
-                          display: 'block',
-                          width: '100%',
-                          padding: 0,
-                          border: 0,
-                          background: 'transparent',
-                          textAlign: 'left',
-                          cursor: active ? 'default' : 'pointer',
-                        }}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <Text strong size="small">{item.title || item.sampleKey}</Text>
-                          <span title={item.reviewStatus}>
-                            <Tag size="small" color={reviewStatusColor(item.reviewStatus)}>
-                              {describeReviewStatus(item.reviewStatus)}
-                            </Tag>
-                          </span>
-                        </div>
-                        <Text type="tertiary" size="small" className="block mt-1">
-                          {item.resourceId} · v{item.latestVersion}
-                          {item.aggregateReviewRevision > 0 ? ` · 判断 ${item.aggregateReviewRevision} 次` : ''}
-                        </Text>
-                      </button>
-                    </li>
-                  )
-                })
-              )}
-            </ul>
-            {queueCursor ? (
-              <Button size="small" className="mt-2" loading={queueLoading} onClick={() => void loadQueue(queueCursor, true)}>
-                加载更多队列
-              </Button>
-            ) : null}
-          </section>
-        ) : null}
-
-        <section
-          className="review-pane__column review-pane__content"
-          aria-label="只读内容"
-          ref={contentRef}
-          tabIndex={-1}
-          data-content-focus="true"
-        >
+      <div className="review-pane__columns product-review__workspace" data-review-focus={focusContent ? 'content' : 'all'}>
+        <section className="review-pane__column review-pane__content" aria-label="只读内容"
+          ref={contentRef} tabIndex={-1} data-content-focus="true">
           <div className="flex items-center justify-between mb-2">
-            <Text strong>
-              {detail.sample.targetKind.toLowerCase().includes('grpo') ? '教师提示词与奖励判据（只读）' : '内容（只读）'}
-            </Text>
-            <Button size="small" icon={<Copy size={13} />} onClick={() => void copyContent()}>
-              复制
-            </Button>
+            <Text strong>{detail.sample.targetKind.toLowerCase().includes('grpo') ? '教师提示词与奖励判据' : '样本内容'}</Text>
+            <Button size="small" icon={<Copy size={13} />} onClick={() => void copyContent()}>复制</Button>
           </div>
-          {/* 内容只读：本区没有任何输入控件，判断也不会改写它。
-              默认「人话视图」，原始 JSON 作为可切换的次要视图（issue #197 第 3 条）。 */}
           <PayloadPreview payload={detail.version.payload} />
           {copyFallback !== null ? (
             <div className="mt-3" data-copy-fallback="true">
               <div className="flex items-center justify-between mb-1">
                 <Text type="tertiary" size="small">手动复制（只读）</Text>
-                <Button size="small" theme="borderless" onClick={() => setCopyFallback(null)}>
-                  关闭
-                </Button>
+                <Button size="small" theme="borderless" onClick={() => setCopyFallback(null)}>关闭</Button>
               </div>
-              <TextArea
-                value={copyFallback}
-                readOnly
-                autosize={{ minRows: 6, maxRows: 16 }}
-                aria-label="手动复制内容"
-              />
+              <TextArea value={copyFallback} readOnly autosize={{ minRows: 6, maxRows: 16 }} aria-label="手动复制内容" />
             </div>
           ) : null}
         </section>
-
-        {!focusContent ? <section className="review-pane__column" aria-label="证据与判断">
-          <Text strong className="block mb-2">
-            证据与判断
-          </Text>
-          <div className="flex flex-wrap gap-2 mb-2" data-review-evidence-links="true">
-            <Button
-              size="small"
-              theme="borderless"
-              onClick={() => navigate(`${projectHref('project.rules', scope.projectId)}?sampleVersionId=${encodeURIComponent(String(detail.version.versionId))}`)}
-            >
-              查看策略
-            </Button>
-            <Button
-              size="small"
-              theme="borderless"
-              onClick={() => navigate(`${projectHref('project.quality', scope.projectId)}?sampleVersionId=${encodeURIComponent(String(detail.version.versionId))}`)}
-            >
-              完整评估
-            </Button>
-          </div>
-          <ul className="review-evidence">
-            <li>
-              必需证据版本：<code>{projection?.evidenceRevision ?? 0}</code>
-            </li>
-            <li>
-              判断次数：<code>{projection?.decisionCount ?? 0}</code> · 聚合序号{' '}
-              <code>{projection?.aggregateReviewRevision ?? 0}</code>
-            </li>
-            <li>
-              生成来源：<code>{detail.version.source.blueprintContentHash.slice(0, 8) || '（未记录）'}</code>
-            </li>
-            <li>
-              素材块：{detail.version.source.sourceChunkIds?.length
-                ? detail.version.source.sourceChunkIds.join('、')
-                : '未关联素材（外部成品或关键词生成）'}
-              <Button size="small" theme="borderless" onClick={() => navigate(projectHref('project.sources', scope.projectId))}>查看素材来源</Button>
-            </li>
-          </ul>
-
-          <div className="mt-3" data-review-decision-history="true">
-            <Text type="tertiary" size="small" className="block mb-1">
-              判断历史（{decisions.length}）
-            </Text>
-            {decisions.length === 0 ? (
-              <Text type="tertiary" size="small">还没有判断记录</Text>
-            ) : (
-              <ul className="review-evidence">
-                {decisions.map((decision) => (
-                  <li key={decision.id}>
-                    <span title={decision.action}>
-                      <Tag size="small" color={reviewStatusColor(decision.action)}>
-                        {decision.action === 'accepted' ? '接纳' : '隔离'}
-                      </Tag>
-                    </span>{' '}
-                    <Text size="small">{decision.reason}</Text>
-                    <Text type="tertiary" size="small" className="block">
-                      审阅者 {decision.reviewerId} · 第 {decision.reviewerRevision} 次
-                      {decision.supersedes ? ` · 更正 #${decision.supersedes}` : ''}
-                      {decision.resolutionOf ? ` · 协调 #${decision.resolutionOf}` : ''}
-                    </Text>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
+        <section className="review-pane__column product-review__decision" aria-label="审阅判断" data-review-decision-panel="true">
+          <Text strong className="block mb-3">审阅判断</Text>
+          {effective === 'conflict' ? (
+            <div className="product-notice product-notice--warning mb-3" data-conflict-notice="true">
+              {canCoordinate ? '存在相反判断，请确认最终处置并填写协调理由。' : '存在相反判断，请联系项目负责人协调后再发布。'}
+            </div>
+          ) : null}
+          {effective === 'conflict' && reviewPermissionError ? <div role="alert" className="wizard-field__error mb-3">
+            协调权限读取失败：{reviewPermissionError}<Button size="small" onClick={() => setReviewPermissionRefresh((previous) => previous + 1)}>重试权限读取</Button>
+          </div> : null}
+          {canDecide ? <>
+            <div className="product-choice-group" role="group" aria-label="选择处置">
+              <Button theme={action === 'accepted' ? 'solid' : 'outline'} type="primary" disabled={submitting}
+                aria-pressed={action === 'accepted'} onClick={() => setAction('accepted')} data-review-action="accepted">{effective === 'conflict' ? '协调为接纳' : '接纳'}</Button>
+              <Button theme={action === 'quarantined' ? 'solid' : 'outline'} type="danger" disabled={submitting}
+                aria-pressed={action === 'quarantined'} onClick={() => setAction('quarantined')} data-review-action="quarantined">{effective === 'conflict' ? '协调为隔离' : '隔离'}</Button>
+            </div>
+            <label className="wizard-field__label mt-3" htmlFor="review-reason">{effective === 'conflict' ? '协调理由' : '判断理由'}</label>
+            <TextArea id="review-reason" value={reason} disabled={submitting} onChange={setReason}
+              autosize={{ minRows: 3, maxRows: 8 }} placeholder={action === 'accepted' ? '接纳依据（必填）' : '需要隔离的问题（必填）'}
+              data-field="review-reason" aria-invalid={submitError ? true : undefined}
+              aria-describedby={submitError ? 'review-submit-error' : undefined} />
+            {submitError ? <div id="review-submit-error" className="wizard-field__error mt-2" role="alert" data-review-submit-error="true">{submitError}</div> : null}
+            {submitError && effective !== 'conflict' ? <Button size="small" theme="borderless" onClick={saveOfflineDraft} data-review-offline-draft="true">保存为本地草稿（待同步）</Button> : null}
+            {offlineNotice ? <Text type="warning" size="small" className="block mt-2" data-review-offline-notice="true">{offlineNotice}</Text> : null}
+            {pending > 0 ? <Text type="tertiary" size="small" className="block mt-2" data-review-pending-count="true">待同步（未提交）：{pending} 条</Text> : null}
+            <div className="product-review__save">
+              {effective !== 'conflict' ? <Checkbox checked={autoNext} disabled={submitting} onChange={(event) => setAutoNext(Boolean(event.target.checked))}>保存后下一条</Checkbox> : null}
+              <Button theme="solid" type="primary" icon={<Save size={14} />} loading={submitting}
+                disabled={queueLoading} onClick={() => void (effective === 'conflict' ? coordinateConflict() : submit())}
+                data-review-save="true" data-review-coordinate={effective === 'conflict' ? 'true' : undefined}>{effective === 'conflict' ? '保存协调决定' : autoNext ? '保存并下一条' : '保存判断'}</Button>
+            </div>
+            <Text type="tertiary" size="small" className="block mt-2">J 下一条 · K 上一条</Text>
+          </> : <Text type="tertiary">{effective === 'conflict' ? '请联系项目负责人处理冲突。' : '可查看内容与证据，不能提交判断。'}</Text>}
           {blockers.length > 0 ? (
-            <div className="mt-2" data-review-blockers="true">
+            <details className="product-disclosure mt-3" data-review-blockers="true">
+              <summary>发布门槛（{blockers.length}）</summary>
               {blockers.map((blocker) => (
-                <div key={blocker.code} className="flex items-start gap-2 mb-1">
-                  <AlertTriangle size={14} className="mt-1 text-amber-500" aria-hidden />
-                  <Text size="small">{blocker.message}</Text>
+                <div key={blocker.code} className="flex items-start gap-2 mt-2">
+                  <AlertTriangle size={14} aria-hidden /><Text size="small">{blocker.message}</Text>
                 </div>
               ))}
-            </div>
+            </details>
           ) : null}
-
-          {effective === 'conflict' ? (
-            <Card className="console-card mb-2" bodyStyle={{ padding: 10 }} data-conflict-notice="true">
-              <Text size="small">
-                存在相反判断：需要项目负责人在此追加协调决定后才能解除发布阻塞。
-              </Text>
-            </Card>
+          {detail.version.versionId && projectNumericId(scope.projectId) ? (
+            <details className="product-disclosure mt-3">
+              <summary>评论</summary>
+              <CommentPanel projectId={projectNumericId(scope.projectId) ?? 0} anchorKind="sample_version" anchorId={detail.version.versionId} />
+            </details>
           ) : null}
-
-          <div className="mt-2">
-            <Text type="tertiary" size="small" className="block mb-1">
-              处置
-            </Text>
-            {capabilities.canReview ? <Select
-              value={action}
-              style={{ width: '100%' }}
-              aria-label="选择处置"
-              optionList={[
-                { value: 'accepted', label: '接纳' },
-                { value: 'quarantined', label: '隔离' },
-              ]}
-              onChange={(value) => setAction(value === 'quarantined' ? 'quarantined' : 'accepted')}
-            /> : null}
-            <Text type="tertiary" size="small" className="block mt-2 mb-1">
-              理由（必填）
-            </Text>
-            {capabilities.canReview ? <TextArea
-              value={reason}
-              onChange={(value) => setReason(value)}
-              autosize={{ minRows: 3, maxRows: 6 }}
-              placeholder="例如：规则命中为误报，推理链完整"
-              data-field="review-reason"
-            /> : null}
-            {capabilities.canReview && submitError ? (
-              <div className="wizard-field__error mt-1" role="alert" data-review-submit-error="true">
-                {submitError}
-              </div>
-            ) : null}
-            {/* 离线待同步（T29）：提交失败时提供本地草稿，并明确「未提交」。 */}
-            {capabilities.canReview && submitError ? (
-              <div className="mt-1">
-                <Button size="small" theme="borderless" onClick={saveOfflineDraft} data-review-offline-draft="true">
-                  保存为本地草稿（待同步）
-                </Button>
-              </div>
-            ) : null}
-            {capabilities.canReview && offlineNotice ? (
-              <Text type="warning" size="small" className="block mt-1" data-review-offline-notice="true">
-                {offlineNotice}
-              </Text>
-            ) : null}
-            {capabilities.canReview && pending > 0 ? (
-              <Text type="tertiary" size="small" className="block mt-1" data-review-pending-count="true">
-                待同步（未提交）：{pending} 条。联网后请重新登录并确认，系统不会后台自动提交。
-              </Text>
-            ) : null}
-            {capabilities.canReview ? <div className="mt-2">
-              <Button
-                theme="solid"
-                type="primary"
-                icon={<Save size={14} />}
-                loading={submitting}
-                onClick={() => void submit()}
-              >
-                保存判断
-              </Button>
-            </div> : null}
-          </div>
-
-          {/* 评论面板（T27）：锚定**当前内容版本**，与判断分开 —— 讨论不改处置。 */}
-          {detail?.version?.versionId && projectNumericId(scope.projectId) ? (
-            <div className="mt-3">
-              <CommentPanel
-                projectId={projectNumericId(scope.projectId) ?? 0}
-                anchorKind="sample_version"
-                anchorId={detail.version.versionId}
-              />
-            </div>
-          ) : null}
-        </section> : null}
+        </section>
       </div>
+
+      {!focusContent ? <div id="review-support" className="product-review__support">
+        <section className="review-pane__column" aria-label="待判断内容">
+          <div className="flex items-center justify-between mb-2"><Text strong>审阅队列</Text><Tag size="small">{queueItems.length}{queueCursor ? '+' : ''} 条</Tag></div>
+          {queueError ? <div className="wizard-field__error mb-2" role="alert" data-review-queue-error="true">{queueError}<Button size="small" theme="borderless" onClick={() => void loadQueue()}>重试</Button></div> : null}
+          {queueLoading && queueItems.length === 0 ? <Spin size="small" /> : null}
+          <ul className="review-queue" data-review-queue="true">
+            {queueWithCurrent.length === 0 && !queueLoading ? <li>暂无待判断内容</li> : queueWithCurrent.map((item) => (
+              <li key={item.resourceId} className={item.resourceId === sampleID ? 'review-queue__item--active' : undefined}>
+                <button type="button" className="review-queue__button" disabled={submitting}
+                  aria-current={item.resourceId === sampleID ? 'page' : undefined}
+                  aria-label={`打开 ${item.title || item.sampleKey}`} onClick={() => navigateToQueueItem(item.resourceId)}>
+                  <Text strong size="small">{item.title || item.sampleKey}</Text>
+                  <Tag size="small" color={reviewStatusColor(item.reviewStatus)}>{describeReviewStatus(item.reviewStatus)}</Tag>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {queueCursor ? <Button size="small" loading={queueLoading} onClick={() => void loadQueue(queueCursor, true)}>加载更多</Button> : null}
+        </section>
+        <section className="review-pane__column" aria-label="证据与历史">
+          <Text strong className="block mb-2">证据与历史</Text>
+          <div className="flex flex-wrap gap-2 mb-2" data-review-evidence-links="true">
+            <Button size="small" onClick={() => { if (allowNavigation()) navigate(`${projectHref('project.rules', scope.projectId)}?sampleVersionId=${detail.version.versionId}`) }}>查看策略</Button>
+            <Button size="small" onClick={() => { if (allowNavigation()) navigate(`${projectHref('project.quality', scope.projectId)}?sampleVersionId=${detail.version.versionId}`) }}>完整评估</Button>
+            <Button size="small" onClick={() => { if (allowNavigation()) navigate(projectHref('project.sampleHistory', scope.projectId, { sampleId: sampleID })) }}>版本与来源</Button>
+          </div>
+          <details className="product-disclosure">
+            <summary>来源与证据版本</summary>
+            <ul className="review-evidence">
+              <li>证据版本：{projection?.evidenceRevision ?? 0} · 聚合序号 {projection?.aggregateReviewRevision ?? 0}</li>
+              <li>内容指纹：<code>{detail.version.contentHash}</code></li>
+              <li>蓝图指纹：<code>{detail.version.source.blueprintContentHash || '未记录'}</code></li>
+              <li>素材块：{detail.version.source.sourceChunkIds?.join('、') || '未关联素材'}
+                <Button size="small" theme="borderless" onClick={() => { if (allowNavigation()) navigate(projectHref('project.sources', scope.projectId)) }}>查看素材来源</Button>
+              </li>
+            </ul>
+          </details>
+          <details className="product-disclosure mt-2" data-review-decision-history="true">
+            <summary>判断历史（{decisions.length}）</summary>
+            {decisions.length === 0 ? <Text type="tertiary" size="small">暂无判断</Text> : (
+              <ul className="review-evidence">{decisions.map((decision) => (
+                <li key={decision.id}>
+                  <Tag size="small" color={reviewStatusColor(decision.action)}>{decision.action === 'accepted' ? '接纳' : '隔离'}</Tag>{' '}
+                  <Text size="small">{decision.reason}</Text>
+                  <Text type="tertiary" size="small" className="block">审阅者 {decision.reviewerId} · 第 {decision.reviewerRevision} 次
+                    {decision.supersedes ? ` · 更正 #${decision.supersedes}` : ''}{decision.resolutionOf ? ` · 协调 #${decision.resolutionOf}` : ''}</Text>
+                </li>
+              ))}</ul>
+            )}
+          </details>
+        </section>
+      </div> : null}
     </div>
   )
 }

@@ -261,6 +261,7 @@ export type ProjectOverview = {
   legacyDatasetId?: number | null
   versions: OverviewVersions
   batches: OverviewBatches
+  stats: SampleStats
   budget: BudgetSnapshot
   nextAction: NextAction
 }
@@ -284,9 +285,7 @@ export type SampleStats = {
   acceptanceRateDisplay: string
 }
 
-export type ProjectOverviewData = ProjectOverview & {
-  stats: SampleStats
-}
+export type ProjectOverviewData = ProjectOverview
 
 // ---------------------------------------------------------------------------
 // 批次（契约 §2.3、§2.4、§3）
@@ -1181,7 +1180,7 @@ export const studioApi = {
         `${projectPath(projectId)}/samples/${sampleId}/versions/${version}/resolve-conflict`,
         payload,
       )
-      .then((response) => response.data),
+      .then((response) => unwrapStudioData<DecisionResult>(response)),
 
   /** `POST .../assignments`：按风险聚合，重复分派更新同一条。 */
   assignReview: (
@@ -1212,9 +1211,9 @@ export const studioApi = {
       .then((response) => unwrapStudioData<SelectionSnapshot>(response)),
 
   /** `POST P/releases`：创建候选（同事务分配 candidateId + releaseId + 版本名）。 */
-  createReleaseCandidate: (projectId: ProjectResourceId, payload: CreateReleaseCandidateRequest) =>
+  createReleaseCandidate: (projectId: ProjectResourceId, payload: CreateReleaseCandidateRequest, options?: CommandOptions) =>
     client
-      .post(`${projectPath(projectId)}/releases`, payload)
+      .post(`${projectPath(projectId)}/releases`, payload, { headers: commandHeaders(options) })
       .then((response) => unwrapStudioData<{ release: ReleaseRecord; blockers: ReleaseBlocker[] }>(response)),
 
   listReleases: (projectId: ProjectResourceId) =>

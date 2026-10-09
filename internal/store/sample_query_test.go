@@ -118,6 +118,134 @@ func TestSampleReviewQueryPreservesVersionlessRowsAndEmptyScopes(t *testing.T) {
 	}
 }
 
+func TestProjectWorkflowCountsCurrentVersionsAndDistinctEvidence(t *testing.T) {
+	fixture := newSelectionFixture(t)
+	ctx := context.Background()
+	t.Cleanup(func() {
+		_, _ = fixture.pool.Exec(ctx, `DELETE FROM experiments WHERE project_id = $1`, fixture.projectID)
+		_, _ = fixture.pool.Exec(ctx, `DELETE FROM releases WHERE project_id = $1`, fixture.projectID)
+	})
+	for index, action := range []string{"accepted", "quarantined", "conflict"} {
+		if _, err := fixture.pool.Exec(ctx, `INSERT INTO review_projections (sample_version_id, project_id, effective_action) VALUES ($1, $2, $3)`, fixture.versions[index].ID, fixture.projectID, action); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Two experiments inspect the same current versions. A repeated score must
+	// not turn two inspected sample versions into four overview records.
+	for repeat := 0; repeat < 2; repeat++ {
+		var experimentID int64
+		if err := fixture.pool.QueryRow(ctx, `INSERT INTO experiments (project_id, target_kind) VALUES ($1, 'sft') RETURNING id`, fixture.projectID).Scan(&experimentID); err != nil {
+			t.Fatal(err)
+		}
+		for index, status := range []string{"scored", "missing"} {
+			version := fixture.versions[index]
+			if _, err := fixture.pool.Exec(ctx, `INSERT INTO experiment_items (experiment_id, project_id, sample_id, sample_version_id, status) VALUES ($1, $2, $3, $4, $5)`, experimentID, fixture.projectID, version.SampleID, version.ID, status); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	var releaseID int64
+	if err := fixture.pool.QueryRow(ctx, `INSERT INTO releases (project_id, release_name, release_name_key, status) VALUES ($1, 'v1', 'v1', 'published') RETURNING id`, fixture.projectID).Scan(&releaseID); err != nil {
+		t.Fatal(err)
+	}
+	old := fixture.versions[0]
+	if _, err := fixture.pool.Exec(ctx, `INSERT INTO release_items (release_id, revision, sample_id, sample_version_id, effective_action) VALUES ($1, 1, $2, $3, 'accepted')`, releaseID, old.SampleID, old.ID); err != nil {
+		t.Fatal(err)
+	}
+	counts, err := fixture.batches.ProjectWorkflowCounts(ctx, fixture.projectID)
+	if err != nil || counts.Generated != 3 || counts.CurrentVersions != 3 || counts.Accepted != 1 || counts.Quarantined != 1 || counts.Conflicts != 1 || counts.Pending != 0 || counts.Inspected != 2 || counts.Scored != 1 || counts.AcceptedInspected != 1 || counts.PublishedAccepted != 1 || counts.Published != 1 {
+		t.Fatalf("current distinct workflow facts: %+v, %v", counts, err)
+	}
+	var sampleKey string
+	if err := fixture.pool.QueryRow(ctx, `SELECT sample_key FROM samples WHERE id = $1`, old.SampleID).Scan(&sampleKey); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := fixture.batches.AppendSampleVersion(ctx, AppendSampleVersionInput{ProjectID: fixture.projectID, SampleKey: sampleKey, TargetKind: model.TargetKindSFT, Title: "新版待审", Payload: map[string]any{"question": "q2", "reasoning": "r2", "answer": "a2"}}); err != nil {
+		t.Fatal(err)
+	}
+	counts, err = fixture.batches.ProjectWorkflowCounts(ctx, fixture.projectID)
+	if err != nil || counts.Generated != 4 || counts.CurrentVersions != 3 || counts.Accepted != 0 || counts.Pending != 1 || counts.Inspected != 1 || counts.Scored != 0 || counts.AcceptedInspected != 0 || counts.PublishedAccepted != 0 || counts.Published != 1 {
+		t.Fatalf("historical accepted/scored/published facts must not mark a new version done: %+v, %v", counts, err)
+	}
+}
+
+func TestProjectWorkflowCountsEmptyScopeBatchPaginationAndErrors(t *testing.T) {
+	fixture := newActivityFixture(t)
+	ctx := context.Background()
+	t.Cleanup(func() {
+		_, _ = fixture.pool.Exec(ctx, `DELETE FROM experiments WHERE project_id = ANY($1::bigint[])`, []int64{fixture.projectA, fixture.projectB})
+		_, _ = fixture.pool.Exec(ctx, `DELETE FROM releases WHERE project_id = ANY($1::bigint[])`, []int64{fixture.projectA, fixture.projectB})
+	})
+	empty, err := fixture.batches.ProjectWorkflowCounts(ctx, fixture.projectB)
+	if err != nil || empty != (ProjectWorkflowCounts{}) {
+		t.Fatalf("empty scope must return genuine zero facts: %+v, %v", empty, err)
+	}
+	fixture.seedPendingReview(t, fixture.projectA)
+	if _, err := fixture.batches.EnsureSample(ctx, fixture.projectA, "versionless-overview", model.TargetKindSFT, "尚未产出", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `INSERT INTO batches (project_id, purpose, status, target_kind, schema_version)
+		SELECT $1, 'pilot', CASE WHEN n <= 100 THEN 'completed' ELSE 'paused' END, 'sft', 'sft.sample.v1' FROM generate_series(1, 101) n`, fixture.projectA); err != nil {
+		t.Fatal(err)
+	}
+	fixture.seedFailedBatch(t, fixture.projectA)
+	if _, err := fixture.pool.Exec(ctx, `INSERT INTO releases (project_id, release_name, release_name_key, status) VALUES ($1, 'blocked', 'blocked', 'blocked')`, fixture.projectA); err != nil {
+		t.Fatal(err)
+	}
+	counts, err := fixture.batches.ProjectWorkflowCounts(ctx, fixture.projectA)
+	if err != nil || counts.CurrentVersions != 1 || counts.Generated != 1 || counts.Pending != 2 || counts.BatchTotal != 102 || counts.Completed != 100 || counts.Paused != 1 || counts.Failed != 1 || counts.ReleasePending != 1 {
+		t.Fatalf("counts must not be truncated to a 100-row list or invent a versionless output: %+v, %v", counts, err)
+	}
+	empty, err = fixture.batches.ProjectWorkflowCounts(ctx, fixture.projectB)
+	if err != nil || empty != (ProjectWorkflowCounts{}) {
+		t.Fatalf("another project's samples, batches and releases must not leak: %+v, %v", empty, err)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := fixture.batches.ProjectWorkflowCounts(cancelled, fixture.projectA); err == nil {
+		t.Fatal("failed statistics query must return an error, not zeros")
+	}
+}
+
+func TestProjectWorkflowCountsDoesNotCreditOtherProjectEvidence(t *testing.T) {
+	fixture := newActivityFixture(t)
+	ctx := context.Background()
+	t.Cleanup(func() {
+		_, _ = fixture.pool.Exec(ctx, `DELETE FROM experiments WHERE project_id = $1`, fixture.projectB)
+		_, _ = fixture.pool.Exec(ctx, `DELETE FROM releases WHERE project_id = $1`, fixture.projectB)
+	})
+	versionID := fixture.seedPendingReview(t, fixture.projectA)
+	var sampleID, experimentID, releaseID int64
+	if err := fixture.pool.QueryRow(ctx, `SELECT sample_id FROM sample_versions WHERE id = $1`, versionID).Scan(&sampleID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `INSERT INTO review_projections (sample_version_id, project_id, effective_action) VALUES ($1, $2, 'accepted')`, versionID, fixture.projectA); err != nil {
+		t.Fatal(err)
+	}
+	// Deliberately malformed cross-project fixture references are possible with
+	// legacy single-column foreign keys. A read must still enforce its scope.
+	if err := fixture.pool.QueryRow(ctx, `INSERT INTO experiments (project_id, target_kind) VALUES ($1, 'sft') RETURNING id`, fixture.projectB).Scan(&experimentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `INSERT INTO experiment_items (experiment_id, project_id, sample_id, sample_version_id, status) VALUES ($1, $2, $3, $4, 'scored')`, experimentID, fixture.projectB, sampleID, versionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.pool.QueryRow(ctx, `INSERT INTO releases (project_id, release_name, release_name_key, status) VALUES ($1, 'foreign', 'foreign', 'published') RETURNING id`, fixture.projectB).Scan(&releaseID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.pool.Exec(ctx, `INSERT INTO release_items (release_id, revision, sample_id, sample_version_id, effective_action) VALUES ($1, 1, $2, $3, 'accepted')`, releaseID, sampleID, versionID); err != nil {
+		t.Fatal(err)
+	}
+	counts, err := fixture.batches.ProjectWorkflowCounts(ctx, fixture.projectA)
+	if err != nil || counts.Accepted != 1 || counts.Inspected != 0 || counts.Scored != 0 || counts.PublishedAccepted != 0 || counts.Published != 0 {
+		t.Fatalf("another project's frozen references cannot credit inspection or publication: %+v, %v", counts, err)
+	}
+	other, err := fixture.batches.ProjectWorkflowCounts(ctx, fixture.projectB)
+	if err != nil || other.Generated != 0 || other.CurrentVersions != 0 || other.Accepted != 0 || other.Inspected != 0 || other.Scored != 0 || other.PublishedAccepted != 0 {
+		t.Fatalf("foreign references cannot create current samples in an empty project: %+v, %v", other, err)
+	}
+}
+
 type samplePerformanceMetric struct {
 	Name        string  `json:"name"`
 	Concurrency int     `json:"concurrency"`

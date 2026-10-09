@@ -41,19 +41,19 @@ export function TargetStructurePage() {
   const unresolved = directions.filter(({ direction }) => coverageQuotaOf(direction) > 0 && (direction.source === 'none' || direction.source === 'document' && (!Array.isArray(direction.sourceChunkIds) || direction.sourceChunkIds.length === 0)))
 
   return <div className="console-page source-target-page" data-studio-page="coverage" data-source-state={domains.length ? 'default' : 'empty'}>
-    <div className="console-page__header"><div><Title heading={4}>目标结构</Title><Text type="tertiary">编辑领域、方向、配额与来源。保存新版本不会改写已经运行的批次。</Text></div><div className="console-page__actions"><Link to={scope.href('project.sources')}>素材来源</Link><CopyVersionButton state={state} /></div></div>
+    <div className="console-page__header"><div><Title heading={4}>目标结构</Title></div><div className="console-page__actions"><Link to={scope.href('project.sources')}>素材来源</Link><CopyVersionButton state={state} /></div></div>
     <Card className="console-card mb-3" bodyStyle={{ padding: 16 }}>
       <Text strong>当前结构：{structure.domainCount} 个领域 · {structure.directionCount} 个方向 · {structure.capacity} 个计划单元</Text>
-      <Text type="tertiary" size="small" className="block">计划单元数不代表已产出样本。显式零配额方向不参与生产。</Text>
-      {estimate ? <Text size="small" className="block">创建时估算：{estimate.domains} × {estimate.directions} × {estimate.questions} = {planned}；{planned === structure.capacity ? '与当前结构一致。' : '与当前结构不同，请以实际保存的目标结构规划批次。'}</Text> : null}
-      {unresolved.length ? <Text type="warning" className="block">{unresolved.length} 个方向尚未具备来源：选择文档素材并关联分块，或选择 AI 合成。未选择来源可先保存草稿；文档来源必须关联素材块。</Text> : null}
+      {estimate && planned !== structure.capacity ? <details className="product-disclosure"><summary>与创建时估算不同</summary><Text size="small">创建时估算：{estimate.domains} × {estimate.directions} × {estimate.questions} = {planned}；以当前结构规划批次。零配额方向不参与生产。</Text></details> : null}
+      {unresolved.length ? <Text type="warning" className="block">{unresolved.length} 个方向缺少来源：选择 AI 合成，或关联文档素材块。</Text> : null}
       {sourceError ? <Text type="danger" className="block">素材列表不可用：{sourceError}。请从素材来源页重新加载。</Text> : null}
     </Card>
     <CoveragePayloadEditor payload={payload} disabled={state.isReadOnly || !state.canEdit} projectId={scope.projectId} sourceVersionId={sourceVersionId} onChange={state.setPayload} />
     <DocumentSaveBar state={state} label="覆盖方案" />
-    <DocumentHistory state={state} />
-    {directions.length ? <Card className="console-card mt-3" bodyStyle={{ padding: 14 }}><Text strong className="block mb-2">从方向开始下一批试制</Text><div className="coverage-directions coverage-directions--actions">
+    <details className="product-disclosure"><summary>版本历史</summary><DocumentHistory state={state} /></details>
+    <div className="product-stage-footer"><span>{state.dirty ? '保存修改后继续' : state.current ? '目标结构已保存' : '先保存目标结构'}</span><Button theme="solid" type="primary" disabled={state.dirty || !state.current} onClick={() => navigate(scope.href('project.blueprint'))}>继续配置生成 →</Button></div>
+    {directions.length ? <details className="product-disclosure"><summary>仅试制特定方向</summary><Card className="console-card mt-3" bodyStyle={{ padding: 14 }}><div className="coverage-directions coverage-directions--actions">
       {directions.map(({ domain, direction }) => <button key={`${String(domain.stableId)}-${String(direction.stableId)}`} type="button" className="coverage-gap" data-coverage-gap="true" disabled={state.dirty || state.isReadOnly || coverageQuotaOf(direction) === 0 || unresolved.some((entry) => entry.direction === direction)} onClick={() => navigate(`${scope.href('project.pilot')}?slice=${encodeURIComponent(String(direction.stableId ?? ''))}`)}>以“{String(direction.name ?? '未命名方向')}”规划新批次</button>)}
-    </div>{state.dirty ? <Text type="tertiary" size="small">先保存目标结构，再规划批次。</Text> : null}</Card> : null}
+    </div>{state.dirty ? <Text type="tertiary" size="small">先保存目标结构，再规划批次。</Text> : null}</Card></details> : null}
   </div>
 }

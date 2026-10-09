@@ -246,6 +246,8 @@ type ProjectOverview struct {
 	Batches OverviewBatches `json:"batches"`
 	// Budget 是预算台账（四态）。
 	Budget model.BudgetSnapshot `json:"budget"`
+	// Stats uses current content versions except Generated, which includes history.
+	Stats SampleStats `json:"stats"`
 	// NextAction 是「下一决定」：按事实指出该去哪个工作区。
 	NextAction NextAction `json:"nextAction"`
 }
@@ -287,7 +289,7 @@ type OverviewBatches struct {
 // 为什么由服务端算而不是前端按计数猜：不同角色看到的「下一决定」不同
 // （viewer 没有写权限，不该被指向「去启动试制」），而权限判定在服务端。
 type NextAction struct {
-	// Kind 是动作类型：design / pilot / review / quality / release / done。
+	// Kind 是主线动作类型：design / run / review / release / done。
 	Kind string `json:"kind"`
 	// Message 是面向用户的中文说明。
 	Message string `json:"message"`
@@ -296,7 +298,9 @@ type NextAction struct {
 }
 
 // LoadProjectOverview 组装项目概览。
-func (s *Service) LoadProjectOverview(ctx context.Context, projectID int64) (ProjectOverview, error) {
+// A missing role is read-only. API callers supply the freshly authorized role;
+// internal readers cannot accidentally advertise owner-only actions.
+func (s *Service) LoadProjectOverview(ctx context.Context, projectID int64, roles ...string) (ProjectOverview, error) {
 	project, err := s.Projects.GetProject(ctx, projectID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -360,29 +364,23 @@ func (s *Service) LoadProjectOverview(ctx context.Context, projectID int64) (Pro
 		}
 	}
 
-	batches, err := s.Batches.ListBatches(ctx, store.BatchListQuery{ProjectID: projectID, Limit: 100})
+	counts, err := s.Batches.ProjectWorkflowCounts(ctx, projectID)
 	if err != nil {
 		return ProjectOverview{}, err
 	}
-	for _, batch := range batches {
-		overview.Batches.Total++
-		switch batch.Purpose {
-		case model.BatchPurposePilot:
-			overview.Batches.Pilot++
-		case model.BatchPurposeScale:
-			overview.Batches.Scale++
-		}
-		switch batch.Status {
-		case model.BatchStatusRunning, model.BatchStatusQueued, model.BatchStatusPauseRequested:
-			overview.Batches.Running++
-		case model.BatchStatusPaused:
-			overview.Batches.Paused++
-		case model.BatchStatusFailed, model.BatchStatusPartialFailed:
-			overview.Batches.Failed++
-		case model.BatchStatusCompleted:
-			overview.Batches.Completed++
-		}
+	overview.Batches = OverviewBatches{
+		Total: counts.BatchTotal, Pilot: counts.Pilot, Scale: counts.Scale,
+		Running: counts.Running, Paused: counts.Paused, Failed: counts.Failed, Completed: counts.Completed,
 	}
+	overview.Stats = SampleStats{
+		PlannedQuestions: PlannedQuestions(project.DomainCount, project.DirectionsPerDomain, project.QuestionsPerDirection),
+		Generated:        counts.Generated, StructureValid: counts.CurrentVersions,
+		Inspected: counts.Inspected, Scored: counts.Scored, Accepted: counts.Accepted,
+		Quarantined: counts.Quarantined, PendingReview: counts.Pending + counts.Conflicts,
+	}
+	// The rate's numerator must belong to the inspected denominator. Accepted
+	// imported content without an experiment is still accepted, not a >100% rate.
+	overview.Stats.AcceptanceRate, overview.Stats.AcceptanceRateDisplay = AcceptanceRateOf(counts.AcceptedInspected, counts.Inspected)
 
 	budget, err := s.Usage.ProjectBudget(ctx, projectID, project.Budget.Currency)
 	if err != nil {
@@ -394,37 +392,80 @@ func (s *Service) LoadProjectOverview(ctx context.Context, projectID int64) (Pro
 	}
 	overview.Budget = budget
 
-	overview.NextAction = nextActionFor(project, overview)
+	role := model.ProjectRoleViewer
+	if len(roles) > 0 {
+		role = roles[0]
+	}
+	overview.NextAction = nextActionFor(project, overview, counts, model.ProjectCapabilities(role, project.Status))
 	return overview, nil
 }
 
 // nextActionFor 按**事实**决定「下一决定」。
 //
-// 顺序刻意是「设计 → 试制 → 生产 → 质量 → 发布」：
-// 每一档的前置条件由真实数据判定，因此一个只有蓝图的项目不会被指向
-// 「去发布」；而一个已经有完成批次的项目不会被一直指向「去设计」。
-func nextActionFor(project model.Project, overview ProjectOverview) NextAction {
-	base := fmt.Sprintf("/p/%d", project.ID)
-	hasBlueprint := overview.Versions.Blueprint != nil
-	if !hasBlueprint {
-		return NextAction{Kind: "design", Message: "还没有保存蓝图，先完成设计再试制", Href: base + "/blueprint"}
+// Imported content enters review directly: production is not a prerequisite.
+// Read-only members get observational routes and never a write instruction.
+func nextActionFor(project model.Project, overview ProjectOverview, counts store.ProjectWorkflowCounts, caps model.Capabilities) NextAction {
+	base := fmt.Sprintf("/p/p_%d", project.ID)
+	reviewHref := base + "/review"
+	if counts.Conflicts > 0 {
+		reviewHref += "?status=conflict"
 	}
-	if overview.Versions.Coverage == nil {
-		return NextAction{Kind: "design", Message: "还没有覆盖方案，先定义领域与方向配额", Href: base + "/coverage"}
-	}
-	if overview.Batches.Pilot == 0 {
-		return NextAction{Kind: "pilot", Message: "还没有试制批次，先跑一次小批试制验证方案", Href: base + "/pilot"}
+	if overview.Stats.PendingReview > 0 && !caps.CanRun {
+		if caps.CanReview {
+			return NextAction{Kind: "review", Message: "审阅待处理样本", Href: reviewHref}
+		}
+		return NextAction{Kind: "review", Message: "查看待审样本", Href: base + "/data"}
 	}
 	if overview.Batches.Running > 0 {
-		return NextAction{Kind: "pilot", Message: "有批次正在运行，查看进度与失败项", Href: base + "/runs"}
+		return NextAction{Kind: "run", Message: "查看生产进度", Href: base + "/runs"}
 	}
-	if overview.Batches.Failed > 0 {
-		return NextAction{Kind: "pilot", Message: "有批次失败或部分失败，处理失败项后继续", Href: base + "/runs"}
+	if overview.Batches.Paused > 0 || overview.Batches.Failed > 0 {
+		message := "查看暂停与失败批次"
+		if caps.CanRun {
+			message = "恢复暂停批次或重试失败项"
+		}
+		return NextAction{Kind: "run", Message: message, Href: base + "/runs"}
 	}
-	if overview.Batches.Scale == 0 {
-		return NextAction{Kind: "pilot", Message: "试制已完成，比较结果后规划扩量批次", Href: base + "/compare"}
+	if overview.Stats.PendingReview > 0 {
+		return NextAction{Kind: "review", Message: "审阅待处理样本", Href: reviewHref}
 	}
-	return NextAction{Kind: "quality", Message: "查看质量结论并准备发布", Href: base + "/quality"}
+	if counts.ReleasePending > 0 {
+		message := "查看发布状态"
+		if caps.CanPublish {
+			message = "处理发布候选与阻塞项"
+		}
+		return NextAction{Kind: "release", Message: message, Href: base + "/releases"}
+	}
+	if overview.Stats.Accepted > 0 {
+		if counts.PublishedAccepted == overview.Stats.Accepted && counts.Published > 0 {
+			return NextAction{Kind: "done", Message: "下载已发布数据", Href: base + "/releases"}
+		}
+		message := "查看接纳结果与发布状态"
+		if caps.CanPublish {
+			message = "发布已接纳数据"
+		}
+		return NextAction{Kind: "release", Message: message, Href: base + "/releases"}
+	}
+	if overview.Stats.Quarantined > 0 {
+		if caps.CanReview {
+			return NextAction{Kind: "review", Message: "处理已隔离样本", Href: base + "/review?status=quarantined"}
+		}
+		return NextAction{Kind: "review", Message: "查看已隔离样本", Href: base + "/data"}
+	}
+	if overview.Versions.Blueprint == nil || overview.Versions.Coverage == nil || overview.Versions.Standard == nil {
+		message := "查看生产配置"
+		if caps.CanEdit {
+			message = "完成生产配置"
+		}
+		return NextAction{Kind: "design", Message: message, Href: base + "/blueprint"}
+	}
+	if !caps.CanRun {
+		return NextAction{Kind: "run", Message: "查看生产批次", Href: base + "/runs"}
+	}
+	if overview.Batches.Pilot == 0 {
+		return NextAction{Kind: "run", Message: "开始试制", Href: base + "/pilot"}
+	}
+	return NextAction{Kind: "run", Message: "开始扩量生产", Href: base + "/runs/new"}
 }
 
 // ---------------------------------------------------------------------------

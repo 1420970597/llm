@@ -416,6 +416,8 @@ export function BlueprintPage() {
   const activeSteps = activeSpec ? configurableSteps(activeSpec) : []
   const selectedStep = searchParams.get('step')
   const activeStep = activeSteps.find((step) => step.key === selectedStep) ?? activeSteps[0]
+  const configurationSteps = specs.flatMap((spec) => configurableSteps(spec).map((step) => ({ spec, step })))
+  const configurationIndex = configurationSteps.findIndex(({ spec, step }) => spec.key === activeSpec?.key && step.key === activeStep?.key)
 
   const fitCanvas = useCallback(() => {
     if (!canvasRef.current) return
@@ -438,10 +440,11 @@ export function BlueprintPage() {
   }, [loading])
 
   const save = useCallback(async () => {
-    if (!draft || !activeSpec || !canEdit || isReadOnly || !changed || savingRef.current) return
+    if (!changed) return true
+    if (!draft || !activeSpec || !canEdit || isReadOnly || savingRef.current) return false
     if (containsInvalidJSONMarker(draft)) {
       setSaveError('请先修正 JSON 格式，再保存蓝图。')
-      return
+      return false
     }
     // 提交前清理「非法 JSON 中间态」标记：它是编辑器的临时状态，
     // 不能进入 payload（那会让服务端看到一个不认识的字段）。
@@ -489,7 +492,7 @@ export function BlueprintPage() {
       if (JSON.stringify(cleaned) === JSON.stringify(current?.payload)) {
         if (draftRef.current === submittedDraft) setDraft(cleaned)
         setAutoSave(true)
-        return
+        return true
       }
       const response = await client.post<{ revision: number; data: { version: DocumentVersion } }>(
         `${projectPath(scope.projectId)}/blueprint-versions`,
@@ -532,6 +535,7 @@ export function BlueprintPage() {
         params.delete('version')
         return params
       })
+      return true
     } catch (saveErrorValue) {
       setAutoSave(false)
       const apiError = saveErrorValue as { statusCode?: number; message?: string }
@@ -540,6 +544,7 @@ export function BlueprintPage() {
       } else {
         setSaveError(apiError.message ?? '保存失败')
       }
+      return false
     } finally {
       savingRef.current = false
       setSaving(false)
@@ -605,9 +610,30 @@ export function BlueprintPage() {
     : activeSpec?.key === 'evaluation'
       ? choices.connections.filter((option) => Array.isArray(nodeValuesForActive.judgeConnectionIds) && nodeValuesForActive.judgeConnectionIds.map(String).includes(option.value))
       : []
+  const selectConfigurationStep = (index: number) => {
+    const target = configurationSteps[index]
+    if (!target) return
+    setSearchParams((params) => { params.set('node', target.spec.key); params.set('step', target.step.key); return params })
+  }
+  const continueConfiguration = async () => {
+    if (dirty && !(await save())) return
+    if (configurationIndex + 1 < configurationSteps.length) selectConfigurationStep(configurationIndex + 1)
+    else navigate(scope.href('project.pilot'))
+  }
+  const advancedNames = new Set(['maxTokens', 'temperature', 'concurrency', 'failurePolicy', 'samplingSeed', 'missingScorePolicy'])
+  const visibleFields = activeStep?.fields ?? activeSpec?.fields ?? []
+  const updateNodeField = (name: string, value: unknown) => {
+    if (!draft || !activeSpec) return
+    const nextValues = { ...nodeValuesForActive, [name]: value }
+    if (activeSpec.key === 'standard' && name === 'standardVersionId') delete nextValues.steps
+    const nextDraft = withNodeValues(draft, activeSpec, nextValues)
+    setDraft(nextDraft)
+    if (JSON.stringify(nextDraft) === JSON.stringify(current?.payload)) setAutoSave(true)
+    setSaveError(null)
+  }
 
   return (
-    <div className="console-page blueprint-page" data-studio-page="blueprint">
+    <div className="console-page blueprint-page blueprint-configuration-page" data-studio-page="blueprint">
       {isReadOnly ? (
         <div className="blueprint-readonly-banner" data-readonly="true">
           <History size={14} aria-hidden />
@@ -620,17 +646,21 @@ export function BlueprintPage() {
 
       <header className="atelier-page-intro blueprint-page-intro">
         <div>
-          <div className="eyebrow">DESIGN / BLUEPRINT</div>
-          <h1>生产蓝图</h1>
-          <Text type="tertiary">点击流程或小步骤配置。编辑停止后自动保存为新版本，已经运行的批次保持原来的配置。</Text>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {choices.versions.sourceVersionId ? <Button icon={<FileCog size={14} />} onClick={() => navigate(scope.href('project.sources'))}>素材来源</Button> : null}
-          <Button theme="solid" type="primary" onClick={() => navigate(scope.href('project.pilot'))}>小批试制 →</Button>
+          <h1>配置生产方案</h1>
+          <Text type="tertiary">步骤 {Math.max(configurationIndex + 1, 1)} / {configurationSteps.length} · {saving ? '保存中' : dirty ? '有未保存修改' : `方案 v${current?.version ?? '—'}`}</Text>
         </div>
       </header>
-
-      <div className="blueprint-layout">
+      <div className="blueprint-layout blueprint-configuration-layout">
+        <nav className="blueprint-configuration-steps" aria-label="生产方案配置步骤">
+          {configurationSteps.map(({ spec, step }, index) => {
+            const health = getNodeHealth(spec, nodeValues(draft, spec), choices)
+            return <button key={`${spec.key}:${step.key}`} type="button" aria-current={index === configurationIndex ? 'step' : undefined} data-configuration-step={`${spec.key}:${step.key}`} onClick={() => selectConfigurationStep(index)}>
+              <span>{index + 1}</span><strong>{step.label}</strong><small>{spec.label} · {health.label}</small>
+            </button>
+          })}
+        </nav>
+        <details className="blueprint-dependency-diagram">
+          <summary>查看配置依赖图</summary>
         <section className="blueprint-canvas" aria-label="生产流程画布">
           <div className="blueprint-canvas__eyebrow">ATELIER / PRODUCTION BLUEPRINT / v{current?.version ?? '—'}</div>
           <div className="blueprint-canvas__tools" role="toolbar" aria-label="画布工具">
@@ -724,6 +754,7 @@ export function BlueprintPage() {
           </div>
           </div>
         </section>
+        </details>
 
         <section className="blueprint-inspector" aria-label="步骤检查器">
           {activeSpec ? (
@@ -731,9 +762,6 @@ export function BlueprintPage() {
               <Title heading={5} className="!mb-1">
                 {activeSpec.label}
               </Title>
-              <Text type="tertiary" className="block mb-3">
-                {activeSpec.caption}
-              </Text>
 
               {/*
                 issue #197 第 5 条：术语（量表版本 / 维度权重 / 缺分策略 /
@@ -742,14 +770,15 @@ export function BlueprintPage() {
                 参数有地方挂靠。
               */}
               {activeSpec.purpose ? (
-                <div className="blueprint-node-purpose" data-node-purpose="true">
+                <details className="blueprint-node-purpose" data-node-purpose="true">
+                  <summary>步骤说明</summary>
                   <Text strong size="small" className="block mb-1">
                     这个节点会做什么
                   </Text>
                   <Text size="small" className="block">
                     {activeSpec.purpose}
                   </Text>
-                </div>
+                </details>
               ) : null}
 
               {activeSpec.steps && activeSpec.steps.length > 0 ? (
@@ -794,27 +823,20 @@ export function BlueprintPage() {
                 </Card>
               ) : (
                 <>
-                <div className="blueprint-step-tabs" role="group" aria-label="选择配置小步骤">
-                  {activeSteps.map((step) => <Button key={step.key} size="small" type={activeStep?.key === step.key ? 'primary' : 'tertiary'} theme={activeStep?.key === step.key ? 'light' : 'borderless'} onClick={() => setSearchParams((params) => { params.set('step', step.key); return params })}>{step.label}</Button>)}
-                </div>
                 <h3 className="blueprint-step-title">{activeStep?.label}</h3>
                 <NodeFields
-                  spec={{ ...activeSpec, fields: activeStep?.fields ?? activeSpec.fields }}
+                  spec={{ ...activeSpec, fields: visibleFields.filter((field) => !advancedNames.has(field.name)) }}
                   values={activeSpec.key === 'standard' && !Array.isArray(nodeValuesForActive.steps)
                     ? { ...nodeValuesForActive, steps: standardVersions.find((version) => version.id === Number(nodeValuesForActive.standardVersionId))?.payload?.steps ?? [] }
                     : nodeValuesForActive}
                   disabled={isReadOnly || !canEdit}
                   choices={choices}
-                  onChange={(name, value) => {
-                    if (!draft || !activeSpec) return
-                    const nextValues = { ...nodeValuesForActive, [name]: value }
-                    if (activeSpec.key === 'standard' && name === 'standardVersionId') delete nextValues.steps
-                    const nextDraft = withNodeValues(draft, activeSpec, nextValues)
-                    setDraft(nextDraft)
-                    if (JSON.stringify(nextDraft) === JSON.stringify(current?.payload)) setAutoSave(true)
-                    setSaveError(null)
-                  }}
+                  onChange={updateNodeField}
                 />
+                {visibleFields.some((field) => advancedNames.has(field.name)) ? <details className="blueprint-advanced-settings" open={visibleFields.every((field) => advancedNames.has(field.name))}>
+                  <summary>高级参数</summary>
+                  <NodeFields spec={{ ...activeSpec, fields: visibleFields.filter((field) => advancedNames.has(field.name)) }} values={nodeValuesForActive} disabled={isReadOnly || !canEdit} choices={choices} onChange={updateNodeField} />
+                </details> : null}
                 </>
               )}
 
@@ -836,7 +858,8 @@ export function BlueprintPage() {
                 </div>
               ) : null}
 
-              <div className="mt-4">
+              <details className="blueprint-change-details mt-4">
+                <summary>变更说明（选填）</summary>
                 <Text type="tertiary" size="small" className="block mb-1">
                   变更说明（可选，留空时自动记录修改的步骤）
                 </Text>
@@ -848,7 +871,7 @@ export function BlueprintPage() {
                   autosize={{ minRows: 2, maxRows: 4 }}
                   data-field="blueprint-change-reason"
                 />
-              </div>
+              </details>
 
               {saveError ? (
                 <div className="wizard-field__error mt-2" role="alert">
@@ -874,10 +897,10 @@ export function BlueprintPage() {
                 </div>
               ) : null}
 
-              <div className="blueprint-save-bar mt-3">
+              <div className="blueprint-save-bar blueprint-configuration-actions mt-3">
                 <span className={dirty ? 'blueprint-dirty' : 'blueprint-clean'} role="status">{saving ? '正在保存新版本' : dirty ? autoSave ? '等待自动保存' : '草稿保留，请重试保存' : '已保存'}</span>
                 <Button
-                  theme="solid"
+                  theme="light"
                   type="primary"
                   icon={<Save size={14} />}
                   loading={saving}
@@ -886,6 +909,8 @@ export function BlueprintPage() {
                 >
                   保存为新版本
                 </Button>
+                <Button disabled={configurationIndex <= 0 || saving} onClick={() => selectConfigurationStep(configurationIndex - 1)}>上一步</Button>
+                <Button theme="solid" type="primary" loading={saving} disabled={saving || isReadOnly || !canEdit || hasInvalidJSON} onClick={() => void continueConfiguration()}>{configurationIndex + 1 < configurationSteps.length ? '保存并继续' : '保存并进入试制'}</Button>
                 {current && canEdit ? (
                   <Button
                     icon={<Copy size={14} />}
@@ -1482,6 +1507,7 @@ function RatioMapEditor({ value, disabled, onChange }: { value: unknown; disable
  */
 export function StandardPage() {
   const scope = useProjectScope()
+  const navigate = useNavigate()
   const { Title, Text } = Typography
   const state = useVersionedDocument(scope.projectId, 'standard-versions')
   if (state.loading) {
@@ -1511,13 +1537,13 @@ export function StandardPage() {
           <Title heading={4} className="!mb-1">
             思维标准
           </Title>
-          <Text type="tertiary">步骤顺序就是执行顺序；每一步都要有可核对的完成标准。</Text>
         </div>
         <div className="console-page__actions"><CopyVersionButton state={state} /></div>
       </div>
       <StandardPayloadEditor payload={payload} disabled={state.isReadOnly || !state.canEdit} onChange={state.setPayload} />
       <DocumentSaveBar state={state} label="思维标准" />
-      <DocumentHistory state={state} />
+      <details className="product-disclosure"><summary>版本历史</summary><DocumentHistory state={state} /></details>
+      <div className="product-stage-footer"><span>{state.dirty ? '保存修改后继续' : '配置生成所需的步骤与检查点'}</span><Button theme="solid" type="primary" disabled={state.dirty || !state.current} onClick={() => navigate(scope.href('project.blueprint'))}>继续配置生成 →</Button></div>
     </div>
   )
 }

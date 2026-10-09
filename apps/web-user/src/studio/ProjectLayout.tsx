@@ -2,19 +2,20 @@ import { useMemo } from 'react'
 import { NavLink, Outlet, useLocation, useParams } from 'react-router-dom'
 import { Typography } from '@douyinfe/semi-ui'
 import {
-  Boxes,
   FileOutput,
   FlaskConical,
   GitBranch,
   LayoutDashboard,
   PlayCircle,
 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import {
   fillRoutePath,
   fillRoutePathByKey,
   projectDetailRoutes,
   projectRoutes,
+  projectWorkflowStages,
+  projectWorkflowForPath,
+  matchRoute,
 } from './routes'
 import { useProjectName } from './projectName'
 import { parseProjectResourceId } from '../lib/api/studio'
@@ -39,14 +40,14 @@ import type { ProjectResourceId } from '../lib/api/studio'
  * 项目身份的**唯一**来源是路由参数，因此本文件里不出现任何全局任务选中态。
  */
 
-const PROJECT_TAB_ICONS: Record<string, LucideIcon> = {
-  'project.overview': LayoutDashboard,
-  'project.blueprint': GitBranch,
-  'project.runs': PlayCircle,
-  'project.data': Boxes,
-  'project.quality': FlaskConical,
-  'project.releases': FileOutput,
-}
+/**
+ * 用户看到的是一条生产主线，而不是内部模块目录。
+ *
+ * `projectRoutes` 仍保留完整的旧元数据供深链和契约测试使用；这里定义
+ * 的五个入口是项目壳层唯一展示的工作流阶段。阶段内的素材、标准、规则
+ * 和样本页面通过 `navParent` 归入对应阶段。
+ */
+const WORKFLOW_ICONS = { 'project.overview': LayoutDashboard, 'project.blueprint': GitBranch, 'project.runs': PlayCircle, 'project.review': FlaskConical, 'project.releases': FileOutput }
 
 /** 项目作用域上下文的值。 */
 export type ProjectScope = {
@@ -54,7 +55,6 @@ export type ProjectScope = {
   /** 项目内链接构造器：`projectHref('project.data')`。 */
   href: (key: string) => string
 }
-
 /**
  * useProjectScope 从**路由**解析项目作用域。
  *
@@ -86,17 +86,15 @@ export function useProjectScope(): ProjectScope {
     [projectId],
   )
 }
-
 export function ProjectLayout() {
   const scope = useProjectScope()
   const location = useLocation()
   const { Title, Text } = Typography
   const projectName = useProjectName(scope.projectId)
 
-  const activeTab = useMemo(() => {
-    const meta = tabForPath(location.pathname)
-    return meta?.key ?? 'project.overview'
-  }, [location.pathname])
+  const stage = useMemo(() => projectWorkflowForPath(location.pathname), [location.pathname])
+  const currentRoute = matchRoute(location.pathname)
+  const taskRoutes = stage.taskKeys.flatMap((key) => [...projectRoutes, ...projectDetailRoutes].filter((route) => route.key === key))
 
   const projectTitle = projectName ?? '项目'
 
@@ -108,71 +106,40 @@ export function ProjectLayout() {
         <Title heading={4} className="!mb-0">
           {projectTitle}
         </Title>
-        <Text type="tertiary">{activeTabCaption(activeTab)}</Text>
+        <Text type="tertiary">{stage.label}</Text>
       </header>
 
       <nav className="project-layout__tabs atelier-project-tabs" aria-label="项目工作区">
-        {projectRoutes.map((route) => (
+        {projectWorkflowStages.map((tab, index) => {
+          const Icon = WORKFLOW_ICONS[tab.key]
+          return (
           <NavLink
-            key={route.key}
-            to={fillRoutePath(route.path, { projectId: scope.projectId })}
+            key={tab.key}
+            to={scope.href(tab.key)}
             className={
-              route.key === activeTab ? 'project-tab project-tab--active' : 'project-tab'
+              tab.key === stage.key ? 'project-tab project-tab--active' : 'project-tab'
             }
-            aria-current={route.key === activeTab ? 'page' : undefined}
+            aria-current={tab.key === stage.key ? 'page' : undefined}
+            data-workflow-stage={index + 1}
           >
-            {renderTabIcon(route.key)}
-            <span>{route.label}</span>
-            {route.moduleStatus === 'planned' ? (
-              <span className="project-tab__badge" title={`由 ${route.task} 交付`}>
-                待交付
-              </span>
-            ) : null}
+            {index > 0 ? <span className="project-tab__step">{index}</span> : null}
+            <Icon size={15} aria-hidden />
+            <span>{tab.label}</span>
           </NavLink>
-        ))}
+        )})}
       </nav>
+
+      {taskRoutes.length > 0 ? <nav className="project-task-navigation" aria-label={`${stage.label}任务`}>
+        {taskRoutes.map((route) => <NavLink key={route.key} to={scope.href(route.key)}
+          className={currentRoute?.key === route.key || currentRoute?.navParent === route.key ? 'is-active' : ''}
+          aria-current={currentRoute?.key === route.key || currentRoute?.navParent === route.key ? 'page' : undefined}>
+          {route.label}
+        </NavLink>)}
+      </nav> : null}
 
       <div className="project-layout__body">
         <Outlet context={scope} />
       </div>
     </div>
   )
-}
-
-function renderTabIcon(key: string) {
-  const Icon = PROJECT_TAB_ICONS[key]
-  if (!Icon) return null
-  return <Icon size={15} aria-hidden />
-}
-
-/**
- * 当前 pathname 属于哪个标签。
- *
- * 先看精确元数据（子页已经把 navParent 指到所属标签），再退回「项目级
- * 路径的第一段」匹配。两层都失败时默认概览 —— 但**不静默**：
- * 返回 undefined 会让标签全部不高亮，而那种界面状态无法解释；
- * 默认概览至少与 URL 的语义一致（`/p/:id` 就是概览）。
- */
-function tabForPath(pathname: string): { key: string; caption: string } | undefined {
-  const meta = routeMetaByPathSegment(pathname)
-  if (!meta) return undefined
-  const tabKey = meta.navParent ?? meta.key
-  const tab = projectRoutes.find((route) => route.key === tabKey)
-  if (!tab) return { key: meta.key, caption: meta.caption }
-  return { key: tab.key, caption: tab.caption }
-}
-
-function routeMetaByPathSegment(pathname: string) {
-  const segments = pathname.split('?')[0].split('/').filter(Boolean)
-  // `/p/:projectId/<segment>` → 用第二段（segment）在元数据里找同前缀的项。
-  if (segments.length < 3) return undefined
-  const tail = segments.slice(2).join('/')
-  const candidates = [...projectRoutes, ...projectDetailRoutes]
-  return candidates.find((route) => route.path.endsWith(`/${tail}`)) ??
-    candidates.find((route) => route.path.endsWith(`/${segments[2]}`))
-}
-
-function activeTabCaption(key: string): string {
-  const tab = projectRoutes.find((route) => route.key === key)
-  return tab?.caption ?? ''
 }
