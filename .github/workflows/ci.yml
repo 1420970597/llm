@@ -80,13 +80,13 @@ jobs:
             sleep 1
           done
           if [ "$ready" != 1 ]; then cat "$RUNNER_TEMP/source-ui-preview.log"; exit 1; fi
-          PLAYWRIGHT_MODULE="$RUNNER_TEMP/source-ui-browser/node_modules/playwright" \
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/source-ui-browser/node_modules/playwright/index.js" \
             SOURCE_UI_URL=http://127.0.0.1:13212 node test/audit/run-source217-ui.mjs
           PLAYWRIGHT_MODULE="$RUNNER_TEMP/source-ui-browser/node_modules/playwright" \
             PRODUCT_UI_BASE_URL=http://127.0.0.1:13212 node test/l15_product_navigation.mjs --with-browser
-          PLAYWRIGHT_PATH="$RUNNER_TEMP/source-ui-browser/node_modules/playwright" \
+          PLAYWRIGHT_PATH="$RUNNER_TEMP/source-ui-browser/node_modules/playwright/index.js" \
             PRODUCT_UI_BASE_URL=http://127.0.0.1:13212 node test/l15_product_review_release.mjs --with-browser
-          PLAYWRIGHT_PATH="$RUNNER_TEMP/source-ui-browser/node_modules/playwright" \
+          PLAYWRIGHT_PATH="$RUNNER_TEMP/source-ui-browser/node_modules/playwright/index.js" \
             PRODUCT_UI_BASE_URL=http://127.0.0.1:13212 node test/l15_product_production.mjs --with-browser
 
       - name: Upload source UI browser evidence
