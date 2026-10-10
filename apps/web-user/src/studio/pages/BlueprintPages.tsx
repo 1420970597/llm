@@ -438,10 +438,8 @@ export function BlueprintPage() {
   const configurationIndex = configurationSteps.findIndex(({ spec, step }) => spec.key === activeSpec?.key && step.key === activeStep?.key)
   useEffect(() => {
     if (loading) return
-    const node = configurationNavRef.current?.querySelector<HTMLElement>('[aria-current="step"]')
-    if (node) node.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' })
     stepHeadingRef.current?.focus({ preventScroll: true })
-    if (window.matchMedia('(max-width: 767px)').matches) stepHeadingRef.current?.scrollIntoView({ block: 'center' })
+    if (window.matchMedia('(max-width: 767px)').matches) window.scrollTo({ top: Math.max(0, (stepHeadingRef.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 96), behavior: 'auto' })
   }, [activeSpec?.key, activeStep?.key, loading])
 
   const fitCanvas = useCallback(() => {
