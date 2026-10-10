@@ -35,7 +35,7 @@ const authenticatedLoginRoute = source.match(
 record(
   '认证守卫使用安全的 Atelier 登录目标',
   /navigate\(loginRedirect, \{ replace: true \}\)/.test(loginRedirect) && /resolveLoginRedirect/.test(source),
-  '登录页已有会话时必须使用经过校验的 next，缺省目标为 /today',
+  '登录页已有会话时必须使用经过校验的 next，缺省目标为 /projects',
 )
 record(
   '登录提交进入 Atelier 目标页',

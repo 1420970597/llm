@@ -248,6 +248,8 @@ export function BlueprintPage() {
   const [zoom, setZoom] = useState(1)
   const [autoSave, setAutoSave] = useState(true)
   const canvasRef = useRef<HTMLDivElement | null>(null)
+  const configurationNavRef = useRef<HTMLElement | null>(null)
+  const stepHeadingRef = useRef<HTMLHeadingElement | null>(null)
   const draftRef = useRef(draft)
   draftRef.current = draft
   const savingRef = useRef(false)
@@ -270,6 +272,8 @@ export function BlueprintPage() {
   // `?node=` 与 `?version=` 都来自 URL：分享链接要能指向同一个节点与版本。
   const activeNodeKey = searchParams.get('node') ?? ''
   const viewingVersion = searchParams.get('version')
+  const adoptedCoverageId = searchParams.get('coverageVersionId')
+  const adoptedStandardId = searchParams.get('standardVersionId')
 
   const load = useCallback(async (versionOverride?: string | null) => {
     setLoading(true)
@@ -286,6 +290,20 @@ export function BlueprintPage() {
       ])
       setSpecs(nodesResponse.data.items ?? [])
       const list = versionsResponse.data.items ?? []
+      const adoptSavedDocuments = (payload: Record<string, unknown>) => {
+        let next = payload
+        const adopt = (key: string, field: string, id: string | null, response: VersionsResponse) => {
+          if (!id || !(response.items ?? []).some((item) => String(item.id) === id)) return
+          const spec = nodesResponse.data.items.find((item) => item.key === key)
+          if (!spec) return
+          const values = { ...nodeValues(next, spec), [field]: Number(id) }
+          if (key === 'standard') delete values.steps
+          next = withNodeValues(next, spec, values)
+        }
+        adopt('coverage', 'coverageVersionId', adoptedCoverageId, coverageResponse.data)
+        adopt('standard', 'standardVersionId', adoptedStandardId, standardResponse.data)
+        return next
+      }
       setVersions(list)
       setHeadRevision(versionsResponse.data.document?.revision ?? 0)
       setStandardVersions(standardResponse.data.items ?? [])
@@ -360,7 +378,7 @@ export function BlueprintPage() {
         )
         const version = versionFromResponse(response.data)
         setCurrent(version)
-        setDraft(version.payload)
+        setDraft(adoptSavedDocuments(version.payload))
         setCompareVersion(null)
       } else {
         // 还没有任何版本：允许从空蓝图开始（§5 允许保存只填了一部分的草稿）。
@@ -372,7 +390,7 @@ export function BlueprintPage() {
     } finally {
       setLoading(false)
     }
-  }, [scope.projectId, viewingVersion])
+  }, [adoptedCoverageId, adoptedStandardId, scope.projectId, viewingVersion])
 
   useEffect(() => {
     if (preserveDraftAfterNavigation.current && viewingVersion === null) {
@@ -418,6 +436,11 @@ export function BlueprintPage() {
   const activeStep = activeSteps.find((step) => step.key === selectedStep) ?? activeSteps[0]
   const configurationSteps = specs.flatMap((spec) => configurableSteps(spec).map((step) => ({ spec, step })))
   const configurationIndex = configurationSteps.findIndex(({ spec, step }) => spec.key === activeSpec?.key && step.key === activeStep?.key)
+  useEffect(() => {
+    if (loading) return
+    stepHeadingRef.current?.focus({ preventScroll: true })
+    if (window.matchMedia('(max-width: 767px)').matches) window.scrollTo({ top: Math.max(0, (stepHeadingRef.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 96), behavior: 'auto' })
+  }, [activeSpec?.key, activeStep?.key, loading])
 
   const fitCanvas = useCallback(() => {
     if (!canvasRef.current) return
@@ -533,6 +556,9 @@ export function BlueprintPage() {
       // 保存后**留在当前节点**（T11 验收项），只刷新版本列表与 current。
       setSearchParams((params) => {
         params.delete('version')
+        if (params.has('coverageVersionId') || params.has('standardVersionId')) preserveDraftAfterNavigation.current = true
+        params.delete('coverageVersionId')
+        params.delete('standardVersionId')
         return params
       })
       return true
@@ -651,7 +677,7 @@ export function BlueprintPage() {
         </div>
       </header>
       <div className="blueprint-layout blueprint-configuration-layout">
-        <nav className="blueprint-configuration-steps" aria-label="生产方案配置步骤">
+        <nav className="blueprint-configuration-steps" aria-label="生产方案配置步骤" ref={configurationNavRef}>
           {configurationSteps.map(({ spec, step }, index) => {
             const health = getNodeHealth(spec, nodeValues(draft, spec), choices)
             return <button key={`${spec.key}:${step.key}`} type="button" aria-current={index === configurationIndex ? 'step' : undefined} data-configuration-step={`${spec.key}:${step.key}`} onClick={() => selectConfigurationStep(index)}>
@@ -823,7 +849,7 @@ export function BlueprintPage() {
                 </Card>
               ) : (
                 <>
-                <h3 className="blueprint-step-title">{activeStep?.label}</h3>
+                <h3 className="blueprint-step-title" tabIndex={-1} ref={stepHeadingRef}>{activeStep?.label}</h3>
                 <NodeFields
                   spec={{ ...activeSpec, fields: visibleFields.filter((field) => !advancedNames.has(field.name)) }}
                   values={activeSpec.key === 'standard' && !Array.isArray(nodeValuesForActive.steps)
@@ -852,8 +878,8 @@ export function BlueprintPage() {
                   </div>
                   <Button size="small" icon={<FileCog size={14} />} onClick={() => navigate(relatedPage.route === 'settings.connections'
                     ? '/settings/connections'
-                    : `${scope.href(relatedPage.route)}${relatedVersion?.version ? `?version=${relatedVersion.version}` : ''}`)}>
-                    {selectedConnections.length > 0 || relatedVersion ? `查看${relatedPage.label}` : `去配置${relatedPage.label}`}
+                    : scope.href(relatedPage.route))}>
+                    {relatedPage.route === 'settings.connections' ? '查看模型连接' : `编辑${relatedPage.label}`}
                   </Button>
                 </div>
               ) : null}
@@ -1543,7 +1569,7 @@ export function StandardPage() {
       <StandardPayloadEditor payload={payload} disabled={state.isReadOnly || !state.canEdit} onChange={state.setPayload} />
       <DocumentSaveBar state={state} label="思维标准" />
       <details className="product-disclosure"><summary>版本历史</summary><DocumentHistory state={state} /></details>
-      <div className="product-stage-footer"><span>{state.dirty ? '保存修改后继续' : '配置生成所需的步骤与检查点'}</span><Button theme="solid" type="primary" disabled={state.dirty || !state.current} onClick={() => navigate(scope.href('project.blueprint'))}>继续配置生成 →</Button></div>
+      <div className="product-stage-footer"><span>{state.dirty ? '保存修改后继续' : '配置生成所需的步骤与检查点'}</span><Button theme="solid" type="primary" disabled={state.dirty || !state.current || state.isReadOnly || !state.canEdit} onClick={() => navigate(`${scope.href('project.blueprint')}?node=standard&standardVersionId=${state.current!.id}`)}>继续配置生成 →</Button></div>
     </div>
   )
 }

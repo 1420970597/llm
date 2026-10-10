@@ -64,7 +64,7 @@ export const globalRoutes: StudioRouteMeta[] = [
   {
     key: 'today',
     path: '/today',
-    label: '今日工作',
+    label: '待处理',
     caption: '待判断、可比较、失败恢复与候选阻塞',
     kind: 'global',
     moduleStatus: 'available',
@@ -730,10 +730,16 @@ export function breadcrumbsFor(
         path: fillRoutePathByKey('project.overview', params),
       },
     ]
-    // 子页（navParent 非空）先给出所属标签，再给出自己。
-    if (current.navParent) {
+    // 展示归属来自主线元数据，旧 URL 的历史父级不应把审阅说成数据页。
+    const stage = projectWorkflowForPath(pathname)
+    if (stage.key !== 'project.overview' && stage.label !== current.label) {
+      items.push({ label: stage.label, path: fillRoutePathByKey(stage.key, params) })
+    }
+    if (current.navParent && current.navParent !== stage.key) {
       const parent = allStudioRoutes.find((route) => route.key === current.navParent)
-      if (parent) items.push({ label: parent.label, path: fillRoutePath(parent.path, params) })
+      if (parent && parent.label !== stage.label && parent.key !== 'project.data') {
+        items.push({ label: parent.label, path: fillRoutePath(parent.path, params) })
+      }
     }
     // 用 `items[items.length - 1]` 而不是 `items.at(-1)`：tsconfig 的
     // target/lib 是 ES2020，`.at()` 需要 ES2022 —— 用它会让 tsc 直接报错，

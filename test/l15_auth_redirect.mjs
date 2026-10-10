@@ -18,11 +18,11 @@ const probe = String.raw`
   const cases = [
     ['?next=%2Fp%2F1%2Fdata%3Fstatus%3Dreview', '/p/1/data?status=review'],
     ['?next=%2Fp%2F1%2Fdata%23focus', '/p/1/data#focus'],
-    ['?next=https%3A%2F%2Fevil.test', '/today'],
-    ['?next=%2F%2Fevil.test', '/today'],
-    ['?next=%2Fp%2F1%2Fdata%5C%5Cevil', '/today'],
-    ['?next=%2Flogin', '/today'],
-    ['', '/today'],
+    ['?next=https%3A%2F%2Fevil.test', '/projects'],
+    ['?next=%2F%2Fevil.test', '/projects'],
+    ['?next=%2Fp%2F1%2Fdata%5C%5Cevil', '/projects'],
+    ['?next=%2Flogin', '/projects'],
+    ['', '/projects'],
   ]
 
   for (const [search, expected] of cases) {

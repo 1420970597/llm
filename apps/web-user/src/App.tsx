@@ -878,21 +878,8 @@ function LoginPage({
         <section className="atelier-login-hero" aria-labelledby="atelier-login-title">
           <div className="atelier-login-brand"><span className="atelier-login-brand__mark">A</span><span>Atelier</span><small>数据项目工作室</small></div>
           <div className="eyebrow">DATA PROJECT STUDIO</div>
-          <h1 id="atelier-login-title">从目标，到可交付的数据版本。</h1>
-          <p>把设计、试制、审阅和发布放在一个可追溯的项目旅程里。</p>
-          <div className="atelier-login-principles">
-            {[
-              { icon: CirclePlus, title: '先定义目标', text: '规模、覆盖与质量边界先说清楚。' },
-              { icon: Target, title: '独立试制', text: '用小批结果验证方案，再决定扩量。' },
-              { icon: ShieldCheck, title: '证据驱动', text: '样本、判断和版本始终可追溯。' },
-              { icon: HardDriveDownload, title: '固定交付', text: '发布后文件与数据卡不可变。' },
-            ].map((item) => (
-              <div key={item.title} className="atelier-login-principle">
-                <div className="atelier-login-principle__icon"><item.icon size={17} strokeWidth={1.9} /></div>
-                <div><strong>{item.title}</strong><span>{item.text}</span></div>
-              </div>
-            ))}
-          </div>
+          <h1 id="atelier-login-title">数据生产工作区</h1>
+          <p>设计 → 生产 → 审阅 → 发布</p>
         </section>
 
         <section className="atelier-login-form" aria-labelledby="atelier-login-form-title">
@@ -900,7 +887,7 @@ function LoginPage({
             <div className="atelier-login-form__icon"><Users size={18} strokeWidth={1.9} /></div>
             <div>
               <Title heading={4} className="!mb-0" id="atelier-login-form-title">进入 Atelier</Title>
-              <Text className="console-caption">登录后从「今日工作」开始。</Text>
+              <Text className="console-caption">登录后进入数据项目。</Text>
             </div>
           </div>
           {signal ? (
@@ -947,14 +934,10 @@ function LoginPage({
               />
               {fieldError.password ? <Text id="atelier-login-password-error" className="atelier-login-field-error" type="danger" role="alert">{fieldError.password}</Text> : null}
             </div>
-            <Button theme="solid" type="primary" size="large" loading={loading} htmlType="submit" aria-label="进入今日工作">
-              进入今日工作
+            <Button theme="solid" type="primary" size="large" loading={loading} htmlType="submit" aria-label="登录">
+              登录
             </Button>
           </form>
-          <div className="atelier-login-form__notes">
-            <div><span>默认落点</span><strong>今日工作</strong></div>
-            <div><span>项目主线</span><strong>设计 → 试制 → 审阅 → 发布</strong></div>
-          </div>
         </section>
       </div>
     </div>

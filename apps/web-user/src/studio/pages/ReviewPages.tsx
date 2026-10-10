@@ -215,7 +215,9 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
    * 但**默认值、说明文案、主操作与空状态**必须不同。
    */
   const title = queueMode ? '审阅队列' : '数据'
-  const firstReviewable = samples.find((sample) => sample.capabilities?.canReview)
+  const firstReviewable = samples.find((sample) => sample.reviewStatus === 'pending' && sample.capabilities?.canReview)
+  const sampleQuery = new URLSearchParams(searchParams)
+  if (!sampleQuery.has('status')) sampleQuery.set('status', showAllStatuses ? 'all' : reviewStatus)
 
   return (
     <div className="console-page" data-studio-page={queueMode ? 'review-queue' : 'sample-list'}>
@@ -227,7 +229,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
           <Text type="tertiary">{queueMode ? '接纳合格样本，隔离不合格样本。' : '查看、审阅并发布内容版本。'}</Text>
         </div>
         {firstReviewable ? <Button theme="solid" type="primary" onClick={() => navigate(
-          `${projectHref('project.sample', scope.projectId, { sampleId: firstReviewable.resourceId })}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`,
+          `${projectHref('project.sample', scope.projectId, { sampleId: firstReviewable.resourceId })}?${sampleQuery.toString()}`,
         )}>开始审阅</Button> : null}
       </div>
       <div className="product-data-toolbar">
@@ -356,13 +358,12 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
         </Card>
       ) : samples.length === 0 ? (
         <Card className="console-card">
-          <Empty
-            description={
-              queueMode
-                ? '没有待判断样本。'
-                : '暂无样本，请先生产数据。'
-            }
-          />
+          <Empty description={search.trim() ? '没有匹配的样本。' : reviewStatus === 'pending' ? '没有待判断样本。' : '当前筛选下没有样本。'} />
+          <div className="console-page__actions">
+            {search.trim() || reviewStatus !== '' ? <Button onClick={() => setSearchParams({ status: 'all' })}>查看全部数据</Button> : null}
+            <Button onClick={() => navigate(projectHref('project.runs', scope.projectId))}>去生产</Button>
+            {projectCapabilities?.canRun ? <Button onClick={() => navigate(projectHref('project.sourceImport', scope.projectId))}>导入数据集</Button> : null}
+          </div>
         </Card>
       ) : (
         <>
@@ -414,7 +415,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
                     onClick={() =>
                       navigate(
                         `${projectHref('project.sample', scope.projectId, { sampleId: sample.resourceId })}` +
-                          (searchParams.toString() ? `?${searchParams.toString()}` : ''),
+                          `?${sampleQuery.toString()}`,
                       )
                     }
                   >
@@ -456,6 +457,7 @@ const PAYLOAD_FIELD_LABELS: Record<string, string> = {
   rewardRubric: '奖励判据',
   systemPrompt: '系统提示词',
   userPrompt: '用户提示词',
+  source: '来源类型',
 }
 
 /** 预览面板展示的字段顺序（未知字段排在后面）。 */
@@ -483,7 +485,7 @@ function payloadEntries(payload: unknown): PayloadEntry[] {
     if (!(key in record)) return
     const value = record[key]
     if (value === null || value === undefined) return
-    const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+    const text = key === 'source' && value === 'external_import' ? '外部数据集导入' : typeof value === 'string' ? value : JSON.stringify(value, null, 2)
     if (text.trim() === '') return
     entries.push({ key, label: PAYLOAD_FIELD_LABELS[key] ?? key, text })
   }
@@ -579,6 +581,7 @@ export function SampleReviewPage() {
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [canSaveOfflineDraft, setCanSaveOfflineDraft] = useState(false)
   const [savedNotice, setSavedNotice] = useState<string | null>(null)
   // 离线待同步（T29）：提交失败时**不显示成功**，而是提供「保存为本地草稿」。
   const [offlineNotice, setOfflineNotice] = useState<string | null>(null)
@@ -745,6 +748,7 @@ export function SampleReviewPage() {
     setAction('accepted')
     setReason('')
     setSubmitError(null)
+    setCanSaveOfflineDraft(false)
     setSavedNotice(null)
     setOfflineNotice(null)
     setCopyFallback(null)
@@ -869,12 +873,14 @@ export function SampleReviewPage() {
 
   const submit = useCallback(async () => {
     if (!detail || submittingRef.current || queueLoading) return
+    setCanSaveOfflineDraft(false)
     if (!capabilities.canReview) {
       setSubmitError('当前账号没有审阅权限；内容保持只读')
       return
     }
     if (reason.trim() === '') {
       setSubmitError('理由必填：没有理由的判断无法被复核')
+      document.getElementById('review-reason')?.focus()
       return
     }
     submittingRef.current = true
@@ -906,6 +912,7 @@ export function SampleReviewPage() {
     } catch (submitErrorValue) {
       // 409 时必须保留用户输入 —— 清空理由会让用户重打一遍，
       // 而那正是「过期返回 409 并保留输入」要避免的。
+      setCanSaveOfflineDraft((submitErrorValue as { statusCode?: number }).statusCode === undefined)
       setSubmitError(submitErrorValue instanceof Error ? submitErrorValue.message : '提交失败')
     } finally {
       submittingRef.current = false
@@ -1079,12 +1086,12 @@ export function SampleReviewPage() {
                 aria-pressed={action === 'quarantined'} onClick={() => setAction('quarantined')} data-review-action="quarantined">{effective === 'conflict' ? '协调为隔离' : '隔离'}</Button>
             </div>
             <label className="wizard-field__label mt-3" htmlFor="review-reason">{effective === 'conflict' ? '协调理由' : '判断理由'}</label>
-            <TextArea id="review-reason" value={reason} disabled={submitting} onChange={setReason}
+            <TextArea id="review-reason" value={reason} disabled={submitting} onChange={(value) => { setReason(value); setSubmitError(null); setCanSaveOfflineDraft(false) }}
               autosize={{ minRows: 3, maxRows: 8 }} placeholder={action === 'accepted' ? '接纳依据（必填）' : '需要隔离的问题（必填）'}
               data-field="review-reason" aria-invalid={submitError ? true : undefined}
               aria-describedby={submitError ? 'review-submit-error' : undefined} />
             {submitError ? <div id="review-submit-error" className="wizard-field__error mt-2" role="alert" data-review-submit-error="true">{submitError}</div> : null}
-            {submitError && effective !== 'conflict' ? <Button size="small" theme="borderless" onClick={saveOfflineDraft} data-review-offline-draft="true">保存为本地草稿（待同步）</Button> : null}
+            {submitError && canSaveOfflineDraft && effective !== 'conflict' ? <Button size="small" theme="borderless" onClick={saveOfflineDraft} data-review-offline-draft="true">保存为本地草稿（待同步）</Button> : null}
             {offlineNotice ? <Text type="warning" size="small" className="block mt-2" data-review-offline-notice="true">{offlineNotice}</Text> : null}
             {pending > 0 ? <Text type="tertiary" size="small" className="block mt-2" data-review-pending-count="true">待同步（未提交）：{pending} 条</Text> : null}
             <div className="product-review__save">

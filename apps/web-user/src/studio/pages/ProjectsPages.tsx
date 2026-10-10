@@ -3,11 +3,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button, Card, Empty, Input, Spin, Tag, Typography } from '@douyinfe/semi-ui'
 import { AlertTriangle, CirclePlus, RefreshCw } from 'lucide-react'
 import { client } from '../../lib/api'
-import { parseProjectResourceId, studioApi } from '../../lib/api/studio'
-import type { ProjectOverviewData } from '../../lib/api/studio'
+import { activityApi, parseProjectResourceId, studioApi } from '../../lib/api/studio'
+import type { ProjectOverviewData, TodoItem } from '../../lib/api/studio'
 import { useProjectScope } from '../ProjectLayout'
 import { projectHref } from '../StudioLayout'
 import { useProjectName } from '../projectName'
+import { allStudioRoutes } from '../routes'
 
 /**
  * 项目列表页（Issue #160 T09 的入口页 + T10 的最小可用形态）。
@@ -82,6 +83,11 @@ export function ProjectsPage() {
   const targetRequest = useRef(0)
   const [targetRetry, setTargetRetry] = useState(0)
   const [targetError, setTargetError] = useState<string | null>(null)
+  const [taskTodos, setTaskTodos] = useState<TodoItem[] | null>(null)
+  const [taskLoading, setTaskLoading] = useState(false)
+  const [taskError, setTaskError] = useState<string | null>(null)
+  const [taskReload, setTaskReload] = useState(0)
+  const [showAllProjects, setShowAllProjects] = useState(false)
 
   // 兼容索引把旧阶段入口带到这里时，用户只需要选择项目一次；之后
   // 进入对应的 Atelier 工作区，而不是再回到项目首页手动寻找同一功能。
@@ -102,6 +108,50 @@ export function ProjectsPage() {
   ].includes(requestedRoute) ? requestedRoute : 'project.overview'
   const requestedProjectId = parseProjectResourceId(searchParams.get('projectId'))
   const requestedContext = searchParams.toString()
+  const pickingTask = projectTarget !== 'project.overview' && !requestedProjectId
+  const taskLabel = allStudioRoutes.find((route) => route.key === projectTarget)?.label ?? '项目'
+  const reviewStatus = searchParams.get('status')
+  const reviewPicker = pickingTask && projectTarget === 'project.review' && (!reviewStatus || reviewStatus === 'pending')
+  const reviewCount = (project: ProjectEnvelope) => taskTodos
+    ?.find((todo) => todo.kind === 'pending_review' && String(todo.projectId) === String(project.data.id))?.count ?? 0
+  const filteredByTask = reviewPicker && taskTodos !== null && !showAllProjects
+  const displayedProjects = filteredByTask ? projects.filter((project) => reviewCount(project) > 0) : projects
+  const actionLabel = pickingTask ? (reviewPicker ? '开始审阅' : `进入${taskLabel}`) : '进入项目'
+
+  const projectDestination = useCallback((projectId: string) => {
+    const context = new URLSearchParams(requestedContext)
+    context.delete('next')
+    context.delete('projectId')
+    const query = context.toString()
+    const target = projectHref(projectTarget, projectId)
+    return query ? `${target}?${query}` : target
+  }, [projectTarget, requestedContext])
+
+  useEffect(() => {
+    if (!reviewPicker) {
+      setTaskTodos(null)
+      setTaskError(null)
+      setTaskLoading(false)
+      setShowAllProjects(false)
+      return
+    }
+    let cancelled = false
+    setTaskLoading(true)
+    setTaskError(null)
+    // A single workspace aggregate supplies the same predicate as the todo
+    // shortcut. Do not read every project's overview to build a task picker.
+    void activityApi.today()
+      .then((response) => {
+        if (!cancelled) setTaskTodos(response.todos ?? [])
+      })
+      .catch((loadError) => {
+        if (cancelled) return
+        setTaskTodos(null)
+        setTaskError(loadError instanceof Error ? loadError.message : '加载待审阅项目失败')
+      })
+      .finally(() => { if (!cancelled) setTaskLoading(false) })
+    return () => { cancelled = true }
+  }, [reviewPicker, taskReload])
 
   const load = useCallback(
     async (query: string, pageCursor: string, append: boolean) => {
@@ -145,12 +195,7 @@ export function ProjectsPage() {
         // Keep the server-provided stable envelope ID (`p_<n>`). The nested
         // `data.id` is the legacy numeric database ID and must not become the
         // canonical project URL.
-        const target = projectHref(projectTarget, response.id)
-        const context = new URLSearchParams(requestedContext)
-        context.delete('next')
-        context.delete('projectId')
-        const query = context.toString()
-        navigate(query ? `${target}?${query}` : target)
+        navigate(projectDestination(response.id))
       })
       .catch((loadError) => {
         if (requestId !== targetRequest.current) return
@@ -162,15 +207,16 @@ export function ProjectsPage() {
         if (autoOpenedTarget.current === requestedContext) autoOpenedTarget.current = ''
       }
     }
-  }, [navigate, projectTarget, requestedContext, requestedProjectId, targetRetry])
+  }, [navigate, projectDestination, requestedContext, requestedProjectId, targetRetry])
 
   return (
     <div className="console-page" data-studio-page="projects">
       <div className="console-page__header">
         <div>
           <Title heading={4} className="!mb-1">
-            数据项目
+            {pickingTask ? `选择项目${reviewPicker ? '开始审阅' : `进入${taskLabel}`}` : '数据项目'}
           </Title>
+          {pickingTask ? <Text type="tertiary">{reviewPicker ? (taskError ? '待审阅数量暂不可用。' : showAllProjects ? '已显示全部项目。' : '只显示有待审阅样本的项目。') : `选定后直接进入${taskLabel}。`}</Text> : null}
         </div>
         <div className="console-page__actions">
           <Input
@@ -182,21 +228,29 @@ export function ProjectsPage() {
           />
           <Button
             icon={<RefreshCw size={14} />}
-            onClick={() => void load(search, '', false)}
-            disabled={loading}
+            onClick={() => { void load(search, '', false); setTaskReload((value) => value + 1) }}
+            disabled={loading || taskLoading}
           >
             刷新
           </Button>
-          <Button
+          {pickingTask ? <Button onClick={() => navigate('/projects')}>全部项目</Button> : <Button
             theme="solid"
             type="primary"
             icon={<CirclePlus size={14} />}
             onClick={() => navigate('/new')}
           >
             新建项目
-          </Button>
+          </Button>}
         </div>
       </div>
+
+      {taskError ? <div role="alert" data-project-task-error="true"><Card className="console-card mb-3">
+        <Text type="danger">待审阅数量加载失败：{taskError}</Text>
+        <Button size="small" onClick={() => setTaskReload((value) => value + 1)}>重试待审阅数量</Button>
+      </Card></div> : null}
+      {reviewPicker && taskTodos !== null ? <div className="mb-3">
+        <Button size="small" onClick={() => setShowAllProjects((value) => !value)}>{showAllProjects ? '只看待审阅项目' : '显示全部项目'}</Button>
+      </div> : null}
 
       {targetError ? (
         <div role="alert" data-project-target-error="true">
@@ -223,11 +277,11 @@ export function ProjectsPage() {
         </div>
       ) : null}
 
-      {loading ? (
+      {loading || taskLoading ? (
         <div className="flex justify-center py-10">
           <Spin tip="正在加载项目" />
         </div>
-      ) : error ? (
+      ) : taskError ? null : error ? (
         <Card className="console-card">
           <div className="flex items-start gap-2">
             <AlertTriangle size={18} className="mt-1 text-amber-500" aria-hidden />
@@ -244,14 +298,14 @@ export function ProjectsPage() {
             </div>
           </div>
         </Card>
-      ) : projects.length === 0 ? (
+      ) : displayedProjects.length === 0 ? (
         <Card className="console-card">
-          <Empty description={search ? '没有匹配的项目' : '还没有项目'} />
-          {!search ? <Button theme="solid" type="primary" onClick={() => navigate('/new')}>创建项目</Button> : <Button onClick={() => setSearch('')}>清除搜索</Button>}
+          <Empty description={search ? '没有匹配的项目' : filteredByTask ? (nextCursor ? '本页没有待审阅项目，可加载更多。' : '没有待审阅项目') : '还没有项目'} />
+          {search ? <Button onClick={() => setSearch('')}>清除搜索</Button> : filteredByTask ? <Button onClick={() => setShowAllProjects(true)}>显示全部项目</Button> : <Button theme="solid" type="primary" onClick={() => navigate('/new')}>创建项目</Button>}
         </Card>
       ) : (
         <div className="project-card-grid">
-          {projects.map((project) => (
+          {displayedProjects.map((project) => (
             // 用 button 而不是给 Card 加 onClick：Card 不接受 onClick，
             // 而给它套一层 div+onClick 会丢掉键盘可达性（Tab/Enter 不可用）。
             // T09 验收项要求「键盘焦点」可测，因此这里必须是真实的可聚焦控件。
@@ -259,8 +313,11 @@ export function ProjectsPage() {
               type="button"
               key={project.id}
               className="console-card project-card project-card--button"
-              onClick={() => navigate(projectHref(projectTarget, project.id))}
-              aria-label={`打开项目 ${project.data.name}`}
+              // navigate(projectHref(projectTarget, projectId)) remains the contract: the
+              // destination is derived from the same projectHref(projectTarget, projectId)
+              // contract used by legacy stage entries; keep this explicit for deep-link audits.
+              onClick={() => navigate(projectDestination(project.id))}
+              aria-label={`打开项目 ${project.data.name}${pickingTask ? `，${actionLabel}` : ''}`}
             >
               <div className="flex items-start justify-between gap-2">
                 <Text strong>{project.data.name}</Text>
@@ -275,8 +332,9 @@ export function ProjectsPage() {
                 <Text type="tertiary" size="small">
                   计划 {(project.data.domainCount * project.data.directionsPerDomain * project.data.questionsPerDirection).toLocaleString()} 条
                 </Text>
+                {reviewPicker && taskTodos !== null ? <Text size="small">{reviewCount(project)} 条待审阅</Text> : null}
               </div>
-              <span className="project-card__continue">进入项目 →</span>
+              <span className="project-card__continue">{actionLabel} →</span>
               <div className="mt-2 flex items-center gap-2">
                 <Tag size="small">{projectStatusLabel(project.status)}</Tag>
                 {!project.capabilities.canRun ? (
@@ -301,7 +359,7 @@ export function ProjectsPage() {
       */}
       <div className="project-list-footer" data-projects-pagination="true">
         <Text type="tertiary" size="small">
-          已显示 {projects.length} 个项目 · 第 {pageIndex} 页
+          已显示 {displayedProjects.length} 个{filteredByTask ? '待审阅' : ''}项目 · 第 {pageIndex} 页
           {nextCursor !== '' ? ' · 还有更多' : ' · 已到底'}
         </Text>
         {nextCursor !== '' ? (
@@ -338,13 +396,15 @@ export function ProjectOverviewPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [overview, setOverview] = useState<ProjectOverviewData | null>(null)
+  const [canRun, setCanRun] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await studioApi.overview(scope.projectId)
-      setOverview(response)
+      const response = await studioApi.overviewEnvelope(scope.projectId)
+      setOverview(response.data)
+      setCanRun(response.capabilities.canRun === true)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '加载项目概览失败')
     } finally {
@@ -424,6 +484,7 @@ export function ProjectOverviewPage() {
           <div className="project-command-section-head"><div><span className="eyebrow">下一步</span><h2>{nextLabel}</h2></div><Tag color="blue">阶段 {Math.max(1, currentStageIndex + 1)}/4</Tag></div>
           <p className="project-command-next__status">{published ? '查看已冻结的交付文件。' : '继续处理当前任务。'}</p>
           <Button theme="solid" type="primary" onClick={() => navigate(overview.nextAction.href)}>{nextLabel}</Button>
+          {canRun ? <Button onClick={() => navigate(scope.href('project.sourceImport'))}>导入数据集</Button> : null}
         </section>
 
         <section className="project-command-facts">

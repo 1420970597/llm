@@ -16,6 +16,7 @@ import {
   plannedQuestions,
   saveDraft,
   toCreateProjectRequest,
+  validateAll,
   validateStep,
   type TargetKind,
   type WizardDraft,
@@ -100,7 +101,7 @@ export function NewProjectWizard({ step, userId }: NewProjectWizardProps) {
         return next
       })
       // 该字段的错误随输入清除，避免用户改好了还看着红字。
-      setFieldErrors((previous) => previous.filter((error) => error.field !== key))
+      setFieldErrors((previous) => previous.filter((error) => fieldIdFor(error.field) !== fieldIdFor(key)))
     },
     [userId],
   )
@@ -134,9 +135,11 @@ export function NewProjectWizard({ step, userId }: NewProjectWizardProps) {
       navigate(projectHref('project.overview', createdProjectId.current))
       return
     }
-    const errors = validateStep(draft, step)
+    const errors = validateAll(draft)
     if (errors.length > 0) {
       setFieldErrors(errors)
+      const grouped = groupServerErrors(errors)
+      if (grouped.firstStep && grouped.firstStep !== step) navigate(STEP_PATHS[grouped.firstStep])
       focusFirstInvalid(errors[0].field)
       return
     }
@@ -472,13 +475,27 @@ function Field({
 /** 把焦点移到首个无效字段（并滚动到可见位置）。 */
 function focusFirstInvalid(field: string): void {
   if (typeof document === 'undefined') return
-  const container = document.querySelector(`[data-field="${field}"]`)
+  const container = document.querySelector(`[data-field="${fieldIdFor(field)}"]`)
   if (!container) return
   const focusable = container.querySelector<HTMLElement>('input, textarea, select, [tabindex]')
   if (focusable) {
     focusable.focus()
     focusable.scrollIntoView({ block: 'center' })
   }
+}
+
+function fieldIdFor(field: string): string {
+  const ids: Record<string, string> = {
+    name: 'wizard-name', goal: 'wizard-goal', targetKind: 'wizard-target-kind',
+    domains: 'wizard-domains', 'coverage.domains': 'wizard-domains',
+    directionsPerDomain: 'wizard-directions', 'coverage.directionsPerDomain': 'wizard-directions',
+    questionsPerDirection: 'wizard-questions', 'coverage.questionsPerDirection': 'wizard-questions',
+    pilotSize: 'wizard-pilot', acceptanceRateTarget: 'wizard-acceptance', 'quality.acceptanceRateTarget': 'wizard-acceptance',
+    budgetCurrency: 'wizard-currency', 'budget.currency': 'wizard-currency',
+    budgetLimitMinor: 'wizard-limit', 'budget.limitMinor': 'wizard-limit',
+    budgetOnExhausted: 'wizard-on-exhausted', 'budget.onExhausted': 'wizard-on-exhausted',
+  }
+  return ids[field] ?? field
 }
 
 /** 浏览器 localStorage 的包装；服务端渲染或隐私模式下返回内存实现。 */
