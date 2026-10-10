@@ -1191,6 +1191,12 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
     void client.get<{ version?: { payload: Record<string, unknown> }; data?: { payload: Record<string, unknown> } }>(`${projectPath(scope.projectId)}/coverage-versions/${selected.version}`).then((response) => {
       if (cancelled) return
       const payload = (response.data.version ?? response.data.data)?.payload
+      // 旧版本可能只返回版本元数据，不携带方向明细；这种情况下由服务端
+      // 在创建批次时校验来源，前端不能把“未下发明细”误报成“没有方向”。
+      if (!payload || !Object.prototype.hasOwnProperty.call(payload, 'domains')) {
+        setCoverageSourceState({ ready: true, detail: '方向来源由版本服务在执行前校验。' })
+        return
+      }
       const domains = Array.isArray(payload?.domains) ? payload.domains as Array<Record<string, unknown>> : []
       const directions = domains.flatMap((domain) => Array.isArray(domain.directions) ? domain.directions as Array<Record<string, unknown>> : []).filter((direction) => Number(direction.quota) > 0 && (!slice || direction.stableId === slice))
       const missing = directions.filter((direction) => direction.source !== 'ai' && !(direction.source === 'document' && Array.isArray(direction.sourceChunkIds) && direction.sourceChunkIds.length > 0))
