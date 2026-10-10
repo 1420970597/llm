@@ -73,7 +73,7 @@ export async function verifyProjectTools(page, baseURL) {
       await page.evaluate(() => { history.pushState({}, '', '/p/7/quality/new'); window.dispatchEvent(new PopStateEvent('popstate')) })
       await page.locator('[data-quality-blueprint-context]').waitFor({ state: 'detached' })
       await page.getByRole('button', { name: '创建并冻结实验', exact: true }).click()
-      await page.getByRole('alert').getByText('实验至少需要一名裁判；请填写裁判连接 ID（独立性由服务端校验）', { exact: true }).waitFor()
+      await page.getByRole('alert').getByText('请先选择裁判模型，再创建实验（独立性由服务端校验）', { exact: true }).waitFor()
       await page.locator('[data-judge-connection-select]').click()
       await page.getByText('裁判 21（judge）', { exact: true }).last().click()
       await page.locator('[data-field="judge-connection"][data-selected-judge="21"]').waitFor()

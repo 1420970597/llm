@@ -179,6 +179,7 @@ export function RunsPage() {
           <Text type="tertiary">{batches.filter((batch) => batch.status === 'running' || batch.status === 'queued').length} 个运行中 · {batches.filter((batch) => batch.failedUnits > 0).length} 个需要恢复</Text>
         </div>
         <div className="flex gap-2">
+          {canRun ? <Button onClick={() => navigate(scope.href('project.sourceImport'))}>导入数据集</Button> : null}
           <Button icon={<RefreshCw size={14} />} onClick={() => void load()} disabled={loading}>
             刷新批次
           </Button>
@@ -215,7 +216,7 @@ export function RunsPage() {
         </Card>
       ) : batches.length === 0 ? (
         <Card className="console-card">
-          <Empty description="还没有生产批次。"><Button theme="solid" type="primary" disabled={!canRun} onClick={() => navigate(scope.href('project.pilot'))}>开始试制</Button></Empty>
+          <Empty description="还没有生产批次。"><Button theme="solid" type="primary" disabled={!canRun} onClick={() => navigate(scope.href('project.pilot'))}>开始试制</Button><Button disabled={!canRun} onClick={() => navigate(scope.href('project.sourceImport'))}>导入已有数据集</Button></Empty>
         </Card>
       ) : (
         <div className="batch-table" data-batch-table="true">
@@ -945,7 +946,10 @@ export function FailuresPage() {
         </Card>
       ) : (
         <div className="failure-list">
-          {failures.map((failure) => (
+          {failures.map((failure) => {
+            const missingSource = /missing source|方向缺少素材/.test(failure.errorMessage)
+            const missingPrice = /价格版本|price version|配置价格/.test(failure.errorMessage)
+            return (
             <Card key={failure.itemId} className="console-card" bodyStyle={{ padding: 14 }}>
               <div className="flex items-start justify-between gap-2">
                 <Text strong>{failure.itemKey}</Text>
@@ -966,23 +970,23 @@ export function FailuresPage() {
               </Text>
               {/* 可操作建议：只显示机器码会让用户不知道下一步做什么。 */}
               <Text size="small" className="block mt-1">
-                建议：{failure.suggestedAction}
+                建议：{missingSource ? '在目标结构中关联素材，或明确选择 AI 合成；保存新目标结构并用于新批次。' : missingPrice ? '模型连接没有价格版本，先在连接设置中保存价格，再新建批次。' : failure.suggestedAction}
               </Text>
               {failure.errorClass === 'config_error' ? (
                 <Button
                   size="small"
                   theme="borderless"
                   className="mt-2"
-                  onClick={() => navigate(`${scope.href('project.blueprint')}?node=generation`)}
+                  onClick={() => navigate(missingSource ? scope.href('project.coverage') : missingPrice ? '/settings/connections' : `${scope.href('project.blueprint')}?node=generation&step=model`)}
                 >
-                  打开生成设置
+                  {missingSource ? '配置素材来源' : missingPrice ? '配置模型价格' : '打开生成设置'}
                 </Button>
               ) : null}
               <Text type="tertiary" size="small" className="block mt-1">
                 原始信息：{failure.errorMessage}
               </Text>
             </Card>
-          ))}
+          )})}
         </div>
       )}
     </div>
@@ -1005,6 +1009,7 @@ type BlueprintPlanningPayload = {
     standard?: { standardVersionId?: number }
     generation?: {
       modelConnectionId?: number
+      sourceVersionId?: number
       schemaVersion?: string
       concurrency?: number
       maxTokens?: number
@@ -1065,6 +1070,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   const [mappingVersionId, setMappingVersionId] = useState('')
   const [blueprintPayload, setBlueprintPayload] = useState<BlueprintPlanningPayload | null>(null)
   const [blueprintPayloadError, setBlueprintPayloadError] = useState<string | null>(null)
+  const [coverageSourceState, setCoverageSourceState] = useState<{ ready: boolean; detail: string }>({ ready: false, detail: '正在检查方向来源。' })
   const [versionOptions, setVersionOptions] = useState({
     blueprint: [] as PlanningVersion[],
     coverage: [] as PlanningVersion[],
@@ -1082,6 +1088,9 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [canRun, setCanRun] = useState(false)
+  const [configurationLoading, setConfigurationLoading] = useState(true)
+  const [configurationError, setConfigurationError] = useState<string | null>(null)
+  const [configurationReload, setConfigurationReload] = useState(0)
   const selectedBlueprint = versionOptions.blueprint.find((version) => String(version.id) === blueprintVersionId)
   // A retry after a network timeout must replay the same command. Generating
   // the key inside submit would turn an uncertain retry into a second paid run.
@@ -1089,6 +1098,8 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
 
   useEffect(() => {
     let cancelled = false
+    setConfigurationLoading(true)
+    setConfigurationError(null)
     void Promise.all([
       studioApi.overviewEnvelope(scope.projectId),
       client.get<PlanningVersionList>(`${projectPath(scope.projectId)}/blueprint-versions?limit=50`),
@@ -1115,11 +1126,16 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       setMappingVersionId((value) => value || latestID(next.mapping) || '')
       setUnitCount((value) => value === (purpose === 'pilot' ? '12' : '500')
         ? String(Math.max(1, Math.min(overview.data.stats.plannedQuestions || Number(value), purpose === 'pilot' ? MAX_PILOT_UNITS : MAX_SCALE_UNITS, Number(value)))) : value)
-    }).catch(() => {
-      if (!cancelled) setCanRun(false)
+    }).catch((loadError) => {
+      if (!cancelled) {
+        setCanRun(false)
+        setConfigurationError(loadError instanceof Error ? loadError.message : '生产配置读取失败')
+      }
+    }).finally(() => {
+      if (!cancelled) setConfigurationLoading(false)
     })
     return () => { cancelled = true }
-  }, [scope.projectId, purpose])
+  }, [configurationReload, scope.projectId, purpose])
 
   // 选择蓝图不应要求用户再逐项复述一次已经在蓝图中保存的引用。读取版本
   // 本体后，把其中的覆盖、标准、规则和映射带入本次快照；用户仍可以在下面
@@ -1166,6 +1182,24 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
 
   const maxUnits = purpose === 'pilot' ? MAX_PILOT_UNITS : MAX_SCALE_UNITS
   const title = purpose === 'pilot' ? '小批试制' : '扩量规划'
+
+  useEffect(() => {
+    const selected = versionOptions.coverage.find((version) => String(version.id) === coverageVersionId)
+    if (!selected) { setCoverageSourceState({ ready: false, detail: '先选择目标结构版本。' }); return }
+    let cancelled = false
+    setCoverageSourceState({ ready: false, detail: '正在检查方向来源。' })
+    void client.get<{ version?: { payload: Record<string, unknown> }; data?: { payload: Record<string, unknown> } }>(`${projectPath(scope.projectId)}/coverage-versions/${selected.version}`).then((response) => {
+      if (cancelled) return
+      const payload = (response.data.version ?? response.data.data)?.payload
+      const domains = Array.isArray(payload?.domains) ? payload.domains as Array<Record<string, unknown>> : []
+      const directions = domains.flatMap((domain) => Array.isArray(domain.directions) ? domain.directions as Array<Record<string, unknown>> : []).filter((direction) => Number(direction.quota) > 0 && (!slice || direction.stableId === slice))
+      const missing = directions.filter((direction) => direction.source !== 'ai' && !(direction.source === 'document' && Array.isArray(direction.sourceChunkIds) && direction.sourceChunkIds.length > 0))
+      setCoverageSourceState({ ready: directions.length > 0 && missing.length === 0, detail: !directions.length ? '没有参与生产的方向。' : missing.length ? `${missing.length} 个方向没有来源；请关联素材块或明确选择 AI 合成。` : '所有生产方向均已关联素材或选择 AI 合成。' })
+    }).catch((loadError) => {
+      if (!cancelled) setCoverageSourceState({ ready: false, detail: `方向来源读取失败：${loadError instanceof Error ? loadError.message : '请重试'}` })
+    })
+    return () => { cancelled = true }
+  }, [coverageVersionId, scope.projectId, slice, versionOptions.coverage])
 
   // 采用比较方案后，扩量规划页必须恢复服务端保存的采用指针。
   // URL 只携带比较/来源上下文；版本快照仍由服务端返回，避免客户端伪造配置。
@@ -1228,6 +1262,11 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
         : `${planningVersionLabel(versionOptions.coverage, coverageVersionId)}${blueprintNodes?.coverage?.coverageVersionId ? '（来自蓝图）' : '（本次选择）'}`,
     })
     items.push({
+      label: '每个方向都有来源',
+      ok: coverageSourceState.ready,
+      detail: coverageSourceState.detail,
+    })
+    items.push({
       label: '思维标准已固定',
       ok: standardVersionId.trim() !== '',
       detail: standardVersionId.trim() === ''
@@ -1276,10 +1315,22 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       detail: purpose === 'pilot' ? '试制是独立批次，不会改动已有生产批次的内容' : '扩量是新的独立批次',
     })
     return items
-  }, [blueprintPayload, blueprintVersionId, budgetLimitMinor, coverageVersionId, maxUnits, purpose, standardVersionId, unitCount, versionOptions.blueprint, versionOptions.coverage, versionOptions.standard])
+  }, [blueprintPayload, blueprintVersionId, budgetLimitMinor, coverageSourceState, coverageVersionId, maxUnits, purpose, standardVersionId, unitCount, versionOptions.blueprint, versionOptions.coverage, versionOptions.standard])
 
   const ready = checklist.every((item) => item.ok)
   const blockedItems = checklist.filter((item) => !item.ok)
+  const checklistFixes: Record<string, { label: string; route: string; query?: string; field?: string }> = {
+    '计划单元数在范围内': { label: '修改数量', route: '', field: 'plan-units' },
+    '已选择蓝图版本': { label: '配置方案', route: 'project.blueprint' },
+    '覆盖范围已固定': { label: '配置目标结构', route: 'project.coverage' },
+    '每个方向都有来源': { label: '配置素材来源', route: 'project.coverage' },
+    '思维标准已固定': { label: '配置思维标准', route: 'project.standard' },
+    '生成设置已检查': { label: '配置生成模型', route: 'project.blueprint', query: 'node=generation&step=model' },
+    '独立评估已设置': { label: '配置独立评估', route: 'project.blueprint', query: 'node=evaluation&step=judges' },
+    '规则与交付已设置': { label: '配置规则与交付', route: 'project.blueprint', query: 'node=rules' },
+    '人工检查点已设置': { label: '配置人工检查', route: 'project.blueprint', query: 'node=human_review' },
+    '预算上限合法': { label: '修改预算', route: '', field: 'plan-budget' },
+  }
 
   const submit = useCallback(async () => {
     if (!canRun) {
@@ -1388,6 +1439,8 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       {blueprintPayloadError ? (
         <div className="wizard-field__error mb-3" role="alert">无法带入蓝图配置：{blueprintPayloadError}</div>
       ) : null}
+      {configurationLoading ? <div role="status"><Spin size="small" /> 正在读取生产配置</div> : null}
+      {configurationError ? <div className="wizard-field__error mb-3" role="alert">无法读取生产配置：{configurationError}。<Button size="small" onClick={() => setConfigurationReload((value) => value + 1)}>重新读取生产配置</Button></div> : null}
 
       <Card className="console-card" bodyStyle={{ padding: 20 }}>
         <div className="planning-configuration-note" role="note">
@@ -1478,6 +1531,11 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
               </span>
               <span>{item.label}</span>
               <span className="preflight-detail">{item.detail}</span>
+              {!item.ok && checklistFixes[item.label] ? <Button size="small" onClick={() => {
+                const fix = checklistFixes[item.label]
+                if (fix.field) { document.getElementById(fix.field)?.focus(); return }
+                navigate(`${scope.href(fix.route)}${fix.query ? `?${fix.query}` : ''}`)
+              }}>{checklistFixes[item.label].label}</Button> : null}
             </li>
           ))}
         </ul>
@@ -1490,7 +1548,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
       ) : null}
 
       <div className="production-planning-actions mt-3">
-        {!canRun ? (
+        {!configurationLoading && !configurationError && !canRun ? (
           <Text type="tertiary" size="small" className="block mb-2">
             当前账号没有启动批次的权限。
           </Text>
@@ -1502,7 +1560,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
         <Button
           theme="solid"
           type="primary"
-          disabled={!ready || !canRun}
+          disabled={configurationLoading || !!configurationError || !ready || !canRun}
           loading={submitting}
           onClick={() => void submit()}
         >

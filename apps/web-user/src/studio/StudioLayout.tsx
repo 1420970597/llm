@@ -26,7 +26,7 @@ import {
   breadcrumbsFor,
   globalRoutes,
   fillRoutePathByKey,
-  menuRoutes,
+  matchRoute,
 } from './routes'
 import { newIdempotencyKey, parseProjectResourceId } from '../lib/api/studio'
 import type { ProjectResourceId } from '../lib/api/studio'
@@ -153,11 +153,11 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
   // 屏幕阅读器播报一起更新，键盘/听觉用户才不会「失焦」。
   const [announcement, setAnnouncement] = useState('')
   useEffect(() => {
-    const current = menuRoutes().find((route) => route.key === activeKey)
+    const current = matchRoute(location.pathname)
     const label = current?.key === 'today' ? '待处理' : current?.label ?? ''
     setAnnouncement(label ? `已进入${label}` : '')
     document.title = label ? `${label} · Atelier · 数据项目工作室` : 'Atelier · 数据项目工作室'
-  }, [activeKey])
+  }, [location.pathname])
 
   return (
     <div className="app-layout atelier-shell">
@@ -204,6 +204,7 @@ export function StudioLayout({ userEmail, isAdmin, onLogout }: StudioLayoutProps
                     key={route.key}
                     icon={Icon ? <Icon size={16} aria-hidden /> : undefined}
                     active={activeKey === route.key}
+                    forwardRef={(element) => { element?.setAttribute('aria-label', route.label) }}
                     onClick={() => {
                       setToolsOpen(false)
                       closeMobileNav(false)

@@ -2161,7 +2161,7 @@ select:focus {
 /* 项目卡片：整卡可点，因此必须是真实 button（键盘可达）。 */
 .project-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
   gap: 12px;
 }
 
@@ -2169,6 +2169,7 @@ select:focus {
   display: block;
   width: 100%;
   text-align: left;
+  padding: 18px;
   cursor: pointer;
   border: 1px solid var(--panel-border);
   background: var(--panel-strong);
@@ -3237,11 +3238,11 @@ a {
  * the new shell so legacy console routes keep their existing contracts while
  * every first-class page gets the same canvas, spacing and table treatment. */
 .atelier-shell .app-layout__content > .console-page {
-  min-height: calc(100vh - 64px);
+  min-height: calc(100dvh - 112px);
   width: 100%;
   max-width: 1480px;
   margin: 0 auto;
-  padding: 32px 44px 72px;
+  padding: 24px 28px 40px;
   background: var(--page-bg);
 }
 
@@ -3249,7 +3250,7 @@ a {
 .atelier-shell [data-studio-page^="settings-"],
 .atelier-shell [data-studio-page="recipes"],
 .atelier-shell [data-studio-page="deliveries"] {
-  gap: 24px;
+  gap: 16px;
 }
 
 .atelier-shell [data-studio-page="projects"] .console-page__header,
@@ -3267,7 +3268,7 @@ a {
 .atelier-shell [data-studio-page="deliveries"] .console-page__header h4 {
   margin: 0 0 6px;
   color: var(--text);
-  font-size: 30px;
+  font-size: 24px;
   line-height: 1.15;
 }
 
@@ -3794,17 +3795,17 @@ a {
 .atelier-shell .sidebar-workspace-name { color: #fff; font-size: 19px; font-weight: 700; }
 .atelier-shell .sidebar-nav-section { display: flex; align-items: stretch; gap: 2px; min-width: 0; padding: 0; overflow-x: auto; scrollbar-width: none; }
 .atelier-shell .sidebar-nav-section::-webkit-scrollbar { display: none; }
-.atelier-shell .sidebar-nav-item { position: relative; display: inline-flex; flex-direction: row; align-items: center; gap: 8px; min-width: max-content; min-height: 64px; padding: 0 15px; border: 0; border-radius: 0; color: #e2eaff; background: transparent; box-shadow: none; font-size: 13px; }
+.atelier-shell .sidebar-nav-item { position: relative; display: inline-flex; flex: 0 0 auto; width: auto; flex-direction: row; align-items: center; gap: 8px; min-width: max-content; min-height: 64px; padding: 0 15px; border: 0; border-radius: 0; color: #e2eaff; background: transparent; box-shadow: none; font-size: 13px; }
 .atelier-shell .sidebar-nav-item:hover, .atelier-shell .sidebar-nav-item--active { color: #fff; background: rgba(255,255,255,.14); }
 .atelier-shell .sidebar-nav-item--active::after { content: ""; position: absolute; inset: auto 12px 0; height: 3px; background: #fff; }
-.atelier-shell .sidebar-footer { display: flex; align-items: center; gap: 14px; margin-left: auto; padding: 0 24px; border: 0; color: #fff; min-width: 0; }
+.atelier-shell .sidebar-footer { display: flex; align-items: center; gap: 14px; margin-top: 0; margin-left: auto; padding: 0 24px; border: 0; color: #fff; min-width: 0; }
 .atelier-shell .sidebar-account { display: flex; align-items: center; gap: 8px; color: #fff; min-width: 0; }
 .studio-account-email { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .studio-tools-trigger { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 6px 9px; border-radius: 6px; color: #fff; cursor: pointer; white-space: nowrap; }
 .studio-tools-trigger:hover { background: rgba(255,255,255,.14); }
 .studio-tools-trigger:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .atelier-shell .sidebar-footer > .semi-button { color: #fff; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.25); }
-.atelier-shell .app-layout__content { grid-area: content; min-width: 0; padding: 0; overflow: auto; background: var(--bg); }
+.atelier-shell .app-layout__content { grid-area: content; min-width: 0; padding: 0; overflow: auto; scroll-padding-block: 16px 100px; background: var(--bg); }
 .atelier-topbar { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 28px; border-bottom: 1px solid var(--panel-border); background: #fff; }
 .atelier-topbar__leading, .atelier-topbar__actions { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .atelier-shell [data-command-search-trigger] { color: var(--text-soft); background: var(--bg); border: 1px solid var(--panel-border); min-width: 176px; }
@@ -3819,10 +3820,10 @@ a {
 .project-task-navigation { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--panel-border); }
 .project-task-navigation a { padding: 7px 12px; color: var(--text-soft); font-size: 13px; border-radius: 6px; }
 .project-task-navigation a:hover, .project-task-navigation .is-active { background: var(--accent-soft); color: var(--accent); }
-.atelier-shell .project-layout__body > .console-page { padding: 12px 0 24px; max-width: none; margin: 0; }
-.atelier-page-intro { margin-bottom: 20px; }
+.atelier-shell .project-layout__body > .console-page { padding: 12px 0 24px; max-width: none; margin: 0; gap: 16px; }
+.atelier-page-intro { margin-bottom: 0; }
 .atelier-page-intro h1 { font-size: 28px; margin: 0 0 6px; }
-.atelier-shell .console-page__header { gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+.atelier-shell .console-page__header { gap: 14px; flex-wrap: wrap; margin-bottom: 0; }
 .atelier-shell .console-page__header h4 { font-size: 24px; line-height: 1.3; overflow-wrap: anywhere; }
 .atelier-shell .console-page__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .product-stage-footer, .product-wizard__footer, .production-planning-actions { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border: 1px solid var(--panel-border); border-radius: 8px; background: #fff; box-shadow: 0 -4px 12px rgba(15,23,42,.04); margin-top: 18px; }
@@ -3840,6 +3841,8 @@ details[open] > summary { margin-bottom: 14px; }
 .product-wizard__step:disabled { cursor: wait; opacity: .6; }
 .project-card__continue { display: block; margin-top: 14px; color: var(--accent); font-size: 13px; font-weight: 600; }
 .project-card .semi-typography { overflow-wrap: anywhere; }
+.project-card > div:first-child > .semi-typography { min-width: 0; }
+.project-card .semi-tag { flex-shrink: 0; }
 .project-card .mt-1 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .atelier-action-center { padding: 24px 28px 40px; max-width: 1480px; margin: auto; }
 .atelier-action-metrics { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 12px; margin-bottom: 20px; }
@@ -3848,7 +3851,7 @@ details[open] > summary { margin-bottom: 14px; }
 .atelier-activity-disclosure { margin-top: 18px; }
 .atelier-activity-disclosure > summary { cursor: pointer; font-weight: 600; }
 .blueprint-page .blueprint-configuration-layout { grid-template-columns: 230px minmax(0,1fr); grid-template-areas: "steps inspector" "diagram diagram" "history history"; align-items: start; }
-.blueprint-configuration-steps { grid-area: steps; display: grid; gap: 6px; position: sticky; top: 12px; }
+.blueprint-configuration-steps { grid-area: steps; display: grid; gap: 6px; position: sticky; top: 12px; max-height: max(220px, min(560px, calc(100dvh - 330px))); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: 4px; }
 .blueprint-configuration-steps button { display: grid; grid-template-columns: 25px minmax(0,1fr); gap: 4px 8px; text-align: left; padding: 12px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; }
 .blueprint-configuration-steps button > span { grid-row: 1/3; display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--panel-border-strong); border-radius: 50%; font-size: 12px; }
 .blueprint-configuration-steps button strong { font-size: 13px; }
@@ -3884,12 +3887,12 @@ details[open] > summary { margin-bottom: 14px; }
   .atelier-shell .sidebar-workspace-header { flex-basis: 120px; padding-inline: 16px; }
   .atelier-action-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }
 }
-@media (max-width: 760px) {
-  .atelier-shell { grid-template-rows: minmax(0,1fr); }
-  .atelier-shell .app-layout__sidebar { position: fixed; inset: 0 auto 0 0; z-index: 42; width: min(320px,85vw); height: 100dvh; min-height: 100dvh; flex-direction: column; transform: translateX(-110%); visibility: hidden; pointer-events: none; transition: transform .18s ease; overflow: auto; }
+@media (max-width: 960px) {
+  .atelier-shell { grid-template-areas: "content"; grid-template-rows: minmax(0,1fr); }
+  .atelier-shell .app-layout__sidebar { grid-area: auto; position: fixed; inset: 0 auto 0 0; z-index: 42; width: min(320px,85vw); height: 100dvh; min-height: 100dvh; flex-direction: column; transform: translateX(-110%); visibility: hidden; pointer-events: none; transition: transform .18s ease; overflow: auto; }
   .atelier-shell .app-layout__sidebar[data-mobile-open="true"] { transform: translateX(0); visibility: visible; pointer-events: auto; }
   .atelier-shell .sidebar-workspace-header { flex: 0 0 64px; }
-  .atelier-shell .sidebar-nav-section { display: grid; gap: 4px; padding: 12px; overflow: visible; }
+  .atelier-shell .sidebar-nav-section { display: grid; flex: 0 0 auto; align-content: start; gap: 4px; padding: 12px; overflow: visible; }
   .atelier-shell .sidebar-nav-item { min-height: 48px; padding: 0 14px; border-radius: 6px; }
   .atelier-shell .sidebar-nav-item--active::after { inset: 8px auto 8px 0; height: auto; width: 3px; }
   .atelier-shell .sidebar-footer { flex-wrap: wrap; margin-top: auto; margin-left: 0; padding: 18px; }
@@ -3899,6 +3902,8 @@ details[open] > summary { margin-bottom: 14px; }
   .atelier-topbar__leading { flex: 1; overflow: hidden; }
   .atelier-shell [data-command-search-trigger] { min-width: 36px; width: 36px; padding: 8px; overflow: hidden; }
   .atelier-shell [data-command-search-trigger] .semi-button-content-right { display: none; }
+}
+@media (max-width: 760px) {
   .atelier-shell .atelier-project-shell, .atelier-action-center { padding: 16px 14px 32px; }
   .atelier-shell .atelier-project-header { padding: 0; flex-direction: row; }
   .atelier-shell .atelier-project-tabs { margin: 0; }
@@ -3908,7 +3913,7 @@ details[open] > summary { margin-bottom: 14px; }
   .project-task-navigation a { padding: 7px 8px; }
   .atelier-action-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
   .blueprint-page .blueprint-configuration-layout { grid-template-columns: minmax(0,1fr); grid-template-areas: "steps" "inspector" "diagram" "history"; }
-  .blueprint-configuration-steps { position: static; display: flex; overflow-x: auto; }
+  .blueprint-configuration-steps { position: static; display: flex; max-height: none; overflow-x: auto; overflow-y: hidden; padding: 0 0 4px; scrollbar-gutter: auto; }
   .blueprint-configuration-steps button { flex: 0 0 160px; }
   .review-pane .product-review__workspace, .product-review__support { grid-template-columns: minmax(0,1fr); }
   .review-pane .product-review__workspace .review-pane__column { border-right: 0; border-bottom: 1px solid var(--panel-border); }

@@ -6,7 +6,7 @@
  * every login entry point applies the same-origin rule instead of each caller
  * implementing a subtly different string check.
  */
-export const DEFAULT_LOGIN_REDIRECT = '/today'
+export const DEFAULT_LOGIN_REDIRECT = '/projects'
 
 const INTERNAL_ORIGIN = 'https://atelier.internal'
 

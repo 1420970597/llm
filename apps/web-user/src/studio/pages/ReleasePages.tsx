@@ -1030,7 +1030,7 @@ export function DeliveriesPage() {
         <div>
           <Title heading={4} className="!mb-1">交付库</Title>
           <Text type="tertiary">
-            只显示已发布且你有权访问的版本；候选不是交付物，不会出现在这里。
+            查找已发布的数据版本，打开详情并下载文件。
           </Text>
         </div>
         <div className="flex gap-2">
@@ -1049,7 +1049,11 @@ export function DeliveriesPage() {
         </Card>
       ) : items.length === 0 ? (
         <Card className="console-card">
-          <Empty description="还没有可交付的已发布版本。" />
+          <Empty description={search.trim() ? '没有找到匹配的已发布版本。' : '还没有已发布的数据版本。'} />
+          <div className="console-page__actions">
+            {search.trim() ? <Button onClick={() => { setSearch(''); void load('') }}>清除搜索</Button> : null}
+            <Button theme="solid" type="primary" onClick={() => navigate('/projects?next=project.releases')}>选择项目去发布</Button>
+          </div>
         </Card>
       ) : (
         <div className="batch-table" data-delivery-table="true">

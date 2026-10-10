@@ -71,7 +71,7 @@ export function RecipesListPage() {
             方案库
           </Title>
           <Text type="tertiary">
-            把验证过的一套配置（覆盖 / 标准 / 质量策略 / 蓝图 / 映射）保存成方案，直接复制到新项目。
+            选择已发布的方案，复制配置并创建项目。
           </Text>
         </div>
         <Select
@@ -104,7 +104,7 @@ export function RecipesListPage() {
               <div className="flex flex-col items-center gap-2">
                 <Text>方案库暂时没有可用方案</Text>
                 <Text type="tertiary" size="small">
-                  从既有项目另存为方案尚未开放；当前可以先在数据项目中维护蓝图与版本。
+                  可先在项目中配置生产方案；项目另存为方案暂未开放。
                 </Text>
                 <Button size="small" theme="solid" type="primary" onClick={() => navigate('/projects')} data-recipes-empty-cta="true">
                   打开数据项目

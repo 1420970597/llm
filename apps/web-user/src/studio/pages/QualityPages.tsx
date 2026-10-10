@@ -234,9 +234,12 @@ export function QualityNewPage() {
   const [judgeOptions, setJudgeOptions] = useState<ConnectionProviderOption[]>([])
   const [judgeOptionsLoading, setJudgeOptionsLoading] = useState(true)
   const [judgeOptionsError, setJudgeOptionsError] = useState<string | null>(null)
+  const [judgeOptionsReload, setJudgeOptionsReload] = useState(0)
 
   useEffect(() => {
     let cancelled = false
+    setJudgeOptionsLoading(true)
+    setJudgeOptionsError(null)
     void (async () => {
       try {
         const response = await settingsApi.connectionOptions()
@@ -253,7 +256,7 @@ export function QualityNewPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [judgeOptionsReload])
   const [seedSelection, setSeedSelection] = useState<{ context: string; value: number } | null>(null)
   const hasBlueprintSelection = Boolean(blueprintId && String(blueprint.current?.id) === blueprintId)
   // 蓝图配置直接从当前冻结版本派生，手动输入绑定当前上下文。
@@ -348,7 +351,8 @@ export function QualityNewPage() {
       return
     }
     if (effectiveJudgeID.trim() === '') {
-      setError('实验至少需要一名裁判；请填写裁判连接 ID（独立性由服务端校验）')
+      setError('请先选择裁判模型，再创建实验（独立性由服务端校验）')
+      document.getElementById('judge-connection')?.focus()
       return
     }
     let targetConfig: CreateExperimentRequest['targetConfig'] | undefined
@@ -573,6 +577,7 @@ export function QualityNewPage() {
             </div>
           ))}
         </div>
+        {samples.length === 0 ? <div role="status"><Text type="tertiary">没有可评测样本。</Text><Button onClick={() => navigate(scope.href('project.runs'))}>开始生产</Button><Button onClick={() => navigate(scope.href('project.sourceImport'))}>导入数据集</Button></div> : null}
       </Card>
 
       <Card className="console-card mb-3" bodyStyle={{ padding: 16 }}>
@@ -597,7 +602,8 @@ export function QualityNewPage() {
               disabled={!canRun || judgeOptionsLoading || judgeOptions.length === 0}
               optionList={judgeOptions.map((provider) => ({
                 value: String(provider.id),
-                label: `${provider.name}（${provider.model}）`,
+                label: `${provider.name || `未命名连接 #${provider.id}`}（${provider.model}）${provider.configIssues?.length ? ' · 配置不完整' : ''}`,
+                disabled: (provider.configIssues?.length ?? 0) > 0,
               }))}
               onChange={(value) => setJudgeSelection({ context: formContext, value: String(value ?? '') })}
               data-judge-connection-select="true"
@@ -605,11 +611,13 @@ export function QualityNewPage() {
             {judgeOptionsError ? (
               <Text type="danger" size="small" className="block mt-1" data-judge-options-error="true">
                 {judgeOptionsError}
+                <Button size="small" onClick={() => setJudgeOptionsReload((value) => value + 1)}>重新读取裁判模型</Button>
               </Text>
             ) : null}
             {!judgeOptionsLoading && judgeOptions.length === 0 ? (
               <Text type="tertiary" size="small" className="block mt-1" data-judge-options-empty="true">
                 还没有已启用的模型连接。请先在「设置 › 连接与存储」里启用一个连接，再回来创建实验。
+                <Button size="small" onClick={() => navigate('/settings/connections')}>设置模型连接</Button>
               </Text>
             ) : null}
             <Text type="tertiary" size="small" className="block mt-1">
