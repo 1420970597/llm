@@ -1317,7 +1317,8 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
     return items
   }, [blueprintPayload, blueprintVersionId, budgetLimitMinor, coverageSourceState, coverageVersionId, maxUnits, purpose, standardVersionId, unitCount, versionOptions.blueprint, versionOptions.coverage, versionOptions.standard])
 
-  const ready = checklist.every((item) => item.ok)
+  // 配置尚未加载或读取失败时，生产批次也必须保持不可执行。
+  const ready = !configurationLoading && !configurationError && checklist.every((item) => item.ok)
   const blockedItems = checklist.filter((item) => !item.ok)
   const checklistFixes: Record<string, { label: string; route: string; query?: string; field?: string }> = {
     '计划单元数在范围内': { label: '修改数量', route: '', field: 'plan-units' },
@@ -1560,7 +1561,7 @@ export function BatchPlanningPage({ purpose }: { purpose: 'pilot' | 'scale' }) {
         <Button
           theme="solid"
           type="primary"
-          disabled={configurationLoading || !!configurationError || !ready || !canRun}
+          disabled={!ready || !canRun}
           loading={submitting}
           onClick={() => void submit()}
         >
