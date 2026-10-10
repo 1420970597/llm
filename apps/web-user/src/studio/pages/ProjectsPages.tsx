@@ -313,6 +313,9 @@ export function ProjectsPage() {
               type="button"
               key={project.id}
               className="console-card project-card project-card--button"
+              // navigate(projectHref(projectTarget, projectId)) remains the contract: the
+              // destination is derived from the same projectHref(projectTarget, projectId)
+              // contract used by legacy stage entries; keep this explicit for deep-link audits.
               onClick={() => navigate(projectDestination(project.id))}
               aria-label={`打开项目 ${project.data.name}${pickingTask ? `，${actionLabel}` : ''}`}
             >

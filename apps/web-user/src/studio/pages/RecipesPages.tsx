@@ -104,7 +104,7 @@ export function RecipesListPage() {
               <div className="flex flex-col items-center gap-2">
                 <Text>方案库暂时没有可用方案</Text>
                 <Text type="tertiary" size="small">
-                  可先在项目中配置生产方案；项目另存为方案暂未开放。
+                  可先在项目中配置生产方案；从既有项目另存为方案尚未开放。
                 </Text>
                 <Button size="small" theme="solid" type="primary" onClick={() => navigate('/projects')} data-recipes-empty-cta="true">
                   打开数据项目

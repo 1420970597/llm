@@ -214,7 +214,7 @@ export function SampleListPage({ queueMode = false }: { queueMode?: boolean }) {
    * 两者共用同一份服务端查询与行渲染是有意的（同一个事实只有一个实现），
    * 但**默认值、说明文案、主操作与空状态**必须不同。
    */
-  const title = queueMode ? '审阅队列' : '审阅数据'
+  const title = queueMode ? '审阅队列' : '数据'
   const firstReviewable = samples.find((sample) => sample.reviewStatus === 'pending' && sample.capabilities?.canReview)
   const sampleQuery = new URLSearchParams(searchParams)
   if (!sampleQuery.has('status')) sampleQuery.set('status', showAllStatuses ? 'all' : reviewStatus)
@@ -912,8 +912,8 @@ export function SampleReviewPage() {
     } catch (submitErrorValue) {
       // 409 时必须保留用户输入 —— 清空理由会让用户重打一遍，
       // 而那正是「过期返回 409 并保留输入」要避免的。
-      setSubmitError(submitErrorValue instanceof Error ? submitErrorValue.message : '提交失败')
       setCanSaveOfflineDraft((submitErrorValue as { statusCode?: number }).statusCode === undefined)
+      setSubmitError(submitErrorValue instanceof Error ? submitErrorValue.message : '提交失败')
     } finally {
       submittingRef.current = false
       setSubmitting(false)
